@@ -158,9 +158,10 @@ export class ActionBasedSyncManager {
   }
 
   // 🔧 生成创建备注
-  private generateCreateNote(source: 'outlook' | 'remarkable'): string {
-    const now = new Date();
-    const timeStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+  private generateCreateNote(source: 'outlook' | 'remarkable', createTime?: Date | string): string {
+    // 使用传入的时间或当前时间
+    const timeToUse = createTime ? (typeof createTime === 'string' ? new Date(createTime) : createTime) : new Date();
+    const timeStr = `${timeToUse.getFullYear()}-${(timeToUse.getMonth() + 1).toString().padStart(2, '0')}-${timeToUse.getDate().toString().padStart(2, '0')} ${timeToUse.getHours().toString().padStart(2, '0')}:${timeToUse.getMinutes().toString().padStart(2, '0')}:${timeToUse.getSeconds().toString().padStart(2, '0')}`;
     const sourceIcon = source === 'outlook' ? '📧 Outlook' : '🔮 ReMarkable';
     return `\n\n---\n由 ${sourceIcon} 创建于 ${timeStr}`;
   }
@@ -174,7 +175,7 @@ export class ActionBasedSyncManager {
   }
 
   // 🔧 统一的描述处理方法 - 简化版本
-  private processEventDescription(htmlContent: string, source: 'outlook' | 'remarkable', action: 'create' | 'update' | 'sync'): string {
+  private processEventDescription(htmlContent: string, source: 'outlook' | 'remarkable', action: 'create' | 'update' | 'sync', eventData?: any): string {
     console.log('🔧 [ProcessDescription] Starting description processing:', {
       source,
       action,
@@ -204,10 +205,11 @@ export class ActionBasedSyncManager {
       // 从Outlook同步到本地
       let result = this.extractOriginalDescription(cleanText);
       
-      // 如果没有创建备注，添加Outlook创建备注
+      // 如果没有创建备注，添加Outlook创建备注，使用事件的真实创建时间
       if (!this.hasCreateNote(result)) {
-        result += this.generateCreateNote('outlook');
-        console.log('🔧 [ProcessDescription] Added Outlook create note');
+        const createTime = eventData?.createdDateTime || eventData?.createdAt || new Date();
+        result += this.generateCreateNote('outlook', createTime);
+        console.log('🔧 [ProcessDescription] Added Outlook create note with real create time:', createTime);
       }
       
       console.log('🔧 [ProcessDescription] Outlook sync result:', {
@@ -222,9 +224,10 @@ export class ActionBasedSyncManager {
     let result = cleanText;
     
     if (action === 'create') {
-      // 创建操作：只添加创建备注
-      result += this.generateCreateNote('remarkable');
-      console.log('🔧 [ProcessDescription] Added ReMarkable create note');
+      // 创建操作：使用事件的创建时间（如果有的话）
+      const createTime = eventData?.createdAt || new Date();
+      result += this.generateCreateNote('remarkable', createTime);
+      console.log('🔧 [ProcessDescription] Added ReMarkable create note with time:', createTime);
     } else if (action === 'update') {
       // 更新操作：移除编辑备注，保留创建备注，添加新的编辑备注
       result = this.removeEditNotesOnly(cleanText);
@@ -286,7 +289,7 @@ export class ActionBasedSyncManager {
       selectedContent: htmlContent
     });
     
-    return this.processEventDescription(htmlContent, 'outlook', 'sync');
+    return this.processEventDescription(htmlContent, 'outlook', 'sync', event);
   }
 
   public recordLocalAction(type: 'create' | 'update' | 'delete', entityType: 'event' | 'task', entityId: string, data?: any, oldData?: any) {
@@ -696,7 +699,8 @@ private getUserSettings(): any {
           const createDescription = this.processEventDescription(
             action.data.description || '',
             'remarkable',
-            'create'
+            'create',
+            action.data
           );
           
           const newEvent = await this.microsoftService.createEvent({
@@ -740,7 +744,8 @@ private getUserSettings(): any {
           const updateDescription = this.processEventDescription(
             action.data.description || '',
             'remarkable',
-            'update'
+            'update',
+            action.data
           );
           
           const updateData: any = {
@@ -931,7 +936,7 @@ private getUserSettings(): any {
             oldLocalDescription: localEvents[eventIndex].description || ''
           });
           
-          const cleanDescription = this.processEventDescription(htmlContent, 'outlook', 'sync');
+          const cleanDescription = this.processEventDescription(htmlContent, 'outlook', 'sync', action.data);
           
           console.log('🔄 [RemoteToLocal] Description processing complete:', {
             originalHtmlContent: htmlContent,
@@ -1151,7 +1156,7 @@ private getUserSettings(): any {
       selectedContent: htmlContent
     });
     
-    const cleanDescription = this.processEventDescription(htmlContent, 'outlook', 'sync');
+    const cleanDescription = this.processEventDescription(htmlContent, 'outlook', 'sync', remoteEvent);
     
     return {
       id: `outlook-${remoteEvent.id}`,
