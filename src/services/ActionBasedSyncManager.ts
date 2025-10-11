@@ -1219,12 +1219,13 @@ private getUserSettings(): any {
       .replace(/&#39;/g, "'")
       .replace(/&apos;/g, "'");
     
-    // 5. 🔧 更智能的换行符清理 - 先统一所有换行符，再清理多余的
+    // 5. 🔧 更智能的换行符清理 - 彻底清理多余换行
     cleaned = cleaned
       .replace(/\r\n/g, '\n')           // Windows换行符转换
       .replace(/\r/g, '\n')             // Mac换行符转换
-      .replace(/\n[ \t]*\n/g, '\n\n')   // 清理换行符之间的空格和制表符
-      .replace(/\n{3,}/g, '\n\n')       // 将3个或更多连续换行符减少为2个
+      .replace(/[ \t]+\n/g, '\n')       // 移除行尾的空格和制表符
+      .replace(/\n[ \t]+/g, '\n')       // 移除行首的空格和制表符
+      .replace(/\n{2,}/g, '\n')         // 🔧 将所有多个连续换行符都减少为1个
       .replace(/^[\s\n]+/, '')          // 移除开头的所有空白和换行
       .replace(/[\s\n]+$/, '')          // 移除结尾的所有空白和换行
       .trim();
