@@ -1186,9 +1186,6 @@ private getUserSettings(): any {
     
     // 1. 如果是完整的HTML文档，优先提取body内容
     if (cleaned.includes('<html>') || cleaned.includes('<body>')) {
-      // 首先处理 <br> 标签，将其转换为换行符
-      cleaned = cleaned.replace(/<br\s*\/?>/gi, '\n');
-      
       // 尝试提取 PlainText div 中的内容
       const plainTextMatch = cleaned.match(/<div[^>]*class[^>]*["']PlainText["'][^>]*>([\s\S]*?)<\/div>/i);
       if (plainTextMatch) {
@@ -1204,15 +1201,15 @@ private getUserSettings(): any {
           console.log('🔧 [cleanHtmlContent] No body found, processing entire content');
         }
       }
-    } else {
-      // 如果不是HTML文档，先处理<br>标签
-      cleaned = cleaned.replace(/<br\s*\/?>/gi, '\n');
     }
     
-    // 4. 移除所有剩余的HTML标签
+    // 2. 处理 <br> 标签，将其转换为换行符
+    cleaned = cleaned.replace(/<br\s*\/?>/gi, '\n');
+    
+    // 3. 移除所有剩余的HTML标签
     cleaned = cleaned.replace(/<[^>]*>/g, '');
     
-    // 5. 处理HTML实体
+    // 4. 处理HTML实体
     cleaned = cleaned
       .replace(/&nbsp;/g, ' ')
       .replace(/&amp;/g, '&')
@@ -1222,13 +1219,14 @@ private getUserSettings(): any {
       .replace(/&#39;/g, "'")
       .replace(/&apos;/g, "'");
     
-    // 6. 标准化换行符和清理多余空白
+    // 5. 🔧 更智能的换行符清理 - 先统一所有换行符，再清理多余的
     cleaned = cleaned
-      .replace(/\r\n/g, '\n')
-      .replace(/\r/g, '\n')
-      .replace(/\n\s*\n\s*\n/g, '\n\n') // 减少连续的空行
-      .replace(/^\s*\n+/, '') // 移除开头的空行
-      .replace(/\n+\s*$/, '') // 移除结尾的空行
+      .replace(/\r\n/g, '\n')           // Windows换行符转换
+      .replace(/\r/g, '\n')             // Mac换行符转换
+      .replace(/\n[ \t]*\n/g, '\n\n')   // 清理换行符之间的空格和制表符
+      .replace(/\n{3,}/g, '\n\n')       // 将3个或更多连续换行符减少为2个
+      .replace(/^[\s\n]+/, '')          // 移除开头的所有空白和换行
+      .replace(/[\s\n]+$/, '')          // 移除结尾的所有空白和换行
       .trim();
     
     console.log('🔧 [cleanHtmlContent] Final cleaned content:', {
