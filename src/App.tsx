@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MicrosoftCalendarService } from './services/MicrosoftCalendarService';
 import { ActionBasedSyncManager } from './services/ActionBasedSyncManager';
+import { electronService } from './services/ElectronService';
 import { EventManager } from './components/EventManager';
 import TaskManager from './components/TaskManager';
 import CalendarSync from './components/CalendarSync';
@@ -78,6 +79,30 @@ function App() {
           return;
         }
         
+        // 🔧 初始化Electron服务
+        if (electronService.isElectron) {
+          console.log('🔧 Running in Electron environment');
+          
+          // 获取应用信息
+          const appInfo = await electronService.getAppInfo();
+          console.log('📱 App Info:', appInfo);
+          
+          // 启动系统监听
+          const monitoringStarted = await electronService.startSystemMonitoring();
+          if (monitoringStarted) {
+            electronService.onSystemActivity((data) => {
+              console.log('🔍 System activity detected:', data);
+              // 这里可以记录用户活动日志
+            });
+          }
+          
+          // 显示欢迎通知
+          await electronService.showNotification(
+            'ReMarkable 已启动',
+            '智能日历和任务管理应用已准备就绪'
+          );
+        }
+        
         setMicrosoftService(microsoftCalendarService);
         
         if (typeof window !== 'undefined') {
@@ -91,6 +116,7 @@ function App() {
           (window as any).actionBasedSyncManager = syncMgr;
           (window as any).actionSyncManager = syncMgr;
           (window as any).syncManager = syncMgr;
+          (window as any).electronService = electronService;
         }
 
       } catch (error) {
@@ -102,6 +128,42 @@ function App() {
       initializeServices();
     }
   }, [syncManager]); 
+
+  // 🔧 Electron事件监听器
+  useEffect(() => {
+    if (!electronService.isElectron) return;
+
+    // 监听Electron触发的同步事件
+    const handleElectronSync = () => {
+      console.log('🔄 Electron triggered sync');
+      if (syncManager) {
+        syncManager.performSyncNow().catch(console.error);
+      }
+    };
+
+    // 监听Electron触发的设置事件
+    const handleElectronSettings = () => {
+      console.log('⚙️ Electron triggered sync settings');
+      setShowOngoingConfig(true);
+    };
+
+    window.addEventListener('electron-trigger-sync', handleElectronSync);
+    window.addEventListener('electron-open-sync-settings', handleElectronSettings);
+
+    return () => {
+      window.removeEventListener('electron-trigger-sync', handleElectronSync);
+      window.removeEventListener('electron-open-sync-settings', handleElectronSettings);
+    };
+  }, [syncManager]);
+
+  // 🔧 组件卸载时清理Electron服务
+  useEffect(() => {
+    return () => {
+      if (electronService.isElectron) {
+        electronService.cleanup();
+      }
+    };
+  }, []); 
 
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
@@ -956,7 +1018,14 @@ function App() {
   return (
     <div className="container">
       <header>
-        <h1>ReMarkable - 时间管理工具</h1>
+        <h1>
+          ReMarkable - 时间管理工具
+          {electronService.isElectron && (
+            <span className="platform-indicator" title="桌面应用版本">
+              🖥️
+            </span>
+          )}
+        </h1>
         <div className="daily-stats">
           <span>今日专注时间: {formatTime(getTodayTotalTime())}</span>
           <span className="sync-status">
@@ -965,6 +1034,11 @@ function App() {
               <span> | 最后同步: {lastSyncTime.toLocaleTimeString()}</span>
             )}
           </span>
+          {electronService.isElectron && (
+            <span className="electron-status" title="桌面应用功能">
+              📱 系统监听: 已启用
+            </span>
+          )}
         </div>
       </header>
 
