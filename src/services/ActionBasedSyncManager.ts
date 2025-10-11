@@ -133,6 +133,46 @@ export class ActionBasedSyncManager {
     }
   }
 
+  // 🔧 检查文本中是否包含创建备注
+  private hasCreateNote(text: string): boolean {
+    const createNotePattern = /由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) 创建/;
+    return createNotePattern.test(text);
+  }
+
+  // 🔧 检查文本中是否包含编辑备注
+  private hasEditNote(text: string): boolean {
+    const editNotePattern = /由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于)/;
+    return editNotePattern.test(text);
+  }
+
+  // 🔧 移除所有编辑备注，但保留创建备注
+  private removeEditNotesOnly(text: string): string {
+    if (!text) return '';
+    
+    return text
+      // 移除所有编辑备注（多行连续的）
+      .replace(/(\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于) [^\n]*)+$/g, '')
+      // 移除单独的编辑备注
+      .replace(/\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于) [^\n]*$/g, '')
+      .trim();
+  }
+
+  // 🔧 生成创建备注
+  private generateCreateNote(source: 'outlook' | 'remarkable'): string {
+    const now = new Date();
+    const timeStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+    const sourceIcon = source === 'outlook' ? '📧 Outlook' : '🔮 ReMarkable';
+    return `\n\n---\n由 ${sourceIcon} 创建于 ${timeStr}`;
+  }
+
+  // 🔧 生成编辑备注
+  private generateEditNote(source: 'outlook' | 'remarkable'): string {
+    const now = new Date();
+    const timeStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+    const sourceIcon = source === 'outlook' ? '📧 Outlook' : '🔮 ReMarkable';
+    return `\n由 ${sourceIcon} 最后编辑于 ${timeStr}`;
+  }
+
   // 🔧 统一的描述处理方法 - 简化版本
   private processEventDescription(htmlContent: string, source: 'outlook' | 'remarkable', action: 'create' | 'update' | 'sync'): string {
     console.log('🔧 [ProcessDescription] Starting description processing:', {
@@ -150,40 +190,46 @@ export class ActionBasedSyncManager {
       cleanTextFull: cleanText
     });
     
-    // 2. 如果是从Outlook同步到本地，提取原始内容并返回，不添加额外备注
+    // 2. 检查是否已有创建备注和编辑备注
+    const hasCreate = this.hasCreateNote(cleanText);
+    const hasEdit = this.hasEditNote(cleanText);
+    
+    console.log('🔧 [ProcessDescription] Note status:', {
+      hasCreateNote: hasCreate,
+      hasEditNote: hasEdit
+    });
+    
+    // 3. 根据不同操作和情况处理
     if (source === 'outlook' && action === 'sync') {
-      const originalContent = this.extractOriginalDescription(cleanText);
-      console.log('🔧 [ProcessDescription] Outlook sync - extracted original content:', {
-        cleanTextLength: cleanText.length,
-        originalLength: originalContent.length,
-        cleanText: cleanText,
-        originalContent: originalContent
+      // 从Outlook同步到本地
+      let result = this.extractOriginalDescription(cleanText);
+      
+      // 如果没有创建备注，添加Outlook创建备注
+      if (!this.hasCreateNote(result)) {
+        result += this.generateCreateNote('outlook');
+        console.log('🔧 [ProcessDescription] Added Outlook create note');
+      }
+      
+      console.log('🔧 [ProcessDescription] Outlook sync result:', {
+        finalLength: result.length,
+        finalFull: result
       });
-      return originalContent;
+      
+      return result;
     }
     
-    // 3. 对于update操作，先提取原始内容，移除旧的备注
-    let originalContent = cleanText;
-    if (action === 'update') {
-      originalContent = this.extractOriginalDescription(cleanText);
-      console.log('🔧 [ProcessDescription] Extracted original content for update:', {
-        originalLength: originalContent.length,
-        originalFull: originalContent
-      });
-    }
-    
-    // 4. 添加适当的备注
-    const now = new Date();
-    const timeStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-    
-    let result = originalContent;
+    // 4. 对于本地操作（create/update）
+    let result = cleanText;
     
     if (action === 'create') {
-      const sourceIcon = source === 'outlook' ? '📧 Outlook' : '🔮 ReMarkable';
-      result += `\n\n---\n由 ${sourceIcon} 创建`;
+      // 创建操作：只添加创建备注
+      result += this.generateCreateNote('remarkable');
+      console.log('🔧 [ProcessDescription] Added ReMarkable create note');
     } else if (action === 'update') {
-      const sourceIcon = source === 'outlook' ? '📧 Outlook' : '🔮 ReMarkable';
-      result += `\n由 ${sourceIcon} 最后编辑于 ${timeStr}`;
+      // 更新操作：移除编辑备注，保留创建备注，添加新的编辑备注
+      result = this.removeEditNotesOnly(cleanText);
+      result += this.generateEditNote('remarkable');
+      console.log('🔧 [ProcessDescription] Removed old edit notes and added new edit note');
     }
     
     console.log('🔧 [ProcessDescription] Final result:', {
@@ -194,38 +240,30 @@ export class ActionBasedSyncManager {
     return result;
   }
 
-  // 🔧 改进的提取原始内容方法
+  // 🔧 改进的提取原始内容方法 - 只移除编辑备注，保留创建备注
   private extractOriginalDescription(description: string): string {
     if (!description) return '';
     
     console.log('🔧 [ExtractOriginal] Starting extraction from:', description);
     
-    // 移除所有同步备注（创建备注和修改日志）
+    // 只移除编辑备注，保留创建备注
     let cleaned = description;
     
-    // 先移除多行的编辑记录 - 匹配多个连续的编辑记录
-    cleaned = cleaned.replace(/(\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) 最后编辑于 [^\n]*)+$/g, '');
+    // 移除多行的编辑记录 - 匹配多个连续的编辑记录
+    cleaned = cleaned.replace(/(\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于) [^\n]*)+$/g, '');
     
-    // 然后移除其他格式的备注
-    cleaned = cleaned
-      // 移除创建备注和修改日志的组合
-      .replace(/\n\n---\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) 创建\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) 最后编辑于 [^\n]*$/g, '')
-      .replace(/\n---\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) 创建\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) 最后编辑于 [^\n]*$/g, '')
-      // 移除单独的创建备注
-      .replace(/\n\n---\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) 创建$/g, '')
-      .replace(/\n---\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) 创建$/g, '')
-      // 移除单独的修改日志
-      .replace(/\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) 最后编辑于 [^\n]*$/g, '')
-      // 移除旧格式的备注
-      .replace(/\n\n---\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:创建|最新修改于 [^\n]*)$/g, '')
-      .replace(/\n---\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:创建|最新修改于 [^\n]*)$/g, '')
-      .trim();
+    // 移除单独的编辑记录（不移除创建备注）
+    cleaned = cleaned.replace(/\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于) [^\n]*$/g, '');
+    
+    // 清理结尾可能的多余空行
+    cleaned = cleaned.trim();
     
     console.log('🔧 [ExtractOriginal] Extraction result:', {
       originalLength: description.length,
       cleanedLength: cleaned.length,
       originalContent: description,
-      cleanedContent: cleaned
+      cleanedContent: cleaned,
+      hasCreateNote: this.hasCreateNote(cleaned)
     });
     
     return cleaned;
