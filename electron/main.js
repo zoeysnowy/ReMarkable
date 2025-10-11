@@ -169,6 +169,7 @@ ipcMain.handle('show-message-box', async (event, options) => {
 });
 
 ipcMain.handle('show-notification', (event, title, body, options = {}) => {
+  const { Notification } = require('electron');
   const notification = new Notification({
     title,
     body,
