@@ -157,6 +157,11 @@ export class ActionBasedSyncManager {
       .trim();
   }
 
+  // 🔧 检查文本是否已经以分隔线结尾
+  private endsWithSeparator(text: string): boolean {
+    return /\n---\s*$/.test(text.trim());
+  }
+
   // 🔧 生成创建备注
   private generateCreateNote(source: 'outlook' | 'remarkable', createTime?: Date | string): string {
     // 使用传入的时间或当前时间
@@ -167,11 +172,19 @@ export class ActionBasedSyncManager {
   }
 
   // 🔧 生成编辑备注
-  private generateEditNote(source: 'outlook' | 'remarkable'): string {
+  private generateEditNote(source: 'outlook' | 'remarkable', baseText?: string): string {
     const now = new Date();
     const timeStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
     const sourceIcon = source === 'outlook' ? '📧 Outlook' : '🔮 ReMarkable';
-    return `\n由 ${sourceIcon} 最后编辑于 ${timeStr}`;
+    
+    // 检查基础文本是否已经以分隔线结尾
+    if (baseText && this.endsWithSeparator(baseText)) {
+      // 如果已经有分隔线，只添加编辑备注
+      return `\n由 ${sourceIcon} 最后编辑于 ${timeStr}`;
+    } else {
+      // 如果没有分隔线，添加分隔线和编辑备注
+      return `\n\n---\n由 ${sourceIcon} 最后编辑于 ${timeStr}`;
+    }
   }
 
   // 🔧 统一的描述处理方法 - 简化版本
@@ -231,7 +244,7 @@ export class ActionBasedSyncManager {
     } else if (action === 'update') {
       // 更新操作：移除编辑备注，保留创建备注，添加新的编辑备注
       result = this.removeEditNotesOnly(cleanText);
-      result += this.generateEditNote('remarkable');
+      result += this.generateEditNote('remarkable', result);
       console.log('🔧 [ProcessDescription] Removed old edit notes and added new edit note');
     }
     
