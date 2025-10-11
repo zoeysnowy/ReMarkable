@@ -150,10 +150,16 @@ export class ActionBasedSyncManager {
       cleanTextFull: cleanText
     });
     
-    // 2. 如果是从Outlook同步到本地，直接返回清理后的内容，不添加额外备注
+    // 2. 如果是从Outlook同步到本地，提取原始内容并返回，不添加额外备注
     if (source === 'outlook' && action === 'sync') {
-      console.log('🔧 [ProcessDescription] Outlook sync - returning clean text without notes');
-      return cleanText;
+      const originalContent = this.extractOriginalDescription(cleanText);
+      console.log('🔧 [ProcessDescription] Outlook sync - extracted original content:', {
+        cleanTextLength: cleanText.length,
+        originalLength: originalContent.length,
+        cleanText: cleanText,
+        originalContent: originalContent
+      });
+      return originalContent;
     }
     
     // 3. 对于update操作，先提取原始内容，移除旧的备注
