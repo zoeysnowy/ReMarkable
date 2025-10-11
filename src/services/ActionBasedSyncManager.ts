@@ -145,21 +145,33 @@ export class ActionBasedSyncManager {
     return editNotePattern.test(text);
   }
 
-  // 🔧 移除所有编辑备注，但保留创建备注
+  // 🔧 移除所有编辑备注，但保留创建备注，智能处理分隔线
   private removeEditNotesOnly(text: string): string {
     if (!text) return '';
     
-    return text
-      // 移除所有编辑备注（多行连续的）
-      .replace(/(\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于) [^\n]*)+$/g, '')
-      // 移除单独的编辑备注
-      .replace(/\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于) [^\n]*$/g, '')
-      .trim();
+    let result = text;
+    
+    // 1. 移除所有编辑备注（多行连续的）
+    result = result.replace(/(\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于) [^\n]*)+$/g, '');
+    
+    // 2. 移除单独的编辑备注
+    result = result.replace(/\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于) [^\n]*$/g, '');
+    
+    // 3. 清理多余的分隔线，确保只有一个
+    if (this.hasCreateNote(result)) {
+      // 清理可能的多个连续分隔线
+      result = result.replace(/\n---\s*\n---\s*/g, '\n---\n');
+      result = result.replace(/\n---\s*$/g, ''); // 移除末尾孤立的分隔线
+    }
+    
+    return result.trim();
   }
 
-  // 🔧 检查文本是否已经以分隔线结尾
+  // 🔧 检查文本是否已经以分隔线结尾或包含创建备注
   private endsWithSeparator(text: string): boolean {
-    return /\n---\s*$/.test(text.trim());
+    const trimmed = text.trim();
+    // 检查是否以 --- 结尾，或者包含创建备注（说明已有分隔线）
+    return /\n---\s*$/.test(trimmed) || this.hasCreateNote(trimmed);
   }
 
   // 🔧 生成创建备注
@@ -256,23 +268,29 @@ export class ActionBasedSyncManager {
     return result;
   }
 
-  // 🔧 改进的提取原始内容方法 - 只移除编辑备注，保留创建备注
+  // 🔧 改进的提取原始内容方法 - 智能处理分隔线
   private extractOriginalDescription(description: string): string {
     if (!description) return '';
     
     console.log('🔧 [ExtractOriginal] Starting extraction from:', description);
     
-    // 只移除编辑备注，保留创建备注
     let cleaned = description;
     
-    // 移除多行的编辑记录 - 匹配多个连续的编辑记录
+    // 1. 移除所有编辑备注（多行连续的）
     cleaned = cleaned.replace(/(\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于) [^\n]*)+$/g, '');
     
-    // 移除单独的编辑记录（不移除创建备注）
+    // 2. 移除单独的编辑备注
     cleaned = cleaned.replace(/\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于) [^\n]*$/g, '');
     
-    // 清理结尾可能的多余空行
+    // 3. 清理多余的空行和分隔线
     cleaned = cleaned.trim();
+    
+    // 4. 如果有创建备注，确保分隔线格式正确
+    if (this.hasCreateNote(cleaned)) {
+      // 清理可能的多个连续分隔线，确保创建备注前只有一个
+      cleaned = cleaned.replace(/\n---\s*\n---\s*\n/g, '\n---\n');
+      cleaned = cleaned.replace(/\n---\s*$/g, ''); // 移除末尾孤立的分隔线
+    }
     
     console.log('🔧 [ExtractOriginal] Extraction result:', {
       originalLength: description.length,
