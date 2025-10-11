@@ -156,11 +156,21 @@ export class ActionBasedSyncManager {
       return cleanText;
     }
     
-    // 3. 如果是其他情况，添加适当的备注
+    // 3. 对于update操作，先提取原始内容，移除旧的备注
+    let originalContent = cleanText;
+    if (action === 'update') {
+      originalContent = this.extractOriginalDescription(cleanText);
+      console.log('🔧 [ProcessDescription] Extracted original content for update:', {
+        originalLength: originalContent.length,
+        originalFull: originalContent
+      });
+    }
+    
+    // 4. 添加适当的备注
     const now = new Date();
     const timeStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
     
-    let result = cleanText;
+    let result = originalContent;
     
     if (action === 'create') {
       const sourceIcon = source === 'outlook' ? '📧 Outlook' : '🔮 ReMarkable';
@@ -182,8 +192,16 @@ export class ActionBasedSyncManager {
   private extractOriginalDescription(description: string): string {
     if (!description) return '';
     
+    console.log('🔧 [ExtractOriginal] Starting extraction from:', description);
+    
     // 移除所有同步备注（创建备注和修改日志）
-    const cleaned = description
+    let cleaned = description;
+    
+    // 先移除多行的编辑记录 - 匹配多个连续的编辑记录
+    cleaned = cleaned.replace(/(\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) 最后编辑于 [^\n]*)+$/g, '');
+    
+    // 然后移除其他格式的备注
+    cleaned = cleaned
       // 移除创建备注和修改日志的组合
       .replace(/\n\n---\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) 创建\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) 最后编辑于 [^\n]*$/g, '')
       .replace(/\n---\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) 创建\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) 最后编辑于 [^\n]*$/g, '')
@@ -191,11 +209,18 @@ export class ActionBasedSyncManager {
       .replace(/\n\n---\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) 创建$/g, '')
       .replace(/\n---\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) 创建$/g, '')
       // 移除单独的修改日志
-      .replace(/\n由 (?:📧 |� )?(?:Outlook|ReMarkable) 最后编辑于 [^\n]*$/g, '')
+      .replace(/\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) 最后编辑于 [^\n]*$/g, '')
       // 移除旧格式的备注
       .replace(/\n\n---\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:创建|最新修改于 [^\n]*)$/g, '')
       .replace(/\n---\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:创建|最新修改于 [^\n]*)$/g, '')
       .trim();
+    
+    console.log('🔧 [ExtractOriginal] Extraction result:', {
+      originalLength: description.length,
+      cleanedLength: cleaned.length,
+      originalContent: description,
+      cleanedContent: cleaned
+    });
     
     return cleaned;
   }
@@ -1158,6 +1183,8 @@ private getUserSettings(): any {
       .replace(/\r\n/g, '\n')
       .replace(/\r/g, '\n')
       .replace(/\n\s*\n\s*\n/g, '\n\n') // 减少连续的空行
+      .replace(/^\s*\n+/, '') // 移除开头的空行
+      .replace(/\n+\s*$/, '') // 移除结尾的空行
       .trim();
     
     console.log('🔧 [cleanHtmlContent] Final cleaned content:', {
