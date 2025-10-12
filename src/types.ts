@@ -5,6 +5,8 @@ export interface TimerSession {
   startTime: string;    // 🔧 修改：使用字符串存储本地时间
   endTime: string;      // 🔧 修改：使用字符串存储本地时间
   completedAt: string;  // 🔧 修改：使用字符串存储本地时间
+  description?: string; // 🆕 添加：描述内容
+  tags?: string[];      // 🆕 添加：标签支持
 }
 
 export interface Event {
@@ -15,6 +17,16 @@ export interface Event {
   endTime: string;      // 🔧 修改：使用字符串存储本地时间
   isAllDay: boolean;
   location?: string;
+  organizer?: {         // 🆕 添加：组织者信息
+    name?: string;
+    email?: string;
+  };
+  attendees?: Array<{   // 🆕 添加：与会者信息
+    name?: string;
+    email?: string;
+    type?: string;      // required, optional, resource
+    status?: string;    // accepted, declined, tentative, none
+  }>;
   reminder?: number;
   externalId?: string;
   calendarId?: string;
@@ -39,6 +51,7 @@ export interface Task {
   dueDate?: string;      // 🔧 修改：使用字符串存储本地时间
   createdAt: string;     // 🔧 修改：使用字符串存储本地时间
   updatedAt: string;     // 🔧 修改：使用字符串存储本地时间
+  tags?: string[];       // 🆕 添加：标签支持
 }
 
 export interface EventTag {

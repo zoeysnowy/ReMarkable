@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Task } from '../types';
 import { formatTimeForStorage, parseLocalTimeString } from '../utils/timeUtils';
 import { STORAGE_KEYS } from '../constants/storage';
+import DescriptionEditor from './DescriptionEditor';
 
 interface TaskManagerProps {
   onStartTimer: (taskTitle: string) => void;
@@ -18,6 +19,15 @@ const TaskManager: React.FC<TaskManagerProps> = ({ onStartTimer }) => {
   });
   const [sortType, setSortType] = useState<'priority' | 'dueDate' | 'created'>('created');
   const [filterCompleted, setFilterCompleted] = useState(false);
+  
+  // 描述编辑器状态
+  const [descriptionEditor, setDescriptionEditor] = useState({
+    isOpen: false,
+    taskId: '',
+    title: '',
+    description: '',
+    tags: [] as string[]
+  });
 
   // 加载任务
   useEffect(() => {
@@ -94,6 +104,39 @@ const TaskManager: React.FC<TaskManagerProps> = ({ onStartTimer }) => {
       const updatedTasks = tasks.filter(task => task.id !== id);
       saveTasks(updatedTasks);
     }
+  };
+
+  // 打开描述编辑器
+  const openDescriptionEditor = (task: Task) => {
+    setDescriptionEditor({
+      isOpen: true,
+      taskId: task.id,
+      title: `编辑任务：${task.title}`,
+      description: task.description || '',
+      tags: task.tags || []
+    });
+  };
+
+  // 关闭描述编辑器
+  const closeDescriptionEditor = () => {
+    setDescriptionEditor({
+      isOpen: false,
+      taskId: '',
+      title: '',
+      description: '',
+      tags: []
+    });
+  };
+
+  // 保存描述和标签
+  const saveDescriptionAndTags = (description: string, tags: string[]) => {
+    if (descriptionEditor.taskId) {
+      updateTask(descriptionEditor.taskId, { 
+        description, 
+        tags 
+      });
+    }
+    closeDescriptionEditor();
   };
 
   // 获取优先级颜色
@@ -210,6 +253,13 @@ const TaskManager: React.FC<TaskManagerProps> = ({ onStartTimer }) => {
                 </div>
                 <div className="task-actions">
                   <button
+                    onClick={() => openDescriptionEditor(task)}
+                    className="btn btn-edit-small"
+                    title="编辑描述和标签"
+                  >
+                    ✏️
+                  </button>
+                  <button
                     onClick={() => onStartTimer(task.title)}
                     className="btn btn-timer-small"
                     title="开始计时"
@@ -323,6 +373,16 @@ const TaskManager: React.FC<TaskManagerProps> = ({ onStartTimer }) => {
           </div>
         </div>
       )}
+
+      {/* 描述编辑器 */}
+      <DescriptionEditor
+        isOpen={descriptionEditor.isOpen}
+        onClose={closeDescriptionEditor}
+        onSave={saveDescriptionAndTags}
+        initialDescription={descriptionEditor.description}
+        initialTags={descriptionEditor.tags}
+        title={descriptionEditor.title}
+      />
     </div>
   );
 };

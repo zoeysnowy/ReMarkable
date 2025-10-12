@@ -1,7 +1,9 @@
 export const MICROSOFT_GRAPH_CONFIG = {
   clientId: 'cf163673-488e-44d9-83ac-0f11d90016ca',
   authority: 'https://login.microsoftonline.com/common',
-  redirectUri: window.location.origin,
+  redirectUri: typeof window !== 'undefined' && window.electronAPI 
+    ? 'http://localhost:3000' // Electron环境
+    : window.location.origin, // Web环境
   scopes: [
     'User.Read',
     'Calendars.Read',

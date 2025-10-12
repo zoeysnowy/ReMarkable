@@ -130,15 +130,44 @@ header h1 {
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.current-task {
-  color: #555;
-  font-size: 1.2rem;
+.current-task-section {
   margin: 20px 0 0 0;
   padding: 15px 20px;
   background: linear-gradient(135deg, #f8f9fa, #e9ecef);
   border-radius: 15px;
   border-left: 4px solid #667eea;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+}
+
+.current-task {
+  color: #555;
+  font-size: 1.2rem;
+  margin: 0;
   font-weight: 500;
+  flex: 1;
+}
+
+.btn-edit-task {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.btn-edit-task:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
 }
 
 /* 输入和控制区域 */
@@ -2374,4 +2403,118 @@ summary:hover {
   padding: 8px 12px !important;
 }
 
+}
+
+/* 任务管理器中的编辑按钮样式 */
+.btn-edit-small {
+  background: none;
+  border: none;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  color: #6c757d;
+}
+
+.btn-edit-small:hover {
+  background: #17a2b8;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(23, 162, 184, 0.3);
+}
+
+.btn-timer-small {
+  background: none;
+  border: none;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  color: #6c757d;
+}
+
+.btn-timer-small:hover {
+  background: #28a745;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(40, 167, 69, 0.3);
+}
+
+.btn-delete-small {
+  background: none;
+  border: none;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  color: #6c757d;
+}
+
+.btn-delete-small:hover {
+  background: #dc3545;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
+}
+
+/* 日历和标签管理按钮样式 */
+.btn-calendar-manage {
+  background: #17a2b8;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+/* 标签选择器样式 */
+.tag-select {
+  position: relative;
+}
+
+.selected-tag-preview {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+  font-weight: 500;
+}
+
+.tag-select option {
+  padding: 8px 12px;
+  font-weight: 500;
+}
+
+.btn-calendar-manage {
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.btn-calendar-manage:hover {
+  background: #138496;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(23, 162, 184, 0.3);
+}
+
+.btn-tag-manage {
+  background: #8b5cf6;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.btn-tag-manage:hover {
+  background: #7c3aed;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
 }

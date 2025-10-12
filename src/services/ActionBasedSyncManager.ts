@@ -1,4 +1,5 @@
 import { STORAGE_KEYS } from '../constants/storage';
+import { PersistentStorage, PERSISTENT_OPTIONS } from '../utils/persistentStorage';
 
 const formatTimeForStorage = (date: Date | string): string => {
   // 🔧 修复：处理字符串输入
@@ -57,11 +58,207 @@ export class ActionBasedSyncManager {
   private syncInProgress = false;
   private needsFullSync = false; // 标记是否需要全量同步
   private lastSyncSettings: any = null; // 上次同步时的设置
+  private deletedEventIds: Set<string> = new Set(); // 🆕 跟踪已删除的事件ID
 
   constructor(microsoftService: any) {
     this.microsoftService = microsoftService;
     this.loadActionQueue();
     this.loadConflictQueue();
+    this.loadDeletedEventIds(); // 🆕 加载已删除事件ID
+    
+    // 🔍 [DEBUG] 暴露调试函数到全局
+    if (typeof window !== 'undefined') {
+      (window as any).debugSyncManager = {
+        getActionQueue: () => this.actionQueue,
+        getConflictQueue: () => this.conflictQueue,
+        isRunning: () => this.isRunning,
+        isSyncInProgress: () => this.syncInProgress,
+        getLastSyncTime: () => this.lastSyncTime,
+        triggerSync: () => this.performSync(),
+        checkTagMapping: (tagId: string) => this.getCalendarIdForTag(tagId)
+      };
+      console.log('🔍 [DEBUG] SyncManager debug functions available via window.debugSyncManager');
+    }
+  }
+
+  // 🔍 [NEW] 获取标签的日历映射
+  private getCalendarIdForTag(tagId: string): string | null {
+    console.log('🔍 [TAG-CALENDAR] Getting calendar ID for tag:', tagId);
+    
+    if (!tagId) {
+      console.log('🔍 [TAG-CALENDAR] No tagId provided, returning null');
+      return null;
+    }
+    
+    try {
+      // 🔧 修复：使用TagService获取标签，而不是直接读取localStorage
+      if (typeof window !== 'undefined' && (window as any).TagService) {
+        const flatTags = (window as any).TagService.getFlatTags();
+        console.log('🔍 [TAG-CALENDAR] Retrieved tags from TagService:', flatTags.length);
+        
+        const foundTag = flatTags.find((tag: any) => tag.id === tagId);
+        if (foundTag && foundTag.calendarMapping) {
+          console.log('🔍 [TAG-CALENDAR] Found tag with calendar mapping:', {
+            tagName: foundTag.name,
+            calendarId: foundTag.calendarMapping.calendarId,
+            calendarName: foundTag.calendarMapping.calendarName
+          });
+          return foundTag.calendarMapping.calendarId;
+        } else {
+          console.log('🔍 [TAG-CALENDAR] Tag found but no calendar mapping:', foundTag?.name || 'Tag not found');
+          return null;
+        }
+      } else {
+        console.log('🔍 [TAG-CALENDAR] TagService not available, falling back to localStorage');
+        
+        // 备用方案：直接读取localStorage（使用PersistentStorage的方式）
+        const savedTags = PersistentStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS, PERSISTENT_OPTIONS.TAGS);
+        if (!savedTags) {
+          console.log('🔍 [TAG-CALENDAR] No hierarchical tags found in persistent storage');
+          return null;
+        }
+        
+        console.log('🔍 [TAG-CALENDAR] Loaded hierarchical tags from persistent storage:', savedTags.length);
+        
+        // 递归搜索标签和它的日历映射
+        const findTagMapping = (tags: any[], targetTagId: string): string | null => {
+          for (const tag of tags) {
+            console.log('🔍 [TAG-CALENDAR] Checking tag:', { 
+              id: tag.id, 
+              name: tag.name, 
+              calendarMapping: tag.calendarMapping 
+            });
+            
+            if (tag.id === targetTagId) {
+              const calendarId = tag.calendarMapping?.calendarId;
+              console.log('🔍 [TAG-CALENDAR] Found matching tag, calendar ID:', calendarId);
+              return calendarId || null;
+            }
+            
+            // 检查子标签
+            if (tag.children && tag.children.length > 0) {
+              const childResult = findTagMapping(tag.children, targetTagId);
+              if (childResult) {
+                console.log('🔍 [TAG-CALENDAR] Found in child tags, calendar ID:', childResult);
+                return childResult;
+              }
+            }
+          }
+          return null;
+        };
+        
+        const result = findTagMapping(savedTags, tagId);
+        console.log('🔍 [TAG-CALENDAR] Final result for tag', tagId, ':', result);
+        return result;
+      }
+      
+    } catch (error) {
+      console.error('🔍 [TAG-CALENDAR] Error getting calendar mapping:', error);
+      return null;
+    }
+  }
+
+  // 🔧 [NEW] 获取所有有标签映射的日历的事件
+  private async getMappedCalendarEvents(): Promise<any[]> {
+    try {
+      // 获取所有标签的日历映射
+      const mappedCalendars = new Set<string>();
+      
+      if (typeof window !== 'undefined' && (window as any).TagService) {
+        const flatTags = (window as any).TagService.getFlatTags();
+        
+        flatTags.forEach((tag: any) => {
+          if (tag.calendarMapping?.calendarId) {
+            mappedCalendars.add(tag.calendarMapping.calendarId);
+          }
+        });
+      } else {
+        // 备用方案：从持久化存储读取
+        const savedTags = PersistentStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS, PERSISTENT_OPTIONS.TAGS);
+        if (savedTags) {
+          const collectMappings = (tags: any[]) => {
+            tags.forEach(tag => {
+              if (tag.calendarMapping?.calendarId) {
+                mappedCalendars.add(tag.calendarMapping.calendarId);
+              }
+              if (tag.children) {
+                collectMappings(tag.children);
+              }
+            });
+          };
+          collectMappings(savedTags);
+        }
+      }
+      
+      console.log('🔍 [getMappedCalendarEvents] Found mapped calendars:', Array.from(mappedCalendars));
+      
+      if (mappedCalendars.size === 0) {
+        return [];
+      }
+      
+      // 获取每个映射日历的事件
+      const allEvents: any[] = [];
+      
+      for (const calendarId of Array.from(mappedCalendars)) {
+        try {
+          console.log('🔍 [getMappedCalendarEvents] Fetching events from calendar:', calendarId);
+          const events = await this.microsoftService.getEventsFromCalendar(calendarId);
+          
+          // 为这些事件设置正确的 calendarId 和标签信息
+          const enhancedEvents = events.map((event: any) => ({
+            ...event,
+            calendarId: calendarId,
+            // 尝试找到对应的标签
+            tagId: this.findTagIdForCalendar(calendarId)
+          }));
+          
+          allEvents.push(...enhancedEvents);
+          console.log('🔍 [getMappedCalendarEvents] Got', events.length, 'events from calendar', calendarId);
+        } catch (error) {
+          console.warn('⚠️ [getMappedCalendarEvents] Failed to fetch events from calendar', calendarId, ':', error);
+        }
+      }
+      
+      console.log('🔍 [getMappedCalendarEvents] Total events from mapped calendars:', allEvents.length);
+      return allEvents;
+      
+    } catch (error) {
+      console.error('❌ [getMappedCalendarEvents] Error getting mapped calendar events:', error);
+      return [];
+    }
+  }
+
+  // 🔧 [NEW] 找到映射到指定日历的标签ID
+  private findTagIdForCalendar(calendarId: string): string | null {
+    try {
+      if (typeof window !== 'undefined' && (window as any).TagService) {
+        const flatTags = (window as any).TagService.getFlatTags();
+        const foundTag = flatTags.find((tag: any) => tag.calendarMapping?.calendarId === calendarId);
+        return foundTag?.id || null;
+      } else {
+        // 备用方案：从持久化存储读取
+        const savedTags = PersistentStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS, PERSISTENT_OPTIONS.TAGS);
+        if (savedTags) {
+          const findTag = (tags: any[]): string | null => {
+            for (const tag of tags) {
+              if (tag.calendarMapping?.calendarId === calendarId) {
+                return tag.id;
+              }
+              if (tag.children) {
+                const childResult = findTag(tag.children);
+                if (childResult) return childResult;
+              }
+            }
+            return null;
+          };
+          return findTag(savedTags);
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error('❌ [findTagIdForCalendar] Error:', error);
+      return null;
+    }
   }
 
   private loadActionQueue() {
@@ -117,6 +314,40 @@ export class ActionBasedSyncManager {
       localStorage.setItem(STORAGE_KEYS.SYNC_CONFLICTS, JSON.stringify(this.conflictQueue));
     } catch (error) {
       console.error('Failed to save conflict queue:', error);
+    }
+  }
+
+  // 🆕 加载已删除事件ID
+  private loadDeletedEventIds() {
+    try {
+      const stored = localStorage.getItem('remarkable-dev-persistent-deletedEventIds');
+      if (stored) {
+        this.deletedEventIds = new Set(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.error('Failed to load deleted event IDs:', error);
+      this.deletedEventIds = new Set();
+    }
+  }
+
+  // 🆕 保存已删除事件ID
+  private saveDeletedEventIds() {
+    try {
+      localStorage.setItem('remarkable-dev-persistent-deletedEventIds', JSON.stringify(Array.from(this.deletedEventIds)));
+    } catch (error) {
+      console.error('Failed to save deleted event IDs:', error);
+    }
+  }
+
+  // 🆕 清理过期的已删除事件ID（避免Set无限增长）
+  private cleanupDeletedEventIds() {
+    // 保留最近1000个删除记录，超过的清理掉
+    const maxSize = 1000;
+    if (this.deletedEventIds.size > maxSize) {
+      const array = Array.from(this.deletedEventIds);
+      this.deletedEventIds = new Set(array.slice(-maxSize));
+      this.saveDeletedEventIds();
+      console.log(`🧹 Cleaned up deleted event IDs: ${array.length} → ${this.deletedEventIds.size}`);
     }
   }
 
@@ -201,29 +432,12 @@ export class ActionBasedSyncManager {
 
   // 🔧 统一的描述处理方法 - 简化版本
   private processEventDescription(htmlContent: string, source: 'outlook' | 'remarkable', action: 'create' | 'update' | 'sync', eventData?: any): string {
-    console.log('🔧 [ProcessDescription] Starting description processing:', {
-      source,
-      action,
-      htmlContentLength: htmlContent.length,
-      htmlContentFull: htmlContent
-    });
-    
     // 1. 清理HTML内容，得到纯文本
     const cleanText = this.cleanHtmlContent(htmlContent);
-    
-    console.log('🔧 [ProcessDescription] After HTML cleaning:', {
-      cleanTextLength: cleanText.length,
-      cleanTextFull: cleanText
-    });
     
     // 2. 检查是否已有创建备注和编辑备注
     const hasCreate = this.hasCreateNote(cleanText);
     const hasEdit = this.hasEditNote(cleanText);
-    
-    console.log('🔧 [ProcessDescription] Note status:', {
-      hasCreateNote: hasCreate,
-      hasEditNote: hasEdit
-    });
     
     // 3. 根据不同操作和情况处理
     if (source === 'outlook' && action === 'sync') {
@@ -234,13 +448,7 @@ export class ActionBasedSyncManager {
       if (!this.hasCreateNote(result)) {
         const createTime = eventData?.createdDateTime || eventData?.createdAt || new Date();
         result += this.generateCreateNote('outlook', createTime);
-        console.log('🔧 [ProcessDescription] Added Outlook create note with real create time:', createTime);
       }
-      
-      console.log('🔧 [ProcessDescription] Outlook sync result:', {
-        finalLength: result.length,
-        finalFull: result
-      });
       
       return result;
     }
@@ -250,7 +458,16 @@ export class ActionBasedSyncManager {
     
     if (action === 'create') {
       // 创建操作：使用事件的创建时间（如果有的话）
-      const createTime = eventData?.createdAt || new Date();
+      // 🔍 [NEW] 支持保持原始创建时间
+      let createTime: Date;
+      if (eventData?.preserveOriginalCreateTime) {
+        createTime = eventData.preserveOriginalCreateTime;
+        console.log('🔧 [ProcessDescription] Using preserved original create time:', createTime);
+      } else {
+        createTime = eventData?.createdAt || new Date();
+        console.log('🔧 [ProcessDescription] Using new create time:', createTime);
+      }
+      
       result += this.generateCreateNote('remarkable', createTime);
       console.log('🔧 [ProcessDescription] Added ReMarkable create note with time:', createTime);
     } else if (action === 'update') {
@@ -272,8 +489,6 @@ export class ActionBasedSyncManager {
   private extractOriginalDescription(description: string): string {
     if (!description) return '';
     
-    console.log('🔧 [ExtractOriginal] Starting extraction from:', description);
-    
     let cleaned = description;
     
     // 1. 移除所有编辑备注（多行连续的）
@@ -292,15 +507,35 @@ export class ActionBasedSyncManager {
       cleaned = cleaned.replace(/\n---\s*$/g, ''); // 移除末尾孤立的分隔线
     }
     
-    console.log('🔧 [ExtractOriginal] Extraction result:', {
-      originalLength: description.length,
-      cleanedLength: cleaned.length,
-      originalContent: description,
-      cleanedContent: cleaned,
-      hasCreateNote: this.hasCreateNote(cleaned)
-    });
-    
     return cleaned;
+  }
+
+  // 🔍 [NEW] 提取原始创建时间 - 用于保持事件的真实创建时间记录
+  private extractOriginalCreateTime(description: string): Date | null {
+    if (!description) return null;
+    
+    try {
+      // 匹配创建时间的正则表达式
+      // 格式：由 🔮 ReMarkable 创建于 2025-10-12 02:37:15
+      // 或：  由 📧 Outlook 创建于 2025-10-12 02:37:15
+      const createTimeMatch = description.match(/由 (?:🔮 ReMarkable|📧 Outlook) 创建于 (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
+      
+      if (createTimeMatch && createTimeMatch[1]) {
+        const timeString = createTimeMatch[1];
+        const parsedTime = new Date(timeString);
+        
+        if (!isNaN(parsedTime.getTime())) {
+          console.log('🔍 [extractOriginalCreateTime] Found original create time:', timeString, '→', parsedTime);
+          return parsedTime;
+        }
+      }
+      
+      console.log('🔍 [extractOriginalCreateTime] No valid create time found in description');
+      return null;
+    } catch (error) {
+      console.warn('⚠️ [extractOriginalCreateTime] Error parsing create time:', error);
+      return null;
+    }
   }
 
   // 获取远程事件的描述内容 - 修复版本
@@ -310,15 +545,6 @@ export class ActionBasedSyncManager {
                        event.description || 
                        event.bodyPreview || 
                        '';
-    
-    console.log('🔧 [GetEventDescription] Extracting description from event:', {
-      eventId: event.id,
-      eventSubject: event.subject,
-      bodyContent: event.body?.content || '[empty]',
-      description: event.description || '[empty]',
-      bodyPreview: event.bodyPreview || '[empty]',
-      selectedContent: htmlContent
-    });
     
     return this.processEventDescription(htmlContent, 'outlook', 'sync', event);
   }
@@ -406,6 +632,9 @@ export class ActionBasedSyncManager {
     this.syncInProgress = true;
 
     try {
+      // 🆕 清理过期的已删除事件ID
+      this.cleanupDeletedEventIds();
+      
       await this.fetchRemoteChanges();
       await this.syncPendingLocalActions();
       await this.syncPendingRemoteActions();
@@ -462,9 +691,27 @@ export class ActionBasedSyncManager {
       });
 
       const remoteEvents = await this.microsoftService.getEvents();
-      console.log('🔍 [ActionBasedSyncManager] Remote events fetched:', remoteEvents.length);
+      console.log('🔍 [ActionBasedSyncManager] Remote events fetched from default calendar:', remoteEvents.length);
       
-      const remarkableEvents = remoteEvents.filter((event: any) => {
+      // 🔧 [NEW] 获取所有有标签映射的日历的事件
+      const mappedCalendarEvents = await this.getMappedCalendarEvents();
+      console.log('🔍 [ActionBasedSyncManager] Events from mapped calendars:', mappedCalendarEvents.length);
+      
+      // 合并所有事件，并去重
+      const allRemoteEvents = [...remoteEvents, ...mappedCalendarEvents];
+      const uniqueEvents = new Map();
+      
+      allRemoteEvents.forEach(event => {
+        const key = event.externalId || event.id;
+        if (key && !uniqueEvents.has(key)) {
+          uniqueEvents.set(key, event);
+        }
+      });
+      
+      const combinedEvents = Array.from(uniqueEvents.values());
+      console.log('🔍 [ActionBasedSyncManager] Combined unique remote events:', combinedEvents.length);
+      
+      const remarkableEvents = combinedEvents.filter((event: any) => {
         const subject = event.subject || '';
         
         // 🔧 修复时间解析问题
@@ -501,11 +748,20 @@ export class ActionBasedSyncManager {
       });
 
       console.log('🔍 [ActionBasedSyncManager] ReMarkable events after filter:', remarkableEvents.length);
-      console.log('🔍 [ActionBasedSyncManager] Events filtered out:', remoteEvents.length - remarkableEvents.length);
+      console.log('🔍 [ActionBasedSyncManager] Events filtered out:', combinedEvents.length - remarkableEvents.length);
 
       // 处理远程事件并转换为本地行动
       remarkableEvents.forEach((event: any) => {
         console.log(`🔄 [Sync] Processing event: ${event.subject} (${event.id})`);
+
+        // 🆕 检查是否是已删除的事件，如果是则跳过
+        const cleanEventId = event.id.startsWith('outlook-') ? event.id.replace('outlook-', '') : event.id;
+        const isDeleted = this.deletedEventIds.has(cleanEventId) || this.deletedEventIds.has(event.id);
+        
+        if (isDeleted) {
+          console.log(`🚫 [Sync] Skipping deleted event: "${event.subject}" (${cleanEventId})`);
+          return;
+        }
 
         const existingLocal = localEvents.find((localEvent: any) => 
           localEvent.externalId === event.id || 
@@ -726,6 +982,22 @@ private getUserSettings(): any {
 
       switch (action.type) {
         case 'create':
+          console.log('🔍 [SYNC CREATE] Processing create action:', {
+            entityId: action.entityId,
+            title: action.data.title,
+            tagId: action.data.tagId,
+            calendarId: action.data.calendarId,
+            hasExternalId: !!action.data.externalId,
+            remarkableSource: action.data.remarkableSource,
+            fullActionData: action.data
+          });
+          
+          // 检查事件是否已经同步过（有externalId）或者是从Outlook同步回来的
+          if (action.data.externalId || action.data.remarkableSource === false) {
+            console.log('🔄 Skipping sync - event already has externalId or is from Outlook:', action.entityId);
+            return true; // 标记为成功，避免重试
+          }
+
           // 🔧 使用新的描述处理方法
           const createDescription = this.processEventDescription(
             action.data.description || '',
@@ -733,8 +1005,9 @@ private getUserSettings(): any {
             'create',
             action.data
           );
-          
-          const newEvent = await this.microsoftService.createEvent({
+
+          // 构建事件对象
+          const eventData = {
             subject: action.data.title,
             body: { 
               contentType: 'text', 
@@ -750,24 +1023,243 @@ private getUserSettings(): any {
             },
             location: action.data.location ? { displayName: action.data.location } : undefined,
             isAllDay: action.data.isAllDay || false
+          };
+          
+          // 🔍 [NEW] 获取目标日历ID - 优先使用事件指定的calendarId，否则通过标签映射获取
+          let targetCalendarId = action.data.calendarId;
+          
+          if (!targetCalendarId && action.data.tagId) {
+            console.log('🔍 [SYNC] Event has no calendarId, trying to get from tag mapping. TagId:', action.data.tagId);
+            targetCalendarId = this.getCalendarIdForTag(action.data.tagId);
+            console.log('🔍 [SYNC] Calendar ID from tag mapping:', targetCalendarId);
+          }
+          
+          if (!targetCalendarId) {
+            console.log('🔍 [SYNC] No calendar ID found, using default calendar');
+            // 如果还是没有找到，使用默认日历
+            targetCalendarId = this.microsoftService.getSelectedCalendarId();
+          }
+          
+          console.log('🎯 [EVENT SYNC] Final calendar assignment:', {
+            eventTitle: action.data.title,
+            eventId: action.entityId,
+            originalCalendarId: action.data.calendarId,
+            tagId: action.data.tagId,
+            finalTargetCalendarId: targetCalendarId,
+            isTimerEvent: action.data.timerSessionId ? true : false,
+            actionData: action.data
           });
           
-          if (newEvent) {
-            this.updateLocalEventExternalId(action.entityId, newEvent.id, createDescription);
+          const newEventId = await this.microsoftService.syncEventToCalendar(eventData, targetCalendarId);
+          
+          if (newEventId) {
+            this.updateLocalEventExternalId(action.entityId, newEventId, createDescription);
             return true;
           }
           break;
 
         case 'update':
-          // 🔧 修复 externalId 处理
+          console.log('🔍 [SYNC UPDATE] Processing update action:', {
+            entityId: action.entityId,
+            title: action.data.title,
+            tagId: action.data.tagId,
+            calendarId: action.data.calendarId,
+            hasExternalId: !!action.data.externalId,
+            fullActionData: action.data
+          });
+          
+          // 🔧 强化 externalId 处理 - 确保不会丢失
           let cleanExternalId = action.data.externalId;
+          
+          // 🆕 如果当前数据没有 externalId，但原始数据有，则使用原始数据的 externalId
+          if (!cleanExternalId && action.originalData?.externalId) {
+            console.log('🔧 [SYNC UPDATE] Current data missing externalId, using from originalData');
+            cleanExternalId = action.originalData.externalId;
+            
+            // 同时更新当前数据的 externalId 以避免后续问题
+            action.data.externalId = cleanExternalId;
+          }
+          
           if (cleanExternalId && cleanExternalId.startsWith('outlook-')) {
             cleanExternalId = cleanExternalId.replace('outlook-', '');
           }
           
+          console.log('🔍 [SYNC UPDATE] ExternalId processing:', {
+            originalExternalId: action.originalData?.externalId,
+            currentExternalId: action.data.externalId,
+            finalCleanExternalId: cleanExternalId
+          });
+          
+          // 🔍 [NEW] 如果没有 externalId，说明这是一个本地事件，需要首次同步，转为创建操作
           if (!cleanExternalId) {
-            console.error('❌ No valid externalId for update:', action);
-            return false;
+            console.log('🔄 [SYNC UPDATE → CREATE] No externalId found, treating as first-time sync (create)');
+            
+            // 🔍 [NEW] 检查是否有旧的 externalId 需要清理（可能在其他日历中存在）
+            // 这种情况可能发生在标签映射更改导致事件需要迁移到新日历时
+            if (action.originalData?.externalId) {
+              let oldExternalId = action.originalData.externalId;
+              if (oldExternalId.startsWith('outlook-')) {
+                oldExternalId = oldExternalId.replace('outlook-', '');
+              }
+              
+              console.log('🗑️ [SYNC UPDATE → CREATE] Found old externalId, cleaning up before create:', oldExternalId);
+              try {
+                await this.microsoftService.deleteEvent(oldExternalId);
+                console.log('✅ [SYNC UPDATE → CREATE] Successfully deleted old event from Outlook');
+              } catch (error) {
+                console.warn('⚠️ [SYNC UPDATE → CREATE] Failed to delete old event (may not exist):', error);
+                // 继续执行，不影响新事件的创建
+              }
+            }
+            
+            // 🔍 [NEW] 获取目标日历ID - 优先使用事件指定的calendarId，否则通过标签映射获取
+            let targetCalendarId = action.data.calendarId;
+            
+            if (!targetCalendarId && action.data.tagId) {
+              console.log('🔍 [SYNC CREATE] Event has no calendarId, trying to get from tag mapping. TagId:', action.data.tagId);
+              targetCalendarId = this.getCalendarIdForTag(action.data.tagId);
+              console.log('🔍 [SYNC CREATE] Calendar ID from tag mapping:', targetCalendarId);
+            }
+            
+            if (!targetCalendarId) {
+              console.log('🔍 [SYNC CREATE] No calendar ID found, using default calendar');
+              targetCalendarId = this.microsoftService.getSelectedCalendarId();
+            }
+            
+            console.log('🎯 [EVENT SYNC] Final calendar assignment for create:', {
+              eventTitle: action.data.title,
+              eventId: action.entityId,
+              originalCalendarId: action.data.calendarId,
+              tagId: action.data.tagId,
+              finalTargetCalendarId: targetCalendarId,
+              hadOldExternalId: !!action.originalData?.externalId
+            });
+            
+            // 🔍 [NEW] 构建事件描述，保持原有的创建时间记录
+            const originalCreateTime = this.extractOriginalCreateTime(action.data.description || '');
+            const createDescription = this.processEventDescription(
+              action.data.description || '',
+              'remarkable',
+              'create',
+              {
+                ...action.data,
+                // 如果有原始创建时间，保持它；否则使用当前时间
+                preserveOriginalCreateTime: originalCreateTime
+              }
+            );
+            
+            // 构建事件对象
+            const eventData = {
+              subject: action.data.title,
+              body: { 
+                contentType: 'text', 
+                content: createDescription
+              },
+              start: {
+                dateTime: this.safeFormatDateTime(action.data.startTime),
+                timeZone: 'Asia/Shanghai'
+              },
+              end: {
+                dateTime: this.safeFormatDateTime(action.data.endTime),
+                timeZone: 'Asia/Shanghai'
+              },
+              location: action.data.location ? { displayName: action.data.location } : undefined,
+              isAllDay: action.data.isAllDay || false
+            };
+            
+            const newEventId = await this.microsoftService.syncEventToCalendar(eventData, targetCalendarId);
+            
+            if (newEventId) {
+              this.updateLocalEventExternalId(action.entityId, newEventId, createDescription);
+              this.updateLocalEventCalendarId(action.entityId, targetCalendarId);
+              console.log('✅ [SYNC UPDATE → CREATE] Successfully created event in calendar');
+              return true;
+            } else {
+              console.error('❌ [SYNC UPDATE → CREATE] Failed to create event');
+              return false;
+            }
+          }
+          
+          // 🔍 [NEW] 检查标签映射是否需要迁移日历
+          let currentCalendarId = action.data.calendarId;
+          
+          if (action.data.tagId) {
+            console.log('🔍 [TAG-CALENDAR-UPDATE] Checking tag mapping for update. TagId:', action.data.tagId);
+            const mappedCalendarId = this.getCalendarIdForTag(action.data.tagId);
+            console.log('🔍 [TAG-CALENDAR-UPDATE] Current calendar:', currentCalendarId || 'None', 'Mapped calendar:', mappedCalendarId || 'None');
+            
+            // 只有当事件有 externalId（已同步到 Outlook）且目标日历不同时才进行迁移
+            if (mappedCalendarId && 
+                cleanExternalId && 
+                mappedCalendarId !== currentCalendarId) {
+              
+              console.log('🔄 [TAG-CALENDAR-UPDATE] Calendar migration needed:', {
+                from: currentCalendarId || 'None',
+                to: mappedCalendarId,
+                eventTitle: action.data.title,
+                tagId: action.data.tagId,
+                externalId: cleanExternalId
+              });
+              
+              try {
+                // 删除原日历中的事件
+                console.log('🗑️ [TAG-CALENDAR-UPDATE] Deleting from original calendar:', cleanExternalId);
+                await this.microsoftService.deleteEvent(cleanExternalId);
+                console.log('✅ [TAG-CALENDAR-UPDATE] Successfully deleted from original calendar');
+              } catch (deleteError) {
+                console.warn('⚠️ [TAG-CALENDAR-UPDATE] Failed to delete from original calendar (may not exist):', deleteError);
+                // 继续创建新事件，即使删除失败
+              }
+              
+              try {
+                // 在新日历中创建事件
+                const createDescription = this.processEventDescription(
+                  action.data.description || '',
+                  'remarkable',
+                  'create',
+                  action.data
+                );
+                
+                const eventData = {
+                  subject: action.data.title,
+                  body: { 
+                    contentType: 'text', 
+                    content: createDescription
+                  },
+                  start: {
+                    dateTime: this.safeFormatDateTime(action.data.startTime),
+                    timeZone: 'Asia/Shanghai'
+                  },
+                  end: {
+                    dateTime: this.safeFormatDateTime(action.data.endTime),
+                    timeZone: 'Asia/Shanghai'
+                  },
+                  location: action.data.location ? { displayName: action.data.location } : undefined,
+                  isAllDay: action.data.isAllDay || false
+                };
+                
+                console.log('✨ [TAG-CALENDAR-UPDATE] Creating in new calendar:', mappedCalendarId);
+                const newEventId = await this.microsoftService.syncEventToCalendar(eventData, mappedCalendarId);
+                
+                if (newEventId) {
+                  // 更新本地存储中的externalId和calendarId
+                  this.updateLocalEventExternalId(action.entityId, newEventId, createDescription);
+                  this.updateLocalEventCalendarId(action.entityId, mappedCalendarId);
+                  console.log('✅ [TAG-CALENDAR-UPDATE] Successfully migrated event to new calendar');
+                  return true;
+                } else {
+                  console.error('❌ [TAG-CALENDAR-UPDATE] Failed to create event in new calendar');
+                  return false;
+                }
+              } catch (createError) {
+                console.error('❌ [TAG-CALENDAR-UPDATE] Failed to create event in new calendar:', createError);
+                return false;
+              }
+            } else if (mappedCalendarId && !cleanExternalId) {
+              console.log('🔄 [TAG-CALENDAR-UPDATE] Event not synced yet, updating calendarId for future sync');
+              // 如果事件还没有同步到 Outlook，只更新本地的 calendarId
+              this.updateLocalEventCalendarId(action.entityId, mappedCalendarId);
+            }
           }
           
           // 🔧 构建更新数据，确保格式正确
@@ -787,29 +1279,53 @@ private getUserSettings(): any {
             }
           };
           
-          // 🔧 只在有有效时间时才添加时间字段
+          // 🔧 强化时间字段处理 - 确保时间同步正确
           if (action.data.startTime && action.data.endTime) {
             try {
               const startDateTime = this.safeFormatDateTime(action.data.startTime);
               const endDateTime = this.safeFormatDateTime(action.data.endTime);
               
-              // 验证时间格式
-              if (startDateTime && endDateTime && 
-                  startDateTime.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/) &&
-                  endDateTime.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/)) {
-                
-                updateData.start = {
-                  dateTime: startDateTime,
-                  timeZone: 'Asia/Shanghai'
-                };
-                updateData.end = {
-                  dateTime: endDateTime,
-                  timeZone: 'Asia/Shanghai'
-                };
+              console.log('⏰ [Update] Processing time fields:', {
+                originalStartTime: action.data.startTime,
+                originalEndTime: action.data.endTime,
+                formattedStartTime: startDateTime,
+                formattedEndTime: endDateTime
+              });
+              
+              // 验证时间格式和有效性
+              if (!startDateTime || !endDateTime) {
+                throw new Error('Time formatting returned null/undefined');
               }
+              
+              const startDate = new Date(startDateTime);
+              const endDate = new Date(endDateTime);
+              
+              if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                throw new Error('Invalid date values after formatting');
+              }
+              
+              // 确保结束时间晚于开始时间
+              if (endDate <= startDate) {
+                throw new Error('End time must be after start time');
+              }
+              
+              updateData.start = {
+                dateTime: startDateTime,
+                timeZone: 'Asia/Shanghai'
+              };
+              updateData.end = {
+                dateTime: endDateTime,
+                timeZone: 'Asia/Shanghai'
+              };
+              
+              console.log('✅ [Update] Time fields successfully added to update data');
+              
             } catch (error) {
-              console.warn('⚠️ Time format error, skipping time update:', error);
+              console.error('❌ [Update] Time processing failed:', error);
+              throw new Error(`Time update failed: ${error instanceof Error ? error.message : 'Unknown time error'}`);
             }
+          } else {
+            console.warn('⚠️ [Update] Missing time data, this may cause sync issues');
           }
           
           // 🔧 只在有位置信息时才添加位置字段
@@ -834,6 +1350,58 @@ private getUserSettings(): any {
               return true;
             }
           } catch (error) {
+            // 🔧 如果事件不存在（404），转换为创建操作
+            if (error instanceof Error && error.message.includes('Event not found')) {
+              console.log('🔄 [Update → Create] Event not found, converting to create operation');
+              
+              // 获取目标日历ID
+              let targetCalendarId = action.data.calendarId;
+              if (!targetCalendarId && action.data.tagId) {
+                targetCalendarId = this.getCalendarIdForTag(action.data.tagId);
+              }
+              if (!targetCalendarId) {
+                targetCalendarId = this.microsoftService.getSelectedCalendarId();
+              }
+              
+              // 构建创建事件数据
+              const createDescription = this.processEventDescription(
+                action.data.description || '',
+                'remarkable',
+                'create',
+                action.data
+              );
+              
+              const eventData = {
+                subject: action.data.title,
+                body: { 
+                  contentType: 'text', 
+                  content: createDescription
+                },
+                start: {
+                  dateTime: this.safeFormatDateTime(action.data.startTime),
+                  timeZone: 'Asia/Shanghai'
+                },
+                end: {
+                  dateTime: this.safeFormatDateTime(action.data.endTime),
+                  timeZone: 'Asia/Shanghai'
+                },
+                location: action.data.location ? { displayName: action.data.location } : undefined,
+                isAllDay: action.data.isAllDay || false
+              };
+              
+              const newEventId = await this.microsoftService.syncEventToCalendar(eventData, targetCalendarId);
+              
+              if (newEventId) {
+                this.updateLocalEventExternalId(action.entityId, newEventId, createDescription);
+                this.updateLocalEventCalendarId(action.entityId, targetCalendarId);
+                console.log('✅ [Update → Create] Successfully created event as replacement');
+                return true;
+              } else {
+                console.error('❌ [Update → Create] Failed to create replacement event');
+                return false;
+              }
+            }
+            
             console.warn('⚠️ Full update failed, trying minimal update...', error);
             
             // 🔧 如果完整更新失败，尝试只更新标题和描述
@@ -873,6 +1441,13 @@ private getUserSettings(): any {
             try {
               await this.microsoftService.deleteEvent(cleanExternalId);
               console.log('✅ Successfully deleted event from Outlook:', cleanExternalId);
+              
+              // 🆕 添加到已删除事件ID跟踪
+              this.deletedEventIds.add(cleanExternalId);
+              this.deletedEventIds.add(action.originalData.externalId); // 也添加原始格式
+              this.saveDeletedEventIds();
+              console.log('📝 Added to deleted events tracking:', cleanExternalId);
+              
               return true;
             } catch (error) {
               console.error('❌ Failed to delete event from Outlook:', error);
@@ -1169,6 +1744,39 @@ private getUserSettings(): any {
     }
   }
 
+  private updateLocalEventCalendarId(localEventId: string, calendarId: string) {
+    try {
+      const savedEvents = localStorage.getItem(STORAGE_KEYS.EVENTS);
+      if (savedEvents) {
+        const events = JSON.parse(savedEvents);
+        const eventIndex = events.findIndex((event: any) => event.id === localEventId);
+        
+        if (eventIndex !== -1) {
+          events[eventIndex] = {
+            ...events[eventIndex],
+            calendarId,
+            updatedAt: this.safeFormatDateTime(new Date()),
+            lastSyncTime: this.safeFormatDateTime(new Date())
+          };
+          
+          localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+          
+          console.log('✅ [updateLocalEventCalendarId] Updated event calendar ID:', {
+            eventId: localEventId,
+            eventTitle: events[eventIndex].title,
+            newCalendarId: calendarId
+          });
+          
+          window.dispatchEvent(new CustomEvent('local-events-changed', {
+            detail: { eventId: localEventId, calendarId }
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to update local event calendar ID:', error);
+    }
+  }
+
   private convertRemoteEventToLocal(remoteEvent: any): any {
     const cleanTitle = remoteEvent.subject || '';
     
@@ -1189,6 +1797,10 @@ private getUserSettings(): any {
     
     const cleanDescription = this.processEventDescription(htmlContent, 'outlook', 'sync', remoteEvent);
     
+    // 检查是否是ReMarkable创建的事件（通过描述中的标记判断）
+    const isReMarkableCreated = this.hasCreateNote(cleanDescription) && 
+                               cleanDescription.includes('由 🔮 ReMarkable 创建');
+    
     return {
       id: `outlook-${remoteEvent.id}`,
       title: cleanTitle,
@@ -1203,19 +1815,13 @@ private getUserSettings(): any {
       externalId: remoteEvent.id,
       calendarId: 'microsoft',
       syncStatus: 'synced',
-      remarkableSource: true,
+      remarkableSource: isReMarkableCreated, // 根据描述内容判断来源
       category: 'ongoing'
     };
   }
 
   private cleanHtmlContent(htmlContent: string): string {
     if (!htmlContent) return '';
-    
-    console.log('🔧 [cleanHtmlContent] Processing HTML content:', {
-      originalLength: htmlContent.length,
-      originalContentFull: htmlContent,
-      isHTMLContent: htmlContent.includes('<html>')
-    });
     
     // 🔧 改进的HTML清理逻辑
     let cleaned = htmlContent;
@@ -1226,15 +1832,11 @@ private getUserSettings(): any {
       const plainTextMatch = cleaned.match(/<div[^>]*class[^>]*["']PlainText["'][^>]*>([\s\S]*?)<\/div>/i);
       if (plainTextMatch) {
         cleaned = plainTextMatch[1];
-        console.log('🔧 [cleanHtmlContent] Extracted PlainText content:', cleaned);
       } else {
         // 如果没有PlainText div，尝试提取body内容
         const bodyMatch = cleaned.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
         if (bodyMatch) {
           cleaned = bodyMatch[1];
-          console.log('🔧 [cleanHtmlContent] Extracted body content:', cleaned);
-        } else {
-          console.log('🔧 [cleanHtmlContent] No body found, processing entire content');
         }
       }
     }
@@ -1265,13 +1867,6 @@ private getUserSettings(): any {
       .replace(/^[\s\n]+/, '')          // 移除开头的所有空白和换行
       .replace(/[\s\n]+$/, '')          // 移除结尾的所有空白和换行
       .trim();
-    
-    console.log('🔧 [cleanHtmlContent] Final cleaned content:', {
-      cleanedLength: cleaned.length,
-      cleanedContentFull: cleaned,
-      isEmpty: cleaned === '',
-      fullCleanedContent: cleaned
-    });
     
     return cleaned;
   }
@@ -1331,6 +1926,159 @@ private getUserSettings(): any {
   public async forceSync(): Promise<void> {
     if (!this.syncInProgress) {
       await this.performSync();
+    }
+  }
+
+  /**
+   * 处理标签映射变化，移动相关事件到新日历
+   */
+  public async handleTagMappingChange(tagId: string, mapping: { calendarId: string; calendarName: string } | null): Promise<void> {
+    try {
+      console.log(`🔄 [ActionBasedSyncManager] Handling tag mapping change for ${tagId}`);
+      
+      // 获取所有本地事件
+      const events = this.getLocalEvents();
+      const eventsToMove = events.filter((event: any) => event.tagId === tagId && event.id.startsWith('outlook-'));
+      
+      if (eventsToMove.length === 0) {
+        console.log(`📭 [ActionBasedSyncManager] No events found for tag ${tagId}`);
+        return;
+      }
+      
+      console.log(`📋 [ActionBasedSyncManager] Found ${eventsToMove.length} events to move for tag ${tagId}`);
+      
+      for (const event of eventsToMove) {
+        if (mapping) {
+          // 移动到新日历
+          await this.moveEventToCalendar(event, mapping.calendarId);
+        } else {
+          // 如果取消映射，移动到默认日历
+          console.log(`🔄 [ActionBasedSyncManager] Removing calendar mapping for event ${event.title}`);
+          // 这里可以根据需要决定是否移动到默认日历
+        }
+      }
+      
+      console.log(`✅ [ActionBasedSyncManager] Completed tag mapping change for ${tagId}`);
+    } catch (error) {
+      console.error(`❌ [ActionBasedSyncManager] Failed to handle tag mapping change:`, error);
+    }
+  }
+
+  /**
+   * 移动事件到指定日历
+   */
+  private async moveEventToCalendar(event: any, targetCalendarId: string): Promise<void> {
+    try {
+      console.log(`🔄 [ActionBasedSyncManager] Moving event "${event.title}" to calendar ${targetCalendarId}`);
+      
+      // 提取原始Outlook事件ID
+      const outlookEventId = event.id.replace('outlook-', '');
+      
+      // 第一步：在目标日历创建事件
+      const createResult = await this.createEventInOutlookCalendar(event, targetCalendarId);
+      
+      if (createResult && createResult.id) {
+        // 第二步：删除原事件
+        await this.deleteEventFromOutlook(outlookEventId);
+        
+        // 第三步：更新本地事件ID
+        const updatedEvent = {
+          ...event,
+          id: `outlook-${createResult.id}`,
+          calendarId: targetCalendarId
+        };
+        
+        // 更新本地存储
+        this.updateLocalEvent(event.id, updatedEvent);
+        
+        console.log(`✅ [ActionBasedSyncManager] Successfully moved event "${event.title}" to new calendar`);
+      } else {
+        console.error(`❌ [ActionBasedSyncManager] Failed to create event in target calendar`);
+      }
+    } catch (error) {
+      console.error(`❌ [ActionBasedSyncManager] Failed to move event:`, error);
+    }
+  }
+
+  /**
+   * 在指定日历中创建事件
+   */
+  private async createEventInOutlookCalendar(event: any, calendarId: string): Promise<any> {
+    try {
+      const eventData = {
+        subject: event.title,
+        body: {
+          contentType: 'html',
+          content: event.description || ''
+        },
+        start: {
+          dateTime: event.startTime,
+          timeZone: 'Asia/Shanghai'
+        },
+        end: {
+          dateTime: event.endTime,
+          timeZone: 'Asia/Shanghai'
+        },
+        location: {
+          displayName: event.location || ''
+        }
+      };
+
+      const response = await fetch(`https://graph.microsoft.com/v1.0/me/calendars/${calendarId}/events`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.microsoftService.getAccessToken()}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(eventData)
+      });
+
+      if (response.ok) {
+        return await response.json();
+      } else {
+        console.error('Failed to create event in calendar:', await response.text());
+        return null;
+      }
+    } catch (error) {
+      console.error('Error creating event in calendar:', error);
+      return null;
+    }
+  }
+
+  /**
+   * 从Outlook删除事件
+   */
+  private async deleteEventFromOutlook(eventId: string): Promise<boolean> {
+    try {
+      const response = await fetch(`https://graph.microsoft.com/v1.0/me/events/${eventId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${this.microsoftService.getAccessToken()}`
+        }
+      });
+
+      return response.ok;
+    } catch (error) {
+      console.error('Error deleting event from Outlook:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 更新本地事件
+   */
+  private updateLocalEvent(oldEventId: string, updatedEvent: any): void {
+    try {
+      const events = this.getLocalEvents();
+      const eventIndex = events.findIndex((e: any) => e.id === oldEventId);
+      
+      if (eventIndex !== -1) {
+        events[eventIndex] = updatedEvent;
+        localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+        console.log(`📝 [ActionBasedSyncManager] Updated local event: ${oldEventId} -> ${updatedEvent.id}`);
+      }
+    } catch (error) {
+      console.error('Error updating local event:', error);
     }
   }
 }

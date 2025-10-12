@@ -44,6 +44,17 @@ export const formatTimeForInput = (timeString: string | Date): string => {
   return `${hours}:${minutes}`;
 };
 
+// 🔧 格式化完整日期时间用于input[type="datetime-local"]控件
+export const formatDateTimeForInput = (timeString: string | Date): string => {
+  const date = parseLocalTimeString(timeString);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
 // 🔧 格式化日期用于input[type="date"]控件
 export const formatDateForInput = (date: Date): string => {
   const year = date.getFullYear();

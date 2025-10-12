@@ -124,9 +124,9 @@ export class ElectronService {
     if (!this.isElectronEnv) {
       // Web环境使用alert/confirm
       if (options.type === 'question' && options.buttons) {
-        return { response: confirm(options.message) ? 0 : 1 };
+        return { response: window.confirm(options.message) ? 0 : 1 };
       } else {
-        alert(options.message);
+        window.alert(options.message);
         return { response: 0 };
       }
     }

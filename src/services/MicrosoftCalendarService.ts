@@ -21,9 +21,51 @@ export interface GraphEvent {
   location?: {
     displayName?: string;
   };
+  organizer?: {
+    emailAddress?: {
+      name?: string;
+      address?: string;
+    };
+  };
+  attendees?: Array<{
+    type?: string;
+    status?: {
+      response?: string;
+      time?: string;
+    };
+    emailAddress?: {
+      name?: string;
+      address?: string;
+    };
+  }>;
   isAllDay?: boolean;
   createdDateTime?: string;
   lastModifiedDateTime?: string;
+}
+
+export interface CalendarGroup {
+  id?: string;
+  name?: string;
+  changeKey?: string;
+  classId?: string;
+}
+
+export interface Calendar {
+  id?: string;
+  name?: string;
+  color?: string;
+  changeKey?: string;
+  canShare?: boolean;
+  canViewPrivateItems?: boolean;
+  canEdit?: boolean;
+  allowedOnlineMeetingProviders?: string[];
+  defaultOnlineMeetingProvider?: string;
+  isTallyingResponses?: boolean;
+  isRemovable?: boolean;
+  owner?: {
+    name?: string;
+    address?: string;
+  };
 }
 
 export class MicrosoftCalendarService {
@@ -34,6 +76,9 @@ export class MicrosoftCalendarService {
   private eventChangeListeners: Array<(events: GraphEvent[]) => void> = [];
   private simulationMode: boolean = false;
   private accessToken: string | null = null;
+  private calendarGroups: CalendarGroup[] = [];
+  private calendars: Calendar[] = [];
+  private selectedCalendarId: string | null = null;
 
   constructor() {
     try {
@@ -90,6 +135,16 @@ export class MicrosoftCalendarService {
   private async initializeGraph() {
     try {
       await this.msalInstance.initialize();
+      
+      // 处理重定向回调（主要针对Electron环境）
+      const isElectron = typeof window !== 'undefined' && window.electronAPI;
+      if (isElectron) {
+        try {
+          await this.msalInstance.handleRedirectPromise();
+        } catch (error) {
+          console.log('No redirect promise to handle:', error);
+        }
+      }
       
       const accounts = this.msalInstance.getAllAccounts();
       if (accounts.length > 0) {
@@ -211,11 +266,31 @@ export class MicrosoftCalendarService {
 
   async signIn(): Promise<boolean> {
     try {
-      const loginResponse = await this.msalInstance.loginPopup({
-        scopes: MICROSOFT_GRAPH_CONFIG.scopes
-      });
-
-      this.msalInstance.setActiveAccount(loginResponse.account);
+      // 检查是否在Electron环境
+      const isElectron = typeof window !== 'undefined' && window.electronAPI;
+      
+      if (isElectron) {
+        // Electron环境：使用重定向流程
+        console.log('🔧 Electron环境：使用重定向认证');
+        await this.msalInstance.loginRedirect({
+          scopes: MICROSOFT_GRAPH_CONFIG.scopes
+        });
+        
+        // 重定向后需要重新获取账户
+        const accounts = this.msalInstance.getAllAccounts();
+        if (accounts.length > 0) {
+          this.msalInstance.setActiveAccount(accounts[0]);
+        }
+      } else {
+        // Web环境：使用弹窗
+        console.log('🌐 Web环境：使用弹窗认证');
+        const loginResponse = await this.msalInstance.loginPopup({
+          scopes: MICROSOFT_GRAPH_CONFIG.scopes
+        });
+        
+        this.msalInstance.setActiveAccount(loginResponse.account);
+      }
+      
       await this.acquireToken();
       
       if (this.isAuthenticated) {
@@ -227,6 +302,15 @@ export class MicrosoftCalendarService {
       
     } catch (error) {
       console.error('❌ Login error:', error);
+      
+      // 如果认证失败，提供更详细的错误信息
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        window.electronAPI.showNotification(
+          '认证失败', 
+          '无法连接到Microsoft账户，请检查网络连接或稍后重试'
+        );
+      }
+      
       this.enableSimulationMode();
       return false;
     }
@@ -312,6 +396,10 @@ export class MicrosoftCalendarService {
     const userSettings = this.getUserSettings();
     const ongoingDays = userSettings?.ongoingDays ?? userSettings?.ongoing ?? 1;
     
+    // 🔧 调试日志
+    console.log(`🔍 [MicrosoftCalendarService] User settings:`, userSettings);
+    console.log(`🔍 [MicrosoftCalendarService] Resolved ongoingDays:`, ongoingDays);
+    
     const now = new Date();
     const startDate = new Date(now);
     startDate.setDate(now.getDate() - ongoingDays - 1);
@@ -324,7 +412,7 @@ export class MicrosoftCalendarService {
     console.log(`📅 Querying events: ${ongoingDays} days back from ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`);
 
     const queryParams = new URLSearchParams({
-      '$select': 'id,subject,body,bodyPreview,start,end,location,isAllDay,createdDateTime,lastModifiedDateTime',
+      '$select': 'id,subject,body,bodyPreview,start,end,location,organizer,attendees,isAllDay,createdDateTime,lastModifiedDateTime',
       '$orderby': 'start/dateTime desc',
       '$top': '1000',
       '$filter': `start/dateTime ge '${this.formatTimeForOutlook(startDate)}' and start/dateTime lt '${this.formatTimeForOutlook(endDate)}'`
@@ -356,12 +444,13 @@ export class MicrosoftCalendarService {
       const data = await response.json();
       const events = data.value || [];
       
+      // 🔧 修复：用户过滤应该和查询范围一致，使用ongoingDays天数
       const userFilterStart = new Date(now);
       userFilterStart.setDate(now.getDate() - ongoingDays);
       userFilterStart.setHours(0, 0, 0, 0);
 
       const userFilterEnd = new Date(now);
-      userFilterEnd.setDate(now.getDate() + 1);
+      userFilterEnd.setDate(now.getDate() + 2); // 保持和查询范围一致
       userFilterEnd.setHours(23, 59, 59, 999);
 
       const filteredEvents = events.filter((event: any) => {
@@ -373,7 +462,7 @@ export class MicrosoftCalendarService {
         return eventDate >= userFilterStart && eventDate <= userFilterEnd;
       });
 
-      console.log(`📅 Filtered ${filteredEvents.length} events within ${ongoingDays} days`);
+      console.log(`📅 Filtered ${filteredEvents.length} events within ${ongoingDays} days (from ${userFilterStart.toLocaleDateString()} to ${userFilterEnd.toLocaleDateString()})`);
 
       const processedEvents = filteredEvents.map((outlookEvent: any) => {
         const startTime = this.convertUtcToBeijing(outlookEvent.start?.dateTime);
@@ -381,13 +470,20 @@ export class MicrosoftCalendarService {
         
         const rawDescription = outlookEvent.body?.content || `${outlookEvent.subject} - 来自 Outlook 的日程`;
         
-        console.log('📝 [MicrosoftCalendarService] Processing event description:', {
-          eventId: outlookEvent.id,
-          subject: outlookEvent.subject,
-          rawDescription: rawDescription.substring(0, 100) + '...',
-          fullRawDescription: rawDescription
-        });
-
+        // 🆕 处理组织者信息
+        const organizer = outlookEvent.organizer?.emailAddress ? {
+          name: outlookEvent.organizer.emailAddress.name || outlookEvent.organizer.emailAddress.address,
+          email: outlookEvent.organizer.emailAddress.address
+        } : null;
+        
+        // 🆕 处理与会者信息
+        const attendees = outlookEvent.attendees ? outlookEvent.attendees.map((attendee: any) => ({
+          name: attendee.emailAddress?.name || attendee.emailAddress?.address,
+          email: attendee.emailAddress?.address,
+          type: attendee.type || 'required',
+          status: attendee.status?.response || 'none'
+        })).filter((a: any) => a.email) : [];
+        
         return {
           id: `outlook-${outlookEvent.id}`,
           title: outlookEvent.subject || 'Untitled Event',
@@ -403,6 +499,8 @@ export class MicrosoftCalendarService {
           createdAt: this.safeFormatDateTime(outlookEvent.createdDateTime),
           updatedAt: this.safeFormatDateTime(outlookEvent.lastModifiedDateTime),
           location: outlookEvent.location?.displayName || '',
+          organizer: organizer,
+          attendees: attendees,
           isAllDay: outlookEvent.isAllDay || false,
           reminder: 0,
           externalId: outlookEvent.id,
@@ -424,6 +522,123 @@ export class MicrosoftCalendarService {
     }
   }
 
+  // 🔧 获取指定日历的事件
+  public async getEventsFromCalendar(calendarId: string): Promise<GraphEvent[]> {
+    if (this.simulationMode) {
+      console.log('📝 Simulating getEventsFromCalendar for:', calendarId);
+      return this.getSimulatedEvents();
+    }
+
+    if (!this.accessToken) {
+      throw new Error('No access token available');
+    }
+
+    const userSettings = this.getUserSettings();
+    const ongoingDays = userSettings?.ongoingDays ?? userSettings?.ongoing ?? 1;
+    
+    const now = new Date();
+    const startDate = new Date(now);
+    startDate.setDate(now.getDate() - ongoingDays - 1);
+    startDate.setHours(0, 0, 0, 0);
+    
+    const endDate = new Date(now);
+    endDate.setDate(now.getDate() + 2);
+    endDate.setHours(23, 59, 59, 999);
+
+    console.log(`📅 [getEventsFromCalendar] Querying calendar ${calendarId}: ${ongoingDays} days back from ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`);
+
+    const queryParams = new URLSearchParams({
+      '$select': 'id,subject,body,bodyPreview,start,end,location,organizer,attendees,isAllDay,createdDateTime,lastModifiedDateTime',
+      '$orderby': 'start/dateTime desc',
+      '$top': '1000',
+      '$filter': `start/dateTime ge '${this.formatTimeForOutlook(startDate)}' and start/dateTime lt '${this.formatTimeForOutlook(endDate)}'`
+    });
+
+    try {
+      let response = await fetch(`https://graph.microsoft.com/v1.0/me/calendars/${calendarId}/events?${queryParams}`, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.status === 401) {
+        await this.acquireToken();
+        response = await fetch(`https://graph.microsoft.com/v1.0/me/calendars/${calendarId}/events?${queryParams}`, {
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+      }
+
+      if (!response.ok) {
+        console.warn(`⚠️ Failed to get events from calendar ${calendarId}:`, response.status);
+        return [];
+      }
+
+      const data = await response.json();
+      const events = data.value || [];
+      
+      console.log(`📅 [getEventsFromCalendar] Got ${events.length} events from calendar ${calendarId}`);
+
+      const processedEvents = events.map((outlookEvent: any) => {
+        const startTime = this.convertUtcToBeijing(outlookEvent.start?.dateTime);
+        const endTime = this.convertUtcToBeijing(outlookEvent.end?.dateTime);
+        
+        const rawDescription = outlookEvent.body?.content || `${outlookEvent.subject} - 来自 Outlook 的日程`;
+        
+        // 🆕 处理组织者信息
+        const organizer = outlookEvent.organizer?.emailAddress ? {
+          name: outlookEvent.organizer.emailAddress.name || outlookEvent.organizer.emailAddress.address,
+          email: outlookEvent.organizer.emailAddress.address
+        } : null;
+        
+        // 🆕 处理与会者信息
+        const attendees = outlookEvent.attendees ? outlookEvent.attendees.map((attendee: any) => ({
+          name: attendee.emailAddress?.name || attendee.emailAddress?.address,
+          email: attendee.emailAddress?.address,
+          type: attendee.type || 'required',
+          status: attendee.status?.response || 'none'
+        })).filter((a: any) => a.email) : [];
+        
+        return {
+          id: `outlook-${outlookEvent.id}`,
+          title: outlookEvent.subject || 'Untitled Event',
+          subject: outlookEvent.subject || 'Untitled Event',
+          description: rawDescription,
+          bodyPreview: outlookEvent.bodyPreview || outlookEvent.body?.content?.substring(0, 100) || `${outlookEvent.subject} - 来自 Outlook 的日程`,
+          startTime: startTime,
+          endTime: endTime,
+          start: startTime,
+          end: endTime,
+          created: this.safeFormatDateTime(outlookEvent.createdDateTime),
+          modified: this.safeFormatDateTime(outlookEvent.lastModifiedDateTime),
+          createdAt: this.safeFormatDateTime(outlookEvent.createdDateTime),
+          updatedAt: this.safeFormatDateTime(outlookEvent.lastModifiedDateTime),
+          location: outlookEvent.location?.displayName || '',
+          organizer: organizer,
+          attendees: attendees,
+          isAllDay: outlookEvent.isAllDay || false,
+          reminder: 0,
+          externalId: outlookEvent.id,
+          calendarId: calendarId, // 使用实际的日历ID
+          source: 'outlook',
+          remarkableSource: true,
+          category: 'ongoing',
+          syncStatus: 'synced'
+        };
+      }).filter(Boolean);
+
+      console.log(`✅ [getEventsFromCalendar] Processed ${processedEvents.length} events from calendar ${calendarId}`);
+      return processedEvents;
+      
+    } catch (error) {
+      console.error(`❌ Error getting events from calendar ${calendarId}:`, error);
+      return [];
+    }
+  }
+
   // 🔧 统一的 updateEvent 方法
   async updateEvent(eventId: string, eventData: any): Promise<any> {
     if (this.simulationMode) {
@@ -439,25 +654,71 @@ export class MicrosoftCalendarService {
       const startDateTime = eventData.start?.dateTime || eventData.startTime;
       const endDateTime = eventData.end?.dateTime || eventData.endTime;
       
-      const outlookEventData = {
+      const outlookEventData: any = {
         subject: eventData.subject || eventData.title,
-        body: eventData.body || { contentType: 'text', content: eventData.description || '' },
-        start: {
-          dateTime: typeof startDateTime === 'string' ? startDateTime : formatTimeForStorage(startDateTime),
-          timeZone: 'Asia/Shanghai'
-        },
-        end: {
-          dateTime: typeof endDateTime === 'string' ? endDateTime : formatTimeForStorage(endDateTime),
-          timeZone: 'Asia/Shanghai'
-        },
-        location: eventData.location ? { displayName: eventData.location } : undefined,
-        isAllDay: eventData.isAllDay || false
+        body: eventData.body || { contentType: 'text', content: eventData.description || '' }
       };
+      
+      // 🔧 强化时间字段处理和验证
+      if (startDateTime && endDateTime) {
+        try {
+          const startFormatted = typeof startDateTime === 'string' ? startDateTime : formatTimeForStorage(startDateTime);
+          const endFormatted = typeof endDateTime === 'string' ? endDateTime : formatTimeForStorage(endDateTime);
+          
+          // 验证时间格式
+          if (!startFormatted || !endFormatted) {
+            throw new Error('Invalid time format detected');
+          }
+          
+          // 确保时间格式正确
+          const startDate = new Date(startFormatted);
+          const endDate = new Date(endFormatted);
+          
+          if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+            throw new Error('Invalid date values detected');
+          }
+          
+          outlookEventData.start = {
+            dateTime: startFormatted,
+            timeZone: 'Asia/Shanghai'
+          };
+          outlookEventData.end = {
+            dateTime: endFormatted,
+            timeZone: 'Asia/Shanghai'
+          };
+          
+          console.log('⏰ [updateEvent] Time fields set:', {
+            startDateTime: startFormatted,
+            endDateTime: endFormatted
+          });
+          
+        } catch (timeError) {
+          console.error('❌ [updateEvent] Time format error:', timeError);
+          throw new Error(`Time format error: ${timeError instanceof Error ? timeError.message : 'Unknown time error'}`);
+        }
+      } else {
+        console.warn('⚠️ [updateEvent] Missing time data, skipping time fields');
+      }
+      
+      // 🔧 只有当位置信息存在时才添加位置字段
+      if (eventData.location) {
+        outlookEventData.location = { displayName: eventData.location };
+      }
+      
+      // 🔧 只有当 isAllDay 字段明确指定时才添加
+      if (typeof eventData.isAllDay === 'boolean') {
+        outlookEventData.isAllDay = eventData.isAllDay;
+      }
       
       const eventResponse = await this.callGraphAPI(`/me/events/${eventId}`, 'PATCH', outlookEventData);
       return eventResponse;
       
     } catch (error) {
+      // 🔧 如果事件已经不存在（404），抛出特定错误
+      if (error instanceof Error && error.message.includes('404')) {
+        console.warn('⚠️ Event not found for update, may have been deleted:', eventId);
+        throw new Error(`Event not found: ${eventId}`);
+      }
       console.error('❌ Failed to update event:', error);
       throw error;
     }
@@ -478,6 +739,11 @@ export class MicrosoftCalendarService {
       await this.callGraphAPI(`/me/events/${eventId}`, 'DELETE');
       
     } catch (error) {
+      // 🔧 如果事件已经不存在（404），认为删除成功
+      if (error instanceof Error && error.message.includes('404')) {
+        console.log('⚠️ Event already deleted or not found, treating as successful deletion:', eventId);
+        return; // 删除成功
+      }
       console.error('❌ Failed to delete event:', error);
       throw error;
     }
@@ -618,5 +884,299 @@ export class MicrosoftCalendarService {
 
   removeEventChangeListener(listener: (events: GraphEvent[]) => void) {
     this.eventChangeListeners = this.eventChangeListeners.filter(l => l !== listener);
+  }
+
+  // =================================
+  // 日历分组管理方法
+  // =================================
+
+  /**
+   * 获取所有日历分组
+   */
+  async getCalendarGroups(): Promise<CalendarGroup[]> {
+    if (!this.isAuthenticated || !this.accessToken) {
+      throw new Error('未认证，无法获取日历分组');
+    }
+
+    try {
+      const response = await fetch('https://graph.microsoft.com/v1.0/me/calendarGroups', {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`获取日历分组失败: ${response.status}`);
+      }
+
+      const data = await response.json();
+      this.calendarGroups = data.value || [];
+      
+      console.log('✅ 成功获取日历分组:', this.calendarGroups.length, '个');
+      return this.calendarGroups;
+      
+    } catch (error) {
+      console.error('❌ 获取日历分组失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取指定分组下的日历列表
+   */
+  async getCalendarsInGroup(groupId: string): Promise<Calendar[]> {
+    if (!this.isAuthenticated || !this.accessToken) {
+      throw new Error('未认证，无法获取日历列表');
+    }
+
+    try {
+      const response = await fetch(`https://graph.microsoft.com/v1.0/me/calendarGroups/${groupId}/calendars`, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`获取日历列表失败: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const calendars = data.value || [];
+      
+      console.log(`✅ 成功获取分组 ${groupId} 下的日历:`, calendars.length, '个');
+      return calendars;
+      
+    } catch (error) {
+      console.error('❌ 获取日历列表失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取用户的所有日历（包括默认日历）
+   */
+  async getAllCalendars(): Promise<Calendar[]> {
+    if (!this.isAuthenticated || !this.accessToken) {
+      throw new Error('未认证，无法获取日历列表');
+    }
+
+    try {
+      const response = await fetch('https://graph.microsoft.com/v1.0/me/calendars', {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`获取所有日历失败: ${response.status}`);
+      }
+
+      const data = await response.json();
+      this.calendars = data.value || [];
+      
+      console.log('✅ 成功获取所有日历:', this.calendars.length, '个');
+      return this.calendars;
+      
+    } catch (error) {
+      console.error('❌ 获取所有日历失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 创建新的日历分组
+   */
+  async createCalendarGroup(name: string): Promise<CalendarGroup> {
+    if (!this.isAuthenticated || !this.accessToken) {
+      throw new Error('未认证，无法创建日历分组');
+    }
+
+    try {
+      const response = await fetch('https://graph.microsoft.com/v1.0/me/calendarGroups', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: name
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`创建日历分组失败: ${response.status}`);
+      }
+
+      const newGroup = await response.json();
+      this.calendarGroups.push(newGroup);
+      
+      console.log('✅ 成功创建日历分组:', newGroup.name);
+      return newGroup;
+      
+    } catch (error) {
+      console.error('❌ 创建日历分组失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 在指定分组中创建新日历
+   */
+  async createCalendarInGroup(groupId: string, name: string, color?: string): Promise<Calendar> {
+    if (!this.isAuthenticated || !this.accessToken) {
+      throw new Error('未认证，无法创建日历');
+    }
+
+    try {
+      const calendarData: any = { name };
+      if (color) {
+        calendarData.color = color;
+      }
+
+      const response = await fetch(`https://graph.microsoft.com/v1.0/me/calendarGroups/${groupId}/calendars`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(calendarData)
+      });
+
+      if (!response.ok) {
+        throw new Error(`创建日历失败: ${response.status}`);
+      }
+
+      const newCalendar = await response.json();
+      
+      console.log('✅ 成功创建日历:', newCalendar.name);
+      return newCalendar;
+      
+    } catch (error) {
+      console.error('❌ 创建日历失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 删除日历分组
+   */
+  async deleteCalendarGroup(groupId: string): Promise<void> {
+    if (!this.isAuthenticated || !this.accessToken) {
+      throw new Error('未认证，无法删除日历分组');
+    }
+
+    try {
+      const response = await fetch(`https://graph.microsoft.com/v1.0/me/calendarGroups/${groupId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`删除日历分组失败: ${response.status}`);
+      }
+
+      this.calendarGroups = this.calendarGroups.filter(group => group.id !== groupId);
+      
+      console.log('✅ 成功删除日历分组');
+      
+    } catch (error) {
+      console.error('❌ 删除日历分组失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 设置默认同步日历
+   */
+  setSelectedCalendar(calendarId: string): void {
+    this.selectedCalendarId = calendarId;
+    localStorage.setItem('selectedCalendarId', calendarId);
+    console.log('📅 设置默认同步日历:', calendarId);
+  }
+
+  /**
+   * 获取当前选择的日历ID
+   */
+  getSelectedCalendarId(): string | null {
+    if (!this.selectedCalendarId) {
+      this.selectedCalendarId = localStorage.getItem('selectedCalendarId');
+    }
+    return this.selectedCalendarId;
+  }
+
+  /**
+   * 同步事件到指定日历
+   */
+  async syncEventToCalendar(event: any, calendarId?: string): Promise<string> {
+    const targetCalendarId = calendarId || this.getSelectedCalendarId();
+    
+    console.log('🎯 [syncEventToCalendar] Debug info:', {
+      eventTitle: event.subject || event.title,
+      providedCalendarId: calendarId,
+      selectedCalendarId: this.getSelectedCalendarId(),
+      finalTargetCalendarId: targetCalendarId,
+      isTimerEvent: event.timerSessionId ? true : false
+    });
+    
+    if (!targetCalendarId) {
+      throw new Error('未指定目标日历，请先选择默认日历');
+    }
+
+    if (!this.isAuthenticated || !this.accessToken) {
+      throw new Error('未认证，无法同步事件');
+    }
+
+    try {
+      // 转换事件格式为 Outlook 格式
+      const startDateTime = event.start?.dateTime || event.startTime;
+      const endDateTime = event.end?.dateTime || event.endTime;
+      
+      const outlookEventData = {
+        subject: event.subject || event.title,
+        body: event.body || { contentType: 'text', content: event.description || '' },
+        start: {
+          dateTime: typeof startDateTime === 'string' ? startDateTime : formatTimeForStorage(startDateTime),
+          timeZone: 'Asia/Shanghai'
+        },
+        end: {
+          dateTime: typeof endDateTime === 'string' ? endDateTime : formatTimeForStorage(endDateTime),
+          timeZone: 'Asia/Shanghai'
+        },
+        location: event.location ? { displayName: event.location } : undefined,
+        isAllDay: event.isAllDay || false
+      };
+      
+      console.log('🎯 [syncEventToCalendar] Converted event data:', outlookEventData);
+      
+      const endpoint = `https://graph.microsoft.com/v1.0/me/calendars/${targetCalendarId}/events`;
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(outlookEventData)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Graph API Error Response:', errorText);
+        throw new Error(`同步事件到指定日历失败: ${response.status} - ${errorText}`);
+      }
+
+      const createdEvent = await response.json();
+      console.log('✅ 成功同步事件到日历:', targetCalendarId);
+      return createdEvent.id;
+      
+    } catch (error) {
+      console.error('❌ 同步事件到指定日历失败:', error);
+      throw error;
+    }
   }
 }

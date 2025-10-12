@@ -37,7 +37,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
   
   // 环境信息
-  isDev: process.env.NODE_ENV === 'development'
+  isDev: process.env.NODE_ENV === 'development',
+  
+  // Microsoft认证辅助
+  openExternalAuth: (url) => ipcRenderer.invoke('open-external-auth', url),
+  handleAuthCallback: (url) => ipcRenderer.invoke('handle-auth-callback', url)
 });
 
 // 监听主进程消息

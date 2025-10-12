@@ -1,0 +1,381 @@
+/* 🎨 标签管理页面样式 - 基础架构 */
+/* 请从 Figma Dev 模式复制具体样式替换这些占位符样式 */
+
+.tag-management {
+  /* 主容器样式 - 请从Figma复制 */
+  padding: 24px;
+  background: #ffffff;
+  min-height: 100vh;
+}
+
+/* ===== 页面头部 ===== */
+.tag-management__header {
+  /* 头部布局 - 请从Figma复制具体布局 */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5e5e7;
+}
+
+.tag-management__title {
+  /* 标题样式 - 请从Figma复制字体、大小、颜色 */
+  font-size: 28px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin: 0;
+}
+
+.tag-management__add-button {
+  /* 添加按钮样式 - 请从Figma复制具体样式 */
+  background: #007aff;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 24px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tag-management__add-button:hover {
+  background: #0056cc;
+  transform: translateY(-1px);
+}
+
+/* ===== 内容区域 ===== */
+.tag-management__content {
+  /* 内容区域布局 */
+}
+
+/* ===== 标签树结构 ===== */
+.tag-tree {
+  /* 标签树容器 */
+}
+
+.tag-tree__empty {
+  /* 空状态样式 - 请从Figma复制 */
+  text-align: center;
+  padding: 60px 20px;
+  color: #8e8e93;
+}
+
+/* ===== 标签节点 ===== */
+.tag-node {
+  /* 标签节点基础样式 */
+  margin-bottom: 8px;
+}
+
+.tag-node--level-0 {
+  /* 根级标签样式 */
+}
+
+.tag-node--level-1 {
+  /* 一级子标签样式 */
+  margin-left: 24px;
+}
+
+.tag-node--level-2 {
+  /* 二级子标签样式 */
+  margin-left: 48px;
+}
+
+/* ===== 标签项 ===== */
+.tag-item {
+  /* 标签项布局 - 请从Figma复制具体布局 */
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f2f2f7;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+  gap: 12px;
+}
+
+.tag-item:hover {
+  /* 悬停状态 - 请从Figma复制 */
+  background: #e5e5ea;
+  border-color: #d1d1d6;
+}
+
+.tag-item__drag-handle {
+  /* 拖拽手柄样式 - 如果Figma中有的话 */
+  color: #c7c7cc;
+  cursor: grab;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.tag-item__icon {
+  /* 标签图标样式 */
+  font-size: 18px;
+  width: 24px;
+  text-align: center;
+}
+
+.tag-item__name {
+  /* 标签名称样式 - 请从Figma复制字体样式 */
+  flex: 1;
+  font-size: 16px;
+  color: #1d1d1f;
+  font-weight: 500;
+}
+
+.tag-item__name-input {
+  /* 编辑输入框样式 */
+  flex: 1;
+  border: none;
+  background: white;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 16px;
+  color: #1d1d1f;
+  outline: 2px solid #007aff;
+}
+
+.tag-item__color {
+  /* 颜色指示器样式 */
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+.tag-item__actions {
+  /* 操作按钮组布局 */
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.tag-item:hover .tag-item__actions {
+  opacity: 1;
+}
+
+.tag-action {
+  /* 操作按钮基础样式 - 请从Figma复制 */
+  background: none;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.tag-action:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.tag-action--save {
+  color: #34c759;
+}
+
+.tag-action--cancel {
+  color: #ff3b30;
+}
+
+.tag-action--edit {
+  color: #007aff;
+}
+
+.tag-action--delete {
+  color: #ff3b30;
+}
+
+/* ===== 子标签 ===== */
+.tag-children {
+  /* 子标签容器 */
+  margin-top: 8px;
+}
+
+/* ===== 标签创建器 ===== */
+.tag-creator-overlay {
+  /* 模态框遮罩 - 请从Figma复制 */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.tag-creator {
+  /* 创建器主体 - 请从Figma复制具体样式 */
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  width: 400px;
+  max-width: 90vw;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+}
+
+.form-group {
+  /* 表单组样式 */
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  /* 标签样式 */
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #1d1d1f;
+}
+
+.form-group input {
+  /* 输入框样式 - 请从Figma复制 */
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid #d1d1d6;
+  border-radius: 8px;
+  font-size: 16px;
+  transition: border-color 0.2s ease;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #007aff;
+}
+
+.emoji-picker-trigger {
+  /* 表情选择触发按钮 - 请从Figma复制 */
+  width: 48px;
+  height: 48px;
+  border: 1px solid #d1d1d6;
+  border-radius: 8px;
+  background: white;
+  font-size: 24px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.emoji-picker-trigger:hover {
+  border-color: #007aff;
+}
+
+.color-picker {
+  /* 颜色选择器样式 - 请从Figma复制 */
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.form-actions {
+  /* 表单操作按钮组 */
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e5e7;
+}
+
+.form-actions button {
+  /* 表单按钮样式 - 请从Figma复制 */
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: 1px solid #d1d1d6;
+  background: white;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s ease;
+}
+
+.form-actions button.primary {
+  background: #007aff;
+  color: white;
+  border-color: #007aff;
+}
+
+.form-actions button:hover {
+  transform: translateY(-1px);
+}
+
+/* ===== 表情选择器 ===== */
+.emoji-picker-overlay {
+  /* 表情选择器遮罩 - 请从Figma复制 */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1001;
+}
+
+.emoji-picker {
+  /* 表情选择器主体 - 请从Figma复制 */
+  background: white;
+  border-radius: 16px;
+  width: 320px;
+  height: 400px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+}
+
+.emoji-picker__header {
+  /* 表情选择器头部 */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e5e7;
+}
+
+.emoji-picker__search {
+  /* 搜索区域 */
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e5e7;
+}
+
+.emoji-picker__search input {
+  /* 搜索输入框 */
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d1d6;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.emoji-picker__content {
+  /* 表情网格区域 */
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+/* ===== 响应式设计 ===== */
+@media (max-width: 768px) {
+  .tag-management {
+    padding: 16px;
+  }
+  
+  .tag-management__header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+  }
+  
+  .tag-creator {
+    width: 100%;
+    margin: 20px;
+  }
+}

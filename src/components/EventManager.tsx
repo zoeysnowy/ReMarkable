@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Event } from '../types';
 import { MicrosoftCalendarService } from '../services/MicrosoftCalendarService';
-import { formatTimeForStorage, parseLocalTimeString, formatTimeForInput, formatDateForInput, formatDisplayTime } from '../utils/timeUtils';
+import { formatTimeForStorage, parseLocalTimeString, formatTimeForInput, formatDateForInput, formatDisplayTime, formatDateTimeForInput } from '../utils/timeUtils';
 import { STORAGE_KEYS } from '../constants/storage';
+import DescriptionEditor from './DescriptionEditor';
 
 // 🔧 移除重复的函数定义，只使用导入的版本
 
@@ -17,17 +18,23 @@ interface EventTag {
 interface EventManagerProps {
   onStartTimer: (taskTitle: string) => void;
   microsoftService?: MicrosoftCalendarService;
+  syncManager?: any; // ActionBasedSyncManager instance
 }
 
 export const EventManager: React.FC<EventManagerProps> = ({ 
   onStartTimer, 
-  microsoftService 
+  microsoftService,
+  syncManager
 }) => {
   const [events, setEvents] = useState<Event[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [eventTags, setEventTags] = useState<EventTag[]>([]);
+  
+  // DescriptionEditor states
+  const [showDescriptionEditor, setShowDescriptionEditor] = useState(false);
+  const [editingEventForDescription, setEditingEventForDescription] = useState<Event | null>(null);
   
   const [formData, setFormData] = useState({
     title: '',
@@ -53,6 +60,40 @@ export const EventManager: React.FC<EventManagerProps> = ({
       return `${minutes}分${secs.toString().padStart(2, '0')}秒`;
     } else {
       return `${secs}秒`;
+    }
+  };
+
+  // 根据事件的标签获取目标日历ID
+  const getTargetCalendarId = (event: any): string | undefined => {
+    if (!event.tagId) {
+      console.log(`🔍 [getTargetCalendarId] Event "${event.title}" has no tagId`);
+      return undefined;
+    }
+    
+    const tag = eventTags.find(t => t.id === event.tagId);
+    console.log(`🔍 [getTargetCalendarId] Event "${event.title}" with tagId "${event.tagId}"`, {
+      foundTag: tag,
+      calendarId: tag?.outlookCalendarId,
+      availableTags: eventTags.map(t => ({ id: t.id, name: t.name, calendarId: t.outlookCalendarId }))
+    });
+    
+    return tag?.outlookCalendarId;
+  };
+
+  // 使用正确的日历ID同步事件
+  const syncEventToCalendar = async (event: any): Promise<any> => {
+    if (!microsoftService) {
+      throw new Error('Microsoft Calendar service not available');
+    }
+    
+    const targetCalendarId = getTargetCalendarId(event);
+    
+    if (targetCalendarId) {
+      console.log(`🎯 [EventManager] Syncing event "${event.title}" to calendar:`, targetCalendarId);
+      return await microsoftService.syncEventToCalendar(event, targetCalendarId);
+    } else {
+      console.log(`🎯 [EventManager] Syncing event "${event.title}" to default calendar`);
+      return await microsoftService.createEvent(event);
     }
   };
 
@@ -146,8 +187,44 @@ export const EventManager: React.FC<EventManagerProps> = ({
     };
   }, [events, eventTags]);
 
-  // 加载事件标签
+  // 加载层级标签（从标签管理器）
   useEffect(() => {
+    const savedHierarchicalTags = localStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS);
+    if (savedHierarchicalTags) {
+      try {
+        const hierarchicalTags = JSON.parse(savedHierarchicalTags);
+        // 将层级标签转换为扁平的EventTag格式
+        const flatTags: EventTag[] = [];
+        
+        const flattenTags = (tags: any[], parentPath = '') => {
+          tags.forEach(tag => {
+            const displayName = parentPath ? `${parentPath} > ${tag.name}` : tag.name;
+            flatTags.push({
+              id: tag.id,
+              name: displayName,
+              color: tag.color,
+              category: 'ongoing', // 默认为ongoing类型
+              outlookCalendarId: tag.calendarMapping?.calendarId
+            });
+            
+            if (tag.children && tag.children.length > 0) {
+              flattenTags(tag.children, displayName);
+            }
+          });
+        };
+        
+        flattenTags(hierarchicalTags);
+        setEventTags(flatTags);
+      } catch (error) {
+        console.error('Failed to parse hierarchical tags:', error);
+        loadDefaultTags();
+      }
+    } else {
+      loadDefaultTags();
+    }
+  }, []);
+
+  const loadDefaultTags = () => {
     const savedTags = localStorage.getItem(STORAGE_KEYS.EVENT_TAGS);
     if (savedTags) {
       setEventTags(JSON.parse(savedTags));
@@ -164,7 +241,7 @@ export const EventManager: React.FC<EventManagerProps> = ({
       setEventTags(defaultTags);
       localStorage.setItem(STORAGE_KEYS.EVENT_TAGS, JSON.stringify(defaultTags));
     }
-  }, []);
+  };
 
   // 保存事件到localStorage
   const saveEvents = (updatedEvents: Event[]) => {
@@ -174,7 +251,78 @@ export const EventManager: React.FC<EventManagerProps> = ({
 
   // 获取事件的标签
   const getEventTag = (event: Event): EventTag | undefined => {
-    return eventTags.find((tag: any) => tag.id === (event as any).tagId);
+    // 首先尝试从事件的 tagId 在旧标签系统中查找
+    const oldTag = eventTags.find((tag: any) => tag.id === (event as any).tagId);
+    if (oldTag) return oldTag;
+    
+    // 如果没找到，尝试从层级标签系统中查找
+    if ((event as any).tags && (event as any).tags.length > 0) {
+      const tagId = (event as any).tags[0]; // 使用第一个标签
+      
+      const savedHierarchicalTags = localStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS);
+      if (savedHierarchicalTags) {
+        try {
+          const hierarchicalTags = JSON.parse(savedHierarchicalTags);
+          
+          // 递归查找标签
+          const findTag = (tags: any[]): EventTag | undefined => {
+            for (const tag of tags) {
+              if (tag.id === tagId) {
+                return {
+                  id: tag.id,
+                  name: tag.name,
+                  color: tag.color,
+                  category: 'ongoing'
+                };
+              }
+              if (tag.children && tag.children.length > 0) {
+                const found = findTag(tag.children);
+                if (found) return found;
+              }
+            }
+            return undefined;
+          };
+          
+          return findTag(hierarchicalTags);
+        } catch (error) {
+          console.error('Failed to parse hierarchical tags:', error);
+        }
+      }
+    }
+    
+    // 如果还是没找到，尝试直接使用 tagId
+    if ((event as any).tagId) {
+      const savedHierarchicalTags = localStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS);
+      if (savedHierarchicalTags) {
+        try {
+          const hierarchicalTags = JSON.parse(savedHierarchicalTags);
+          
+          const findTag = (tags: any[]): EventTag | undefined => {
+            for (const tag of tags) {
+              if (tag.id === (event as any).tagId) {
+                return {
+                  id: tag.id,
+                  name: tag.name,
+                  color: tag.color,
+                  category: 'ongoing'
+                };
+              }
+              if (tag.children && tag.children.length > 0) {
+                const found = findTag(tag.children);
+                if (found) return found;
+              }
+            }
+            return undefined;
+          };
+          
+          return findTag(hierarchicalTags);
+        } catch (error) {
+          console.error('Failed to parse hierarchical tags:', error);
+        }
+      }
+    }
+    
+    return undefined;
   };
 
   // 重置表单
@@ -210,7 +358,132 @@ export const EventManager: React.FC<EventManagerProps> = ({
     }
   };
 
-  // 编辑事件
+  // 编辑事件描述和标签（使用DescriptionEditor）
+  const editEventDescription = (event: Event) => {
+    setEditingEventForDescription(event);
+    setShowDescriptionEditor(true);
+  };
+
+  // 保存事件描述和标签的更新（现在支持完整事件编辑）
+  const saveEventDescription = async (description: string, tags: string[], eventData?: any) => {
+    if (!editingEventForDescription) return;
+
+    try {
+      let updatedEvent: Event;
+      const isNewEvent = !editingEventForDescription.id;
+      
+      if (eventData) {
+        // 完整事件编辑
+        if (isNewEvent) {
+          // 创建新事件
+          updatedEvent = {
+            id: Date.now().toString(),
+            title: eventData.title,
+            description: eventData.description,
+            startTime: eventData.startTime && eventData.startTime.trim() ? 
+              formatTimeForStorage(new Date(eventData.startTime)) : 
+              formatTimeForStorage(new Date()),
+            endTime: eventData.endTime && eventData.endTime.trim() ? 
+              formatTimeForStorage(new Date(eventData.endTime)) : 
+              formatTimeForStorage(new Date(Date.now() + 60 * 60 * 1000)),
+            location: eventData.location,
+            isAllDay: eventData.isAllDay,
+            reminder: eventData.reminder,
+            tagId: tags.length > 0 ? tags[0] : '',
+            createdAt: formatTimeForStorage(new Date()),
+            updatedAt: formatTimeForStorage(new Date()),
+            category: 'planning',
+            syncStatus: 'pending' as const
+          } as Event;
+        } else {
+          // 更新现有事件
+          updatedEvent = {
+            ...editingEventForDescription,
+            title: eventData.title || editingEventForDescription.title,
+            description: eventData.description,
+            startTime: eventData.startTime && eventData.startTime.trim() ? 
+              formatTimeForStorage(new Date(eventData.startTime)) : 
+              editingEventForDescription.startTime,
+            endTime: eventData.endTime && eventData.endTime.trim() ? 
+              formatTimeForStorage(new Date(eventData.endTime)) : 
+              editingEventForDescription.endTime,
+            location: eventData.location !== undefined ? eventData.location : editingEventForDescription.location,
+            isAllDay: eventData.isAllDay !== undefined ? eventData.isAllDay : editingEventForDescription.isAllDay,
+            reminder: eventData.reminder !== undefined ? eventData.reminder : editingEventForDescription.reminder,
+            tagId: tags.length > 0 ? tags[0] : '',
+            updatedAt: formatTimeForStorage(new Date())
+          };
+        }
+      } else {
+        // 仅描述和标签编辑
+        updatedEvent = {
+          ...editingEventForDescription,
+          description,
+          tagId: tags.length > 0 ? tags[0] : '',
+          updatedAt: formatTimeForStorage(new Date())
+        };
+      }
+
+      // 更新本地状态
+      if (isNewEvent) {
+        setEvents(prev => [...prev, updatedEvent]);
+      } else {
+        setEvents(prev => prev.map(e => 
+          e.id === editingEventForDescription.id ? updatedEvent : e
+        ));
+      }
+
+      // 保存到 localStorage
+      const allEvents = JSON.parse(localStorage.getItem(STORAGE_KEYS.EVENTS) || '[]');
+      let updatedEvents;
+      
+      if (isNewEvent) {
+        updatedEvents = [...allEvents, updatedEvent];
+      } else {
+        updatedEvents = allEvents.map((e: Event) => 
+          e.id === editingEventForDescription.id ? updatedEvent : e
+        );
+      }
+      
+      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(updatedEvents));
+
+      // 🔧 [NEW] 触发 ActionBasedSyncManager 同步到 Outlook（支持标签映射）
+      if (syncManager && isNewEvent) {
+        console.log('📅 [EventManager] Recording new event for sync:', updatedEvent.title, 'with tag:', updatedEvent.tagId);
+        syncManager.recordLocalAction('create', 'event', updatedEvent.id, updatedEvent);
+      } else if (syncManager && !isNewEvent) {
+        console.log('📅 [EventManager] Recording event update for sync:', updatedEvent.title);
+        syncManager.recordLocalAction('update', 'event', updatedEvent.id, updatedEvent, editingEventForDescription);
+      }
+
+      // 如果有 Microsoft 服务且事件有 externalId，同步到 Outlook
+      if (microsoftService && updatedEvent.externalId) {
+        try {
+          await microsoftService.updateEvent(updatedEvent.externalId, {
+            subject: updatedEvent.title,
+            body: {
+              contentType: 'text',
+              content: description
+            }
+          });
+        } catch (error) {
+          console.warn('Failed to sync event description to Outlook:', error);
+        }
+      }
+
+      // 关闭编辑器
+      setShowDescriptionEditor(false);
+      setEditingEventForDescription(null);
+
+      // 触发事件更新
+      window.dispatchEvent(new CustomEvent('timer-events-updated'));
+    } catch (error) {
+      console.error('Error updating event description:', error);
+      alert('更新事件描述失败！');
+    }
+  };
+
+  // 编辑事件（原有的表单编辑）
   const editEvent = (event: Event) => {
     setEditingEvent(event);
     setSelectedDate(parseLocalTimeString(event.startTime)); // 🔧 使用工具函数
@@ -276,41 +549,24 @@ export const EventManager: React.FC<EventManagerProps> = ({
         ...(formData.tagId ? { tagId: formData.tagId } : {})
       };
 
-      // 检查是否为 ongoing 事件，如果是则同步到 Outlook
-      const isOngoingEvent = (editingEvent as any).timerSessionId || 
-                            editingEvent.id.startsWith('timer-') ||
-                            (editingEvent as any).category === 'ongoing';
-
-      if (isOngoingEvent || ((editingEvent as any).externalId && (editingEvent as any).calendarId === 'microsoft')) {
-        if (microsoftService?.isSignedIn()) {
-          try {
-            if ((editingEvent as any).externalId) {
-              await microsoftService.updateEvent((editingEvent as any).externalId, updatedEvent);
-              updatedEvent.syncStatus = 'synced';
-              console.log('✅ Updated ongoing event in Outlook:', updatedEvent.title);
-            } else {
-              const createdOutlookEvent = await microsoftService.createEvent(updatedEvent);
-              updatedEvent.externalId = createdOutlookEvent.id;
-              updatedEvent.calendarId = 'microsoft';
-              updatedEvent.syncStatus = 'synced';
-              console.log('✅ Created ongoing event in Outlook:', updatedEvent.title);
-            }
-          } catch (error) {
-            console.error('❌ Failed to sync ongoing event to Outlook:', error);
-            updatedEvent.syncStatus = 'error';
-          }
-        } else {
-          updatedEvent.syncStatus = 'pending';
-        }
-      }
-
       const updatedEvents = events.map((event: any) =>
         event.id === editingEvent.id ? updatedEvent : event
       );
       saveEvents(updatedEvents);
+
+      // 🔧 [NEW] 使用 ActionBasedSyncManager 进行智能同步（支持标签映射）
+      if (syncManager) {
+        console.log('📅 [EventManager] Recording event update for sync:', updatedEvent.title, 'with tag:', updatedEvent.tagId);
+        syncManager.recordLocalAction('update', 'event', updatedEvent.id, updatedEvent, editingEvent);
+      }
+
       resetForm();
 
-      // 如果是 ongoing 事件，触发 timer 事件更新
+      // 检查是否为 ongoing 事件，触发相关事件
+      const isOngoingEvent = (editingEvent as any).timerSessionId || 
+                            editingEvent.id.startsWith('timer-') ||
+                            (editingEvent as any).category === 'ongoing';
+
       if (isOngoingEvent) {
         window.dispatchEvent(new CustomEvent('timer-events-updated', {
           detail: { events: updatedEvents }
@@ -374,22 +630,18 @@ export const EventManager: React.FC<EventManagerProps> = ({
         ...(formData.tagId ? { tagId: formData.tagId } : {})
       };
 
-      if (microsoftService?.isSignedIn()) {
-        try {
-          const createdOutlookEvent = await microsoftService.createEvent(event);
-          event.externalId = createdOutlookEvent.id;
-          event.calendarId = 'microsoft';
-          event.syncStatus = 'synced';
-        } catch (error) {
-          console.error('Failed to sync to Outlook:', error);
-          event.syncStatus = 'error';
-        }
-      }
-
+      // 🔧 [NEW] 使用 ActionBasedSyncManager 进行智能同步（支持标签映射）
       const updatedEvents = [...events, event].sort((a: any, b: any) => 
         parseLocalTimeString(a.startTime).getTime() - parseLocalTimeString(b.startTime).getTime()
       );
       saveEvents(updatedEvents);
+      
+      // 触发同步到 Outlook（会根据标签映射路由到正确的日历）
+      if (syncManager) {
+        console.log('📅 [EventManager] Recording new event for sync:', event.title, 'with tag:', event.tagId);
+        syncManager.recordLocalAction('create', 'event', event.id, event);
+      }
+      
       resetForm();
 
     } catch (error) {
@@ -442,7 +694,7 @@ export const EventManager: React.FC<EventManagerProps> = ({
           };
           alert(`事件"${event.title}"已成功更新到Outlook！`);
         } catch (updateError: any) {
-          const createdOutlookEvent = await microsoftService.createEvent(event);
+          const createdOutlookEvent = await syncEventToCalendar(event);
           updatedEvent = {
             ...event,
             externalId: createdOutlookEvent.id,
@@ -453,7 +705,7 @@ export const EventManager: React.FC<EventManagerProps> = ({
           alert(`原事件已被删除，已重新创建并同步"${event.title}"到Outlook！`);
         }
       } else {
-        const createdOutlookEvent = await microsoftService.createEvent(event);
+        const createdOutlookEvent = await syncEventToCalendar(event);
         updatedEvent = {
           ...event,
           externalId: createdOutlookEvent.id,
@@ -486,6 +738,14 @@ export const EventManager: React.FC<EventManagerProps> = ({
     const eventTag = getEventTag(event);
     const isFromTimer = isTimerEvent(event);
     
+    console.log('Rendering event:', {
+      id: event.id,
+      title: event.title,
+      isFromTimer,
+      timerSessionId: (event as any).timerSessionId,
+      eventTag
+    });
+    
     // 如果是计时器创建的 ongoing 事件，使用简洁的一行 log 样式
     if (isFromTimer) {
       const duration = getEventDuration(event);
@@ -504,11 +764,15 @@ export const EventManager: React.FC<EventManagerProps> = ({
           </span>
           <div className="log-actions">
             <button
-              onClick={() => editEvent(event)}
+              onClick={() => {
+                console.log('🔥 [EDIT BUTTON CLICKED] This is the EventManager.tsx edit button!');
+                editEventDescription(event);
+              }}
               className="btn-edit-mini"
-              title="编辑"
+              title="编辑事件 (EventManager.tsx版本)"
+              style={{ background: 'green', color: 'white', border: '2px solid orange' }} // 临时样式以便识别
             >
-              ✏️
+              ✏️ EM
             </button>
             <button
               onClick={() => deleteEvent(event.id)}
@@ -573,7 +837,7 @@ export const EventManager: React.FC<EventManagerProps> = ({
 
         <div className="event-actions">
           <button
-            onClick={() => editEvent(event)}
+            onClick={() => editEventDescription(event)}
             className="btn btn-edit"
             title="编辑事件"
           >
@@ -609,18 +873,12 @@ export const EventManager: React.FC<EventManagerProps> = ({
 
   // 渲染事件列表
   const renderEventsList = () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date(); // 🔧 [FIX] 使用当前时刻，而不是今天0点
     
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
     const planningEvents = events.filter((event: any) => {
-      const eventTag = getEventTag(event);
       const isFromTimer = isTimerEvent(event);
-      return !isFromTimer && 
-             (eventTag?.category === 'planning' || (!eventTag && !isFromTimer)) && 
-             parseLocalTimeString(event.startTime).getTime() >= tomorrow.getTime();
+      // 🔧 [FIX] 显示此刻及以后的事件，方便查看刚创建的事件并用于计时
+      return parseLocalTimeString(event.startTime).getTime() >= now.getTime();
     });
 
     return (
@@ -644,9 +902,10 @@ export const EventManager: React.FC<EventManagerProps> = ({
 
   // 事件表单
   const renderEventForm = () => {
-    if (!showAddForm && !editingEvent) return null;
+    if (!showAddForm) return null;
 
-    const availableTags = eventTags.filter((tag: any) => tag.category === formData.category);
+    // 显示所有标签，不按category过滤
+    const availableTags = eventTags;
 
     return (
       <div className="event-form-overlay">
@@ -701,15 +960,31 @@ export const EventManager: React.FC<EventManagerProps> = ({
               <select
                 value={formData.tagId}
                 onChange={(e) => setFormData({ ...formData, tagId: e.target.value })}
-                className="form-control"
+                className="form-control tag-select"
               >
                 <option value="">选择标签...</option>
                 {availableTags.map((tag: any) => (
-                  <option key={tag.id} value={tag.id}>
-                    {tag.name}
+                  <option 
+                    key={tag.id} 
+                    value={tag.id}
+                    style={{ color: tag.color }}
+                  >
+                    ● {tag.name}
                   </option>
                 ))}
               </select>
+              {formData.tagId && (
+                <div className="selected-tag-preview">
+                  {(() => {
+                    const selectedTag = availableTags.find((t: any) => t.id === formData.tagId);
+                    return selectedTag ? (
+                      <span style={{ color: selectedTag.color }}>
+                        ● {selectedTag.name}
+                      </span>
+                    ) : null;
+                  })()}
+                </div>
+              )}
             </div>
 
             {/* 标题 */}
@@ -731,7 +1006,8 @@ export const EventManager: React.FC<EventManagerProps> = ({
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 className="form-control"
-                rows={3}
+                rows={6}
+                placeholder="输入日程描述..."
               />
             </div>
 
@@ -839,7 +1115,21 @@ export const EventManager: React.FC<EventManagerProps> = ({
         <h2>📅 我的日程</h2>
         <div className="header-actions">
           <button
-            onClick={() => setShowAddForm(true)}
+            onClick={() => {
+              setEditingEventForDescription({
+                id: '',
+                title: '',
+                description: '',
+                startTime: formatTimeForStorage(new Date()),
+                endTime: formatTimeForStorage(new Date(Date.now() + 60 * 60 * 1000)), // 1小时后
+                isAllDay: false,
+                location: '',
+                reminder: 15,
+                createdAt: formatTimeForStorage(new Date()),
+                updatedAt: formatTimeForStorage(new Date())
+              } as Event);
+              setShowDescriptionEditor(true);
+            }}
             className="btn btn-primary"
           >
             ➕ 添加日程
@@ -848,7 +1138,31 @@ export const EventManager: React.FC<EventManagerProps> = ({
       </div>
 
       {renderEventsList()}
-      {renderEventForm()}
+      
+      {/* DescriptionEditor for event editing */}
+      {showDescriptionEditor && editingEventForDescription && (
+        <DescriptionEditor
+          isOpen={showDescriptionEditor}
+          title={`编辑事件: ${editingEventForDescription.title}`}
+          initialDescription=""
+          initialTags={(editingEventForDescription as any).tagId ? [(editingEventForDescription as any).tagId] : []}
+          isFullEventEdit={true}
+          initialEventData={{
+            title: editingEventForDescription.title,
+            description: editingEventForDescription.description || '',
+            startTime: formatDateTimeForInput(editingEventForDescription.startTime),
+            endTime: formatDateTimeForInput(editingEventForDescription.endTime),
+            location: editingEventForDescription.location || '',
+            isAllDay: editingEventForDescription.isAllDay || false,
+            reminder: editingEventForDescription.reminder || 15
+          }}
+          onSave={saveEventDescription}
+          onClose={() => {
+            setShowDescriptionEditor(false);
+            setEditingEventForDescription(null);
+          }}
+        />
+      )}
     </div>
   );
 };

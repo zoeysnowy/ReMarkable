@@ -17,7 +17,12 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false,
+      // 支持Microsoft认证所需的功能
+      partition: 'persist:main'
     },
     icon: path.join(__dirname, 'assets', 'icon.png'),
     titleBarStyle: 'default',
@@ -47,10 +52,37 @@ function createWindow() {
     mainWindow = null;
   });
 
-  // 处理外部链接
+  // 处理外部链接 - 为Microsoft认证优化
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // Microsoft OAuth认证相关链接在应用内打开
+    if (url.includes('login.microsoftonline.com') || 
+        url.includes('login.live.com') || 
+        url.includes('account.live.com') ||
+        url.includes('oauth.live.com') ||
+        url.includes('graph.microsoft.com')) {
+      return { action: 'allow' };
+    }
+    
+    // 其他外部链接用系统浏览器打开
     shell.openExternal(url);
     return { action: 'deny' };
+  });
+
+  // 处理导航事件 - 允许Microsoft认证
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    const parsedUrl = new URL(navigationUrl);
+    
+    // 允许localhost和Microsoft认证域名
+    if (parsedUrl.hostname === 'localhost' || 
+        parsedUrl.hostname.includes('microsoftonline.com') ||
+        parsedUrl.hostname.includes('live.com') ||
+        parsedUrl.hostname.includes('microsoft.com')) {
+      return; // 允许导航
+    }
+    
+    // 阻止其他外部导航
+    event.preventDefault();
+    shell.openExternal(navigationUrl);
   });
 
   // 设置菜单
@@ -255,6 +287,28 @@ ipcMain.handle('get-app-info', () => {
     userDataPath: app.getPath('userData'),
     appPath: app.getAppPath()
   };
+});
+
+// Microsoft认证相关IPC处理器
+ipcMain.handle('open-external-auth', async (event, url) => {
+  try {
+    await shell.openExternal(url);
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to open external auth URL:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('handle-auth-callback', async (event, url) => {
+  try {
+    // 处理认证回调
+    console.log('Auth callback received:', url);
+    return { success: true, url };
+  } catch (error) {
+    console.error('Failed to handle auth callback:', error);
+    return { success: false, error: error.message };
+  }
 });
 
 console.log('🚀 Electron main process started');

@@ -1,18 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { formatDisplayDateTime, formatTimeForStorage } from '../utils/timeUtils';
+import CalendarGroupManager from './CalendarGroupManager';
 
 interface CalendarSyncProps {
   syncManager: any;
   microsoftService: any;
+  onSettingsChange?: (settingKey: string, value: any) => void;
+  onTagsUpdated?: (tags: any[]) => void;
 }
 
 const CalendarSync: React.FC<CalendarSyncProps> = ({ 
   syncManager, 
-  microsoftService 
+  microsoftService,
+  onSettingsChange,
+  onTagsUpdated
 }) => {
   const [userInfo, setUserInfo] = useState<any>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string>('');
+  const [showCalendarManager, setShowCalendarManager] = useState(false);
 
   // 加载用户信息
   useEffect(() => {
@@ -196,6 +202,13 @@ const CalendarSync: React.FC<CalendarSyncProps> = ({
                   立即同步
                 </button>
                 <button
+                  onClick={() => setShowCalendarManager(true)}
+                  className="btn btn-calendar-manage"
+                  style={{ minWidth: '90px' }}
+                >
+                  📅 日历管理
+                </button>
+                <button
                   onClick={handleDisconnect}
                   className="btn btn-disconnect"
                   style={{ minWidth: '90px' }}
@@ -283,6 +296,13 @@ const CalendarSync: React.FC<CalendarSyncProps> = ({
           </details>
         </div>
       )}
+
+      {/* 日历分组管理器 */}
+      <CalendarGroupManager
+        microsoftService={microsoftService}
+        isOpen={showCalendarManager}
+        onClose={() => setShowCalendarManager(false)}
+      />
     </div>
   );
 };
