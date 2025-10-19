@@ -26,7 +26,10 @@ export function generateEventId(): string {
  * @returns 颜色值
  */
 export function getTagColor(tagId: string | undefined, tags: any[]): string {
-  if (!tagId) return '#3788d8'; // 默认颜色
+  if (!tagId) {
+    console.log('🎨 [getTagColor] No tagId provided, using default color');
+    return '#3788d8'; // 默认颜色
+  }
   
   const findTag = (tagList: any[]): any => {
     for (const tag of tagList) {
@@ -40,7 +43,23 @@ export function getTagColor(tagId: string | undefined, tags: any[]): string {
   };
   
   const tag = findTag(tags);
-  return tag?.color || '#3788d8';
+  const color = tag?.color || '#3788d8';
+  
+  if (tag) {
+    console.log(`🎨 [getTagColor] Found tag:`, {
+      tagId,
+      tagName: tag.name,
+      color
+    });
+  } else {
+    console.log(`🎨 [getTagColor] Tag not found:`, {
+      tagId,
+      availableTags: tags.map(t => ({ id: t.id, name: t.name })),
+      usingDefault: true
+    });
+  }
+  
+  return color;
 }
 
 /**
@@ -53,21 +72,38 @@ export function getEventColor(event: Event, tags: any[]): string {
   // 优先使用 tags 数组（多标签模式）
   if (event.tags && event.tags.length > 0) {
     const firstTagId = event.tags[0];
-    return getTagColor(firstTagId, tags);
+    const color = getTagColor(firstTagId, tags);
+    console.log(`🎨 [getEventColor] Event "${event.title}" - Using first tag color:`, {
+      tagId: firstTagId,
+      color
+    });
+    return color;
   }
   
   // 兼容单标签模式
   if (event.tagId) {
-    return getTagColor(event.tagId, tags);
+    const color = getTagColor(event.tagId, tags);
+    console.log(`🎨 [getEventColor] Event "${event.title}" - Using tagId color:`, {
+      tagId: event.tagId,
+      color
+    });
+    return color;
   }
   
   // 如果事件没有标签，尝试从日历分组获取颜色
   if (event.calendarId) {
     const calendarColor = getCalendarGroupColor(event.calendarId);
-    if (calendarColor) return calendarColor;
+    if (calendarColor) {
+      console.log(`🎨 [getEventColor] Event "${event.title}" - Using calendar color:`, {
+        calendarId: event.calendarId,
+        color: calendarColor
+      });
+      return calendarColor;
+    }
   }
   
   // 默认颜色
+  console.log(`🎨 [getEventColor] Event "${event.title}" - Using default color`);
   return '#3788d8';
 }
 
@@ -192,6 +228,16 @@ export function convertToCalendarEvent(
   // 🎨 使用getEventColor获取正确的颜色（支持多标签和日历颜色）
   const eventColor = getEventColor(event, tags);
   
+  // 📋 确定 calendarId：优先使用第一个标签，然后是 tagId，最后是 calendarId
+  let calendarId = 'default';
+  if (event.tags && event.tags.length > 0) {
+    calendarId = event.tags[0]; // 使用第一个标签作为日历分组
+  } else if (event.tagId) {
+    calendarId = event.tagId;
+  } else if (event.calendarId) {
+    calendarId = event.calendarId;
+  }
+  
   // 🎯 确定事件类型（category）
   // TUI Calendar 支持: 'milestone', 'task', 'allday', 'time'
   let category: 'milestone' | 'task' | 'allday' | 'time' = 'time';
@@ -219,7 +265,7 @@ export function convertToCalendarEvent(
   
   return {
     id: event.id,
-    calendarId: event.tagId || event.calendarId || 'default',
+    calendarId: calendarId,
     title: event.title,
     body: event.description || '',
     start: startDate,
@@ -227,7 +273,7 @@ export function convertToCalendarEvent(
     isAllday: event.isAllDay || false,
     category: category,
     location: event.location || '',
-    // 颜色配置
+    // 颜色配置 - 使用事件颜色（标签颜色或日历颜色）
     color: '#ffffff',
     backgroundColor: eventColor,
     borderColor: eventColor,
