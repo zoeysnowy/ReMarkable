@@ -1584,34 +1584,60 @@ private getUserSettings(): any {
             }
           }
           
-          // 🏷️ [PRIORITY 2] 高优先级：标签日历映射检查
+          // 🏷️ [PRIORITY 2] 高优先级：标签日历映射检查（智能迁移）
           console.log('🏷️ [PRIORITY 2] === 标签日历映射检查 ===');
           
           const currentCalendarId = action.data.calendarId;
           let needsCalendarMigration = false;
           syncTargetCalendarId = currentCalendarId;
           
-          if (action.data.tagId) {
-            console.log('🔍 [PRIORITY 2] Checking tag mapping for tagId:', action.data.tagId);
-            const mappedCalendarId = this.getCalendarIdForTag(action.data.tagId);
-            
-            console.log('🔍 [PRIORITY 2] Calendar mapping result:', {
-              currentCalendar: currentCalendarId || 'None',
-              mappedCalendar: mappedCalendarId || 'None',
-              needsMigration: !!(mappedCalendarId && mappedCalendarId !== currentCalendarId)
+          // 🎯 确定要检查的标签ID（优先使用 tags 数组的第一个标签）
+          let tagToCheck = action.data.tagId;
+          if (action.data.tags && action.data.tags.length > 0) {
+            tagToCheck = action.data.tags[0];
+            console.log('🏷️ [PRIORITY 2] Using first tag from tags array:', tagToCheck);
+          }
+          
+          // 🔍 获取原始事件的标签（用于比较）
+          let originalTagToCheck = action.originalData?.tagId;
+          if (action.originalData?.tags && action.originalData.tags.length > 0) {
+            originalTagToCheck = action.originalData.tags[0];
+          }
+          
+          if (tagToCheck) {
+            console.log('🔍 [PRIORITY 2] Checking tag mapping:', {
+              currentTag: tagToCheck,
+              originalTag: originalTagToCheck,
+              tagsChanged: tagToCheck !== originalTagToCheck
             });
             
-            // 检查是否需要跨日历迁移
-            if (mappedCalendarId && mappedCalendarId !== currentCalendarId) {
+            const mappedCalendarId = this.getCalendarIdForTag(tagToCheck);
+            
+            // 🎯 获取原始标签映射的日历（如果标签没变，就不需要迁移）
+            let originalMappedCalendarId = currentCalendarId;
+            if (originalTagToCheck) {
+              originalMappedCalendarId = this.getCalendarIdForTag(originalTagToCheck) || currentCalendarId;
+            }
+            
+            console.log('🔍 [PRIORITY 2] Calendar mapping comparison:', {
+              currentCalendar: currentCalendarId || 'None',
+              originalMappedCalendar: originalMappedCalendarId || 'None',
+              newMappedCalendar: mappedCalendarId || 'None',
+              actuallyNeedsMigration: !!(mappedCalendarId && mappedCalendarId !== originalMappedCalendarId)
+            });
+            
+            // ✅ 智能迁移检测：只有当新旧映射的日历真的不同时才迁移
+            if (mappedCalendarId && mappedCalendarId !== originalMappedCalendarId) {
               needsCalendarMigration = true;
               syncTargetCalendarId = mappedCalendarId;
               
-              console.log('🔄 [PRIORITY 2] Calendar migration required:', {
-                from: currentCalendarId || 'Default',
+              console.log('🔄 [PRIORITY 2] Smart migration required (calendar actually changed):', {
+                from: originalMappedCalendarId || 'Default',
                 to: mappedCalendarId,
                 eventTitle: action.data.title,
-                tagId: action.data.tagId,
-                externalId: cleanExternalId
+                tagId: tagToCheck,
+                externalId: cleanExternalId,
+                reason: 'Tag changed AND calendar mapping changed'
               });
               
               try {
@@ -1678,6 +1704,16 @@ private getUserSettings(): any {
                 // 迁移失败，继续执行普通更新
                 needsCalendarMigration = false;
               }
+            } else if (mappedCalendarId && mappedCalendarId === originalMappedCalendarId) {
+              // ✅ 标签变了，但映射的日历没变，不需要迁移
+              console.log('✅ [PRIORITY 2] No migration needed (calendar mapping unchanged):', {
+                originalTag: originalTagToCheck,
+                newTag: tagToCheck,
+                sameCalendar: mappedCalendarId,
+                eventTitle: action.data.title,
+                reason: 'Tag changed but both tags map to same calendar'
+              });
+              syncTargetCalendarId = mappedCalendarId;
             } else if (mappedCalendarId && !cleanExternalId) {
               console.log('🔄 [TAG-CALENDAR-UPDATE] Event not synced yet, updating calendarId for future sync');
               // 如果事件还没有同步到 Outlook，只更新本地的 calendarId

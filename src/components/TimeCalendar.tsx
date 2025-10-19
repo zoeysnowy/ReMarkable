@@ -807,7 +807,10 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       const originalEvent = existingEvents[eventIndex];
       existingEvents[eventIndex] = updatedEvent;
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
-      setEvents(existingEvents);
+      
+      // 🎨 立即更新 UI - 触发 events state 更新
+      setEvents([...existingEvents]);
+      console.log('🎨 [TimeCalendar] UI updated immediately with new tag colors');
 
       // 🔄 同步到 Outlook
       const activeSyncManager = syncManager || (window as any).syncManager;
