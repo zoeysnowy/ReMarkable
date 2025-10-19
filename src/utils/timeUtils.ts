@@ -20,20 +20,52 @@ export const formatTimeForStorage = (date: Date): string => {
 export const parseLocalTimeString = (timeString: string | Date): Date => {
   // 如果已经是Date对象，直接返回
   if (timeString instanceof Date) {
-    return timeString;
+    return isNaN(timeString.getTime()) ? new Date() : timeString;
+  }
+  
+  // 如果是空字符串或undefined，返回当前时间
+  if (!timeString) {
+    console.warn('⚠️ [parseLocalTimeString] Empty time string, using current time');
+    return new Date();
+  }
+  
+  // 如果是标准 ISO 8601 格式（带 Z 或时区），直接用 Date 构造函数
+  if (timeString.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(timeString)) {
+    const date = new Date(timeString);
+    if (isNaN(date.getTime())) {
+      console.error('❌ [parseLocalTimeString] Invalid ISO date:', timeString);
+      return new Date();
+    }
+    return date;
   }
   
   // 解析ISO格式的时间字符串，但作为本地时间处理
   if (timeString.includes('T')) {
-    const [datePart, timePart] = timeString.split('T');
+    const [datePart, fullTimePart] = timeString.split('T');
     const [year, month, day] = datePart.split('-').map(Number);
+    
+    // 移除毫秒和时区标记（如果有）
+    const timePart = fullTimePart.split('.')[0]; // 移除 .000Z
     const [hours, minutes, seconds = 0] = timePart.split(':').map(Number);
     
-    return new Date(year, month - 1, day, hours, minutes, seconds);
+    const date = new Date(year, month - 1, day, hours, minutes, seconds);
+    
+    // 检查日期是否有效
+    if (isNaN(date.getTime())) {
+      console.error('❌ [parseLocalTimeString] Invalid date:', timeString);
+      return new Date();
+    }
+    
+    return date;
   }
   
   // 兼容其他格式
-  return new Date(timeString);
+  const date = new Date(timeString);
+  if (isNaN(date.getTime())) {
+    console.error('❌ [parseLocalTimeString] Invalid date format:', timeString);
+    return new Date();
+  }
+  return date;
 };
 
 // 🔧 格式化时间用于input[type="time"]控件

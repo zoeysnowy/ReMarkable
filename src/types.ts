@@ -30,16 +30,22 @@ export interface Event {
   reminder?: number;
   externalId?: string;
   calendarId?: string;
+  source?: 'local' | 'outlook' | 'google' | 'icloud'; // 🆕 事件来源
   syncStatus?: 'pending' | 'synced' | 'error';
   lastSyncTime?: string; // 🔧 修改：使用字符串存储本地时间
   createdAt: string;     // 🔧 修改：使用字符串存储本地时间
   updatedAt: string;     // 🔧 修改：使用字符串存储本地时间
   timerSessionId?: string;
-  tagId?: string;
+  tagId?: string;        // 🔧 保留向后兼容，单标签模式
+  tags?: string[];       // 🆕 添加：多标签支持
   category?: string;
   remarkableSource?: boolean;
   localVersion?: number;
   lastLocalChange?: string; // 🔧 修改：使用字符串存储本地时间
+  // 🎯 事件类型标记（用于控制显示样式）
+  isTimer?: boolean;     // 🆕 添加：标记为计时器事件
+  isMilestone?: boolean; // 🆕 添加：标记为里程碑事件
+  isTask?: boolean;      // 🆕 添加：标记为任务事件
 }
 
 export interface Task {

@@ -3,6 +3,8 @@
  * 在开发环境中提供更稳定的数据存储，避免频繁清空localStorage导致数据丢失
  */
 
+import { formatTimeForStorage } from './timeUtils';
+
 const DEVELOPMENT_STORAGE_PREFIX = 'remarkable-dev-persistent-';
 const PRODUCTION_STORAGE_PREFIX = 'remarkable-';
 
@@ -38,7 +40,7 @@ export class PersistentStorage {
     const storageKey = this.getKey(key, options);
     const dataToStore = {
       value,
-      timestamp: new Date().toISOString(),
+      timestamp: formatTimeForStorage(new Date()), // 🔧 使用本地时间格式化
       version: options.version || '1.0.0',
       isDev: isDevelopment && options.persistInDev
     };
@@ -167,6 +169,10 @@ export class PersistentStorage {
 // 默认选项用于标签等重要数据
 export const PERSISTENT_OPTIONS = {
   TAGS: {
+    persistInDev: true,
+    version: '1.0.0'
+  },
+  CHECKIN_COUNTS: {
     persistInDev: true,
     version: '1.0.0'
   },

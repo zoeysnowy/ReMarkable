@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>清除日历筛选设置</title>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            padding: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            color: #333;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        .log {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success { color: #28a745; font-weight: bold; }
+        .error { color: #dc3545; font-weight: bold; }
+        .info { color: #17a2b8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 ReMarkable 日历设置工具</h1>
+        <p>如果"时光"界面看不到事件，可能是筛选设置有问题。使用下面的工具重置设置：</p>
+        
+        <button onclick="viewSettings()">📋 查看当前设置</button>
+        <button onclick="clearFilters()">🧹 清除筛选设置</button>
+        <button onclick="resetAll()">🔄 完全重置</button>
+        
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const time = new Date().toLocaleTimeString('zh-CN');
+            const className = type;
+            logDiv.innerHTML += `<div class="${className}">[${time}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function viewSettings() {
+            log('📊 读取当前设置...', 'info');
+            try {
+                const settings = localStorage.getItem('remarkable-calendar-settings');
+                if (settings) {
+                    const parsed = JSON.parse(settings);
+                    log('当前设置: ' + JSON.stringify(parsed, null, 2), 'info');
+                    log(`visibleTags: ${parsed.visibleTags?.length || 0} 个`, 'info');
+                    log(`visibleCalendars: ${parsed.visibleCalendars?.length || 0} 个`, 'info');
+                } else {
+                    log('未找到保存的设置', 'info');
+                }
+            } catch (error) {
+                log('读取设置失败: ' + error.message, 'error');
+            }
+        }
+
+        function clearFilters() {
+            log('🧹 清除筛选设置...', 'info');
+            try {
+                const settings = localStorage.getItem('remarkable-calendar-settings');
+                if (settings) {
+                    const parsed = JSON.parse(settings);
+                    parsed.visibleTags = [];
+                    parsed.visibleCalendars = [];
+                    localStorage.setItem('remarkable-calendar-settings', JSON.stringify(parsed));
+                    log('✅ 筛选设置已清除！', 'success');
+                    log('现在所有标签和日历都会显示', 'success');
+                } else {
+                    log('⚠️ 未找到设置，无需清除', 'info');
+                }
+            } catch (error) {
+                log('❌ 清除失败: ' + error.message, 'error');
+            }
+        }
+
+        function resetAll() {
+            log('🔄 完全重置所有设置...', 'info');
+            try {
+                const defaultSettings = {
+                    view: 'month',
+                    eventOpacity: 85,
+                    visibleTags: [],
+                    visibleCalendars: [],
+                    showMilestone: true,
+                    showTask: true,
+                    showAllDay: true,
+                    milestoneHeight: 24,
+                    taskHeight: 24,
+                    allDayHeight: 24
+                };
+                localStorage.setItem('remarkable-calendar-settings', JSON.stringify(defaultSettings));
+                log('✅ 设置已重置为默认值！', 'success');
+                log('默认设置: ' + JSON.stringify(defaultSettings, null, 2), 'success');
+            } catch (error) {
+                log('❌ 重置失败: ' + error.message, 'error');
+            }
+        }
+
+        // 页面加载时自动查看设置
+        window.onload = () => {
+            log('👋 欢迎使用 ReMarkable 日历设置工具', 'success');
+            viewSettings();
+        };
+    </script>
+</body>
+</html>
+
+

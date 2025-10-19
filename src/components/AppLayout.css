@@ -1,0 +1,552 @@
+/* 应用布局样式 - 使用CSS Grid，保持原设计尺寸 */
+.app-layout {
+  display: grid;
+  grid-template-columns: 98px 1fr;
+  grid-template-rows: 115px 1fr 41px;
+  grid-template-areas:
+    "header header"
+    "sidebar main"
+    "statusbar statusbar";
+  height: 100vh;
+  width: 100vw;
+  background-color: #f8f9fa;
+  font-family: 'Microsoft YaHei', Arial, sans-serif;
+  overflow: hidden;
+}
+
+/* ===================
+   Header 样式
+   =================== */
+.app-header {
+  grid-area: header;
+  height: 115px;
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+  box-shadow: 0px 1px 2px rgba(0, 0, 0, 0.05);
+  position: relative;
+  z-index: 1000;
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+  padding: 0 29px;
+}
+
+/* Logo 区域 */
+.logo-section {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.logo-icon {
+  width: 60px;
+  height: 60px;
+  position: relative;
+}
+
+/* ReMarkable Logo - Using Figma SVG */
+.logo-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-image {
+  width: 60px;
+  height: 60px;
+  display: block;
+  transition: transform 0.2s ease;
+}
+
+.logo-image:hover {
+  transform: scale(1.05);
+}
+
+.logo-text h1 {
+  font-size: 30px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #a855f7 0%, #3b82f6 75%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin: 0;
+  line-height: 1;
+}
+
+/* Header 工具栏 */
+.header-tools {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* 全局计时器显示 */
+.global-timer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  max-width: 280px;
+}
+
+.global-timer.paused {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.2);
+}
+
+.global-timer:hover {
+  background: rgba(34, 197, 94, 0.15);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.15);
+}
+
+.global-timer.paused:hover {
+  background: rgba(245, 158, 11, 0.15);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.15);
+}
+
+.timer-indicator {
+  font-size: 16px;
+  animation: pulse 2s infinite;
+}
+
+.global-timer.paused .timer-indicator {
+  animation: none;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.timer-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 80px;
+}
+
+.timer-text {
+  font-size: 12px;
+  color: #059669;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.global-timer.paused .timer-text {
+  color: #d97706;
+}
+
+.timer-display {
+  font-size: 16px;
+  font-weight: 600;
+  color: #065f46;
+  font-family: 'Courier New', monospace;
+  line-height: 1;
+}
+
+.global-timer.paused .timer-display {
+  color: #92400e;
+}
+
+.timer-tag {
+  font-size: 14px;
+  color: #374151;
+  font-weight: 500;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-btn,
+.setting-btn {
+  width: 48px;
+  height: 48px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #6b7280;
+}
+
+.notification-btn img,
+.setting-btn img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.notification-btn:hover,
+.setting-btn:hover {
+  background: rgba(255, 255, 255, 0.9);
+  color: #374151;
+}
+
+.user-profile {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #a855f7 0%, #3b82f6 75%);
+  border: 2px solid rgba(168, 85, 247, 0.5);
+  box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1), 0px 10px 15px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.user-profile span {
+  color: white;
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.user-profile:hover {
+  transform: scale(1.05);
+}
+
+/* Grid布局不需要额外的body容器 */
+
+/* ===================
+   Sidebar 样式
+   =================== */
+.app-sidebar {
+  grid-area: sidebar;
+  width: 98px;
+  background: white;
+  border-right: 1px solid #e5e7eb;
+  padding: 27px 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  z-index: 900;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 19px;
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  min-height: 60px;
+}
+
+.nav-item:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.nav-item.active {
+  background: linear-gradient(135deg, #a855f7 0%, #3b82f6 75%);
+  box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1), 0px 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+.nav-icon {
+  width: 25px;
+  height: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.nav-icon img {
+  width: 100%;
+  height: 100%;
+  filter: brightness(0) saturate(100%) invert(36%) sepia(14%) saturate(464%) hue-rotate(183deg) brightness(95%) contrast(88%);
+  transition: filter 0.2s ease;
+}
+
+.nav-item.active .nav-icon img {
+  filter: brightness(0) saturate(100%) invert(100%);
+}
+
+.nav-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #374151;
+  text-align: center;
+  line-height: 1;
+  transition: color 0.2s ease;
+}
+
+.nav-item.active .nav-label {
+  color: white;
+  font-weight: 600;
+}
+
+/* 调试工具样式 */
+.sidebar-divider {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 8px 12px;
+  opacity: 0.5;
+}
+
+.nav-item.debug-item {
+  border: 1px dashed #6b7280;
+  margin: 4px 8px;
+  border-radius: 8px;
+}
+
+.nav-item.debug-item:hover {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.nav-item.debug-item.active {
+  border-color: #3b82f6;
+  background: #3b82f6;
+  color: white;
+}
+
+/* ===================
+   主内容区样式
+   =================== */
+.app-main {
+  grid-area: main;
+  padding: 7px 0;
+  overflow: auto;
+  background: #f8f9fa;
+}
+
+/* ===================
+   状态栏样式
+   =================== */
+.app-statusbar {
+  grid-area: statusbar;
+  height: 41px;
+  background: white;
+  border-top: 1px solid #e5e7eb;
+  position: relative;
+  z-index: 1000;
+}
+
+.status-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+  width: 100%; /* 占满整个状态栏宽度 */
+  padding: 0 16px; /* 左右各16px边距 */
+}
+
+.sync-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sync-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  filter: brightness(0) saturate(100%) invert(36%) sepia(14%) saturate(464%) hue-rotate(183deg) brightness(95%) contrast(88%);
+  opacity: 0.8;
+}
+
+.status-text {
+  font-size: 14px;
+  color: #6b7280;
+  font-family: 'Microsoft YaHei', Arial, sans-serif;
+}
+
+.connection-indicators {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.outlook-connection {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.outlook-icon {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+}
+
+.status-dot.connected {
+  background-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.status-dot.disconnected {
+  background-color: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+/* 同步状态动画效果 */
+.status-text {
+  transition: opacity 0.3s ease;
+}
+
+@keyframes syncPulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* ===================
+   响应式设计 - 保持原设计比例
+   =================== */
+@media (max-width: 1200px) {
+  .app-layout {
+    grid-template-columns: 98px 1fr;
+  }
+  
+  .status-content {
+    padding: 0 24px 0 120px;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-layout {
+    grid-template-columns: 60px 1fr;
+    grid-template-rows: 80px 1fr 32px;
+  }
+  
+  .app-sidebar {
+    width: 60px;
+    padding: 20px 0;
+  }
+  
+  .sidebar-nav {
+    padding: 0 12px;
+  }
+  
+  .nav-item {
+    padding: 12px 6px;
+    min-height: 50px;
+  }
+  
+  .nav-label {
+    font-size: 10px;
+  }
+  
+  .app-header {
+    height: 80px;
+  }
+  
+  .header-content {
+    padding: 0 16px;
+  }
+  
+  .logo-text h1 {
+    font-size: 24px;
+  }
+  
+  .app-statusbar {
+    height: 32px;
+  }
+  
+  .status-content {
+    padding: 0 20px 0 80px;
+  }
+  
+  .status-text {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-layout {
+    grid-template-columns: 50px 1fr;
+    grid-template-rows: 60px 1fr 28px;
+  }
+  
+  .app-sidebar {
+    width: 50px;
+    padding: 16px 0;
+  }
+  
+  .sidebar-nav {
+    padding: 0 8px;
+  }
+  
+  .nav-item {
+    min-height: 40px;
+    padding: 8px 4px;
+  }
+  
+  .nav-label {
+    display: none;
+  }
+  
+  .nav-icon {
+    width: 20px;
+    height: 20px;
+  }
+  
+  .app-header {
+    height: 60px;
+  }
+  
+  .logo-section {
+    gap: 8px;
+  }
+  
+  .logo-icon {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .logo-text h1 {
+    font-size: 20px;
+  }
+  
+  .app-statusbar {
+    height: 28px;
+  }
+  
+  .status-content {
+    padding: 0 16px 0 66px;
+  }
+  
+  .status-text {
+    font-size: 12px;
+  }
+}

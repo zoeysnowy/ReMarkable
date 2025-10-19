@@ -14,6 +14,15 @@ export const STORAGE_KEYS = {
   // 任务相关
   TASKS: 'remarkable-tasks',
   
+  // 日历缓存相关
+  CALENDAR_GROUPS_CACHE: 'remarkable-calendar-groups-cache',
+  CALENDARS_CACHE: 'remarkable-calendars-cache',
+  CALENDAR_SYNC_META: 'remarkable-calendar-sync-meta',
+  
+  // 标签相关（FigmaTagManagerV3）
+  TAGS: 'remarkable_tags',
+  CHECKIN_COUNTS: 'remarkable_checkin_counts',
+  
   // 同步相关
   SYNC_ACTIONS: 'remarkable-sync-actions',
   SYNC_CONFLICTS: 'remarkable-sync-conflicts',

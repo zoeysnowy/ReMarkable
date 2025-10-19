@@ -27,6 +27,9 @@ export const UnifiedTimeline: React.FC<UnifiedTimelineProps> = ({
   syncManager,
   lastSyncTime
 }) => {
+  console.log('🔍 [UnifiedTimeline] Component rendered with syncManager:', !!syncManager);
+  console.log('🔍 [UnifiedTimeline] syncManager type:', typeof syncManager);
+  
   const [events, setEvents] = useState<Event[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -147,8 +150,16 @@ export const UnifiedTimeline: React.FC<UnifiedTimelineProps> = ({
       loadEvents();
     };
 
+    // 🔄 监听本地事件变化（如日历迁移）
+    const handleLocalEventsChanged = (event: unknown) => {
+      const customEvent = event as CustomEvent;
+      console.log('🔄 [Timeline] Local events changed, reloading events:', customEvent.detail);
+      loadEvents();
+    };
+
     window.addEventListener('action-sync-completed', handleSyncCompleted);
     window.addEventListener('outlook-sync-completed', handleSyncCompleted);
+    window.addEventListener('local-events-changed', handleLocalEventsChanged as any);
     
     loadEvents();
     loadEventTags();
@@ -157,6 +168,7 @@ export const UnifiedTimeline: React.FC<UnifiedTimelineProps> = ({
     return () => {
       window.removeEventListener('action-sync-completed', handleSyncCompleted);
       window.removeEventListener('outlook-sync-completed', handleSyncCompleted);
+      window.removeEventListener('local-events-changed', handleLocalEventsChanged as any);
     };
   }, [loadEvents, loadEventTags]);
 
@@ -255,15 +267,26 @@ export const UnifiedTimeline: React.FC<UnifiedTimelineProps> = ({
       let startTime, endTime;
       
       if (formData.isAllDay) {
-        const selectedDateStr = selectedDate.toISOString().split('T')[0];
+        // 🔧 使用本地日期避免时区转换问题
+        const year = selectedDate.getFullYear();
+        const month = (selectedDate.getMonth() + 1).toString().padStart(2, '0');
+        const day = selectedDate.getDate().toString().padStart(2, '0');
+        const selectedDateStr = `${year}-${month}-${day}`;
+        
         const allDayStart = new Date(`${selectedDateStr}T00:00:00`);
         const allDayEnd = new Date(`${selectedDateStr}T23:59:59`);
         
         startTime = formatTimeForStorage(allDayStart);
         endTime = formatTimeForStorage(allDayEnd);
       } else {
-        const startDateTime = new Date(`${selectedDate.toISOString().split('T')[0]}T${formData.startTime}:00`);
-        const endDateTime = new Date(`${selectedDate.toISOString().split('T')[0]}T${formData.endTime}:00`);
+        // 🔧 使用本地日期避免时区转换问题
+        const year = selectedDate.getFullYear();
+        const month = (selectedDate.getMonth() + 1).toString().padStart(2, '0');
+        const day = selectedDate.getDate().toString().padStart(2, '0');
+        const selectedDateStr = `${year}-${month}-${day}`;
+        
+        const startDateTime = new Date(`${selectedDateStr}T${formData.startTime}:00`);
+        const endDateTime = new Date(`${selectedDateStr}T${formData.endTime}:00`);
         
         startTime = formatTimeForStorage(startDateTime);
         endTime = formatTimeForStorage(endDateTime);
@@ -355,20 +378,37 @@ export const UnifiedTimeline: React.FC<UnifiedTimelineProps> = ({
 
   // 删除事件
   const deleteEvent = (eventId: string) => {
+    console.log('🗑️ [UnifiedTimeline] deleteEvent called for:', eventId);
+    console.log('🗑️ [UnifiedTimeline] syncManager available:', !!syncManager);
+    console.log('🗑️ [UnifiedTimeline] syncManager value:', syncManager);
+    
     const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
     if (saved) {
       const existingEvents = JSON.parse(saved);
+      const eventToDelete = existingEvents.find((e: Event) => e.id === eventId);
+      console.log('🗑️ [UnifiedTimeline] Found event to delete:', eventToDelete?.title);
+      
       const updatedEvents = existingEvents.filter((e: Event) => e.id !== eventId);
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(updatedEvents));
       setEvents(updatedEvents);
       
-      // 同步删除操作
-      if (syncManager) {
-        const eventToDelete = existingEvents.find((e: Event) => e.id === eventId);
+      // 同步删除操作 - 使用window.syncManager作为备选方案
+      const activeSyncManager = syncManager || (window as any).syncManager;
+      console.log('🗑️ [UnifiedTimeline] Active syncManager:', !!activeSyncManager);
+      
+      if (activeSyncManager) {
         if (eventToDelete) {
-          syncManager.recordLocalAction('delete', 'event', eventId, null, eventToDelete);
+          console.log('🗑️ [UnifiedTimeline] Calling syncManager.recordLocalAction for DELETE');
+          activeSyncManager.recordLocalAction('delete', 'event', eventId, null, eventToDelete);
+        } else {
+          console.log('❌ [UnifiedTimeline] Event to delete not found in localStorage');
         }
+      } else {
+        console.log('❌ [UnifiedTimeline] syncManager is not available - DELETE will not sync to Outlook!');
+        console.log('❌ [UnifiedTimeline] Available on window?', !!(window as any).syncManager);
       }
+    } else {
+      console.log('❌ [UnifiedTimeline] No events found in localStorage');
     }
   };
 

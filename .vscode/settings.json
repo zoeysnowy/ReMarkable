@@ -1,0 +1,83 @@
+{
+  // TypeScript 服务器优化
+  "typescript.tsserver.maxTsServerMemory": 4096,
+  "typescript.disableAutomaticTypeAcquisition": true,
+  "typescript.suggest.autoImports": true,
+  
+  // 排除不必要的文件监控
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/**": true,
+    "**/build/**": true,
+    "**/dist/**": true,
+    "**/.cache/**": true,
+    "**/tui.calendar-main/**": true
+  },
+  
+  // 排除搜索范围
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/build": true,
+    "**/dist": true,
+    "**/.git": true,
+    "**/tui.calendar-main": true,
+    "**/package-lock.json": true
+  },
+  
+  // 文件排除
+  "files.exclude": {
+    "**/.git": true,
+    "**/.DS_Store": true,
+    "**/node_modules": false,
+    "**/build": true,
+    "**/.cache": true
+  },
+  
+  // ESLint 优化
+  "eslint.workingDirectories": [
+    { "mode": "auto" }
+  ],
+  "eslint.probe": [
+    "javascript",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact"
+  ],
+  
+  // 禁用不必要的扩展功能
+  "editor.suggest.snippetsPreventQuickSuggestions": false,
+  "editor.quickSuggestions": {
+    "other": true,
+    "comments": false,
+    "strings": false
+  },
+  
+  // Git 优化
+  "git.enabled": true,
+  "git.autorefresh": false,
+  "git.autofetch": false,
+  
+  // 编辑器性能优化
+  "editor.formatOnSave": false,
+  "editor.formatOnPaste": false,
+  "editor.minimap.enabled": false,
+  "editor.renderWhitespace": "none",
+  "editor.renderControlCharacters": false,
+  
+  // 语言特定优化
+  "[typescript]": {
+    "editor.defaultFormatter": "vscode.typescript-language-features"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "vscode.typescript-language-features"
+  },
+  
+  // 文件编码
+  "files.encoding": "utf8",
+  "files.autoGuessEncoding": false,
+  
+  // 终端优化
+  "terminal.integrated.rendererType": "dom",
+  "terminal.integrated.gpuAcceleration": "off"
+}

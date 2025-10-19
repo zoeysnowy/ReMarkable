@@ -6,6 +6,11 @@ node_modules/
 # Production builds
 build/
 dist/
+coverage/
+
+# Large external sources
+tui-calendar-source/
+tui.calendar*/
 
 # Environment variables
 .env
@@ -23,8 +28,10 @@ yarn-error.log*
 electron/dist/
 electron/build/
 
-# IDE
-.vscode/
+# IDE - exclude personal settings, keep workspace settings for performance
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .idea/
 
 # OS

@@ -68,6 +68,13 @@ export interface Calendar {
   };
 }
 
+export interface CalendarSyncMeta {
+  lastSyncTime: string;
+  calendarGroupsCount: number;
+  calendarsCount: number;
+  isOfflineMode: boolean;
+}
+
 export class MicrosoftCalendarService {
   private msalInstance!: PublicClientApplication;
   private isAuthenticated: boolean = false;
@@ -110,6 +117,195 @@ export class MicrosoftCalendarService {
     }
   }
 
+  // ===== 缓存管理方法 =====
+  
+  /**
+   * 获取缓存的日历分组（永不过期，直到手动刷新）
+   */
+  public getCachedCalendarGroups(): CalendarGroup[] {
+    try {
+      const cached = localStorage.getItem(STORAGE_KEYS.CALENDAR_GROUPS_CACHE);
+      if (cached) {
+        const groups = JSON.parse(cached);
+        console.log('📋 [Cache] Retrieved calendar groups from cache:', groups.length, 'groups');
+        return groups;
+      }
+      return [];
+    } catch (error) {
+      console.error('❌ [Cache] Failed to get cached calendar groups:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 获取缓存的日历列表（永不过期，直到手动刷新）
+   */
+  public getCachedCalendars(): Calendar[] {
+    try {
+      const cached = localStorage.getItem(STORAGE_KEYS.CALENDARS_CACHE);
+      if (cached) {
+        const calendars = JSON.parse(cached);
+        console.log('📋 [Cache] Retrieved calendars from cache:', calendars.length, 'calendars');
+        return calendars;
+      }
+      return [];
+    } catch (error) {
+      console.error('❌ [Cache] Failed to get cached calendars:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 缓存日历分组到 localStorage（永久存储）
+   */
+  private setCachedCalendarGroups(groups: CalendarGroup[]): void {
+    try {
+      localStorage.setItem(STORAGE_KEYS.CALENDAR_GROUPS_CACHE, JSON.stringify(groups));
+      console.log('💾 [Cache] Saved calendar groups to cache:', groups.length, 'groups');
+    } catch (error) {
+      console.error('❌ [Cache] Failed to save calendar groups to cache:', error);
+    }
+  }
+
+  /**
+   * 缓存日历列表到 localStorage（永久存储）
+   */
+  private setCachedCalendars(calendars: Calendar[]): void {
+    try {
+      localStorage.setItem(STORAGE_KEYS.CALENDARS_CACHE, JSON.stringify(calendars));
+      console.log('💾 [Cache] Saved calendars to cache:', calendars.length, 'calendars');
+    } catch (error) {
+      console.error('❌ [Cache] Failed to save calendars to cache:', error);
+    }
+  }
+
+  /**
+   * 获取同步元数据
+   */
+  public getSyncMeta(): CalendarSyncMeta | null {
+    try {
+      const cached = localStorage.getItem(STORAGE_KEYS.CALENDAR_SYNC_META);
+      if (cached) {
+        return JSON.parse(cached);
+      }
+      return null;
+    } catch (error) {
+      console.error('❌ [Cache] Failed to get sync meta:', error);
+      return null;
+    }
+  }
+
+  /**
+   * 更新同步元数据
+   */
+  private setSyncMeta(meta: CalendarSyncMeta): void {
+    try {
+      localStorage.setItem(STORAGE_KEYS.CALENDAR_SYNC_META, JSON.stringify(meta));
+      console.log('💾 [Cache] Updated sync meta:', meta);
+    } catch (error) {
+      console.error('❌ [Cache] Failed to save sync meta:', error);
+    }
+  }
+
+  /**
+   * 强制从远程同步日历分组和日历（覆盖缓存）
+   */
+  public async syncCalendarGroupsFromRemote(): Promise<{ groups: CalendarGroup[], calendars: Calendar[] }> {
+    console.log('🔄 [Sync] Starting remote calendar sync...');
+    
+    try {
+      if (!this.isAuthenticated) {
+        throw new Error('Not authenticated');
+      }
+
+      // 获取日历分组
+      const groups = await this.fetchCalendarGroups();
+      
+      // 获取所有日历
+      const calendars = await this.fetchAllCalendars();
+
+      // 更新缓存
+      this.setCachedCalendarGroups(groups);
+      this.setCachedCalendars(calendars);
+
+      // 更新同步元数据
+      this.setSyncMeta({
+        lastSyncTime: new Date().toISOString(),
+        calendarGroupsCount: groups.length,
+        calendarsCount: calendars.length,
+        isOfflineMode: false
+      });
+
+      console.log('✅ [Sync] Remote calendar sync completed successfully');
+      return { groups, calendars };
+      
+    } catch (error) {
+      console.error('❌ [Sync] Failed to sync from remote:', error);
+      
+      // 标记为离线模式
+      const currentMeta = this.getSyncMeta();
+      if (currentMeta) {
+        this.setSyncMeta({
+          ...currentMeta,
+          isOfflineMode: true
+        });
+      }
+      
+      throw error;
+    }
+  }
+
+  /**
+   * 获取所有日历分组和日历（优先使用缓存）
+   */
+  public async getAllCalendarData(forceRefresh: boolean = false): Promise<{ groups: CalendarGroup[], calendars: Calendar[] }> {
+    if (forceRefresh) {
+      console.log('🔄 [Cache] Force refresh requested, syncing from remote...');
+      return await this.syncCalendarGroupsFromRemote();
+    }
+
+    // 先尝试从缓存获取
+    const cachedGroups = this.getCachedCalendarGroups();
+    const cachedCalendars = this.getCachedCalendars();
+
+    if (cachedGroups.length > 0 || cachedCalendars.length > 0) {
+      console.log('📋 [Cache] Using cached calendar data');
+      return { groups: cachedGroups, calendars: cachedCalendars };
+    }
+
+    // 缓存为空，尝试从远程同步
+    console.log('📋 [Cache] No cached data found, syncing from remote...');
+    return await this.syncCalendarGroupsFromRemote();
+  }
+
+  /**
+   * 清除所有日历缓存
+   */
+  public clearCalendarCache(): void {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.CALENDAR_GROUPS_CACHE);
+      localStorage.removeItem(STORAGE_KEYS.CALENDARS_CACHE);
+      localStorage.removeItem(STORAGE_KEYS.CALENDAR_SYNC_META);
+      console.log('🗑️ [Cache] Cleared all calendar cache');
+    } catch (error) {
+      console.error('❌ [Cache] Failed to clear calendar cache:', error);
+    }
+  }
+
+  /**
+   * 内部方法：从远程获取日历分组
+   */
+  private async fetchCalendarGroups(): Promise<CalendarGroup[]> {
+    return await this.getCalendarGroups();
+  }
+
+  /**
+   * 内部方法：从远程获取所有日历
+   */
+  private async fetchAllCalendars(): Promise<Calendar[]> {
+    return await this.getAllCalendars();
+  }
+
   private convertUtcToBeijing(utcTimeStr: string): string {
     if (!utcTimeStr) return this.formatTimeForOutlook(new Date());
     
@@ -136,14 +332,17 @@ export class MicrosoftCalendarService {
     try {
       await this.msalInstance.initialize();
       
-      // 处理重定向回调（主要针对Electron环境）
-      const isElectron = typeof window !== 'undefined' && window.electronAPI;
-      if (isElectron) {
-        try {
-          await this.msalInstance.handleRedirectPromise();
-        } catch (error) {
-          console.log('No redirect promise to handle:', error);
+      // 处理重定向回调（适用于所有环境）
+      try {
+        const redirectResponse = await this.msalInstance.handleRedirectPromise();
+        if (redirectResponse) {
+          console.log('✅ 重定向认证成功:', redirectResponse.account?.username);
+          this.msalInstance.setActiveAccount(redirectResponse.account);
+          await this.acquireToken();
+          return;
         }
+      } catch (error) {
+        console.log('⚠️ 处理重定向响应时出错:', error);
       }
       
       const accounts = this.msalInstance.getAllAccounts();
@@ -190,8 +389,18 @@ export class MicrosoftCalendarService {
             this.simulationMode = false;
             return;
           }
-        } catch (interactiveError) {
+        } catch (interactiveError: any) {
           console.error('❌ Interactive token acquisition failed:', interactiveError);
+          
+          // 如果弹窗被阻止，提示用户使用重定向方式
+          if (interactiveError.message && interactiveError.message.includes('popup_window_error')) {
+            console.warn('⚠️ 令牌获取弹窗被阻止，建议使用重定向方式重新登录');
+            if (typeof window !== 'undefined') {
+              setTimeout(() => {
+                alert('无法打开认证弹窗，请点击"连接"按钮重新登录');
+              }, 1000);
+            }
+          }
         }
       }
       
@@ -206,6 +415,20 @@ export class MicrosoftCalendarService {
 
     const url = `https://graph.microsoft.com/v1.0${endpoint}`;
     
+    // 🔍 [DEBUG] 添加详细的API调用日志
+    console.log('🌐 [callGraphAPI] Making request:', {
+      method: method,
+      endpoint: endpoint,
+      url: url,
+      hasBody: !!body,
+      bodySize: body ? JSON.stringify(body).length : 0,
+      simulationMode: this.simulationMode
+    });
+    
+    if (body && method !== 'GET') {
+      console.log('📦 [callGraphAPI] Request body:', JSON.stringify(body, null, 2));
+    }
+    
     try {
       const response = await fetch(url, {
         method: method,
@@ -216,11 +439,27 @@ export class MicrosoftCalendarService {
         },
         body: body ? JSON.stringify(body) : undefined
       });
+      
+      console.log('📡 [callGraphAPI] Response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+        headers: Object.fromEntries(response.headers.entries())
+      });
 
       if (!response.ok) {
+        console.error('❌ [callGraphAPI] Request failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          method: method,
+          endpoint: endpoint
+        });
+        
         if (response.status === 401) {
+          console.log('🔄 [callGraphAPI] Token expired, acquiring new token...');
           await this.acquireToken();
           
+          console.log('🔄 [callGraphAPI] Retrying request with new token...');
           const retryResponse = await fetch(url, {
             method: method,
             headers: {
@@ -231,20 +470,45 @@ export class MicrosoftCalendarService {
             body: body ? JSON.stringify(body) : undefined
           });
           
+          console.log('📡 [callGraphAPI] Retry response:', {
+            status: retryResponse.status,
+            statusText: retryResponse.statusText,
+            ok: retryResponse.ok
+          });
+          
           if (!retryResponse.ok) {
+            const errorText = await retryResponse.text();
+            console.error('❌ [callGraphAPI] Retry failed:', errorText);
             throw new Error(`Graph API call failed: ${retryResponse.status} ${retryResponse.statusText}`);
           }
           
-          return retryResponse.status === 204 ? null : await retryResponse.json();
+          const result = retryResponse.status === 204 ? null : await retryResponse.json();
+          console.log('✅ [callGraphAPI] Retry successful');
+          return result;
         } else {
+          const errorText = await response.text();
+          console.error('❌ [callGraphAPI] Error response:', errorText);
           throw new Error(`Graph API call failed: ${response.status} ${response.statusText}`);
         }
       }
 
-      return response.status === 204 ? null : await response.json();
+      const result = response.status === 204 ? null : await response.json();
+      console.log('✅ [callGraphAPI] Request successful:', {
+        method: method,
+        endpoint: endpoint,
+        status: response.status,
+        hasResult: !!result
+      });
+      
+      return result;
       
     } catch (error) {
-      console.error('❌ Graph API call failed:', error);
+      console.error('❌ [callGraphAPI] Exception occurred:', {
+        method: method,
+        endpoint: endpoint,
+        error: error,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error'
+      });
       throw error;
     }
   }
@@ -282,13 +546,43 @@ export class MicrosoftCalendarService {
           this.msalInstance.setActiveAccount(accounts[0]);
         }
       } else {
-        // Web环境：使用弹窗
+        // Web环境：先尝试弹窗，如果失败则使用重定向
         console.log('🌐 Web环境：使用弹窗认证');
-        const loginResponse = await this.msalInstance.loginPopup({
-          scopes: MICROSOFT_GRAPH_CONFIG.scopes
-        });
-        
-        this.msalInstance.setActiveAccount(loginResponse.account);
+        try {
+          const loginResponse = await this.msalInstance.loginPopup({
+            scopes: MICROSOFT_GRAPH_CONFIG.scopes
+          });
+          
+          this.msalInstance.setActiveAccount(loginResponse.account);
+        } catch (popupError: any) {
+          console.warn('⚠️ 弹窗认证失败，尝试重定向认证:', popupError);
+          
+          // 检查是否是弹窗被阻止的错误
+          if (popupError.message && popupError.message.includes('popup_window_error')) {
+            console.log('🔄 弹窗被阻止，使用重定向认证方式');
+            
+            // 显示用户友好提示
+            if (typeof window !== 'undefined') {
+              if (window.confirm('弹窗被浏览器阻止。是否使用页面重定向方式进行认证？\n\n点击确定将跳转到Microsoft登录页面，登录完成后会返回到此页面。')) {
+                await this.msalInstance.loginRedirect({
+                  scopes: MICROSOFT_GRAPH_CONFIG.scopes
+                });
+                return true; // 重定向不会立即返回结果
+              } else {
+                throw new Error('用户取消了认证流程');
+              }
+            } else {
+              // 直接使用重定向
+              await this.msalInstance.loginRedirect({
+                scopes: MICROSOFT_GRAPH_CONFIG.scopes
+              });
+              return true;
+            }
+          } else {
+            // 其他类型的错误，重新抛出
+            throw popupError;
+          }
+        }
       }
       
       await this.acquireToken();
@@ -397,8 +691,7 @@ export class MicrosoftCalendarService {
     const ongoingDays = userSettings?.ongoingDays ?? userSettings?.ongoing ?? 1;
     
     // 🔧 调试日志
-    console.log(`🔍 [MicrosoftCalendarService] User settings:`, userSettings);
-    console.log(`🔍 [MicrosoftCalendarService] Resolved ongoingDays:`, ongoingDays);
+    // User settings resolved
     
     const now = new Date();
     const startDate = new Date(now);
@@ -409,7 +702,7 @@ export class MicrosoftCalendarService {
     endDate.setDate(now.getDate() + 2);
     endDate.setHours(23, 59, 59, 999);
 
-    console.log(`📅 Querying events: ${ongoingDays} days back from ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`);
+    // Querying events in date range
 
     const queryParams = new URLSearchParams({
       '$select': 'id,subject,body,bodyPreview,start,end,location,organizer,attendees,isAllDay,createdDateTime,lastModifiedDateTime',
@@ -462,7 +755,7 @@ export class MicrosoftCalendarService {
         return eventDate >= userFilterStart && eventDate <= userFilterEnd;
       });
 
-      console.log(`📅 Filtered ${filteredEvents.length} events within ${ongoingDays} days (from ${userFilterStart.toLocaleDateString()} to ${userFilterEnd.toLocaleDateString()})`);
+      // Filtered events by date range
 
       const processedEvents = filteredEvents.map((outlookEvent: any) => {
         const startTime = this.convertUtcToBeijing(outlookEvent.start?.dateTime);
@@ -512,7 +805,7 @@ export class MicrosoftCalendarService {
         };
       }).filter(Boolean);
 
-      console.log(`✅ Processed ${processedEvents.length} events successfully`);
+      // Processed events successfully
       return processedEvents;
       
     } catch (parseError) {
@@ -523,7 +816,7 @@ export class MicrosoftCalendarService {
   }
 
   // 🔧 获取指定日历的事件
-  public async getEventsFromCalendar(calendarId: string): Promise<GraphEvent[]> {
+  public async getEventsFromCalendar(calendarId: string, startDate?: Date, endDate?: Date): Promise<GraphEvent[]> {
     if (this.simulationMode) {
       console.log('📝 Simulating getEventsFromCalendar for:', calendarId);
       return this.getSimulatedEvents();
@@ -533,25 +826,40 @@ export class MicrosoftCalendarService {
       throw new Error('No access token available');
     }
 
-    const userSettings = this.getUserSettings();
-    const ongoingDays = userSettings?.ongoingDays ?? userSettings?.ongoing ?? 1;
+    // ✅ 使用传入的日期范围，或回退到用户设置
+    let queryStartDate: Date;
+    let queryEndDate: Date;
     
-    const now = new Date();
-    const startDate = new Date(now);
-    startDate.setDate(now.getDate() - ongoingDays - 1);
-    startDate.setHours(0, 0, 0, 0);
-    
-    const endDate = new Date(now);
-    endDate.setDate(now.getDate() + 2);
-    endDate.setHours(23, 59, 59, 999);
+    if (startDate && endDate) {
+      queryStartDate = startDate;
+      queryEndDate = endDate;
+      console.log('📅 [getEventsFromCalendar] Using provided date range:', {
+        start: startDate.toLocaleDateString(),
+        end: endDate.toLocaleDateString()
+      });
+    } else {
+      const userSettings = this.getUserSettings();
+      const ongoingDays = userSettings?.ongoingDays ?? userSettings?.ongoing ?? 1;
+      
+      const now = new Date();
+      queryStartDate = new Date(now);
+      queryStartDate.setDate(now.getDate() - ongoingDays - 1);
+      queryStartDate.setHours(0, 0, 0, 0);
+      
+      queryEndDate = new Date(now);
+      queryEndDate.setDate(now.getDate() + 2);
+      queryEndDate.setHours(23, 59, 59, 999);
+      
+      console.log('📅 [getEventsFromCalendar] Using ongoingDays setting:', ongoingDays);
+    }
 
-    console.log(`📅 [getEventsFromCalendar] Querying calendar ${calendarId}: ${ongoingDays} days back from ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`);
+    // Querying specific calendar
 
     const queryParams = new URLSearchParams({
       '$select': 'id,subject,body,bodyPreview,start,end,location,organizer,attendees,isAllDay,createdDateTime,lastModifiedDateTime',
       '$orderby': 'start/dateTime desc',
       '$top': '1000',
-      '$filter': `start/dateTime ge '${this.formatTimeForOutlook(startDate)}' and start/dateTime lt '${this.formatTimeForOutlook(endDate)}'`
+      '$filter': `start/dateTime ge '${this.formatTimeForOutlook(queryStartDate)}' and start/dateTime lt '${this.formatTimeForOutlook(queryEndDate)}'`
     });
 
     try {
@@ -580,7 +888,7 @@ export class MicrosoftCalendarService {
       const data = await response.json();
       const events = data.value || [];
       
-      console.log(`📅 [getEventsFromCalendar] Got ${events.length} events from calendar ${calendarId}`);
+      // Got events from calendar
 
       const processedEvents = events.map((outlookEvent: any) => {
         const startTime = this.convertUtcToBeijing(outlookEvent.start?.dateTime);
@@ -630,7 +938,7 @@ export class MicrosoftCalendarService {
         };
       }).filter(Boolean);
 
-      console.log(`✅ [getEventsFromCalendar] Processed ${processedEvents.length} events from calendar ${calendarId}`);
+      // Processed events from calendar
       return processedEvents;
       
     } catch (error) {
@@ -794,7 +1102,7 @@ export class MicrosoftCalendarService {
     try {
       const events = await this.getEvents();
       
-      console.log(`🚀 [forceSync] Got ${events.length} events, notifying ${this.eventChangeListeners.length} listeners only`);
+      // Force sync completed
       this.notifyEventChange(events);
       this.lastSyncTime = new Date();
       
@@ -806,13 +1114,13 @@ export class MicrosoftCalendarService {
   }
 
   private safeFormatDateTime(dateTimeStr: string | undefined | null): string {
-    if (!dateTimeStr) return new Date().toISOString();
+    if (!dateTimeStr) return formatTimeForStorage(new Date());
     
     try {
       const date = new Date(dateTimeStr);
-      return isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+      return isNaN(date.getTime()) ? formatTimeForStorage(new Date()) : formatTimeForStorage(date);
     } catch (error) {
-      return new Date().toISOString();
+      return formatTimeForStorage(new Date());
     }
   }
 

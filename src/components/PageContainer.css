@@ -1,0 +1,52 @@
+/* 页面容器样式 */
+.page-container {
+  padding: 16px 24px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  /* 移除固定最大宽度 - 让AppLayout的main区域自然控制尺寸 */
+  box-sizing: border-box;
+}
+
+/* page-header相关样式已移除 - 使用section-header代替 */
+
+.page-content {
+  flex: 1;
+  overflow: auto;
+  /* 确保内容区域能填充剩余空间 */
+  min-height: 0;
+}
+
+/* 特殊页面样式 */
+.page-container.tag-management {
+  padding: 7px 7px 7px 7px;  /* 减少所有边距，让内容更接近边缘 */
+}
+
+.page-container.time-calendar {
+  padding: 4px 8px;  /* TimeCalendar页面使用更小的padding */
+}
+
+.page-container.full-width {
+  max-width: none;
+  padding: 15px 0;
+}
+
+/* 响应式设计 - 简化，只在小屏幕时调整 */
+/* 手机端适配 */
+@media (max-width: 768px) {
+  .page-container {
+    padding: 16px 20px;
+  }
+  
+  .page-container.tag-management {
+    padding: 15px 20px;
+  }
+  
+  .page-title {
+    font-size: 18px;
+  }
+  
+  .page-subtitle {
+    font-size: 14px;
+  }
+}
