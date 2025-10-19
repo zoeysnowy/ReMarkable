@@ -635,44 +635,44 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   }, []); // 空依赖数组，因为我们直接从 localStorage 读取
 
   /**
-   * ✨ 创建事件 - 通过日历界面
+   * 📅 选择日期时间 - 打开创建事件模态框
    */
-  const handleBeforeCreateEvent = async (eventData: any) => {
-    console.log('✨ [TimeCalendar] Creating event:', eventData);
+  const handleSelectDateTime = useCallback((selectionInfo: any) => {
+    console.log('📅 [TimeCalendar] Time selection:', selectionInfo);
     
-    try {
-      // 转换为 ReMarkable Event 格式
-      const newEvent = convertFromCalendarEvent(eventData);
-      
-      // 验证事件数据
-      if (!validateEvent(newEvent)) {
-        console.error('❌ [TimeCalendar] Event validation failed');
-        return;
-      }
+    const { start, end, isAllday } = selectionInfo;
+    
+    // 创建新事件对象（不保存，仅用于编辑）
+    const newEvent: Event = {
+      id: `local-${Date.now()}`,
+      title: '',
+      startTime: start.toISOString(),
+      endTime: end.toISOString(),
+      location: '',
+      description: '',
+      tags: [],
+      tagId: '',
+      calendarId: '', // 用户需要在模态框中选择
+      isAllDay: isAllday || false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      syncStatus: 'pending'
+    };
+    
+    // 打开编辑模态框
+    setEditingEvent(newEvent);
+    setShowEventEditModal(true);
+  }, []);
 
-      // 保存到 localStorage
-      const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
-      const existingEvents = saved ? JSON.parse(saved) : [];
-      existingEvents.push(newEvent);
-      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
-      setEvents(existingEvents);
-
-      // 🔄 同步到 Outlook (通过 ActionBasedSyncManager)
-      const activeSyncManager = syncManager || (window as any).syncManager;
-      if (activeSyncManager) {
-        try {
-          await activeSyncManager.recordLocalAction('create', 'event', newEvent.id, newEvent);
-          console.log('✅ [TimeCalendar] Event created and synced');
-        } catch (error) {
-          console.error('❌ [TimeCalendar] Failed to sync new event:', error);
-        }
-      } else {
-        console.warn('⚠️ [TimeCalendar] syncManager not available');
-      }
-    } catch (error) {
-      console.error('❌ [TimeCalendar] Failed to create event:', error);
-    }
-  };
+  /**
+   * ✨ 创建事件 - 阻止 TUI Calendar 默认行为
+   * 我们使用 onSelectDateTime 和模态框来创建事件
+   */
+  const handleBeforeCreateEvent = useCallback((eventData: any) => {
+    console.log('⚠️ [TimeCalendar] beforeCreateEvent blocked (use modal instead):', eventData);
+    // 返回 false 阻止默认的事件创建
+    return false;
+  }, []);
 
   /**
    * 📝 更新事件 - 支持拖拽和编辑
@@ -1309,6 +1309,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
             events={calendarEvents}
           calendars={getCalendars()}
           onClickEvent={handleClickEvent}
+          onSelectDateTime={handleSelectDateTime}
           onBeforeCreateEvent={handleBeforeCreateEvent}
           onBeforeUpdateEvent={handleBeforeUpdateEvent}
           onBeforeDeleteEvent={handleBeforeDeleteEvent}

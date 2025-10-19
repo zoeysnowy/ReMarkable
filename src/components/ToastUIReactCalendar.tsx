@@ -245,8 +245,11 @@ export default class ToastUIReactCalendar extends React.Component<Props> {
     reactCalendarEventNames.forEach((eventName) => {
       const eventHandler = props[eventName];
       if (eventHandler && this.calendarInstance && eventName !== 'onClickEvent') {
-        const calendarEventName = eventName.replace('on', '').toLowerCase() as CalendarExternalEventNames;
-        this.calendarInstance.on(calendarEventName, eventHandler);
+        // 转换事件名：onSelectDateTime -> selectDateTime (保持驼峰)
+        let calendarEventName = eventName.replace('on', '');
+        calendarEventName = calendarEventName.charAt(0).toLowerCase() + calendarEventName.slice(1);
+        
+        this.calendarInstance.on(calendarEventName as any, eventHandler);
       }
     });
   };
