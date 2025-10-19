@@ -1,17 +1,39 @@
-# ReMarkable v0.1
+# ReMarkable v1.1 🎯
 
-🎯 **智能时间管理与日历同步工具**
+**智能时间管理与日历同步工具**
 
-ReMarkable 是一个现代化的时间管理应用，支持与 Microsoft Outlook 日历的双向同步功能。
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/zoeysnowy/ReMarkable/releases/tag/v1.1)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
+[![React](https://img.shields.io/badge/React-19.2.0-61dafb.svg)](https://reactjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
+
+ReMarkable 是一个现代化的时间管理应用，支持与 Microsoft Outlook 日历的双向同步功能，提供强大的事件管理和多标签分类系统。
+
+> 📖 **最新发布**: [v1.1 Release Notes](./RELEASE_NOTES_v1.1.md) - Calendar Integration & Event Management Enhancements
 
 ## ✨ 主要功能
 
+### 核心功能
+- 📅 **TUI Calendar 集成** - 交互式日历视图，支持周/月视图切换
+- 🏷️ **多标签事件管理** - 为事件添加多个标签，支持层级结构
+- ✏️ **增强事件编辑器** - 自定义模态窗口，支持标签搜索和多选
+- � **日历过滤系统** - 按日历显示/隐藏事件，实时更新
+- 🔄 **双向同步** - 与 Microsoft Outlook 日历无缝同步
+- 🧹 **事件去重机制** - 自动检测并清理重复事件
 - ⏰ **番茄钟计时器** - 专注时间管理，提高工作效率
-- 📅 **事件管理** - 创建、编辑、删除日程事件
-- 📋 **任务管理** - 任务创建与跟踪
-- 🔄 **双向同步** - 与 Microsoft Outlook 日历实时同步
+- � **任务管理** - 任务创建与跟踪
+
+### 数据完整性
+- 🛡️ **智能时间解析** - 支持多种 ISO 8601 格式
+- 🔐 **数据验证** - 保存前验证时间格式
+- 📊 **重复检测** - 双层保护防止重复事件
+- 💾 **本地持久化** - localStorage + 智能缓存管理
+
+### 用户体验
+- � **现代化界面** - 基于 React + TypeScript 构建
 - 📱 **响应式设计** - 支持桌面和移动设备
-- 🌐 **现代化界面** - 基于 React + TypeScript 构建
+- 🖱️ **直观交互** - 点击外部关闭、拖拽支持
+- 🎯 **快速筛选** - 标签搜索、日历过滤
 
 ## 🚀 技术栈
 
@@ -26,6 +48,7 @@ ReMarkable 是一个现代化的时间管理应用，支持与 Microsoft Outlook
 ### 环境要求
 - Node.js 16+ 
 - npm 或 yarn
+- Azure AD 应用注册（用于 Outlook 同步）
 
 ### 安装依赖
 ```bash
@@ -44,15 +67,69 @@ npm start
 npm run build
 ```
 
-### 运行测试
+构建产物将输出到 `build` 文件夹，适合生产环境部署。
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## 📖 文档
 
-### `npm run build`
+- [v1.1 Release Notes](./RELEASE_NOTES_v1.1.md) - 版本更新说明
+- [TimeCalendar README](./docs/TIMECALENDAR_README.md) - 日历组件实现指南
+- [TUI Integration Guide](./docs/timecalendar-tui-integration.md) - TUI Calendar 集成文档
+- [Testing Guide](./docs/timecalendar-testing-guide.md) - 测试指南
+- [UI Verification Framework](./docs/ui-verification-framework.md) - UI 测试框架
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## 🧪 测试工具
+
+项目包含以下调试和测试工具：
+
+- **test-deduplication.js** - 事件去重验证
+- **diagnose-duplicates.js** - 重复事件检测
+- **ui-verification.js** - UI 组件测试
+- **clear-calendar-filters.html** - 重置日历筛选
+
+使用方法：在浏览器控制台中运行相应的 JavaScript 文件。
+
+## 🔄 版本历史
+
+- **v1.1.0** (2025-10-20) - Calendar Integration & Event Management Enhancements
+  - TUI Calendar 集成
+  - 多标签事件编辑
+  - 事件去重机制
+  - 时间解析修复
+  - 日历过滤系统
+
+- **v1.0.0** (2024) - Initial stable release
+  - 基础日历同步功能
+  - 标签管理系统
+  - Outlook 集成
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启 Pull Request
+
+## 📄 许可证
+
+本项目采用 MIT 许可证 - 查看 [LICENSE](./LICENSE) 文件了解详情。
+
+## 🙏 致谢
+
+- [TOAST UI Calendar](https://github.com/nhn/tui.calendar) - 优秀的日历组件库
+- [Microsoft Graph API](https://docs.microsoft.com/en-us/graph/) - Outlook 集成支持
+- 所有贡献者和测试者
+
+## 📞 联系方式
+
+- **GitHub Issues**: [提交问题](https://github.com/zoeysnowy/ReMarkable/issues)
+- **GitHub Discussions**: [参与讨论](https://github.com/zoeysnowy/ReMarkable/discussions)
+
+---
+
+**Made with ❤️ by the ReMarkable Team**
 
 The build is minified and the filenames include the hashes.\
 Your app is ready to be deployed!

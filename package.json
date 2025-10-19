@@ -1,7 +1,7 @@
 {
   "name": "remarkable",
-  "version": "1.0.0",
-  "description": "ReMarkable v1.0 - 智能时间管理与日历同步工具",
+  "version": "1.1.0",
+  "description": "ReMarkable v1.1 - 智能时间管理与日历同步工具 (Calendar Integration & Event Management Enhancements)",
   "author": "Zoey Gong",
   "private": false,
   "dependencies": {
