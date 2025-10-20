@@ -30,9 +30,6 @@ export const icons = {
   outlook: outlookSvg,
   multiCheckinColor: multiCheckinColorSvg,
   timerColor: timerColorSvg,
-  pause: pauseSvg,
-  stop: stopSvg,
-  cancel: cancelSvg,
 };
 
 // 图标类型定义

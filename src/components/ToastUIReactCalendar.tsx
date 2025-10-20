@@ -152,18 +152,22 @@ export default class ToastUIReactCalendar extends React.Component<Props> {
     if (!this.calendarInstance) return;
 
     const startTime = performance.now(); // ⏱️ 性能监控
+    console.log('🔄 [TUI] 开始增量更新事件');
 
     // ✅ 使用当前实际渲染的事件进行比较
     const currentEvents = this.currentEventsRef;
     
     // 创建快速查找映射
+    const mapStart = performance.now();
     const currentEventsMap = new Map(currentEvents.map(e => [e.id, e]));
     const newEventsMap = new Map(newEvents.map(e => [e.id, e]));
+    console.log(`🔄 [TUI] 创建映射耗时: ${(performance.now() - mapStart).toFixed(2)}ms`);
 
     const toDelete: Partial<EventObject>[] = [];  // ✅ 改为保存完整事件对象
     const toUpdate: Partial<EventObject>[] = [];
     const toCreate: Partial<EventObject>[] = [];
 
+    const diffStart = performance.now();
     // 找出需要删除的事件（在当前渲染中存在，但在新事件列表中不存在）
     currentEvents.forEach(currentEvent => {
       if (currentEvent.id && !newEventsMap.has(currentEvent.id)) {
@@ -177,7 +181,7 @@ export default class ToastUIReactCalendar extends React.Component<Props> {
       if (!currentEvent) {
         toCreate.push(newEvent);
       } else {
-        // ✅ 智能比较：忽略视觉样式变化，只比较核心数据
+        // ✅ 智能比较：包含颜色字段以检测标签变化
         const coreFieldsChanged = 
           currentEvent.title !== newEvent.title ||
           currentEvent.start?.toString() !== newEvent.start?.toString() ||
@@ -186,7 +190,9 @@ export default class ToastUIReactCalendar extends React.Component<Props> {
           currentEvent.body !== newEvent.body ||
           currentEvent.isAllday !== newEvent.isAllday ||
           currentEvent.category !== newEvent.category ||
-          currentEvent.calendarId !== newEvent.calendarId;
+          currentEvent.calendarId !== newEvent.calendarId ||
+          currentEvent.backgroundColor !== newEvent.backgroundColor ||
+          currentEvent.borderColor !== newEvent.borderColor;
         
         if (coreFieldsChanged) {
           toUpdate.push(newEvent);
@@ -194,11 +200,13 @@ export default class ToastUIReactCalendar extends React.Component<Props> {
       }
     });
 
-    const diffTime = performance.now() - startTime;
-    console.log(`🔄 [TUI] Update: -${toDelete.length} ~${toUpdate.length} +${toCreate.length} (${currentEvents.length} → ${newEvents.length}) in ${diffTime.toFixed(2)}ms`);
+    const diffTime = performance.now() - diffStart;
+    console.log(`🔄 [TUI] 差异计算耗时: ${diffTime.toFixed(2)}ms`);
+    console.log(`🔄 [TUI] Update: -${toDelete.length} ~${toUpdate.length} +${toCreate.length} (${currentEvents.length} → ${newEvents.length})`);
 
     // 只有在有实际变化时才执行操作
     if (toDelete.length > 0 || toUpdate.length > 0 || toCreate.length > 0) {
+      const deleteStart = performance.now();
       // 删除不再存在的事件
       toDelete.forEach(event => {
         try {
@@ -209,25 +217,73 @@ export default class ToastUIReactCalendar extends React.Component<Props> {
           console.warn('[TUI] Failed to delete event:', event.id, e);
         }
       });
+      console.log(`🔄 [TUI] 删除事件耗时: ${(performance.now() - deleteStart).toFixed(2)}ms`);
 
-      // 更新已存在的事件
-      toUpdate.forEach(event => {
-        try {
-          if (event.id && event.calendarId) {
-            this.calendarInstance?.updateEvent(event.id, event.calendarId, event);
+      // 🚀 性能优化：大量更新时使用批量刷新
+      if (toUpdate.length > 100) {
+        console.log(`🚀 [TUI] 检测到大量更新(${toUpdate.length}个)，使用批量刷新优化`);
+        const batchStart = performance.now();
+        
+        this.calendarInstance?.clear();
+        this.calendarInstance?.createEvents(newEvents);
+        
+        console.log(`🚀 [TUI] 批量刷新完成，耗时: ${(performance.now() - batchStart).toFixed(2)}ms`);
+      } else {
+        // 少量更新：使用增量更新
+        const updateStart = performance.now();
+        const eventsNeedingRefresh: EventObject[] = [];
+        
+        toUpdate.forEach(event => {
+          try {
+            if (event.id && event.calendarId) {
+              // Check if event exists in TUI Calendar
+              const currentTUIEvent = this.calendarInstance?.getEvent(event.id, event.calendarId);
+              
+              if (!currentTUIEvent) {
+                // Event doesn't exist in TUI Calendar, need full refresh
+                eventsNeedingRefresh.push(event);
+              } else {
+                // Event exists, try standard update
+                this.calendarInstance?.updateEvent(event.id, event.calendarId, {
+                  ...event,
+                  backgroundColor: event.backgroundColor,
+                  borderColor: event.borderColor,
+                  color: event.color
+                });
+              }
+            }
+          } catch (e) {
+            console.warn('[TUI] Failed to update event:', event.id, e);
           }
-        } catch (e) {
-          console.warn('[TUI] Failed to update event:', event.id, e);
-        }
-      });
+        });
+        
+        console.log(`🔄 [TUI] 更新事件耗时: ${(performance.now() - updateStart).toFixed(2)}ms`);
 
-      // 创建新事件
-      if (toCreate.length > 0) {
-        this.calendarInstance?.createEvents(toCreate);
+        // 🔧 If events need refresh (not in TUI Calendar), force full calendar rebuild
+        if (eventsNeedingRefresh.length > 0) {
+          console.log(`🔄 [TUI] ${eventsNeedingRefresh.length}个事件不存在于TUI Calendar，强制全量刷新`);
+          const refreshStart = performance.now();
+          // Clear and recreate all events to ensure proper rendering
+          this.calendarInstance?.clear();
+          this.calendarInstance?.createEvents(newEvents);
+          console.log(`🔄 [TUI] 强制刷新耗时: ${(performance.now() - refreshStart).toFixed(2)}ms`);
+        }
+
+        const createStart = performance.now();
+        // 创建新事件
+        if (toCreate.length > 0) {
+          this.calendarInstance?.createEvents(toCreate);
+          console.log(`🔄 [TUI] 创建新事件耗时: ${(performance.now() - createStart).toFixed(2)}ms`);
+        }
       }
       
       // ✅ 更新当前事件引用
       this.currentEventsRef = [...newEvents];
+      
+      const totalTime = performance.now() - startTime;
+      console.log(`🔄 [TUI] 增量更新总耗时: ${totalTime.toFixed(2)}ms`);
+    } else {
+      console.log('🔄 [TUI] 无变化，跳过更新');
     }
   };
 

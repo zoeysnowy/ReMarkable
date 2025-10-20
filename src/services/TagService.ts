@@ -10,6 +10,7 @@ export interface HierarchicalTag {
   id: string;
   name: string;
   color: string;
+  emoji?: string;
   parentId?: string;
   children?: HierarchicalTag[];
   calendarMapping?: {
@@ -22,6 +23,7 @@ export interface FlatTag {
   id: string;
   name: string;
   color: string;
+  emoji?: string;
   parentId?: string;
   calendarMapping?: {
     calendarId: string;
@@ -132,7 +134,8 @@ class TagServiceClass {
           id: tag.id,
           name: tag.name,
           color: tag.color,
-          parentId: parentId,
+          emoji: tag.emoji, // 🔧 修复：添加 emoji 字段
+          parentId: tag.parentId || parentId, // ✅ 优先使用标签自身的parentId，兼容扁平和层级两种结构
           calendarMapping: tag.calendarMapping
         });
         

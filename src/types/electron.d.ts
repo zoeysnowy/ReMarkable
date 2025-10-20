@@ -55,6 +55,47 @@ export interface ElectronAPI {
   // 环境检查
   isElectron: boolean;
   isDev: boolean;
+  
+  // Microsoft认证辅助
+  openExternalAuth?: (url: string) => Promise<void>;
+  handleAuthCallback?: (url: string) => Promise<any>;
+  
+  // 开机自启动设置
+  setLoginItemSettings?: (settings: {
+    openAtLogin: boolean;
+    path?: string;
+  }) => Promise<boolean>;
+  getLoginItemSettings?: () => Promise<{
+    openAtLogin: boolean;
+    openAsHidden: boolean;
+    wasOpenedAtLogin: boolean;
+    wasOpenedAsHidden: boolean;
+    restoreState: boolean;
+  }>;
+  
+  // 桌面小组件控制 (新版)
+  widget?: {
+    toggle: (type: 'timer' | 'dailyStats', enabled: boolean) => void;
+    updateConfig: (type: 'timer' | 'dailyStats', config: any) => void;
+    setOpacity: (type: 'timer' | 'dailyStats', opacity: number) => void;
+    setAlwaysOnTop: (type: 'timer' | 'dailyStats', alwaysOnTop: boolean) => void;
+    close: (type: 'timer' | 'dailyStats') => void;
+    getConfig: (type: 'timer' | 'dailyStats') => Promise<any>;
+    savePosition: (type: 'timer' | 'dailyStats', x: number, y: number) => void;
+    saveSize: (type: 'timer' | 'dailyStats', width: number, height: number) => void;
+  };
+  
+  // 桌面悬浮窗口控制 (旧版，保留兼容性)
+  createWidget: () => void;
+  toggleWidget: () => void;
+  widgetClose: () => void;
+  widgetMinimize: () => void;
+  widgetLock: (isLocked: boolean) => void;
+  widgetOpacity: (opacity: number) => void;
+  widgetMove: (position: { x: number; y: number }) => void;
+  widgetResize: (size: { width: number; height: number }) => void;
+  on: (channel: string, callback: (...args: any[]) => void) => void;
+  send: (channel: string, data?: any) => void;
 }
 
 export interface ElectronConstants {

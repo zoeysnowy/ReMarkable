@@ -2539,6 +2539,7 @@ body {
   flex-direction: column;
   gap: 24px;
   background: transparent;
+  overflow: visible; /* 允许阴影溢出显示 */
   /* 与page-content保持一致的背景 */
 }
 
@@ -2943,4 +2944,46 @@ body {
   .stats-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* 🏷️ 计时器标签显示样式 - 层级标签 */
+.timer-tag-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.3rem;
+  margin-top: 12px;
+  padding: 8px 16px;
+  background: linear-grada(135deg, #f8f9fa, #e9ecef);
+  border-radius: 12px;
+  border-left: 4px solid currentColor;
+}
+
+.timer-tag-display .tag-emoji {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.timer-tag-display .tag-path {
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+}
+
+/* 编辑任务按钮样式 */
+.edit-task-btn {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-left: 12px;
+}
+
+.edit-task-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }

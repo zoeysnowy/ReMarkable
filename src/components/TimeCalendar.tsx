@@ -18,6 +18,7 @@ import type { EventObject } from '@toast-ui/calendar';
 import '@toast-ui/calendar/dist/toastui-calendar.css';
 import '../styles/calendar.css'; // 🎨 ReMarkable 自定义样式
 import { Event } from '../types';
+import { TagService } from '../services/TagService';
 import { MicrosoftCalendarService } from '../services/MicrosoftCalendarService';
 import { STORAGE_KEYS } from '../constants/storage';
 import { PersistentStorage, PERSISTENT_OPTIONS } from '../utils/persistentStorage';
@@ -507,14 +508,17 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     });
     const uniqueFiltered = Array.from(uniqueByIdMap.values());
 
-    console.log(`🎨 [USEMEMO] Filtered events: ${uniqueFiltered.length} (from ${events.length})`);
+    console.log(`🎨 [USEMEMO] Processing ${uniqueFiltered.length} events in ${(performance.now() - startTime).toFixed(1)}ms`);
 
+    const opacityStart = performance.now();
+    const opacity = calendarSettings.eventOpacity / 100;
+    console.log(`🎨 [透明度] 开始应用透明度: ${calendarSettings.eventOpacity}% (${opacity.toFixed(2)})`);
+    
     const calendarEventsWithStats = uniqueFiltered
       .map(event => {
         const calendarEvent = convertToCalendarEvent(event, hierarchicalTags);
         
         // 应用透明度
-        const opacity = calendarSettings.eventOpacity / 100;
         const originalColor = calendarEvent.backgroundColor || '#3788d8';
         
         return {
@@ -524,6 +528,8 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         } as typeof calendarEvent; // ✅ 保留完整类型
       });
     
+    console.log(`🎨 [透明度] 应用完成，耗时: ${(performance.now() - opacityStart).toFixed(2)}ms`);
+    
     // 📊 统计事件类型分布
     const categoryStats = calendarEventsWithStats.reduce((acc, evt) => {
       const cat = (evt.category as string) || 'unknown';
@@ -532,8 +538,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     }, {} as Record<string, number>);
     
     const endTime = performance.now();
-    console.log(`📊 [CATEGORY] Event types after filtering:`, categoryStats);
-    console.log(`⏱️ [USEMEMO] Computation took ${(endTime - startTime).toFixed(2)}ms`);
+    console.log(`⏱️ [USEMEMO] Total: ${(endTime - startTime).toFixed(1)}ms | Types:`, categoryStats);
     
     return calendarEventsWithStats;
   }, [events, hierarchicalTags, calendarSettings.visibleTags, calendarSettings.visibleCalendars, calendarSettings.eventOpacity]);
@@ -543,27 +548,58 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
 
   // ⚙️ 处理设置变更
   const handleSettingsChange = (newSettings: CalendarSettings) => {
-    console.log(`⚙️ [SETTINGS] Settings changed: tags=${newSettings.visibleTags.length}, calendars=${newSettings.visibleCalendars.length}`);
+    const startTime = performance.now();
+    console.log('⚙️ [设置变更] 收到新设置:', {
+      透明度: newSettings.eventOpacity,
+      可见标签数: newSettings.visibleTags.length,
+      可见日历数: newSettings.visibleCalendars.length
+    });
+    
+    const setStateStart = performance.now();
     setCalendarSettings(newSettings);
+    console.log(`⚙️ [设置变更] setCalendarSettings 调用完成，耗时: ${(performance.now() - setStateStart).toFixed(2)}ms`);
+    
+    const saveStart = performance.now();
     saveSettings(newSettings);
+    console.log(`⚙️ [设置变更] saveSettings 完成，耗时: ${(performance.now() - saveStart).toFixed(2)}ms`);
+    
+    const endTime = performance.now();
+    console.log(`⚙️ [设置变更] 总耗时: ${(endTime - startTime).toFixed(2)}ms`);
   };
 
   // 获取可用的标签和日历列表
   const getAvailableTagsForSettings = () => {
-    const regularTags = flattenTags(hierarchicalTags).map(tag => ({
+    console.log('🔍 [DEBUG] hierarchicalTags:', hierarchicalTags);
+    
+    // ✅ 检测数据是否已经是扁平结构（包含level字段且无children）
+    const isAlreadyFlat = hierarchicalTags.length > 0 && 
+                         hierarchicalTags[0].level !== undefined && 
+                         !hierarchicalTags[0].children;
+    
+    // 如果已经是扁平的，直接使用；否则调用flattenTags
+    const flatTags = isAlreadyFlat ? hierarchicalTags : flattenTags(hierarchicalTags);
+    console.log('🔍 [DEBUG] flatTags:', flatTags.map(t => ({ name: t.name, level: t.level })));
+    
+    const regularTags = flatTags.map(tag => ({
       id: tag.id,
       name: tag.displayName || tag.name,
       color: tag.color,
+      emoji: tag.emoji || '🏷️', // 添加 emoji
+      level: tag.level || 0,     // 添加层级
       calendarId: tag.calendarMapping?.calendarId // 🔗 包含日历映射信息，用于联动
     }));
+    
+    console.log('🔍 [DEBUG] regularTags:', regularTags.map(t => ({ name: t.name, level: t.level })));
     
     // ✅ 添加特殊选项："未定义标签"
     return [
       ...regularTags,
       {
         id: 'no-tag',
-        name: '📌 未定义标签',
+        name: '未定义标签',
         color: '#9e9e9e',
+        emoji: '📌',
+        level: 0,
         calendarId: undefined
       }
     ];
@@ -775,7 +811,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
    * 💾 保存编辑弹窗的更改
    */
   const handleSaveEventFromModal = async (updatedEvent: Event) => {
-    console.log('💾 [TimeCalendar] Saving event from modal:', updatedEvent.id);
+    console.log('💾 [TimeCalendar] Saving event:', updatedEvent.id, 'tags:', updatedEvent.tags);
     
     try {
       // 验证时间字段
@@ -791,6 +827,19 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         console.error('❌ [TimeCalendar] Invalid date values:', { startTime: updatedEvent.startTime, endTime: updatedEvent.endTime });
         return;
       }
+
+      // 🏷️ Bug Fix #4: 如果标题为空，使用标签名称（含emoji）作为标题
+      if (!updatedEvent.title || updatedEvent.title.trim() === '') {
+        const tagId = updatedEvent.tags?.[0] || updatedEvent.tagId;
+        if (tagId) {
+          const flatTags = TagService.getFlatTags();
+          const tag = flatTags.find(t => t.id === tagId);
+          if (tag) {
+            updatedEvent.title = tag.emoji ? `${tag.emoji} ${tag.name}` : tag.name;
+            console.log('🏷️ [TimeCalendar] Using tag name as title:', updatedEvent.title);
+          }
+        }
+      }
       
       // 更新 localStorage
       const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
@@ -805,25 +854,30 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       }
 
       const originalEvent = existingEvents[eventIndex];
+      const tagsChanged = JSON.stringify(originalEvent.tags) !== JSON.stringify(updatedEvent.tags);
+      if (tagsChanged) {
+        console.log('🏷️ [TimeCalendar] Tags changed:', originalEvent.tags, '→', updatedEvent.tags);
+      }
+      
       existingEvents[eventIndex] = updatedEvent;
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
       
       // 🎨 立即更新 UI - 触发 events state 更新
+      console.log('🎨 [TimeCalendar] Updating UI immediately');
       setEvents([...existingEvents]);
-      console.log('🎨 [TimeCalendar] UI updated immediately with new tag colors');
 
       // 🔄 同步到 Outlook
       const activeSyncManager = syncManager || (window as any).syncManager;
       if (activeSyncManager) {
         try {
           await activeSyncManager.recordLocalAction('update', 'event', updatedEvent.id, updatedEvent, originalEvent);
-          console.log('✅ [TimeCalendar] Event updated and synced from modal');
+          console.log('✅ [TimeCalendar] Event synced');
         } catch (error) {
-          console.error('❌ [TimeCalendar] Failed to sync updated event:', error);
+          console.error('❌ [TimeCalendar] Sync failed:', error);
         }
       }
     } catch (error) {
-      console.error('❌ [TimeCalendar] Failed to save event from modal:', error);
+      console.error('❌ [TimeCalendar] Save failed:', error);
     }
   };
 
@@ -1266,6 +1320,38 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           </div>
 
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            {/* ➕ 添加日程按钮 */}
+            <button 
+              className="toastui-calendar-add-button"
+              onClick={() => {
+                // 创建新事件，默认从当前时间开始，持续1小时
+                const now = new Date();
+                const end = new Date(now.getTime() + 60 * 60 * 1000); // 1小时后
+                
+                const newEvent: Event = {
+                  id: `local-${Date.now()}`,
+                  title: '',
+                  startTime: now.toISOString(),
+                  endTime: end.toISOString(),
+                  location: '',
+                  description: '',
+                  tags: [],
+                  tagId: '',
+                  calendarId: '',
+                  isAllDay: false,
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  syncStatus: 'pending'
+                };
+                
+                setEditingEvent(newEvent);
+                setShowEventEditModal(true);
+              }}
+              title="添加新日程"
+            >
+              ＋
+            </button>
+
             {/* ⚙️ 设置按钮 */}
             <button 
               className={`toastui-calendar-nav-button ${showSettings ? 'active' : ''}`}
@@ -1275,6 +1361,22 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
             >
               ⚙️ 设置
             </button>
+
+            {/* 📍 桌面悬浮窗口按钮 - 仅在Electron环境显示 */}
+            {window.electronAPI?.isElectron && (
+              <button 
+                className="toastui-calendar-nav-button"
+                onClick={() => {
+                  if (window.electronAPI) {
+                    window.electronAPI.toggleWidget();
+                  }
+                }}
+                title="打开桌面悬浮日历"
+                style={{ fontSize: '14px' }}
+              >
+                📍 悬浮窗
+              </button>
+            )}
 
             {/* 视图切换按钮 */}
           <div className="toastui-calendar-view-controls">
@@ -1334,6 +1436,56 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
             isAlways6Weeks: true,
             visibleEventCount: 4
           }}
+          template={{
+            // 月视图：星期名称行（日、一、二...）
+            monthDayName(model: any) {
+              return `<span class="toastui-calendar-template-monthDayName">${model.label}</span>`;
+            },
+            // 月视图：日期格子头部（显示日期数字）
+            monthGridHeader(model: any) {
+              // model.date 格式: "2025-10-20"
+              // model.ymd 格式: "20251020"
+              // model.isToday: 是否是今天
+              // 从 date 字符串中提取日期数字
+              const dateParts = model.date.split('-'); // ["2025", "10", "20"]
+              const dayNumber = parseInt(dateParts[2], 10); // 20
+              const month = model.month + 1; // 月份 0-based，需要+1
+              
+              // 添加今日样式
+              const todayClass = model.isToday ? 'is-today' : '';
+              const todayStyle = model.isToday ? 'style="color: #667eea; font-weight: 600;"' : '';
+              
+              // 为每月1号显示 "月/日" 格式
+              if (dayNumber === 1) {
+                return `<span class="toastui-calendar-template-monthGridHeader ${todayClass}" ${todayStyle}>${month}/${dayNumber}</span>`;
+              }
+              
+              // 其他日期只显示日期数字
+              return `<span class="toastui-calendar-template-monthGridHeader ${todayClass}" ${todayStyle}>${dayNumber}</span>`;
+            },
+            // 周视图：星期名称+日期行（Sun 19, Mon 20...）
+            weekDayName(model: any) {
+              const date = model.date; // 日期数字 (1-31)
+              const dateInstance = model.dateInstance; // TZDate 对象
+              const isToday = model.isToday; // 是否是今天
+              
+              // 添加今日样式
+              const todayClass = isToday ? 'is-today' : '';
+              const todayStyle = isToday ? 'style="color: #667eea; font-weight: 600;"' : '';
+              
+              if (dateInstance) {
+                const month = dateInstance.getMonth() + 1;
+                
+                // 为每月1号显示 "月/日" 格式
+                if (date === 1) {
+                  return `<span class="toastui-calendar-template-weekDayName ${todayClass}" ${todayStyle}>${month}/${date}</span>`;
+                }
+              }
+              
+              // 其他日期只显示日期数字
+              return `<span class="toastui-calendar-template-weekDayName ${todayClass}" ${todayStyle}>${date}</span>`;
+            }
+          }}
           theme={{
             common: {
               border: '1px solid #e9ecef',
@@ -1363,6 +1515,10 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
               },
               weekend: {
                 backgroundColor: '#fafbff'
+              },
+              today: {
+                color: '#667eea',
+                backgroundColor: 'rgba(102, 126, 234, 0.1)'
               },
               moreView: {
                 border: '1px solid #e9ecef',
@@ -1495,6 +1651,13 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         onClose={() => {
           setShowEventEditModal(false);
           setEditingEvent(null);
+          // 清除 TUI Calendar 的时间段选择状态
+          if (calendarRef.current) {
+            const instance = calendarRef.current.getInstance();
+            if (instance) {
+              instance.clearGridSelections();
+            }
+          }
         }}
         onSave={handleSaveEventFromModal}
         onDelete={handleDeleteEventFromModal}

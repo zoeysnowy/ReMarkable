@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { MicrosoftCalendarService } from './services/MicrosoftCalendarService';
 import { ActionBasedSyncManager } from './services/ActionBasedSyncManager';
 import { EventManager } from './components/EventManager';
@@ -223,6 +223,13 @@ function App() {
 
   // 页面状态管理
   const [currentPage, setCurrentPage] = useState<PageType>('home');
+  
+  // 添加页面切换的调试包装器
+  const handlePageChange = useCallback((page: PageType) => {
+    console.log(`📄 [App] Page change requested: ${currentPage} -> ${page}`);
+    setCurrentPage(page);
+    console.log(`📄 [App] Page state updated to: ${page}`);
+  }, [currentPage]);
 
   // 设置模态框状态
   const [showSettingsModal, setShowSettingsModal] = useState(false);

@@ -2071,16 +2071,50 @@ private getUserSettings(): any {
       case 'create':
         const newEvent = this.convertRemoteEventToLocal(action.data);
         
-        const existingEvent = localEvents.find((e: any) => 
-          e.externalId === action.data?.id || e.id === newEvent.id
-        );
+        console.log('🔍 [applyRemoteActionToLocal CREATE] Checking if event exists:', {
+          newEventId: newEvent.id,
+          newEventExternalId: newEvent.externalId,
+          newEventTitle: newEvent.title,
+          remoteDataId: action.data?.id
+        });
+        
+        // 🔧 提取纯 Outlook ID（去掉 outlook- 前缀）
+        const rawRemoteId = action.data?.id?.startsWith('outlook-') 
+          ? action.data.id.replace('outlook-', '') 
+          : action.data?.id;
+        
+        const existingEvent = localEvents.find((e: any) => {
+          // 匹配条件：
+          // 1. 本地事件的 externalId 等于远程事件的原始ID（去掉 outlook- 前缀）
+          // 2. 本地事件的 id 等于新事件的 id（格式：outlook-outlook-xxx）
+          const externalIdMatch = e.externalId === rawRemoteId;
+          const idMatch = e.id === newEvent.id;
+          
+          return externalIdMatch || idMatch;
+        });
+        
+        console.log('🔍 [applyRemoteActionToLocal CREATE] Existing event search result:', {
+          found: !!existingEvent,
+          existingEventId: existingEvent?.id,
+          existingEventExternalId: existingEvent?.externalId,
+          existingEventTitle: existingEvent?.title,
+          totalLocalEvents: localEvents.length,
+          searchCriteria: {
+            rawRemoteId: rawRemoteId,
+            externalIdMatch: action.data?.id,
+            idMatch: newEvent.id
+          }
+        });
         
         if (!existingEvent) {
+          console.log('✅ [applyRemoteActionToLocal CREATE] Creating new local event from remote');
           localEvents.push(newEvent);
           this.saveLocalEvents(localEvents);
           if (triggerUI) {
             this.triggerUIUpdate('create', newEvent);
           }
+        } else {
+          console.log('⏭️ [applyRemoteActionToLocal CREATE] Event already exists, skipping creation');
         }
         break;
 
@@ -2273,11 +2307,23 @@ private getUserSettings(): any {
   }
 
   private updateLocalEventExternalId(localEventId: string, externalId: string, description?: string) {
+    console.log('🔧 [updateLocalEventExternalId] Called with:', {
+      localEventId,
+      externalId,
+      hasDescription: !!description
+    });
+    
     try {
       const savedEvents = localStorage.getItem(STORAGE_KEYS.EVENTS);
       if (savedEvents) {
         const events = JSON.parse(savedEvents);
         const eventIndex = events.findIndex((event: any) => event.id === localEventId);
+        
+        console.log('🔍 [updateLocalEventExternalId] Event search result:', {
+          eventIndex,
+          totalEvents: events.length,
+          searchingForId: localEventId
+        });
         
         if (eventIndex !== -1) {
           // 🔍 检查是否有其他事件已经使用了这个 externalId（可能是迁移导致的重复）
@@ -2304,6 +2350,12 @@ private getUserSettings(): any {
               updatedAt: this.safeFormatDateTime(new Date()),
               description: description || events[adjustedIndex].description || ''
             };
+            
+            console.log('✅ [updateLocalEventExternalId] Updated event (after removing duplicate):', {
+              eventId: localEventId,
+              externalId,
+              eventTitle: events[adjustedIndex].title
+            });
           } else {
             events[eventIndex] = {
               ...events[eventIndex],
@@ -2313,6 +2365,13 @@ private getUserSettings(): any {
               updatedAt: this.safeFormatDateTime(new Date()),
               description: description || events[eventIndex].description || ''
             };
+            
+            console.log('✅ [updateLocalEventExternalId] Updated event:', {
+              eventId: localEventId,
+              externalId,
+              eventTitle: events[eventIndex].title,
+              beforeExternalId: events[eventIndex].externalId
+            });
           }
           
           localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));

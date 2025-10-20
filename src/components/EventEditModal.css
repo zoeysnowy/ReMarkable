@@ -24,7 +24,7 @@
 }
 
 .modal-header {
-  padding: 20px 24px;
+  padding: 12px 16px;
   border-bottom: 1px solid #e0e0e0;
   display: flex;
   justify-content: space-between;
@@ -59,18 +59,20 @@
 }
 
 .modal-body {
-  padding: 24px;
+  padding: 16px;
   overflow-y: auto;
   flex: 1;
+  position: relative;
+  z-index: auto;
 }
 
 .form-group {
-  margin-bottom: 20px;
+  margin-bottom: 8px;
 }
 
 .form-group label {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   font-weight: 500;
   color: #333;
   font-size: 14px;
@@ -81,7 +83,7 @@
 .form-group input[type="date"],
 .form-group textarea {
   width: 100%;
-  padding: 10px 12px;
+  padding: 6px 10px;
   border: 1px solid #ddd;
   border-radius: 6px;
   font-size: 14px;
@@ -105,24 +107,25 @@
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: 8px;
 }
 
 /* 标签选择器样式 */
 .tag-selector {
   position: relative;
+  z-index: 10;
 }
 
 .selected-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px;
+  gap: 6px;
+  padding: 6px;
   border: 1px solid #ddd;
   border-radius: 6px;
-  min-height: 44px;
+  min-height: 36px;
   background: #fafafa;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 .selected-tags .placeholder {
@@ -157,13 +160,18 @@
   transition: background-color 0.2s;
 }
 
+.tag-chip-emoji {
+  margin-right: 4px;
+  font-size: 14px;
+}
+
 .tag-chip button:hover {
   background-color: rgba(0, 0, 0, 0.2);
 }
 
 .tag-search {
   width: 100%;
-  padding: 10px 12px;
+  padding: 6px 10px;
   border: 1px solid #ddd;
   border-radius: 6px;
   font-size: 14px;
@@ -179,7 +187,7 @@
   border: 1px solid #ddd;
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
+  z-index: 10100;
 }
 
 .tag-dropdown-header {
@@ -248,6 +256,12 @@
   flex-shrink: 0;
 }
 
+.tag-emoji {
+  font-size: 16px;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
 .tag-name {
   font-weight: 500;
   color: #333;
@@ -272,21 +286,23 @@
 
 /* Modal Footer */
 .modal-footer {
-  padding: 16px 24px;
+  padding: 10px 16px;
   border-top: 1px solid #e0e0e0;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  position: relative;
+  z-index: 1;
 }
 
 .footer-left,
 .footer-right {
   display: flex;
-  gap: 12px;
+  gap: 8px;
 }
 
 .modal-footer button {
-  padding: 10px 20px;
+  padding: 6px 16px;
   border: none;
   border-radius: 6px;
   font-size: 14px;
@@ -325,4 +341,35 @@
 .save-button:disabled {
   background-color: #ccc;
   cursor: not-allowed;
+}
+
+/* 计时器时长提示 */
+.timer-duration-hint {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background-color: #f0f7ff;
+  border: 1px solid #d0e7ff;
+  border-radius: 6px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.timer-duration-hint .hint-icon {
+  font-size: 16px;
+  margin-right: 6px;
+}
+
+.timer-duration-hint .hint-text {
+  font-weight: 600;
+  color: #1e40af;
+  display: flex;
+  align-items: center;
+}
+
+.timer-duration-hint .hint-note {
+  font-size: 12px;
+  color: #64748b;
+  font-style: italic;
 }

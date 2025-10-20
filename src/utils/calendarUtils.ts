@@ -27,7 +27,6 @@ export function generateEventId(): string {
  */
 export function getTagColor(tagId: string | undefined, tags: any[]): string {
   if (!tagId) {
-    console.log('🎨 [getTagColor] No tagId provided, using default color');
     return '#3788d8'; // 默认颜色
   }
   
@@ -45,20 +44,6 @@ export function getTagColor(tagId: string | undefined, tags: any[]): string {
   const tag = findTag(tags);
   const color = tag?.color || '#3788d8';
   
-  if (tag) {
-    console.log(`🎨 [getTagColor] Found tag:`, {
-      tagId,
-      tagName: tag.name,
-      color
-    });
-  } else {
-    console.log(`🎨 [getTagColor] Tag not found:`, {
-      tagId,
-      availableTags: tags.map(t => ({ id: t.id, name: t.name })),
-      usingDefault: true
-    });
-  }
-  
   return color;
 }
 
@@ -69,41 +54,28 @@ export function getTagColor(tagId: string | undefined, tags: any[]): string {
  * @returns 颜色值
  */
 export function getEventColor(event: Event, tags: any[]): string {
-  // 优先使用 tags 数组（多标签模式）
+  // 优先级 1: 如果有 tags 数组，使用第一个标签的颜色
   if (event.tags && event.tags.length > 0) {
     const firstTagId = event.tags[0];
     const color = getTagColor(firstTagId, tags);
-    console.log(`🎨 [getEventColor] Event "${event.title}" - Using first tag color:`, {
-      tagId: firstTagId,
-      color
-    });
-    return color;
-  }
-  
-  // 兼容单标签模式
-  if (event.tagId) {
-    const color = getTagColor(event.tagId, tags);
-    console.log(`🎨 [getEventColor] Event "${event.title}" - Using tagId color:`, {
-      tagId: event.tagId,
-      color
-    });
-    return color;
-  }
-  
-  // 如果事件没有标签，尝试从日历分组获取颜色
-  if (event.calendarId) {
-    const calendarColor = getCalendarGroupColor(event.calendarId);
-    if (calendarColor) {
-      console.log(`🎨 [getEventColor] Event "${event.title}" - Using calendar color:`, {
-        calendarId: event.calendarId,
-        color: calendarColor
-      });
-      return calendarColor;
+    if (color && color !== '#3788d8') {
+      return color;
     }
   }
-  
-  // 默认颜色
-  console.log(`🎨 [getEventColor] Event "${event.title}" - Using default color`);
+
+  // 优先级 2: 如果有 tagId（向后兼容），使用它的颜色
+  if (event.tagId) {
+    const color = getTagColor(event.tagId, tags);
+    if (color && color !== '#3788d8') return color; // 只有找到非默认颜色才返回
+  }
+
+  // 优先级 3: 回退到事件关联的日历分组颜色
+  if (event.calendarId) {
+    const calendarColor = getCalendarGroupColor(event.calendarId);
+    if (calendarColor) return calendarColor;
+  }
+
+  // 优先级 4: 默认蓝色
   return '#3788d8';
 }
 

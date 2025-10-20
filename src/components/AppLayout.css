@@ -174,6 +174,53 @@
   white-space: nowrap;
 }
 
+/* 全局计时器紧凑模式 - 两行布局 */
+.global-timer-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: none; /* 移除边框 */
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 140px;
+}
+
+.global-timer-compact:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.15);
+}
+
+.global-timer-compact.paused:hover {
+  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.15);
+}
+
+.timer-tag-line {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timer-time-line {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  line-height: 1.2;
+  letter-spacing: 0.5px;
+  /* 使用首页timer的渐变色 */
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+
 .notification-btn,
 .setting-btn {
   width: 48px;
@@ -241,6 +288,8 @@
   flex-direction: column;
   position: relative;
   z-index: 900;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
 }
 
 .sidebar-nav {
@@ -263,6 +312,8 @@
   transition: all 0.2s ease;
   position: relative;
   min-height: 60px;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
 }
 
 .nav-item:hover {
@@ -358,16 +409,19 @@
 .status-content {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start; /* 改为左对齐，不再自适应 */
   height: 100%;
-  width: 100%; /* 占满整个状态栏宽度 */
-  padding: 0 16px; /* 左右各16px边距 */
+  width: 100%;
+  padding: 0; /* 移除默认padding，改用精确定位 */
+  position: relative; /* 用于绝对定位子元素 */
 }
 
 .sync-status {
   display: flex;
   align-items: center;
   gap: 6px;
+  position: absolute; /* 绝对定位，固定位置 */
+  left: 10px; /* 距离左边框10px */
 }
 
 .sync-icon {
@@ -388,6 +442,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  position: absolute; /* 绝对定位，固定在右侧 */
+  right: 16px; /* 距离右边框16px */
 }
 
 .outlook-connection {
@@ -438,9 +494,7 @@
     grid-template-columns: 98px 1fr;
   }
   
-  .status-content {
-    padding: 0 24px 0 120px;
-  }
+  /* 移除 status-content 的 padding 调整，因为使用绝对定位 */
 }
 
 @media (max-width: 768px) {
@@ -483,9 +537,7 @@
     height: 32px;
   }
   
-  .status-content {
-    padding: 0 20px 0 80px;
-  }
+  /* 移除 status-content 的 padding 调整，因为使用绝对定位 */
   
   .status-text {
     font-size: 14px;
@@ -542,9 +594,7 @@
     height: 28px;
   }
   
-  .status-content {
-    padding: 0 16px 0 66px;
-  }
+  /* 移除 status-content 的 padding 调整，因为使用绝对定位 */
   
   .status-text {
     font-size: 12px;

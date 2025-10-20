@@ -241,6 +241,35 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
+/* 添加日程按钮特殊样式 */
+.toastui-calendar-add-button {
+  padding: 4px 12px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--remarkable-primary) 0%, var(--remarkable-secondary) 100%);
+  color: white;
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: bold;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.toastui-calendar-add-button:hover {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.5);
+  filter: brightness(1.1);
+}
+
+.toastui-calendar-add-button:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.4);
+}
+
 .toastui-calendar-nav-button:hover {
   background: linear-gradient(135deg, var(--remarkable-primary) 0%, var(--remarkable-secondary) 100%);
   color: white;

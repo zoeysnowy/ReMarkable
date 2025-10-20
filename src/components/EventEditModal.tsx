@@ -20,6 +20,8 @@ interface EventEditModalProps {
   onSave: (updatedEvent: Event) => void;
   onDelete?: (eventId: string) => void;
   hierarchicalTags: any[];
+  onStartTimeChange?: (newStartTime: number) => void; // 用于全局计时器开始时间修改
+  globalTimer?: { startTime: number; elapsedTime: number; isRunning: boolean } | null; // 全局计时器状态
 }
 
 export const EventEditModal: React.FC<EventEditModalProps> = ({
@@ -28,7 +30,9 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
   onClose,
   onSave,
   onDelete,
-  hierarchicalTags
+  hierarchicalTags,
+  onStartTimeChange,
+  globalTimer
 }) => {
   const [formData, setFormData] = useState({
     title: '',
@@ -124,9 +128,24 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
   const handleSave = () => {
     if (!event) return;
 
+    // 如果没有输入标题，但选择了标签，使用第一个标签的emoji和名称作为标题
+    let finalTitle = formData.title;
+    if (!finalTitle.trim() && formData.tags.length > 0) {
+      const firstTag = getTagById(formData.tags[0]);
+      if (firstTag) {
+        finalTitle = `${firstTag.emoji || ''}${firstTag.name}`;
+        console.log('📝 [EventEditModal] Auto-filling title from tag:', {
+          tagId: firstTag.id,
+          tagName: firstTag.name,
+          emoji: firstTag.emoji,
+          generatedTitle: finalTitle
+        });
+      }
+    }
+
     const updatedEvent: Event = {
       ...event,
-      title: formData.title,
+      title: finalTitle,
       description: formData.description,
       startTime: new Date(formData.startTime).toISOString(),
       endTime: new Date(formData.endTime).toISOString(),
@@ -136,6 +155,14 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
       tagId: formData.tags.length > 0 ? formData.tags[0] : undefined, // 兼容旧的单标签字段
       updatedAt: new Date().toISOString(),
     };
+
+    console.log('💾 [EventEditModal] Saving event with tags:', {
+      eventId: event.id,
+      eventTitle: updatedEvent.title,
+      originalTags: event.tags,
+      newTags: updatedEvent.tags,
+      tagsChanged: JSON.stringify(event.tags) !== JSON.stringify(updatedEvent.tags)
+    });
 
     onSave(updatedEvent);
     onClose();
@@ -150,6 +177,15 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
   };
 
   const toggleTag = (tagId: string) => {
+    console.log('🏷️ [EventEditModal] Tag toggled:', {
+      tagId,
+      action: formData.tags.includes(tagId) ? 'removed' : 'added',
+      currentTags: formData.tags,
+      newTags: formData.tags.includes(tagId)
+        ? formData.tags.filter(id => id !== tagId)
+        : [...formData.tags, tagId]
+    });
+    
     setFormData(prev => ({
       ...prev,
       tags: prev.tags.includes(tagId)
@@ -160,6 +196,35 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
 
   const getTagById = (tagId: string) => {
     return flatTags.find(tag => tag.id === tagId);
+  };
+
+  // 处理开始时间修改（用于全局计时器）
+  const handleStartTimeEdit = (newStartTimeStr: string) => {
+    setFormData({ ...formData, startTime: newStartTimeStr });
+    
+    // 如果有全局计时器回调且当前事件是计时器事件，调用回调
+    if (onStartTimeChange && globalTimer) {
+      const newStartTime = new Date(newStartTimeStr).getTime();
+      if (!isNaN(newStartTime)) {
+        onStartTimeChange(newStartTime);
+      }
+    }
+  };
+
+  // 计算当前时长（用于显示）
+  const calculateDuration = () => {
+    if (!globalTimer) return null;
+    
+    const now = Date.now();
+    const totalElapsed = globalTimer.isRunning
+      ? globalTimer.elapsedTime + (now - globalTimer.startTime)
+      : globalTimer.elapsedTime;
+    
+    const hours = Math.floor(totalElapsed / 3600000);
+    const minutes = Math.floor((totalElapsed % 3600000) / 60000);
+    const seconds = Math.floor((totalElapsed % 60000) / 1000);
+    
+    return { hours, minutes, seconds, totalElapsed };
   };
 
   if (!isOpen || !event) return null;
@@ -203,9 +268,21 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
               <input
                 type={formData.isAllDay ? 'date' : 'datetime-local'}
                 value={formData.startTime}
-                onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                onChange={(e) => globalTimer ? handleStartTimeEdit(e.target.value) : setFormData({ ...formData, startTime: e.target.value })}
                 required
               />
+              {globalTimer && (() => {
+                const duration = calculateDuration();
+                return duration && (
+                  <div className="timer-duration-hint">
+                    <span className="hint-icon">⏱️</span>
+                    <span className="hint-text">
+                      当前时长: {duration.hours.toString().padStart(2, '0')}:{duration.minutes.toString().padStart(2, '0')}:{duration.seconds.toString().padStart(2, '0')}
+                    </span>
+                    <span className="hint-note">修改开始时间会自动调整计时时长</span>
+                  </div>
+                );
+              })()}
             </div>
             <div className="form-group">
               <label>结束时间 *</label>
@@ -228,6 +305,7 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
                   const tag = getTagById(tagId);
                   return tag ? (
                     <span key={tagId} className="tag-chip" style={{ backgroundColor: tag.color }}>
+                      {tag.emoji && <span className="tag-chip-emoji">{tag.emoji}</span>}
                       {tag.name}
                       <button onClick={() => toggleTag(tagId)}>✕</button>
                     </span>
@@ -277,6 +355,7 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
                             readOnly
                           />
                           <span className="tag-color" style={{ backgroundColor: tag.color }}></span>
+                          {tag.emoji && <span className="tag-emoji">{tag.emoji}</span>}
                           <span className="tag-name">{tag.name}</span>
                           <span className="tag-path">{tag.path}</span>
                         </div>
@@ -325,7 +404,11 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
             <button className="cancel-button" onClick={onClose}>
               取消
             </button>
-            <button className="save-button" onClick={handleSave} disabled={!formData.title}>
+            <button 
+              className="save-button" 
+              onClick={handleSave} 
+              disabled={!formData.title && formData.tags.length === 0}
+            >
               保存
             </button>
           </div>

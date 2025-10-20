@@ -10,9 +10,21 @@ import { icons } from '../assets/icons';
 // 标签数据持久化工具函数
 const saveTagsToStorage = (tags: ExtendedHierarchicalTag[]) => {
   try {
+    console.log('💾 [FigmaTagManagerV3] Saving tags to localStorage:', {
+      key: STORAGE_KEYS.HIERARCHICAL_TAGS,
+      tagsCount: tags.length,
+      tags: tags.map(t => ({ id: t.id, name: t.name, level: t.level, parentId: t.parentId }))
+    });
     PersistentStorage.setItem(STORAGE_KEYS.HIERARCHICAL_TAGS, tags, PERSISTENT_OPTIONS.TAGS);
+    
+    // 验证保存成功
+    const saved = PersistentStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS, PERSISTENT_OPTIONS.TAGS);
+    console.log('✅ [FigmaTagManagerV3] Verify save successful:', {
+      savedTagsCount: saved ? saved.length : 0,
+      matchesOriginal: saved && saved.length === tags.length
+    });
   } catch (error) {
-    console.error('Failed to save tags to localStorage:', error);
+    console.error('❌ [FigmaTagManagerV3] Failed to save tags to localStorage:', error);
   }
 };
 
@@ -75,6 +87,7 @@ interface FigmaTagManagerProps {
   } | null;
   onTimerStart?: (tagId: string) => void;
   onTimerPause?: () => void;
+  onTimerResume?: () => void;
   onTimerStop?: () => void;
   onTagsChange?: (tags: ExtendedHierarchicalTag[]) => void; // 标签变化回调
 }
@@ -86,6 +99,7 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
   globalTimer,
   onTimerStart,
   onTimerPause,
+  onTimerResume,
   onTimerStop,
   onTagsChange
 }) => {
@@ -191,6 +205,25 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
       saveCheckinCountsToStorage(checkinCounts);
     }
   }, [checkinCounts]);
+
+  // 强制更新以显示实时计时
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    
+    if (globalTimer?.isRunning) {
+      // 每秒强制更新一次
+      interval = setInterval(() => {
+        forceUpdate(prev => prev + 1);
+      }, 1000);
+    }
+    
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [globalTimer?.isRunning]);
 
   // 监听全局焦点事件的useEffect - 简化版本，仅用于调试
   useEffect(() => {
@@ -402,7 +435,31 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
     
     setTags(prevTags => {
       let newPosition: number;
+      let newParentId: string | undefined = undefined;
       let updatedTags: ExtendedHierarchicalTag[];
+      
+      // 如果是子标签(level > 0)，需要找到父标签
+      if (level > 0) {
+        const sortedTags = [...prevTags].sort((a, b) => (a.position || 0) - (b.position || 0));
+        const insertIndex = afterTagId ? 
+          sortedTags.findIndex(tag => tag.id === afterTagId) + 1 : 
+          sortedTags.length;
+        
+        // 向前查找第一个层级比当前level小的标签作为父标签
+        for (let i = insertIndex - 1; i >= 0; i--) {
+          if ((sortedTags[i].level || 0) < level) {
+            newParentId = sortedTags[i].id;
+            console.log('🎯 [createNewTag] Found parent for new tag:', {
+              newTagId: newId,
+              newTagLevel: level,
+              parentId: newParentId,
+              parentName: sortedTags[i].name,
+              parentLevel: sortedTags[i].level
+            });
+            break;
+          }
+        }
+      }
       
       if (afterTagId) {
         // 找到要插入位置的标签，基于position值而不是数组索引
@@ -423,6 +480,7 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
           color: '#3b82f6',
           emoji: '😀',
           level,
+          parentId: newParentId, // 设置父标签ID
           position: newPosition,
           dailyAvgCheckins: 0,
           dailyAvgDuration: 150,
@@ -447,6 +505,7 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
           color: '#3b82f6',
           emoji: '😀',
           level,
+          parentId: newParentId, // 设置父标签ID
           position: newPosition,
           dailyAvgCheckins: 0,
           dailyAvgDuration: 150,
@@ -614,11 +673,33 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
       if (e.shiftKey) {
         // Shift+Tab: 减少缩进
         if (currentLevel > 0) {
-          setTags(prevTags =>
-            prevTags.map(tag =>
-              tag.id === tagId ? { ...tag, level: Math.max(0, currentLevel - 1) } : tag
-            )
-          );
+          setTags(prevTags => {
+            const sortedTags = [...prevTags].sort((a, b) => (a.position || 0) - (b.position || 0));
+            const currentIndex = sortedTags.findIndex(tag => tag.id === tagId);
+            const newLevel = Math.max(0, currentLevel - 1);
+            
+            // 找到新的父标签：向前查找第一个层级比新层级小的标签
+            let newParentId: string | undefined = undefined;
+            
+            if (newLevel > 0) {
+              for (let i = currentIndex - 1; i >= 0; i--) {
+                if ((sortedTags[i].level || 0) < newLevel) {
+                  newParentId = sortedTags[i].id;
+                  console.log('🎯 Found parent for decreased indent:', {
+                    childId: tagId,
+                    parentId: newParentId,
+                    parentName: sortedTags[i].name,
+                    newLevel: newLevel
+                  });
+                  break;
+                }
+              }
+            }
+            
+            return prevTags.map(tag =>
+              tag.id === tagId ? { ...tag, level: newLevel, parentId: newParentId } : tag
+            );
+          });
         }
       } else {
         // Tab: 增加缩进（智能层级限制）
@@ -644,11 +725,31 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
         }
         
         if (currentLevel < maxAllowedLevel) {
-          setTags(prevTags =>
-            prevTags.map(tag =>
-              tag.id === tagId ? { ...tag, level: currentLevel + 1 } : tag
-            )
-          );
+          setTags(prevTags => {
+            const sortedTags = [...prevTags].sort((a, b) => (a.position || 0) - (b.position || 0));
+            const currentIndex = sortedTags.findIndex(tag => tag.id === tagId);
+            
+            // 找到新的父标签：向前查找第一个层级比当前新层级小的标签
+            let newParentId: string | undefined = undefined;
+            const newLevel = currentLevel + 1;
+            
+            for (let i = currentIndex - 1; i >= 0; i--) {
+              if ((sortedTags[i].level || 0) < newLevel) {
+                newParentId = sortedTags[i].id;
+                console.log('🎯 Found parent for increased indent:', {
+                  childId: tagId,
+                  parentId: newParentId,
+                  parentName: sortedTags[i].name,
+                  newLevel: newLevel
+                });
+                break;
+              }
+            }
+            
+            return prevTags.map(tag =>
+              tag.id === tagId ? { ...tag, level: newLevel, parentId: newParentId } : tag
+            );
+          });
         } else {
           console.log('🚫 达到最大层级限制，无法继续缩进');
         }
@@ -1097,8 +1198,9 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
                   gap: '4px',
                   fontSize: '16px',
                   color: '#000000',
-                  minWidth: '80px',
-                  justifyContent: 'center'
+                  width: '95px', // 固定宽度，防止漂移
+                  justifyContent: 'center',
+                  flexShrink: 0 // 防止被压缩
                 }}>
                   <div
                     onClick={() => handleCheckin(tag.id)}
@@ -1148,9 +1250,11 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
                   gap: '4px',
                   fontSize: '16px',
                   color: '#000000',
-                  minWidth: '80px',
-                  justifyContent: 'center'
+                  width: '110px', // 固定宽度，防止漂移
+                  justifyContent: 'flex-start', // 左对齐
+                  flexShrink: 0 // 防止被压缩
                 }}>
+                  {/* 计时按钮 - 固定在左侧 */}
                   <div
                     style={{
                       width: '25px',
@@ -1159,21 +1263,59 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
                       alignItems: 'center',
                       justifyContent: 'center',
                       cursor: 'pointer',
-                      transition: 'all 0.2s'
+                      flexShrink: 0 // 固定大小，不会缩放
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                    onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                    title="开始计时"
+                    onClick={() => {
+                      // 如果当前标签正在计时，则暂停/继续
+                      if (globalTimer?.tagId === tag.id) {
+                        if (globalTimer.isRunning) {
+                          onTimerPause?.();
+                        } else {
+                          onTimerResume?.();
+                        }
+                      } else {
+                        // 开始新的计时
+                        onTimerStart?.(tag.id);
+                      }
+                    }}
+                    title={globalTimer?.tagId === tag.id ? (globalTimer.isRunning ? "暂停计时" : "继续计时") : "开始计时"}
                   >
                     <img 
                       src={icons.timerColor} 
                       alt="计时" 
                       width="25" 
                       height="25"
+                      style={{
+                        transition: 'transform 0.2s',
+                        display: 'block'
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget as HTMLImageElement).style.transform = 'scale(1.1)'}
+                      onMouseLeave={(e) => (e.currentTarget as HTMLImageElement).style.transform = 'scale(1)'}
                     />
                   </div>
-                  <span>
-                    {((tag.dailyAvgDuration || 150) / 60).toFixed(1)}h/天
+                  
+                  {/* 计时文本 - 固定宽度，防止按钮移动 */}
+                  <span style={{ 
+                    width: '80px', // 固定宽度，文本变化不影响按钮位置
+                    textAlign: 'left',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    {/* 如果当前标签正在计时，显示实时计时；否则显示平均时长 */}
+                    {globalTimer?.tagId === tag.id ? (() => {
+                      const elapsed = globalTimer.elapsedTime + 
+                        (globalTimer.isRunning ? (Date.now() - globalTimer.startTime) : 0);
+                      const totalSeconds = Math.floor(elapsed / 1000);
+                      const hours = Math.floor(totalSeconds / 3600);
+                      const minutes = Math.floor((totalSeconds % 3600) / 60);
+                      const seconds = totalSeconds % 60;
+                      
+                      if (hours > 0) {
+                        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                      }
+                      return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                    })() : `${((tag.dailyAvgDuration || 150) / 60).toFixed(1)}h/天`}
                   </span>
                 </div>
               </div>

@@ -15,6 +15,8 @@ interface AppLayoutProps {
     isRunning: boolean;
     tagId: string;
     tagName: string;
+    tagEmoji?: string;
+    tagColor?: string;
     startTime: number;
     elapsedTime: number;
     isPaused: boolean;
@@ -22,6 +24,7 @@ interface AppLayoutProps {
   onTimerClick?: () => void;
   clickTrackerEnabled?: boolean;
   onClickTrackerToggle?: () => void;
+  onSettingsClick?: () => void;
 }
 
 // Header 组件
@@ -30,21 +33,31 @@ interface HeaderProps {
     isRunning: boolean;
     tagId: string;
     tagName: string;
+    tagEmoji?: string;
+    tagColor?: string;
     startTime: number;
     elapsedTime: number;
     isPaused: boolean;
   } | null;
   onTimerClick?: () => void;
+  onSettingsClick?: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ globalTimer, onTimerClick }) => {
+const Header: React.FC<HeaderProps> = ({ globalTimer, onTimerClick, onSettingsClick }) => {
   
   // 格式化计时器显示
   const formatTimerDisplay = (milliseconds: number): string => {
-    const hours = Math.floor(milliseconds / (1000 * 60 * 60));
-    const minutes = Math.floor((milliseconds % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((milliseconds % (1000 * 60)) / 1000);
+    const totalSeconds = Math.floor(milliseconds / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
     
+    // 如果没有到小时，只显示 MM:SS
+    if (hours === 0) {
+      return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
+    
+    // 到小时了显示 HH:MM:SS
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
@@ -71,23 +84,28 @@ const Header: React.FC<HeaderProps> = ({ globalTimer, onTimerClick }) => {
 
         {/* 右侧工具栏 */}
         <div className="header-tools">
-          {/* 全局计时器显示 */}
+          {/* 全局计时器显示 - 紧凑两行布局 */}
           {globalTimer && (
             <div 
-              className={`global-timer ${globalTimer.isRunning ? 'running' : 'paused'}`}
+              className={`global-timer-compact ${globalTimer.isRunning ? 'running' : 'paused'}`}
               onClick={onTimerClick}
             >
-              <div className="timer-indicator">
-                {globalTimer.isRunning ? '🟢' : '⏸️'}
-              </div>
-              <div className="timer-info">
-                <div className="timer-text">专注中</div>
-                <div className="timer-display">
-                  {formatTimerDisplay(getCurrentElapsed())}
-                </div>
-              </div>
-              <div className="timer-tag">
+              {/* 第一行：标签（使用标签颜色） */}
+              <div 
+                className="timer-tag-line"
+                style={{ 
+                  color: globalTimer.tagColor || '#8b5cf6'
+                }}
+              >
+                {globalTimer.tagEmoji ? `${globalTimer.tagEmoji} ` : ''}
                 {globalTimer.tagName}
+              </div>
+              
+              {/* 第二行：计时（使用首页timer渐变色） */}
+              <div 
+                className="timer-time-line"
+              >
+                {formatTimerDisplay(getCurrentElapsed())}
               </div>
             </div>
           )}
@@ -103,7 +121,7 @@ const Header: React.FC<HeaderProps> = ({ globalTimer, onTimerClick }) => {
           </div>
 
           {/* 设置 */}
-          <div className="setting-btn">
+          <div className="setting-btn" onClick={onSettingsClick} style={{ cursor: 'pointer' }}>
             <img 
               src={icons.setting} 
               alt="Settings"
@@ -293,12 +311,17 @@ const AppLayout: React.FC<AppLayoutProps> = ({
   globalTimer, 
   onTimerClick,
   clickTrackerEnabled,
-  onClickTrackerToggle
+  onClickTrackerToggle,
+  onSettingsClick
 }) => {
   return (
     <div className="app-layout">
       {/* Header */}
-      <Header globalTimer={globalTimer} onTimerClick={onTimerClick} />
+      <Header 
+        globalTimer={globalTimer} 
+        onTimerClick={onTimerClick}
+        onSettingsClick={onSettingsClick}
+      />
       
       {/* 侧边导航栏 */}
       <Sidebar 

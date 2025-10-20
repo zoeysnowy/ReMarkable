@@ -12,7 +12,7 @@
 
 .page-content {
   flex: 1;
-  overflow: auto;
+  overflow: visible; /* 改为visible以允许阴影显示 */
   /* 确保内容区域能填充剩余空间 */
   min-height: 0;
 }
