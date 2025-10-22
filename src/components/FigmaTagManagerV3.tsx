@@ -187,6 +187,8 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
     const savedTags = loadTagsFromStorage();
     const savedCounts = loadCheckinCountsFromStorage();
     
+    console.log('📦 [Storage] Raw tags from localStorage:', savedTags);
+    
     // 迁移旧标签：确保所有标签都有level和parentId属性
     const migratedTags = savedTags.map(tag => ({
       ...tag,
@@ -1097,7 +1099,20 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
         <div style={{ marginTop: '60px' }}>
           {tags
             .sort((a, b) => (a.position || 0) - (b.position || 0))
-            .map((tag, index) => (
+            .map((tag, index) => {
+              // 调试：打印每个标签的level
+              if (index === 0) {
+                console.log('🎨 [Render] Tags being rendered:', tags
+                  .sort((a, b) => (a.position || 0) - (b.position || 0))
+                  .map(t => ({ 
+                    id: t.id.substring(0, 8), 
+                    name: t.name, 
+                    level: t.level,
+                    padding: `${(t.level || 0) * 20}px`
+                  }))
+                );
+              }
+              return (
             <div key={tag.id} 
               style={{
                 display: 'flex',
@@ -1388,7 +1403,8 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
               </div>
               </div>
             </div>
-          ))}
+          );
+          })}
 
           {/* 新标签创建区域 */}
           <div 
