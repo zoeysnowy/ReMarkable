@@ -54,6 +54,10 @@ const WidgetPage_v3: React.FC = () => {
     minTime: number;
   }>({ moveCount: 0, totalTime: 0, maxTime: 0, minTime: Infinity });
   
+  // ⚡ 新增：IPC忙碌标志和待发送delta累积
+  const ipcBusyRef = useRef<boolean>(false);
+  const pendingMoveRef = useRef<{ x: number; y: number } | null>(null);
+  
   // 调整大小光标悬停状态（保持3秒）
   const [isResizeHovering, setIsResizeHovering] = useState(false);
   const resizeHoverTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -308,36 +312,64 @@ const WidgetPage_v3: React.FC = () => {
     }
     
     const now = Date.now();
-    if (now - dragThrottleRef.current < 16) return; // 优化节流：16ms (60fps)
     const timeSinceLastMove = now - dragThrottleRef.current;
-    dragThrottleRef.current = now;
     
     e.preventDefault();
     e.stopPropagation();
     
-    // 🔧 关键修复：计算相对于上一次位置的增量，而不是相对于拖动开始位置
+    // 🔧 计算相对于上一次位置的增量
     const deltaX = e.screenX - dragStartRef.current.x;
     const deltaY = e.screenY - dragStartRef.current.y;
     
-    // 🔧 立即更新参考点为当前位置，避免累积效应
+    // 🔧 立即更新参考点为当前位置
     dragStartRef.current = { x: e.screenX, y: e.screenY };
+    
+    // ⚡ 关键优化：累积delta,避免IPC请求排队
+    if (!pendingMoveRef.current) {
+      pendingMoveRef.current = { x: 0, y: 0 };
+    }
+    pendingMoveRef.current.x += deltaX;
+    pendingMoveRef.current.y += deltaY;
     
     console.log('🚚 [Renderer] 拖动中:', { 
       currentScreen: { x: e.screenX, y: e.screenY },
       delta: { x: deltaX, y: deltaY },
+      pending: pendingMoveRef.current,
       timeSinceLastMove: `${timeSinceLastMove}ms`,
-      fps: Math.round(1000 / timeSinceLastMove)
+      fps: Math.round(1000 / timeSinceLastMove),
+      ipcBusy: ipcBusyRef.current
     });
     
-    if (Math.abs(deltaX) > 0 || Math.abs(deltaY) > 0) {
+    // ⚡ 关键优化：如果上一个IPC还在处理,跳过本次发送
+    if (ipcBusyRef.current) {
+      console.log('⏭️ [Renderer] IPC忙碌中,跳过本次请求');
+      dragThrottleRef.current = now;
+      return;
+    }
+    
+    // ⚡ 节流：至少等待16ms (60fps)
+    if (now - dragThrottleRef.current < 16) {
+      return;
+    }
+    dragThrottleRef.current = now;
+    
+    // 🚀 发送累积的delta
+    const moveX = pendingMoveRef.current.x;
+    const moveY = pendingMoveRef.current.y;
+    
+    if (Math.abs(moveX) > 0 || Math.abs(moveY) > 0) {
+      pendingMoveRef.current = { x: 0, y: 0 }; // 重置累积
+      
       if (window.electronAPI?.widgetMove) {
         try {
           const ipcStartTime = performance.now();
+          ipcBusyRef.current = true; // 标记IPC忙碌
           
           // � 不等待返回，立即发送下一个移动
-          window.electronAPI.widgetMove({ x: deltaX, y: deltaY }).then((result) => {
+          window.electronAPI.widgetMove({ x: moveX, y: moveY }).then((result) => {
             const ipcEndTime = performance.now();
             const ipcDuration = ipcEndTime - ipcStartTime;
+            ipcBusyRef.current = false; // 释放标志
             
             // 更新性能统计
             perfRef.current.moveCount++;
@@ -347,29 +379,9 @@ const WidgetPage_v3: React.FC = () => {
             
             const avgTime = perfRef.current.totalTime / perfRef.current.moveCount;
             
-            // 🔑 关键修复：使用 actualDelta 补偿鼠标漂移
-            if (result.actualDelta && dragStartRef.current) {
-              const deltaMatch = result.actualDelta.x === deltaX && result.actualDelta.y === deltaY;
-              if (!deltaMatch) {
-                console.log('🔧 [Renderer] 补偿定位误差:', {
-                  requested: { x: deltaX, y: deltaY },
-                  actual: result.actualDelta,
-                  correction: {
-                    x: result.actualDelta.x - deltaX,
-                    y: result.actualDelta.y - deltaY
-                  }
-                });
-              }
-              
-              // 根据实际移动距离调整参考点，防止误差累积
-              dragStartRef.current = {
-                x: dragStartRef.current.x + result.actualDelta.x,
-                y: dragStartRef.current.y + result.actualDelta.y
-              };
-            }
-            
-            console.log('✅ [Renderer] widgetMove 返回:', result);
-            console.log('⏱️ [Renderer] IPC 性能:', {
+            console.log('✅ [Renderer] widgetMove 完成:', {
+              sent: { x: moveX, y: moveY },
+              result,
               duration: `${ipcDuration.toFixed(2)}ms`,
               avg: `${avgTime.toFixed(2)}ms`,
               min: `${perfRef.current.minTime.toFixed(2)}ms`,
@@ -378,10 +390,12 @@ const WidgetPage_v3: React.FC = () => {
             });
           }).catch((error) => {
             console.error('❌ [Renderer] widgetMove 失败:', error);
+            ipcBusyRef.current = false; // 出错时也要释放
           });
           
         } catch (error) {
           console.error('❌ [Renderer] widgetMove 异常:', error);
+          ipcBusyRef.current = false;
         }
       } else {
         console.error('❌ [Renderer] widgetMove API 不存在');
@@ -407,6 +421,10 @@ const WidgetPage_v3: React.FC = () => {
     
     setIsDragging(false);
     dragStartRef.current = null;
+    
+    // ⚡ 重置IPC状态
+    ipcBusyRef.current = false;
+    pendingMoveRef.current = null;
     
     // 通知主进程拖动结束，重置目标尺寸
     if ((window.electronAPI as any)?.widgetDragEnd) {
