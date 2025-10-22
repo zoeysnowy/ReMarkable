@@ -100,7 +100,11 @@ export interface ElectronAPI {
   widgetMinimize: () => Promise<{ success: boolean }>;
   widgetLock: (isLocked: boolean) => Promise<{ success: boolean; locked: boolean }>;
   widgetOpacity: (opacity: number) => Promise<{ success: boolean; opacity: number }>;
-  widgetMove: (position: { x: number; y: number }) => Promise<{ success: boolean }>;
+  widgetMove: (position: { x: number; y: number }) => Promise<{ 
+    success: boolean; 
+    position?: { x: number; y: number };
+    actualDelta?: { x: number; y: number };
+  }>;
   widgetResize: (size: { width: number; height: number }) => Promise<{ success: boolean; size: { width: number; height: number } }>;
   widgetFullscreen: (isFullscreen: boolean) => Promise<{ success: boolean; isFullscreen: boolean }>;
   on: (channel: string, callback: (...args: any[]) => void) => void;
