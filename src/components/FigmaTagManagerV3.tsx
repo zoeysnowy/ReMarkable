@@ -187,8 +187,20 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
     const savedTags = loadTagsFromStorage();
     const savedCounts = loadCheckinCountsFromStorage();
     
+    // 迁移旧标签：确保所有标签都有level和parentId属性
+    const migratedTags = savedTags.map(tag => ({
+      ...tag,
+      level: tag.level !== undefined ? tag.level : 0, // 如果没有level，默认为0（顶级标签）
+      parentId: tag.parentId !== undefined ? tag.parentId : undefined
+    }));
+    
+    console.log('🔄 [Migration] Migrated tags with level properties:', {
+      original: savedTags.map(t => ({ id: t.id, name: t.name, level: t.level })),
+      migrated: migratedTags.map(t => ({ id: t.id, name: t.name, level: t.level }))
+    });
+    
     // 如果有保存的数据，使用它们，否则初始化为空
-    setTags(savedTags);
+    setTags(migratedTags);
     setCheckinCounts(savedCounts);
   }, []);
 
@@ -251,8 +263,14 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
 
   // 通知父组件标签变�?
   useEffect(() => {
+    console.log('🏷️ [FigmaTagManager] Tags changed, current count:', tags.length);
     if (onTagsChange && tags.length > 0) {
+      console.log('🏷️ [FigmaTagManager] Calling onTagsChange with tags:', tags.map(t => ({id: t.id, name: t.name})));
       onTagsChange(tags);
+    } else if (onTagsChange && tags.length === 0) {
+      console.log('🏷️ [FigmaTagManager] Tags array is empty, not calling onTagsChange');
+    } else if (!onTagsChange) {
+      console.warn('⚠️ [FigmaTagManager] onTagsChange callback not provided!');
     }
   }, [tags, onTagsChange]);
 
@@ -470,9 +488,27 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
         }
         
         const afterPosition = afterTag.position || 0;
-        newPosition = afterPosition + 1;
         
-        console.log('🎯 Creating new tag after position:', afterPosition, 'new position:', newPosition);
+        // 计算正确的插入位置：找到当前标签后面第一个可插入的位置
+        const sortedTags = [...prevTags].sort((a, b) => (a.position || 0) - (b.position || 0));
+        const afterIndex = sortedTags.findIndex(tag => tag.id === afterTagId);
+        
+        // 紧跟着当前标签后面插入
+        let insertPosition = afterPosition + 0.5;
+        
+        // 如果有下一个标签，确保position在两者之间
+        if (afterIndex >= 0 && afterIndex < sortedTags.length - 1) {
+          const nextTag = sortedTags[afterIndex + 1];
+          const nextPosition = nextTag.position || 0;
+          insertPosition = (afterPosition + nextPosition) / 2;
+        } else {
+          // 如果是最后一个标签，直接在后面添加
+          insertPosition = afterPosition + 1;
+        }
+        
+        newPosition = insertPosition;
+        
+        console.log('🎯 Creating new tag after tagId:', afterTagId, 'at position:', newPosition);
         
         const newTag: ExtendedHierarchicalTag = {
           id: newId,
@@ -487,15 +523,18 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
           isRecurring: false
         };
         
-        // 所有position >= newPosition的标签都需要+1
-        updatedTags = [
-          ...prevTags.map(tag => 
-            tag.position !== undefined && tag.position >= newPosition 
-              ? { ...tag, position: tag.position + 1 }
-              : tag
-          ),
-          newTag
-        ];
+        // 如果插入位置使用了小数，需要重新整理所有标签的position
+        const needsReordering = !Number.isInteger(newPosition);
+        if (needsReordering) {
+          const allTags = [...prevTags, newTag].sort((a, b) => (a.position || 0) - (b.position || 0));
+          updatedTags = allTags.map((tag, index) => ({
+            ...tag,
+            position: index
+          }));
+          console.log('🔄 Reordered all tag positions after insertion');
+        } else {
+          updatedTags = [...prevTags, newTag];
+        }
       } else {
         newPosition = prevTags.length;
         
@@ -602,7 +641,25 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
     }
     
     setIsCreatingNewTag(true); // 进入创建模式
-    createNewTag(0);
+    
+    // 找到所有标签中position最大的标签，在其后面创建新的一级标签
+    const sortedTags = [...tags].sort((a, b) => (a.position || 0) - (b.position || 0));
+    const lastTag = sortedTags[sortedTags.length - 1];
+    const lastTagId = lastTag?.id;
+    
+    console.log('🎯 [NewTagActivation] Creating new tag after last tag:', {
+      lastTagId,
+      lastTagName: lastTag?.name,
+      lastTagPosition: lastTag?.position,
+      newTagLevel: 0
+    });
+    
+    // 如果有标签，在最后一个标签后面创建；否则直接创建
+    if (lastTagId) {
+      createNewTag(0, lastTagId);
+    } else {
+      createNewTag(0);
+    }
   };
 
   // 取消新标签创建
@@ -1071,7 +1128,7 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
                   style={{ 
                     color: tag.color,
                     fontSize: '16px',
-                    fontWeight: tag.level === 0 ? 'bold' : 'normal',
+                    fontWeight: (tag.level || 0) === 0 ? 'bold' : 'normal',
                     width: '24px',
                     textAlign: 'center',
                     cursor: 'pointer',
@@ -1096,15 +1153,25 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
                   style={{
                     fontSize: '16px',
                     width: '24px',
+                    height: '24px',
                     textAlign: 'center',
                     cursor: 'pointer',
                     padding: '2px',
                     borderRadius: '4px',
-                    transition: 'background-color 0.2s',
-                    marginLeft: '4px'
+                    transition: 'all 0.2s',
+                    marginLeft: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#f1f5f9';
+                    e.currentTarget.style.transform = 'scale(1.05)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }}
                   title="点击修改表情"
                 >
                   {tag.emoji}
@@ -1116,7 +1183,7 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
                   style={{ 
                     color: tag.color,
                     fontSize: '16px',
-                    fontWeight: tag.level === 0 ? 'bold' : 'normal',
+                    fontWeight: (tag.level || 0) === 0 ? 'bold' : 'normal',
                     marginLeft: '8px',
                     outline: 'none',
                     border: 'none',
@@ -1422,7 +1489,25 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
                   if (!isCreatingNewTag) {
                     console.log('🎯 Direct activation from click');
                     setIsCreatingNewTag(true); // 直接进入创建模式
-                    createNewTag(0);
+                    
+                    // 找到所有标签中position最大的标签，在其后面创建新的一级标签
+                    const sortedTags = [...tags].sort((a, b) => (a.position || 0) - (b.position || 0));
+                    const lastTag = sortedTags[sortedTags.length - 1];
+                    const lastTagId = lastTag?.id;
+                    
+                    console.log('🎯 [GrayText] Creating new tag after last tag:', {
+                      lastTagId,
+                      lastTagName: lastTag?.name,
+                      lastTagPosition: lastTag?.position,
+                      newTagLevel: 0
+                    });
+                    
+                    // 如果有标签，在最后一个标签后面创建；否则直接创建
+                    if (lastTagId) {
+                      createNewTag(0, lastTagId);
+                    } else {
+                      createNewTag(0);
+                    }
                     
                     // 保存当前元素的引用，避免在setTimeout中访问null
                     const currentElement = e.currentTarget;
