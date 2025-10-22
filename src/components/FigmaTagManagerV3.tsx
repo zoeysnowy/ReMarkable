@@ -189,16 +189,46 @@ const FigmaTagManagerV3: React.FC<FigmaTagManagerProps> = ({
     
     console.log('📦 [Storage] Raw tags from localStorage:', savedTags);
     
-    // 迁移旧标签：确保所有标签都有level和parentId属性
+    // ⚡ 智能迁移：根据parentId关系计算level层级
+    const calculateTagLevel = (tag: ExtendedHierarchicalTag, allTags: ExtendedHierarchicalTag[], visited = new Set<string>()): number => {
+      // 如果已经有level,直接返回
+      if (tag.level !== undefined) {
+        return tag.level;
+      }
+      
+      // 如果没有parentId,是顶级标签
+      if (!tag.parentId) {
+        return 0;
+      }
+      
+      // 防止循环引用
+      if (visited.has(tag.id)) {
+        console.warn('⚠️ 检测到循环引用:', tag.id, tag.name);
+        return 0;
+      }
+      visited.add(tag.id);
+      
+      // 找到父标签
+      const parent = allTags.find(t => t.id === tag.parentId);
+      if (!parent) {
+        console.warn('⚠️ 找不到父标签:', tag.parentId, '对于标签:', tag.name);
+        return 0;
+      }
+      
+      // 递归计算父标签的level,然后+1
+      return calculateTagLevel(parent, allTags, visited) + 1;
+    };
+    
+    // 为所有标签计算level
     const migratedTags = savedTags.map(tag => ({
       ...tag,
-      level: tag.level !== undefined ? tag.level : 0, // 如果没有level，默认为0（顶级标签）
-      parentId: tag.parentId !== undefined ? tag.parentId : undefined
+      level: calculateTagLevel(tag, savedTags),
+      parentId: tag.parentId || undefined
     }));
     
-    console.log('🔄 [Migration] Migrated tags with level properties:', {
-      original: savedTags.map(t => ({ id: t.id, name: t.name, level: t.level })),
-      migrated: migratedTags.map(t => ({ id: t.id, name: t.name, level: t.level }))
+    console.log('🔄 [Migration] Migrated tags with calculated levels:', {
+      original: savedTags.map(t => ({ id: t.id, name: t.name, level: t.level, parentId: t.parentId })),
+      migrated: migratedTags.map(t => ({ id: t.id, name: t.name, level: t.level, parentId: t.parentId }))
     });
     
     // 如果有保存的数据，使用它们，否则初始化为空
