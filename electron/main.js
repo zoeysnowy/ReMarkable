@@ -507,6 +507,9 @@ ipcMain.handle('widget-opacity', (event, opacity) => {
 // 防抖动：记录目标尺寸
 let targetSize = null;
 
+// Resize 状态控制
+let isResizing = false;
+
 // 性能追踪
 let movePerf = { count: 0, totalTime: 0, maxTime: 0, minTime: Infinity };
 
@@ -527,15 +530,22 @@ ipcMain.handle('widget-move', (event, position) => {
       const currentBounds = widgetWindow.getBounds();
       console.log('📍 [Main] 当前位置:', { x: currentBounds.x, y: currentBounds.y, w: currentBounds.width, h: currentBounds.height });
       
-      // 计算新位置，强制使用目标尺寸
+      // 计算新位置
+      // 🔧 优化：只在非 resize 状态下锁定尺寸，避免与用户调整大小冲突
       const newBounds = {
         x: currentBounds.x + position.x,
         y: currentBounds.y + position.y,
-        width: targetSize.width,  // 强制使用目标尺寸
-        height: targetSize.height
+        width: isResizing ? currentBounds.width : targetSize.width,   // resize 时不锁定
+        height: isResizing ? currentBounds.height : targetSize.height  // resize 时不锁定
       };
       
-      console.log('🎯 [Main] 目标位置:', { x: newBounds.x, y: newBounds.y, w: newBounds.width, h: newBounds.height });
+      console.log('🎯 [Main] 目标位置:', { 
+        x: newBounds.x, 
+        y: newBounds.y, 
+        w: newBounds.width, 
+        h: newBounds.height,
+        isResizing: isResizing 
+      });
       
       const setBoundsStart = Date.now();
       // 使用 setBounds 一次性设置，禁用动画
@@ -685,10 +695,27 @@ function createWidgetWindow() {
       position: widgetWindow.getPosition()
     });
 
+    // Resize 节流控制
+    let resizeTimeout = null;
+
     // 监听窗口事件（用于调试原生拖动）
     widgetWindow.on('resize', () => {
       const size = widgetWindow.getSize();
       console.log('🔄 [Main] Window resize event:', `${size[0]}x${size[1]}`);
+      
+      // 标记正在调整大小
+      isResizing = true;
+      
+      // 清除之前的超时
+      if (resizeTimeout) clearTimeout(resizeTimeout);
+      
+      // 100ms 后认为 resize 结束，更新 targetSize
+      resizeTimeout = setTimeout(() => {
+        isResizing = false;
+        const bounds = widgetWindow.getBounds();
+        targetSize = { width: bounds.width, height: bounds.height };
+        console.log('✅ [Main] Resize 完成，更新 targetSize:', targetSize);
+      }, 100);
     });
 
     widgetWindow.on('move', () => {

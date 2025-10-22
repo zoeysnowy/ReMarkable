@@ -347,6 +347,27 @@ const WidgetPage_v3: React.FC = () => {
             
             const avgTime = perfRef.current.totalTime / perfRef.current.moveCount;
             
+            // 🔑 关键修复：使用 actualDelta 补偿鼠标漂移
+            if (result.actualDelta && dragStartRef.current) {
+              const deltaMatch = result.actualDelta.x === deltaX && result.actualDelta.y === deltaY;
+              if (!deltaMatch) {
+                console.log('🔧 [Renderer] 补偿定位误差:', {
+                  requested: { x: deltaX, y: deltaY },
+                  actual: result.actualDelta,
+                  correction: {
+                    x: result.actualDelta.x - deltaX,
+                    y: result.actualDelta.y - deltaY
+                  }
+                });
+              }
+              
+              // 根据实际移动距离调整参考点，防止误差累积
+              dragStartRef.current = {
+                x: dragStartRef.current.x + result.actualDelta.x,
+                y: dragStartRef.current.y + result.actualDelta.y
+              };
+            }
+            
             console.log('✅ [Renderer] widgetMove 返回:', result);
             console.log('⏱️ [Renderer] IPC 性能:', {
               duration: `${ipcDuration.toFixed(2)}ms`,
