@@ -47,6 +47,9 @@ export interface ElectronAPI {
     timestamp: string;
   } | null>;
 
+  // 调试功能
+  debugLog: (message: string, data?: any) => void;
+
   // 事件监听
   onTriggerSync: (callback: () => void) => void;
   onOpenSyncSettings: (callback: () => void) => void;
@@ -59,6 +62,10 @@ export interface ElectronAPI {
   // Microsoft认证辅助
   openExternalAuth?: (url: string) => Promise<void>;
   handleAuthCallback?: (url: string) => Promise<any>;
+  startAuthServer?: (redirectUri: string) => Promise<string>;
+  // 令牌共享 (主进程内存存储)
+  setAuthTokens?: (tokens: { accessToken: string; refreshToken?: string; expiresAt?: number } | null) => Promise<{ success: boolean }>;
+  getAuthTokens?: () => Promise<{ accessToken: string; refreshToken?: string; expiresAt?: number } | null>;
   
   // 开机自启动设置
   setLoginItemSettings?: (settings: {
@@ -86,14 +93,16 @@ export interface ElectronAPI {
   };
   
   // 桌面悬浮窗口控制 (旧版，保留兼容性)
-  createWidget: () => void;
-  toggleWidget: () => void;
-  widgetClose: () => void;
-  widgetMinimize: () => void;
-  widgetLock: (isLocked: boolean) => void;
-  widgetOpacity: (opacity: number) => void;
-  widgetMove: (position: { x: number; y: number }) => void;
-  widgetResize: (size: { width: number; height: number }) => void;
+  createWidget: () => Promise<{ action: string; success: boolean }>;
+  toggleWidget: () => Promise<{ action: string }>;
+  widgetClose: () => Promise<{ success: boolean }>;
+  closeWindow: () => Promise<{ success: boolean }>;
+  widgetMinimize: () => Promise<{ success: boolean }>;
+  widgetLock: (isLocked: boolean) => Promise<{ success: boolean; locked: boolean }>;
+  widgetOpacity: (opacity: number) => Promise<{ success: boolean; opacity: number }>;
+  widgetMove: (position: { x: number; y: number }) => Promise<{ success: boolean }>;
+  widgetResize: (size: { width: number; height: number }) => Promise<{ success: boolean; size: { width: number; height: number } }>;
+  widgetFullscreen: (isFullscreen: boolean) => Promise<{ success: boolean; isFullscreen: boolean }>;
   on: (channel: string, callback: (...args: any[]) => void) => void;
   send: (channel: string, data?: any) => void;
 }

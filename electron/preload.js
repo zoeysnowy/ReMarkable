@@ -20,6 +20,45 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startSystemMonitoring: () => ipcRenderer.invoke('start-system-monitoring'),
   getActiveWindow: () => ipcRenderer.invoke('get-active-window'),
   
+  // 调试功能
+  debugLog: (message, data) => {
+    console.log('🔧 [Electron Debug]', message, data);
+    ipcRenderer.invoke('debug-log', message, data);
+  },
+  
+  // 桌面小组件控制
+  toggleWidget: () => ipcRenderer.invoke('toggle-widget'),
+  createWidget: () => ipcRenderer.invoke('create-widget'),
+  widgetClose: () => ipcRenderer.invoke('widget-close'),
+  closeWindow: () => ipcRenderer.invoke('close-window'),
+  widgetMinimize: () => ipcRenderer.invoke('widget-minimize'),
+  widgetLock: (isLocked) => ipcRenderer.invoke('widget-lock', isLocked),
+  widgetOpacity: (opacity) => ipcRenderer.invoke('widget-opacity', opacity),
+  widgetMove: (position) => ipcRenderer.invoke('widget-move', position),
+  widgetDragEnd: () => ipcRenderer.invoke('widget-drag-end'),
+  widgetResize: (size) => ipcRenderer.invoke('widget-resize', size),
+  widgetFullscreen: (isFullscreen) => ipcRenderer.invoke('widget-fullscreen', isFullscreen),
+  
+  // 新版小组件API
+  widget: {
+    toggle: (type, enabled) => ipcRenderer.invoke('widget-toggle', type, enabled),
+    updateConfig: (type, config) => ipcRenderer.invoke('widget-update-config', type, config),
+    setOpacity: (type, opacity) => ipcRenderer.invoke('widget-set-opacity', type, opacity),
+    setAlwaysOnTop: (type, alwaysOnTop) => ipcRenderer.invoke('widget-set-always-on-top', type, alwaysOnTop),
+    close: (type) => ipcRenderer.invoke('widget-close-typed', type),
+    getConfig: (type) => ipcRenderer.invoke('widget-get-config', type),
+    savePosition: (type, x, y) => ipcRenderer.invoke('widget-save-position', type, x, y),
+    saveSize: (type, width, height) => ipcRenderer.invoke('widget-save-size', type, width, height)
+  },
+  
+  // 事件监听
+  on: (channel, callback) => {
+    ipcRenderer.on(channel, callback);
+  },
+  send: (channel, data) => {
+    ipcRenderer.send(channel, data);
+  },
+  
   // 事件监听
   onTriggerSync: (callback) => {
     ipcRenderer.on('trigger-sync', callback);
@@ -41,7 +80,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Microsoft认证辅助
   openExternalAuth: (url) => ipcRenderer.invoke('open-external-auth', url),
-  handleAuthCallback: (url) => ipcRenderer.invoke('handle-auth-callback', url)
+  handleAuthCallback: (url) => ipcRenderer.invoke('handle-auth-callback', url),
+  startAuthServer: (redirectUri) => ipcRenderer.invoke('start-auth-server', redirectUri),
+  // 令牌共享API
+  setAuthTokens: (tokens) => ipcRenderer.invoke('set-auth-tokens', tokens),
+  getAuthTokens: () => ipcRenderer.invoke('get-auth-tokens'),
+  
+  // 开机自启动设置
+  setLoginItemSettings: (settings) => ipcRenderer.invoke('set-login-item-settings', settings),
+  getLoginItemSettings: () => ipcRenderer.invoke('get-login-item-settings')
 });
 
 // 监听主进程消息
