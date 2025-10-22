@@ -1,0 +1,425 @@
+.microsoft-auth-demo {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+  background: #f8fafc;
+  min-height: 100vh;
+}
+
+.demo-header {
+  text-align: center;
+  margin-bottom: 32px;
+  padding: 24px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.demo-header h1 {
+  margin: 0 0 8px 0;
+  color: #1f2937;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.demo-header p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 16px;
+}
+
+/* 状态栏 */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #ecfdf5;
+  border: 1px solid #10b981;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: #065f46;
+}
+
+.status-indicator {
+  font-size: 16px;
+}
+
+.error-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #fef2f2;
+  border: 1px solid #ef4444;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: #991b1b;
+}
+
+.error-indicator {
+  font-size: 16px;
+}
+
+.error-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #991b1b;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: #92400e;
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(146, 64, 14, 0.3);
+  border-top: 2px solid #92400e;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* 认证部分 */
+.auth-section {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* 主要内容 */
+.main-content {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* 工具栏 */
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 0;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 24px;
+}
+
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-refresh,
+.btn-test {
+  padding: 8px 16px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.btn-refresh:hover:not(:disabled),
+.btn-test:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.btn-refresh:disabled,
+.btn-test:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.btn-logout {
+  padding: 8px 16px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.btn-logout:hover {
+  background: #dc2626;
+}
+
+/* 日历选择器 */
+.calendar-selector {
+  margin-bottom: 32px;
+}
+
+.calendar-selector h3 {
+  margin: 0 0 16px 0;
+  color: #1f2937;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.calendar-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: white;
+}
+
+.calendar-item:hover {
+  border-color: #3b82f6;
+  background: #f8fafc;
+}
+
+.calendar-item.selected {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.calendar-color {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.calendar-name {
+  flex: 1;
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.selected-indicator {
+  color: #3b82f6;
+  font-weight: bold;
+  font-size: 16px;
+}
+
+/* 事件部分 */
+.events-section {
+  margin-bottom: 32px;
+}
+
+.events-section h3 {
+  margin: 0 0 16px 0;
+  color: #1f2937;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.event-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+  background: #f9fafb;
+  transition: all 0.2s ease;
+}
+
+.event-item:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.event-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.event-title {
+  margin: 0;
+  color: #1f2937;
+  font-size: 16px;
+  font-weight: 600;
+  flex: 1;
+}
+
+.event-id {
+  font-size: 12px;
+  color: #6b7280;
+  font-family: monospace;
+  background: #e5e7eb;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.event-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.event-time,
+.event-location {
+  display: flex;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.time-label,
+.location-label {
+  font-weight: 500;
+  color: #374151;
+  min-width: 50px;
+}
+
+.event-time span:last-child,
+.event-location span:last-child {
+  color: #6b7280;
+}
+
+.no-events {
+  text-align: center;
+  padding: 40px 20px;
+  color: #6b7280;
+}
+
+.no-events p {
+  margin: 8px 0;
+}
+
+/* 调试部分 */
+.debug-section {
+  margin-top: 32px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 24px;
+}
+
+.debug-section details {
+  cursor: pointer;
+}
+
+.debug-section summary {
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 8px 0;
+  outline: none;
+}
+
+.debug-section summary:hover {
+  color: #374151;
+}
+
+.debug-content {
+  margin-top: 12px;
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+}
+
+.debug-content h5 {
+  margin: 0 0 8px 0;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.debug-content ul {
+  margin: 0 0 16px 0;
+  padding-left: 20px;
+  color: #374151;
+  font-size: 14px;
+}
+
+.debug-content li {
+  margin-bottom: 4px;
+}
+
+.debug-content pre {
+  background: #1f2937;
+  color: #f9fafb;
+  padding: 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .microsoft-auth-demo {
+    padding: 16px;
+  }
+  
+  .toolbar {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .toolbar-left,
+  .toolbar-right {
+    justify-content: center;
+  }
+  
+  .calendar-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .event-header {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  
+  .event-time,
+  .event-location {
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .time-label,
+  .location-label {
+    min-width: auto;
+  }
+}

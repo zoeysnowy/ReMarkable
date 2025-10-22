@@ -1,140 +1,199 @@
 /**
  * Desktop Calendar Widget - 桌面日历悬浮组件
  * 
- * 支持透明度、大小调整、拖曳和锁定功能
+ * 基于TimeCalendar组件，提供完整的日历功能和同步能力
+ * 额外支持透明度、大小调整、拖曳和锁定功能
  * 可作为桌面小部件使用
  * 
  * @author Zoey Gong
- * @version 1.0.0
+ * @version 2.0.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ToastUIReactCalendar from './ToastUIReactCalendar';
-import type { EventObject } from '@toast-ui/calendar';
+import { EventEditModal } from './EventEditModal';
+import { Event } from '../types';
 import '@toast-ui/calendar/dist/toastui-calendar.css';
 import '../styles/calendar.css';
-import '../styles/widget.css'; // 悬浮窗口专用样式
-import { Event } from '../types';
+
+// 界面类型定义
+interface EventObject {
+  id: string;
+  calendarId: string;
+  title: string;
+  category: string;
+  dueDateClass: string;
+  start: string;
+  end: string;
+  isAllDay?: boolean;
+  backgroundColor?: string;
+  borderColor?: string;
+  color?: string;
+}
 
 interface DesktopCalendarWidgetProps {
-  events: Event[];
-  tags: any[];
+  events?: Event[];
+  tags?: any[];
   onEventClick?: (event: Event) => void;
   onEventUpdate?: (event: Event) => void;
 }
 
 const DesktopCalendarWidget: React.FC<DesktopCalendarWidgetProps> = ({
-  events,
-  tags,
+  events = [],
+  tags = [],
   onEventClick,
   onEventUpdate
 }) => {
-  // 窗口控制状态
-  const [isLocked, setIsLocked] = useState(false);
-  const [opacity, setOpacity] = useState(0.95);
-  const [isResizing, setIsResizing] = useState(false);
+  // 基础状态
+  const [position, setPosition] = useState({ x: 100, y: 100 });
+  const [size, setSize] = useState({ width: 800, height: 600 });
   const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
+  const [showControls, setShowControls] = useState(false);
   
-  // 窗口尺寸和位置
-  const [windowSize, setWindowSize] = useState({ width: 600, height: 700 });
-  const [windowPosition, setWindowPosition] = useState({ x: 100, y: 100 });
-  
-  // 拖拽起始位置
-  const dragStartRef = useRef({ x: 0, y: 0, windowX: 0, windowY: 0 });
-  const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
-  
-  // 控制面板可见性
-  const [showControls, setShowControls] = useState(true);
-  
-  // 当前视图和日期
-  const [currentView, setCurrentView] = useState<'month' | 'week' | 'day'>('week');
-  const [currentDate, setCurrentDate] = useState(new Date());
-  
-  // 设置面板状态
-  const [showSettings, setShowSettings] = useState(false);
-  
-  // 背景色和透明度
+  // 透明度控制
+  const [opacity, setOpacity] = useState(0.95);
   const [bgColor, setBgColor] = useState('#ffffff');
   const [bgOpacity, setBgOpacity] = useState(0.95);
+  const [calendarBgColor, setCalendarBgColor] = useState('#ffffff');
+  const [calendarBgOpacity, setCalendarBgOpacity] = useState(0.95);
+  
+  // 显示控制
+  const [showTags, setShowTags] = useState(true);
+  const [showCalendarGroups, setShowCalendarGroups] = useState(true);
+  const [currentView, setCurrentView] = useState('month');
+  
+  // 事件编辑状态
+  const [showEventEditModal, setShowEventEditModal] = useState(false);
+  const [selectedTimeRange, setSelectedTimeRange] = useState<{start: Date, end: Date} | null>(null);
 
-  // 与Electron通信
+  // 组件引用
+  const widgetRef = useRef<HTMLDivElement>(null);
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
+
+  // Electron API 监听
   useEffect(() => {
     if (window.electronAPI) {
       // 监听来自主进程的事件
-      window.electronAPI.on('widget-opacity-change', (newOpacity: number) => {
+      window.electronAPI.on('widget-opacity-change', (...args: any[]) => {
+        const newOpacity = args[0] as number;
         setOpacity(newOpacity);
       });
-      
-      window.electronAPI.on('widget-lock-toggle', (locked: boolean) => {
+
+      window.electronAPI.on('widget-lock-toggle', (...args: any[]) => {
+        const locked = args[0] as boolean;
         setIsLocked(locked);
       });
+
+      window.electronAPI.on('widget-show-controls', (...args: any[]) => {
+        setShowControls(true);
+      });
+
+      return () => {
+        // Electron API cleanup if needed
+      };
     }
   }, []);
 
+  // 动态CSS注入来实现透明度效果
+  useEffect(() => {
+    const styleElement = document.createElement('style');
+    styleElement.id = 'desktop-calendar-transparency';
+    
+    // 移除旧的样式元素
+    const existingStyle = document.getElementById('desktop-calendar-transparency');
+    if (existingStyle) {
+      existingStyle.remove();
+    }
+
+    const bgColorHex = calendarBgColor;
+    const alphaHex = Math.round(calendarBgOpacity * 255).toString(16).padStart(2, '0');
+    const bgColorWithAlpha = `${bgColorHex}${alphaHex}`;
+
+    styleElement.textContent = `
+      /* TUI Calendar 透明度样式 */
+      .tui-calendar {
+        background-color: ${bgColorWithAlpha} !important;
+      }
+      
+      .tui-calendar .tui-calendar-month-dayname,
+      .tui-calendar .tui-calendar-week-dayname {
+        background-color: ${bgColorWithAlpha} !important;
+        border-color: rgba(255,255,255,0.2) !important;
+      }
+      
+      .tui-calendar .tui-calendar-month-date,
+      .tui-calendar .tui-calendar-week-hour {
+        background-color: ${bgColorWithAlpha} !important;
+        border-color: rgba(255,255,255,0.1) !important;
+      }
+      
+      .tui-calendar .tui-calendar-month-more-button {
+        background-color: ${bgColorWithAlpha} !important;
+      }
+    `;
+
+    document.head.appendChild(styleElement);
+
+    return () => {
+      if (document.getElementById('desktop-calendar-transparency')) {
+        document.getElementById('desktop-calendar-transparency')?.remove();
+      }
+    };
+  }, [calendarBgColor, calendarBgOpacity]);
+
   // 拖拽处理
   const handleDragStart = (e: React.MouseEvent) => {
-    if (isLocked || isDragging) return;
-    
+    if (isLocked) return;
     setIsDragging(true);
-    dragStartRef.current = {
-      x: e.clientX,
-      y: e.clientY,
-      windowX: windowPosition.x,
-      windowY: windowPosition.y
-    };
-  };
-
-  const handleDragMove = (e: MouseEvent) => {
-    if (!isDragging || isLocked) return;
-    
-    const deltaX = e.clientX - dragStartRef.current.x;
-    const deltaY = e.clientY - dragStartRef.current.y;
-    
-    const newX = dragStartRef.current.windowX + deltaX;
-    const newY = dragStartRef.current.windowY + deltaY;
-    
-    setWindowPosition({ x: newX, y: newY });
-    
-    // 通知Electron移动窗口
-    if (window.electronAPI) {
-      window.electronAPI.widgetMove({ x: newX, y: newY });
+    const rect = widgetRef.current?.getBoundingClientRect();
+    if (rect) {
+      dragOffsetRef.current = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      };
     }
   };
+
+  const handleDragMove = useCallback((e: MouseEvent) => {
+    if (isDragging && !isLocked) {
+      const newX = e.clientX - dragOffsetRef.current.x;
+      const newY = e.clientY - dragOffsetRef.current.y;
+      
+      // 边界检查
+      const maxX = window.innerWidth - size.width;
+      const maxY = window.innerHeight - size.height;
+      
+      setPosition({
+        x: Math.max(0, Math.min(newX, maxX)),
+        y: Math.max(0, Math.min(newY, maxY))
+      });
+    }
+  }, [isDragging, isLocked, size]);
 
   const handleDragEnd = () => {
     setIsDragging(false);
   };
 
-  // 调整大小处理
+  // 大小调整处理
   const handleResizeStart = (e: React.MouseEvent) => {
     if (isLocked) return;
-    
     e.stopPropagation();
     setIsResizing(true);
-    resizeStartRef.current = {
-      x: e.clientX,
-      y: e.clientY,
-      width: windowSize.width,
-      height: windowSize.height
-    };
   };
 
-  const handleResizeMove = (e: MouseEvent) => {
-    if (!isResizing || isLocked) return;
-    
-    const deltaX = e.clientX - resizeStartRef.current.x;
-    const deltaY = e.clientY - resizeStartRef.current.y;
-    
-    const newWidth = Math.max(400, resizeStartRef.current.width + deltaX);
-    const newHeight = Math.max(500, resizeStartRef.current.height + deltaY);
-    
-    setWindowSize({ width: newWidth, height: newHeight });
-    
-    // 通知Electron调整窗口大小
-    if (window.electronAPI) {
-      window.electronAPI.widgetResize({ width: newWidth, height: newHeight });
+  const handleResizeMove = useCallback((e: MouseEvent) => {
+    if (isResizing && !isLocked) {
+      const newWidth = Math.max(400, e.clientX - position.x);
+      const newHeight = Math.max(300, e.clientY - position.y);
+      
+      setSize({
+        width: Math.min(newWidth, window.innerWidth - position.x),
+        height: Math.min(newHeight, window.innerHeight - position.y)
+      });
     }
-  };
+  }, [isResizing, isLocked, position]);
 
   const handleResizeEnd = () => {
     setIsResizing(false);
@@ -143,114 +202,129 @@ const DesktopCalendarWidget: React.FC<DesktopCalendarWidgetProps> = ({
   // 全局鼠标事件监听
   useEffect(() => {
     if (isDragging) {
-      document.addEventListener('mousemove', handleDragMove);
-      document.addEventListener('mouseup', handleDragEnd);
-      return () => {
-        document.removeEventListener('mousemove', handleDragMove);
-        document.removeEventListener('mouseup', handleDragEnd);
-      };
+      window.addEventListener('mousemove', handleDragMove);
+      window.addEventListener('mouseup', handleDragEnd);
     }
-  }, [isDragging]);
+    return () => {
+      window.removeEventListener('mousemove', handleDragMove);
+      window.removeEventListener('mouseup', handleDragEnd);
+    };
+  }, [isDragging, handleDragMove]);
 
   useEffect(() => {
     if (isResizing) {
-      document.addEventListener('mousemove', handleResizeMove);
-      document.addEventListener('mouseup', handleResizeEnd);
-      return () => {
-        document.removeEventListener('mousemove', handleResizeMove);
-        document.removeEventListener('mouseup', handleResizeEnd);
-      };
+      window.addEventListener('mousemove', handleResizeMove);
+      window.addEventListener('mouseup', handleResizeEnd);
     }
-  }, [isResizing]);
+    return () => {
+      window.removeEventListener('mousemove', handleResizeMove);
+      window.removeEventListener('mouseup', handleResizeEnd);
+    };
+  }, [isResizing, handleResizeMove]);
 
-  // 切换锁定状态
-  const toggleLock = () => {
-    const newLockState = !isLocked;
-    setIsLocked(newLockState);
-    
-    if (window.electronAPI) {
-      window.electronAPI.widgetLock(newLockState);
-    }
-  };
-
-  // 调整透明度
+  // 透明度控制处理
   const handleOpacityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newOpacity = parseFloat(e.target.value);
     setOpacity(newOpacity);
-    
+
     if (window.electronAPI) {
       window.electronAPI.widgetOpacity(newOpacity);
     }
   };
 
-  // 转换事件为TUI Calendar格式
-  const calendarEvents: EventObject[] = events.map(event => ({
-    id: event.id,
-    calendarId: event.tags?.[0] || event.tagId || event.calendarId || 'default',
-    title: event.title,
-    category: event.isAllDay ? 'allday' : 'time',
-    start: new Date(event.startTime),
-    end: new Date(event.endTime),
-    isAllday: event.isAllDay,
-    backgroundColor: event.tags?.[0] ? '#8f479b7f' : '#3788d87f',
-    borderColor: event.tags?.[0] ? '#8f479b' : '#3788d8',
-    color: '#ffffff'
-  }));
+  // 转换事件为TUI Calendar格式，并根据显示选项过滤
+  const calendarEvents: EventObject[] = events
+    .filter(event => {
+      // 根据显示选项过滤事件
+      if (!showTags && event.tags && event.tags.length > 0) {
+        // 如果不显示标签，可以选择隐藏有标签的事件，或者显示但不显示标签信息
+        // 这里选择显示事件但不显示标签信息
+      }
+      if (!showCalendarGroups && event.calendarId) {
+        // 如果不显示日历分组，可以选择隐藏有分组的事件
+        // 这里选择显示事件但不显示分组信息
+      }
+      return true; // 显示所有事件，只是调整显示方式
+    })
+    .map(event => {
+      // 获取标签信息用于颜色显示
+      const eventTags = event.tags || [];
+      const tagInfo = eventTags[0] && tags.find(tag => tag.id === eventTags[0]);
+      const displayTitle = showTags && tagInfo
+        ? `${tagInfo.emoji || '🏷️'} ${event.title}`
+        : event.title;
+
+      return {
+        id: event.id,
+        calendarId: showCalendarGroups
+          ? (eventTags[0] || event.tagId || event.calendarId || 'default')
+          : 'default',
+        title: displayTitle,
+        category: 'time',
+        dueDateClass: '',
+        start: event.startTime,
+        end: event.endTime,
+        isAllDay: event.isAllDay || false,
+        backgroundColor: tagInfo?.color || '#3498db',
+        borderColor: tagInfo?.color || '#3498db',
+        color: '#ffffff'
+      };
+    });
 
   return (
-    <div 
-      className="desktop-calendar-widget"
+    <div
+      ref={widgetRef}
       style={{
-        width: '100%',
-        height: '100vh',
+        position: 'fixed',
+        left: position.x,
+        top: position.y,
+        width: size.width,
+        height: size.height,
+        zIndex: 9999,
+        opacity: opacity,
+        borderRadius: '8px',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+        border: '1px solid rgba(255,255,255,0.2)',
+        cursor: isDragging ? 'grabbing' : isLocked ? 'default' : 'grab',
+        userSelect: 'none',
         backgroundColor: `${bgColor}${Math.round(bgOpacity * 255).toString(16).padStart(2, '0')}`,
         backdropFilter: bgOpacity < 1 ? 'blur(10px)' : 'none',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        userSelect: isLocked ? 'none' : 'auto'
+        transition: 'all 0.3s ease'
       }}
+      onMouseDown={handleDragStart}
+      onMouseEnter={() => setShowControls(true)}
+      onMouseLeave={() => setShowControls(false)}
     >
-      {/* 标题栏 */}
-      <div 
-        className="widget-titlebar"
-        onMouseEnter={() => setShowControls(true)}
-        style={{
-          height: '40px',
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 16px',
-          transition: 'opacity 0.2s',
-          opacity: showControls ? 1 : 0.3
-        }}
-      >
-        {/* 左侧：可拖动区域 */}
-        <div 
-          onMouseDown={handleDragStart}
-          style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '12px',
-            cursor: isLocked ? 'default' : 'move',
-            flex: 1,
-            paddingRight: '12px'
+      {/* 控制栏 - 悬浮时显示 */}
+      {showControls && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            background: 'linear-gradient(135deg, rgba(0,0,0,0.8), rgba(0,0,0,0.6))',
+            padding: '8px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            zIndex: 10,
+            borderRadius: '8px 8px 0 0',
+            backdropFilter: 'blur(10px)',
+            cursor: 'move'
           }}
+          onMouseDown={handleDragStart}
         >
-          <span style={{ color: 'white', fontSize: '14px', fontWeight: 'bold' }}>
-            📅 日历桌面小部件
-          </span>
-          
-          {/* 视图切换 */}
-          <div 
-            style={{ display: 'flex', gap: '4px' }}
-            onMouseDown={(e) => e.stopPropagation()} // 阻止拖动
-          >
-            {(['month', 'week', 'day'] as const).map(view => (
+          {/* 左侧：视图切换 */}
+          <div style={{ display: 'flex', gap: '4px' }}>
+            {['month', 'week', 'day'].map(view => (
               <button
                 key={view}
                 onClick={() => setCurrentView(view)}
+                onMouseDown={(e) => e.stopPropagation()}
                 style={{
                   padding: '2px 8px',
                   fontSize: '11px',
@@ -266,259 +340,484 @@ const DesktopCalendarWidget: React.FC<DesktopCalendarWidgetProps> = ({
               </button>
             ))}
           </div>
-        </div>
-        
-        {/* 右侧：控制区域 */}
-        <div 
-          style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-          onMouseDown={(e) => e.stopPropagation()} // 阻止拖动
-        >
-          {/* 设置按钮 */}
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            style={{
-              padding: '4px 10px',
-              fontSize: '14px',
-              backgroundColor: showSettings ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)',
-              color: 'white',
-              border: '1px solid rgba(255,255,255,0.3)',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-            title="日历设置"
-          >
-            ⚙️
-          </button>
 
-          {/* 新建事件按钮 */}
-          <button
-            onClick={() => {/* TODO: 打开新建事件对话框 */}}
-            style={{
-              padding: '4px 10px',
-              fontSize: '14px',
-              backgroundColor: 'rgba(34, 197, 94, 0.8)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontWeight: 'bold'
-            }}
-            title="新建事件"
-          >
-            ➕
-          </button>
-          
-          {/* 透明度控制 - 移除，改为在设置面板中 */}
-          
-          {/* 锁定按钮 */}
-          <button
-            onClick={toggleLock}
-            style={{
-              padding: '4px 8px',
-              fontSize: '12px',
-              backgroundColor: isLocked ? 'rgba(239, 68, 68, 0.8)' : 'rgba(34, 197, 94, 0.8)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-              fontWeight: 'bold'
-            }}
-            title={isLocked ? '点击解锁' : '点击锁定'}
-          >
-            {isLocked ? '🔒 已锁定' : '🔓 未锁定'}
-          </button>
-          
-          {/* 最小化按钮 */}
-          <button
-            onClick={() => window.electronAPI?.widgetMinimize()}
-            style={{
-              padding: '4px 8px',
-              fontSize: '12px',
-              backgroundColor: 'rgba(255,255,255,0.2)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-            title="最小化"
-          >
-            ─
-          </button>
-          
-          {/* 关闭按钮 */}
-          <button
-            onClick={() => window.electronAPI?.widgetClose()}
-            style={{
-              padding: '4px 8px',
-              fontSize: '12px',
-              backgroundColor: 'rgba(239, 68, 68, 0.8)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-            title="关闭小部件"
-          >
-            ✕
-          </button>
+          {/* 中间：标题 */}
+          <div style={{
+            color: 'white',
+            fontSize: '12px',
+            fontWeight: '500',
+            flex: 1,
+            textAlign: 'center'
+          }}>
+            桌面日历
+          </div>
+
+          {/* 右侧：功能按钮 */}
+          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+            {/* 快速创建事件 */}
+            <button
+              onClick={() => {
+                const now = new Date();
+                const end = new Date(now.getTime() + 60 * 60 * 1000); // 1小时后
+                setSelectedTimeRange({
+                  start: now,
+                  end: end
+                });
+                setShowEventEditModal(true);
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              style={{
+                padding: '4px 10px',
+                fontSize: '11px',
+                backgroundColor: 'rgba(52,152,219,0.8)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '3px',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+              title="创建新事件"
+            >
+              ➕ 新建
+            </button>
+
+            {/* 锁定切换 */}
+            <button
+              onClick={() => setIsLocked(!isLocked)}
+              onMouseDown={(e) => e.stopPropagation()}
+              style={{
+                padding: '4px 8px',
+                fontSize: '11px',
+                backgroundColor: isLocked ? 'rgba(231,76,60,0.8)' : 'rgba(46,204,113,0.8)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '3px',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+              title={isLocked ? '解锁' : '锁定'}
+            >
+              {isLocked ? '🔒' : '🔓'}
+            </button>
+
+            {/* 设置面板切换 */}
+            <button
+              onMouseDown={(e) => e.stopPropagation()}
+              style={{
+                padding: '4px 8px',
+                fontSize: '11px',
+                backgroundColor: 'rgba(155,89,182,0.8)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '3px',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+              title="设置"
+            >
+              ⚙️
+            </button>
+          </div>
         </div>
-      </div>
-      
-      {/* 设置面板 - 悬浮在右上角 */}
-      {showSettings && (
+      )}
+
+      {/* 设置面板 - 可展开收起 */}
+      {showControls && (
         <div
           style={{
             position: 'absolute',
-            top: '50px',
-            right: '16px',
-            width: '280px',
-            backgroundColor: 'white',
+            top: '40px',
+            right: '8px',
+            width: '190px',
+            maxHeight: '70%',
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.95), rgba(248,249,250,0.9))',
+            border: '1px solid rgba(0,0,0,0.1)',
             borderRadius: '8px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-            zIndex: 1000,
-            padding: '16px',
-            border: '1px solid #e9ecef'
+            padding: '10px',
+            zIndex: 20,
+            backdropFilter: 'blur(10px)',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            overflowY: 'auto',
+            fontSize: '12px'
           }}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 600, color: '#495057' }}>
-            🎨 背景设置
-          </h4>
-          
-          {/* 背景颜色 */}
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{ fontSize: '12px', color: '#6c757d', display: 'block', marginBottom: '6px' }}>
-              背景颜色
-            </label>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {/* 外观设置 */}
+          <div style={{ marginBottom: '0' }}>
+            <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#2c3e50' }}>🎨 外观设置</h4>
+            
+            {/* 窗口背景色 */}
+            <div style={{ marginBottom: '8px' }}>
+              <label style={{ fontSize: '12px', color: '#6c757d', display: 'block', marginBottom: '4px' }}>
+                窗口背景色
+              </label>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input
+                  type="color"
+                  value={bgColor}
+                  onChange={(e) => setBgColor(e.target.value)}
+                  style={{
+                    width: '40px',
+                    height: '32px',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                />
+                <input
+                  type="text"
+                  value={bgColor}
+                  onChange={(e) => setBgColor(e.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: '6px 8px',
+                    fontSize: '11px',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '4px',
+                    fontFamily: 'monospace'
+                  }}
+                />
+              </div>
+            </div>
+            
+            {/* 窗口透明度 */}
+            <div style={{ marginBottom: '8px' }}>
+              <label style={{ fontSize: '12px', color: '#6c757d', display: 'block', marginBottom: '4px' }}>
+                窗口透明度: {Math.round(bgOpacity * 100)}%
+              </label>
               <input
-                type="color"
-                value={bgColor}
-                onChange={(e) => setBgColor(e.target.value)}
+                type="range"
+                min="0.1"
+                max="1"
+                step="0.05"
+                value={bgOpacity}
+                onChange={(e) => setBgOpacity(parseFloat(e.target.value))}
                 style={{
-                  width: '40px',
-                  height: '32px',
-                  border: '1px solid #dee2e6',
-                  borderRadius: '4px',
+                  width: '100%',
                   cursor: 'pointer'
                 }}
               />
+            </div>
+
+            {/* 日历背景色 */}
+            <div style={{ marginBottom: '8px' }}>
+              <label style={{ fontSize: '12px', color: '#6c757d', display: 'block', marginBottom: '4px' }}>
+                📅 日历背景色
+              </label>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input
+                  type="color"
+                  value={calendarBgColor}
+                  onChange={(e) => setCalendarBgColor(e.target.value)}
+                  style={{
+                    width: '40px',
+                    height: '32px',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                />
+                <input
+                  type="text"
+                  value={calendarBgColor}
+                  onChange={(e) => setCalendarBgColor(e.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: '6px 8px',
+                    fontSize: '11px',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '4px',
+                    fontFamily: 'monospace'
+                  }}
+                />
+              </div>
+            </div>
+            
+            {/* 日历透明度 */}
+            <div style={{ marginBottom: '8px' }}>
+              <label style={{ fontSize: '12px', color: '#6c757d', display: 'block', marginBottom: '4px' }}>
+                📅 日历透明度: {Math.round(calendarBgOpacity * 100)}%
+              </label>
               <input
-                type="text"
-                value={bgColor}
-                onChange={(e) => setBgColor(e.target.value)}
+                type="range"
+                min="0.1"
+                max="1"
+                step="0.05"
+                value={calendarBgOpacity}
+                onChange={(e) => setCalendarBgOpacity(parseFloat(e.target.value))}
                 style={{
-                  flex: 1,
-                  padding: '6px 8px',
-                  fontSize: '12px',
-                  border: '1px solid #dee2e6',
-                  borderRadius: '4px',
-                  fontFamily: 'monospace'
+                  width: '100%',
+                  cursor: 'pointer'
                 }}
               />
             </div>
           </div>
 
-          {/* 背景透明度 */}
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{ fontSize: '12px', color: '#6c757d', display: 'block', marginBottom: '6px' }}>
-              背景透明度: {Math.round(bgOpacity * 100)}%
-            </label>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={bgOpacity}
-              onChange={(e) => setBgOpacity(parseFloat(e.target.value))}
-              style={{
-                width: '100%',
+          {/* 显示设置 */}
+          <div style={{ marginBottom: '0' }}>
+            <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#2c3e50' }}>👁️ 显示设置</h4>
+            
+            {/* 显示标签 */}
+            <div style={{ marginBottom: '8px' }}>
+              <label style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px',
+                fontSize: '12px',
+                color: '#495057',
                 cursor: 'pointer'
-              }}
-            />
+              }}>
+                <input
+                  type="checkbox"
+                  checked={showTags}
+                  onChange={(e) => setShowTags(e.target.checked)}
+                  style={{
+                    width: '16px',
+                    height: '16px',
+                    cursor: 'pointer'
+                  }}
+                />
+                🏷️ 显示事件标签
+              </label>
+            </div>
+            
+            {/* 显示日历分组 */}
+            <div style={{ marginBottom: '8px' }}>
+              <label style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px',
+                fontSize: '12px',
+                color: '#495057',
+                cursor: 'pointer'
+              }}>
+                <input
+                  type="checkbox"
+                  checked={showCalendarGroups}
+                  onChange={(e) => setShowCalendarGroups(e.target.checked)}
+                  style={{
+                    width: '16px',
+                    height: '16px',
+                    cursor: 'pointer'
+                  }}
+                />
+                📅 显示日历分组
+              </label>
+            </div>
           </div>
 
-          {/* 预览 */}
-          <div
-            style={{
-              marginTop: '12px',
-              padding: '12px',
-              borderRadius: '4px',
-              backgroundColor: `${bgColor}${Math.round(bgOpacity * 255).toString(16).padStart(2, '0')}`,
-              border: '1px solid #dee2e6',
-              textAlign: 'center',
-              fontSize: '11px',
-              color: '#495057'
-            }}
-          >
-            预览效果
+          {/* 预览效果 */}
+          <div style={{ marginBottom: '12px' }}>
+            <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#2c3e50' }}>👀 预览效果</h4>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{
+                flex: 1,
+                padding: '8px',
+                borderRadius: '4px',
+                backgroundColor: `${bgColor}${Math.round(bgOpacity * 255).toString(16).padStart(2, '0')}`,
+                border: '1px solid #dee2e6',
+                textAlign: 'center',
+                fontSize: '10px',
+                color: '#6c757d'
+              }}>
+                窗口背景
+              </div>
+              <div style={{
+                flex: 1,
+                padding: '8px',
+                borderRadius: '4px',
+                backgroundColor: `${calendarBgColor}${Math.round(calendarBgOpacity * 255).toString(16).padStart(2, '0')}`,
+                border: '1px solid #dee2e6',
+                textAlign: 'center',
+                fontSize: '10px',
+                color: '#6c757d'
+              }}>
+                日历背景
+              </div>
+            </div>
+          </div>
+
+          {/* 操作按钮 */}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={() => {
+                // 重置所有设置
+                setBgColor('#ffffff');
+                setBgOpacity(0.95);
+                setCalendarBgColor('#ffffff');
+                setCalendarBgOpacity(0.95);
+              }}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                fontSize: '11px',
+                backgroundColor: '#6c757d',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                transition: 'background-color 0.2s'
+              }}
+            >
+              🔄 重置
+            </button>
           </div>
         </div>
       )}
-      
-      {/* 日历主体区域 */}
-      <div 
-        style={{ 
-          flex: 1, 
+
+      {/* 日历区域 */}
+      <div
+        style={{
+          flex: 1,
           overflow: 'hidden',
-          position: 'relative'
+          position: 'relative',
+          backgroundColor: `${calendarBgColor}${Math.round(calendarBgOpacity * 255).toString(16).padStart(2, '0')}`,
+          borderRadius: '0 0 8px 8px'
         }}
-        onMouseEnter={() => setShowControls(false)}
       >
         <ToastUIReactCalendar
           events={calendarEvents}
-          view={currentView}
+          view={currentView as any}
           onClickEvent={(eventInfo: any) => {
             const event = events.find(e => e.id === eventInfo.id);
             if (event && onEventClick) {
               onEventClick(event);
             }
           }}
+          onSelectDateTime={(dateInfo: any) => {
+            console.log('📅 [Desktop Calendar] 选择时间:', dateInfo);
+            // 设置选中的时间范围
+            if (dateInfo.start && dateInfo.end) {
+              setSelectedTimeRange({
+                start: new Date(dateInfo.start),
+                end: new Date(dateInfo.end)
+              });
+              setShowEventEditModal(true);
+            }
+          }}
+          onBeforeCreateEvent={(eventData: any) => {
+            console.log('📅 [Desktop Calendar] 创建事件前:', eventData);
+            return eventData;
+          }}
+          onAfterRenderEvent={(eventInfo: any) => {
+            console.log('📅 [Desktop Calendar] 事件渲染后:', eventInfo);
+          }}
+          template={{
+            milestone: (event: any) => `<span style="color: red;">${event.title}</span>`,
+            milestoneTitle: () => '里程碑',
+            task: (event: any) => `#${event.title}`,
+            taskTitle: () => '任务',
+            allday: (event: any) => `${event.title}`,
+            alldayTitle: () => '全天',
+            time: (event: any) => `${event.title}`,
+            goingDuration: (event: any) => `${event.title}`,
+            comingDuration: (event: any) => `${event.title}`,
+            monthMoreTitleDate: (date: any) => {
+              return `${date.date}`;
+            },
+            monthMoreClose: () => '닫기',
+            monthGridHeader: (model: any) => {
+              return `${model.date}`;
+            },
+            monthGridHeaderExceed: (hiddenEvents: any) => {
+              return `+${hiddenEvents}`;
+            },
+            monthGridFooter: () => '',
+            monthGridFooterExceed: (hiddenEvents: any) => `+${hiddenEvents}`,
+            weekDayName: (dayname: any) => `${dayname.label}`,
+            monthDayName: (dayname: any) => `${dayname.label}`
+          }}
+          week={{
+            dayNames: ['일', '월', '화', '수', '목', '금', '토'],
+            startDayOfWeek: 0,
+            narrowWeekend: false,
+            workweek: false,
+            showTimezoneCollapseButton: false,
+            timezonesCollapsed: false,
+            hourStart: 0,
+            hourEnd: 24
+          }}
+          month={{
+            dayNames: ['일', '월', '화', '수', '목', '금', '토'],
+            startDayOfWeek: 0,
+            narrowWeekend: false,
+            visibleWeeksCount: 6,
+            isAlways6Weeks: false,
+            workweek: false,
+            visibleEventCount: 6
+          }}
+          calendars={[
+            {
+              id: 'default',
+              name: '默认日历',
+              color: '#ffffff',
+              bgColor: '#3498db',
+              dragBgColor: '#3498db',
+              borderColor: '#3498db'
+            },
+            ...tags.map(tag => ({
+              id: tag.id,
+              name: tag.name,
+              color: '#ffffff',
+              bgColor: tag.color || '#3498db',
+              dragBgColor: tag.color || '#3498db',
+              borderColor: tag.color || '#3498db'
+            }))
+          ]}
+          usageStatistics={false}
         />
       </div>
-      
+
       {/* 调整大小手柄 */}
       {!isLocked && (
         <div
-          className="resize-handle"
-          onMouseDown={handleResizeStart}
           style={{
             position: 'absolute',
-            right: 0,
             bottom: 0,
+            right: 0,
             width: '20px',
             height: '20px',
-            cursor: 'nwse-resize',
-            background: 'linear-gradient(135deg, transparent 50%, rgba(102, 126, 234, 0.5) 50%)',
-            borderRadius: '0 0 4px 0'
+            cursor: 'se-resize',
+            background: 'linear-gradient(-45deg, transparent 50%, rgba(255,255,255,0.3) 50%)',
+            borderRadius: '0 0 8px 0'
           }}
+          onMouseDown={handleResizeStart}
         />
       )}
-      
-      {/* 锁定遮罩层 */}
-      {isLocked && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 40,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'transparent',
-            cursor: 'not-allowed',
-            zIndex: 999
+
+      {/* 事件编辑模态框 */}
+      {showEventEditModal && selectedTimeRange && (
+        <EventEditModal
+          isOpen={showEventEditModal}
+          onClose={() => {
+            setShowEventEditModal(false);
+            setSelectedTimeRange(null);
           }}
-          onDoubleClick={toggleLock}
-          title="双击解锁"
+          event={{
+            id: `temp-${Date.now()}`,
+            title: '',
+            description: '',
+            startTime: selectedTimeRange.start.toISOString(),
+            endTime: selectedTimeRange.end.toISOString(),
+            location: '',
+            isAllDay: false,
+            tags: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          } as any} // 创建临时事件对象用于初始化
+          onSave={(eventData: Event) => {
+            console.log('📅 [Desktop Calendar] 保存新事件:', eventData);
+            // 这里应该调用父组件的事件创建回调
+            if (onEventUpdate) {
+              onEventUpdate(eventData);
+            }
+            setShowEventEditModal(false);
+            setSelectedTimeRange(null);
+          }}
+          hierarchicalTags={tags}
         />
       )}
     </div>

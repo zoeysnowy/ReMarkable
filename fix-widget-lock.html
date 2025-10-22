@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>修复 Widget 锁定状态</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    .container {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 30px;
+    }
+    h1 { margin-top: 0; }
+    button {
+      background: white;
+      color: #667eea;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      margin: 10px 10px 10px 0;
+      transition: transform 0.2s;
+    }
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .status {
+      background: rgba(0, 0, 0, 0.2);
+      padding: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+      font-family: 'Courier New', monospace;
+      white-space: pre-wrap;
+    }
+    .success { color: #2ecc71; }
+    .warning { color: #f39c12; }
+    .error { color: #e74c3c; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔧 Widget 锁定状态修复工具</h1>
+    
+    <h2>当前状态</h2>
+    <div class="status" id="status">正在检查...</div>
+    
+    <h2>操作</h2>
+    <button onclick="checkStatus()">🔍 检查状态</button>
+    <button onclick="unlockWidget()">🔓 解除锁定</button>
+    <button onclick="clearAllSettings()">🗑️ 清除所有设置</button>
+    <button onclick="location.reload()">🔄 刷新页面</button>
+    
+    <h2>说明</h2>
+    <ul>
+      <li><strong>检查状态</strong>：查看当前 Widget 的锁定状态</li>
+      <li><strong>解除锁定</strong>：将 isLocked 设置为 false</li>
+      <li><strong>清除所有设置</strong>：删除所有保存的 Widget 设置</li>
+      <li><strong>刷新页面</strong>：应用更改后刷新页面</li>
+    </ul>
+    
+    <h2>使用步骤</h2>
+    <ol>
+      <li>点击"检查状态"查看当前设置</li>
+      <li>如果 isLocked 为 true，点击"解除锁定"</li>
+      <li>点击"刷新页面"使更改生效</li>
+      <li>重新打开 Widget 窗口测试拖动功能</li>
+    </ol>
+  </div>
+
+  <script>
+    function log(message, type = 'info') {
+      const statusDiv = document.getElementById('status');
+      const timestamp = new Date().toLocaleTimeString();
+      const icon = type === 'success' ? '✅' : type === 'warning' ? '⚠️' : type === 'error' ? '❌' : 'ℹ️';
+      statusDiv.innerHTML += `\n[${timestamp}] ${icon} ${message}`;
+      statusDiv.className = `status ${type}`;
+    }
+
+    function checkStatus() {
+      const statusDiv = document.getElementById('status');
+      statusDiv.innerHTML = ''; // 清空
+      
+      log('=== 检查 Widget 状态 ===', 'info');
+      
+      const settings = localStorage.getItem('desktop-calendar-widget-settings');
+      if (settings) {
+        try {
+          const parsed = JSON.parse(settings);
+          log('找到保存的设置:', 'success');
+          log(JSON.stringify(parsed, null, 2), 'info');
+          
+          if (parsed.isLocked === true) {
+            log('⚠️ Widget 当前处于锁定状态！', 'warning');
+            log('拖动条将不会显示，窗口无法拖动', 'warning');
+            log('点击"解除锁定"按钮进行修复', 'warning');
+          } else {
+            log('✅ Widget 未锁定', 'success');
+          }
+        } catch (e) {
+          log('解析设置失败: ' + e.message, 'error');
+        }
+      } else {
+        log('未找到保存的设置（这是正常的）', 'info');
+        log('Widget 将使用默认设置（未锁定）', 'success');
+      }
+      
+      // 检查是否在 Electron 环境
+      if (window.electronAPI) {
+        log('✅ 检测到 Electron 环境', 'success');
+      } else {
+        log('⚠️ 未检测到 Electron 环境', 'warning');
+        log('请在 Electron Widget 窗口中打开此页面', 'warning');
+      }
+    }
+
+    function unlockWidget() {
+      log('\n=== 解除锁定 ===', 'info');
+      
+      const settings = localStorage.getItem('desktop-calendar-widget-settings');
+      if (settings) {
+        try {
+          const parsed = JSON.parse(settings);
+          parsed.isLocked = false;
+          localStorage.setItem('desktop-calendar-widget-settings', JSON.stringify(parsed));
+          log('✅ 已将 isLocked 设置为 false', 'success');
+          log('新设置: ' + JSON.stringify(parsed, null, 2), 'success');
+          log('📝 请点击"刷新页面"使更改生效', 'warning');
+        } catch (e) {
+          log('修复失败: ' + e.message, 'error');
+        }
+      } else {
+        log('未找到设置，创建新的默认设置...', 'info');
+        const newSettings = {
+          bgOpacity: 0.95,
+          bgColor: '#ffffff',
+          isLocked: false
+        };
+        localStorage.setItem('desktop-calendar-widget-settings', JSON.stringify(newSettings));
+        log('✅ 已创建新设置', 'success');
+        log('📝 请点击"刷新页面"', 'warning');
+      }
+    }
+
+    function clearAllSettings() {
+      if (confirm('确定要清除所有 Widget 设置吗？\n这将删除透明度、颜色和锁定状态等所有自定义设置。')) {
+        localStorage.removeItem('desktop-calendar-widget-settings');
+        log('\n=== 清除设置 ===', 'info');
+        log('✅ 所有设置已清除', 'success');
+        log('Widget 将使用默认设置', 'info');
+        log('📝 请点击"刷新页面"', 'warning');
+      }
+    }
+
+    // 页面加载时自动检查状态
+    window.onload = () => {
+      checkStatus();
+    };
+  </script>
+</body>
+</html>
+

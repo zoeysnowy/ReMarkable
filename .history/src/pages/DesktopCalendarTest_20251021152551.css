@@ -1,0 +1,117 @@
+/* 桌面日历测试页面样式 */
+.desktop-calendar-test {
+  padding: 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.test-header {
+  text-align: center;
+  margin-bottom: 40px;
+  color: white;
+}
+
+.test-header h1 {
+  margin: 0 0 10px 0;
+  font-size: 2.5rem;
+  font-weight: 600;
+}
+
+.test-header p {
+  margin: 0;
+  font-size: 1.2rem;
+  opacity: 0.9;
+}
+
+.test-content {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.test-section {
+  margin-bottom: 60px;
+}
+
+.test-section h2 {
+  color: white;
+  font-size: 1.8rem;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.widget-container {
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.widget-container.default {
+  /* 默认样式容器 */
+}
+
+.widget-container.custom {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.widget-container.compact {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* 紧凑模式样式 */
+.compact-calendar {
+  /* 紧凑模式的特定样式将通过props传递 */
+}
+
+.test-info {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  padding: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.test-info h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  font-size: 1.6rem;
+  text-align: center;
+}
+
+.test-info ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 10px;
+}
+
+.test-info li {
+  padding: 10px 0;
+  font-size: 1.1rem;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .desktop-calendar-test {
+    padding: 10px;
+  }
+  
+  .test-header h1 {
+    font-size: 2rem;
+  }
+  
+  .widget-container {
+    padding: 10px;
+  }
+  
+  .test-info ul {
+    grid-template-columns: 1fr;
+  }
+}
