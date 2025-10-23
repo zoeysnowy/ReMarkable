@@ -44,6 +44,7 @@ const WidgetPage_v3: React.FC = () => {
   // Resize 性能追踪
   const resizePerfRef = useRef({ count: 0, totalTime: 0, maxTime: 0, minTime: Infinity });
   const lastResizeTimeRef = useRef<number>(0);
+  const resizeIpcBusyRef = useRef<boolean>(false); // IPC忙碌标志
   
   // 拖动状态 - 恢复自定义拖动实现
   const [isDragging, setIsDragging] = useState(false);
@@ -277,11 +278,19 @@ const WidgetPage_v3: React.FC = () => {
       fps: timeSinceLastResize > 0 ? Math.round(1000 / timeSinceLastResize) : 0
     });
     
+    // 🔧 如果上一个resize IPC还在处理中，跳过本次请求
+    if (resizeIpcBusyRef.current) {
+      console.log('⏭️ [Renderer] Resize IPC忙碌中,跳过本次请求');
+      return;
+    }
+    
     // 调用Electron API调整窗口大小
     if (window.electronAPI?.widgetResize) {
+      resizeIpcBusyRef.current = true; // 标记忙碌
       const ipcStart = Date.now();
       window.electronAPI.widgetResize({ width: Math.round(newWidth), height: Math.round(newHeight) })
         .then((result: any) => {
+          resizeIpcBusyRef.current = false; // 重置忙碌标志
           const ipcEnd = Date.now();
           const ipcDuration = ipcEnd - ipcStart;
           const totalDuration = ipcEnd - startTime;
@@ -304,6 +313,7 @@ const WidgetPage_v3: React.FC = () => {
           });
         })
         .catch((error: any) => {
+          resizeIpcBusyRef.current = false; // 出错也要重置
           console.error('❌ [Renderer] widgetResize 失败:', error);
         });
     }
@@ -311,6 +321,9 @@ const WidgetPage_v3: React.FC = () => {
 
   const handleResizeEnd = useCallback(() => {
     console.log('🏁 [Renderer] Resize结束');
+    
+    // 重置IPC忙碌标志
+    resizeIpcBusyRef.current = false;
     
     // 打印性能总结
     if (resizePerfRef.current.count > 0) {
