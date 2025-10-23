@@ -507,6 +507,9 @@ ipcMain.handle('widget-opacity', (event, opacity) => {
 // Resize 状态控制（保留用于未来可能的功能）
 let isResizing = false;
 
+// 🔧 保存拖动开始时的初始尺寸
+let dragLockSize = null;
+
 // 性能追踪
 let movePerf = { count: 0, totalTime: 0, maxTime: 0, minTime: Infinity };
 
@@ -516,20 +519,26 @@ ipcMain.handle('widget-move', (event, position) => {
   
   if (widgetWindow && !widgetWindow.isDestroyed()) {
     try {
-      // 获取当前位置和尺寸
+      // 获取当前位置
       const currentBounds = widgetWindow.getBounds();
       console.log('📍 [Main] 当前位置:', { x: currentBounds.x, y: currentBounds.y, w: currentBounds.width, h: currentBounds.height });
+      
+      // 🔧 第一次拖动时锁定尺寸
+      if (!dragLockSize) {
+        dragLockSize = { width: currentBounds.width, height: currentBounds.height };
+        console.log('🔒 [Main] 锁定拖动尺寸:', dragLockSize);
+      }
       
       // 🔧 关键修复：拖动时临时禁用resize，防止窗口自动变大
       const wasResizable = widgetWindow.isResizable();
       widgetWindow.setResizable(false);
       
-      // 🔧 只移动窗口，严格保持尺寸不变
+      // 🔧 只移动窗口，使用锁定的初始尺寸（不使用getBounds的尺寸）
       const newBounds = {
         x: currentBounds.x + position.x,
         y: currentBounds.y + position.y,
-        width: currentBounds.width,   // 严格锁定宽度
-        height: currentBounds.height  // 严格锁定高度
+        width: dragLockSize.width,    // 使用锁定的初始宽度
+        height: dragLockSize.height   // 使用锁定的初始高度
       };
       
       console.log('🎯 [Main] 目标位置:', { 
@@ -599,6 +608,12 @@ ipcMain.handle('widget-move', (event, position) => {
 // 拖动结束时重置目标尺寸
 ipcMain.handle('widget-drag-end', () => {
   console.log('🏁 [Main] 拖动结束');
+  
+  // 🔧 释放尺寸锁定
+  if (dragLockSize) {
+    console.log('🔓 [Main] 释放拖动尺寸锁定:', dragLockSize);
+    dragLockSize = null;
+  }
   
   // 打印性能总结
   if (movePerf.count > 0) {
