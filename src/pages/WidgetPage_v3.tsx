@@ -41,6 +41,10 @@ const WidgetPage_v3: React.FC = () => {
   const resizeStartRef = useRef<{ x: number; y: number; width: number; height: number; edge: string } | null>(null);
   const resizeThrottleRef = useRef<number>(0); // 节流用的时间戳
   
+  // Resize 性能追踪
+  const resizePerfRef = useRef({ count: 0, totalTime: 0, maxTime: 0, minTime: Infinity });
+  const lastResizeTimeRef = useRef<number>(0);
+  
   // 拖动状态 - 恢复自定义拖动实现
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -237,11 +241,16 @@ const WidgetPage_v3: React.FC = () => {
   const handleResizeMove = useCallback((e: MouseEvent) => {
     if (!isResizing || !resizeStartRef.current) return; // 移除 isDragging 检查，因为不再使用自定义拖动
     
-    console.log('🔧 [Renderer] handleResizeMove 被调用');
+    const startTime = Date.now();
+    const timeSinceLastResize = lastResizeTimeRef.current ? startTime - lastResizeTimeRef.current : 0;
+    lastResizeTimeRef.current = startTime;
     
     // 节流：每 16ms (约60fps) 最多执行一次
     const now = Date.now();
-    if (now - resizeThrottleRef.current < 16) return;
+    if (now - resizeThrottleRef.current < 16) {
+      console.log('⏭️ [Renderer] Resize节流中,跳过本次请求');
+      return;
+    }
     resizeThrottleRef.current = now;
     
     const { x, y, width, height, edge } = resizeStartRef.current;
@@ -260,15 +269,64 @@ const WidgetPage_v3: React.FC = () => {
     newWidth = Math.max(400, newWidth);
     newHeight = Math.max(300, newHeight);
     
-    console.log(`🔧 [Renderer] 调用 widgetResize: ${Math.round(newWidth)}x${Math.round(newHeight)}`);
+    console.log('🔧 [Renderer] Resize中:', {
+      edge,
+      delta: { x: deltaX, y: deltaY },
+      requested: { w: Math.round(newWidth), h: Math.round(newHeight) },
+      timeSinceLastResize: `${timeSinceLastResize}ms`,
+      fps: timeSinceLastResize > 0 ? Math.round(1000 / timeSinceLastResize) : 0
+    });
     
     // 调用Electron API调整窗口大小
     if (window.electronAPI?.widgetResize) {
-      window.electronAPI.widgetResize({ width: Math.round(newWidth), height: Math.round(newHeight) });
+      const ipcStart = Date.now();
+      window.electronAPI.widgetResize({ width: Math.round(newWidth), height: Math.round(newHeight) })
+        .then((result: any) => {
+          const ipcEnd = Date.now();
+          const ipcDuration = ipcEnd - ipcStart;
+          const totalDuration = ipcEnd - startTime;
+          
+          // 更新性能统计
+          resizePerfRef.current.count++;
+          resizePerfRef.current.totalTime += ipcDuration;
+          resizePerfRef.current.maxTime = Math.max(resizePerfRef.current.maxTime, ipcDuration);
+          resizePerfRef.current.minTime = Math.min(resizePerfRef.current.minTime, ipcDuration);
+          
+          console.log('✅ [Renderer] widgetResize 完成:', {
+            requested: { w: Math.round(newWidth), h: Math.round(newHeight) },
+            result: result,
+            duration: `${ipcDuration}ms`,
+            total: `${totalDuration}ms`,
+            avg: `${(resizePerfRef.current.totalTime / resizePerfRef.current.count).toFixed(2)}ms`,
+            min: `${resizePerfRef.current.minTime}ms`,
+            max: `${resizePerfRef.current.maxTime}ms`,
+            count: resizePerfRef.current.count
+          });
+        })
+        .catch((error: any) => {
+          console.error('❌ [Renderer] widgetResize 失败:', error);
+        });
     }
   }, [isResizing]); // 移除 isDragging 依赖
 
   const handleResizeEnd = useCallback(() => {
+    console.log('🏁 [Renderer] Resize结束');
+    
+    // 打印性能总结
+    if (resizePerfRef.current.count > 0) {
+      console.log('📊 [Renderer] Resize性能总结:', {
+        totalResizes: resizePerfRef.current.count,
+        avgIpcTime: `${(resizePerfRef.current.totalTime / resizePerfRef.current.count).toFixed(2)}ms`,
+        minIpcTime: `${resizePerfRef.current.minTime}ms`,
+        maxIpcTime: `${resizePerfRef.current.maxTime}ms`,
+        totalTime: `${resizePerfRef.current.totalTime}ms`
+      });
+    }
+    
+    // 重置性能统计
+    resizePerfRef.current = { count: 0, totalTime: 0, maxTime: 0, minTime: Infinity };
+    lastResizeTimeRef.current = 0;
+    
     setIsResizing(false);
     resizeStartRef.current = null;
   }, []);

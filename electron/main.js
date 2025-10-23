@@ -632,18 +632,68 @@ ipcMain.handle('widget-drag-end', () => {
   return { success: true };
 });
 
+// Resize 性能追踪
+let resizePerf = { count: 0, totalTime: 0, maxTime: 0, minTime: Infinity };
+
 ipcMain.handle('widget-resize', (event, size) => {
-  console.log('🔍 [Main] widget-resize IPC 被调用:', size, new Error().stack);
+  const startTime = Date.now();
+  console.log('� [Main] 收到 widget-resize IPC:', size);
+  
   if (widgetWindow && !widgetWindow.isDestroyed()) {
-    const sizeBefore = widgetWindow.getSize();
-    console.log(`📐 [Main] Resize 前: ${sizeBefore[0]}x${sizeBefore[1]}`);
-    
-    widgetWindow.setSize(size.width, size.height);
-    
-    const sizeAfter = widgetWindow.getSize();
-    console.log(`📐 [Main] Resize 后: ${sizeAfter[0]}x${sizeAfter[1]}`);
+    try {
+      const sizeBefore = widgetWindow.getSize();
+      const posBefore = widgetWindow.getPosition();
+      console.log('� [Main] Resize前状态:', { 
+        size: `${sizeBefore[0]}x${sizeBefore[1]}`, 
+        pos: `(${posBefore[0]}, ${posBefore[1]})` 
+      });
+      
+      const setSizeStart = Date.now();
+      widgetWindow.setSize(size.width, size.height, true); // animate=true for smooth resize
+      const setSizeEnd = Date.now();
+      
+      const sizeAfter = widgetWindow.getSize();
+      const posAfter = widgetWindow.getPosition();
+      
+      const endTime = Date.now();
+      const totalDuration = endTime - startTime;
+      const setSizeDuration = setSizeEnd - setSizeStart;
+      
+      // 更新性能统计
+      resizePerf.count++;
+      resizePerf.totalTime += totalDuration;
+      resizePerf.maxTime = Math.max(resizePerf.maxTime, totalDuration);
+      resizePerf.minTime = Math.min(resizePerf.minTime, totalDuration);
+      
+      console.log('✅ [Main] Resize完成:', {
+        requested: `${size.width}x${size.height}`,
+        result: `${sizeAfter[0]}x${sizeAfter[1]}`,
+        position: `(${posAfter[0]}, ${posAfter[1]})`,
+        sizeMatch: sizeAfter[0] === size.width && sizeAfter[1] === size.height
+      });
+      
+      console.log('⏱️ [Main] 性能:', {
+        total: `${totalDuration}ms`,
+        setSize: `${setSizeDuration}ms`,
+        overhead: `${totalDuration - setSizeDuration}ms`,
+        avg: `${(resizePerf.totalTime / resizePerf.count).toFixed(2)}ms`,
+        min: `${resizePerf.minTime}ms`,
+        max: `${resizePerf.maxTime}ms`,
+        count: resizePerf.count
+      });
+      
+      return { 
+        success: true, 
+        size: { width: sizeAfter[0], height: sizeAfter[1] },
+        duration: totalDuration
+      };
+    } catch (error) {
+      console.error('❌ [Main] Resize失败:', error);
+      return { success: false, error: error.message };
+    }
   }
-  return { success: true, size };
+  
+  return { success: false, error: 'Window not available' };
 });
 
 ipcMain.handle('widget-fullscreen', (event, isFullscreen) => {
