@@ -643,21 +643,37 @@ ipcMain.handle('widget-resize', (event, size) => {
     try {
       const sizeBefore = widgetWindow.getSize();
       const posBefore = widgetWindow.getPosition();
-      console.log('� [Main] Resize前状态:', { 
+      console.log('📍 [Main] Resize前状态:', { 
         size: `${sizeBefore[0]}x${sizeBefore[1]}`, 
         pos: `(${posBefore[0]}, ${posBefore[1]})` 
       });
       
       const setSizeStart = Date.now();
-      widgetWindow.setSize(size.width, size.height, true); // animate=true for smooth resize
+      // 🔧 使用 setBounds 代替 setSize，性能更好且不会触发动画
+      widgetWindow.setBounds({ 
+        width: size.width, 
+        height: size.height 
+      }, false); // animate=false 避免等待动画
       const setSizeEnd = Date.now();
+      
+      const setBoundsDuration = setSizeEnd - setSizeStart;
+      
+      // 🔍 如果setBounds耗时超过50ms，打印警告
+      if (setBoundsDuration > 50) {
+        console.warn('⚠️ [Main] setBounds耗时异常:', {
+          duration: `${setBoundsDuration}ms`,
+          requestedSize: `${size.width}x${size.height}`,
+          beforeSize: `${sizeBefore[0]}x${sizeBefore[1]}`,
+          sizeDelta: `+${size.width - sizeBefore[0]}x+${size.height - sizeBefore[1]}`
+        });
+      }
       
       const sizeAfter = widgetWindow.getSize();
       const posAfter = widgetWindow.getPosition();
       
       const endTime = Date.now();
       const totalDuration = endTime - startTime;
-      const setSizeDuration = setSizeEnd - setSizeStart;
+      const overhead = totalDuration - setBoundsDuration;
       
       // 更新性能统计
       resizePerf.count++;
@@ -674,8 +690,8 @@ ipcMain.handle('widget-resize', (event, size) => {
       
       console.log('⏱️ [Main] 性能:', {
         total: `${totalDuration}ms`,
-        setSize: `${setSizeDuration}ms`,
-        overhead: `${totalDuration - setSizeDuration}ms`,
+        setBounds: `${setBoundsDuration}ms`,
+        overhead: `${overhead}ms`,
         avg: `${(resizePerf.totalTime / resizePerf.count).toFixed(2)}ms`,
         min: `${resizePerf.minTime}ms`,
         max: `${resizePerf.maxTime}ms`,
