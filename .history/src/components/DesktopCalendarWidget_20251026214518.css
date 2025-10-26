@@ -1,0 +1,296 @@
+/* ================================================================
+   Desktop Calendar Widget Styles
+   用于 DesktopCalendarWidgetV3 (测试页面) 和 WidgetPage_v3 (Electron桌面组件)
+   ================================================================ */
+
+/* 根容器 - 透明背景 */
+.desktop-calendar-widget {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  background: transparent !important;
+  position: relative;
+}
+
+/* 调整大小手柄 */
+.resize-handle {
+  position: absolute;
+  -webkit-app-region: no-drag;
+  z-index: 1000;
+}
+
+/* 边缘手柄 - 10px宽度 (扩大热区，便于选中) */
+.resize-handle-top,
+.resize-handle-bottom,
+.resize-handle-left,
+.resize-handle-right,
+.resize-handle-topleft,
+.resize-handle-topright,
+.resize-handle-bottomleft,
+.resize-handle-bottomright {
+  position: absolute;
+  -webkit-app-region: no-drag;
+  z-index: 10001; /* 🎯 提高 z-index，确保在 StatusBar 之上 */
+}
+
+/* 顶部调整手柄 - 禁用，避免与拖动条冲突 */
+.resize-handle-top {
+  display: none; /* 隐藏顶部调整手柄，整个顶部区域用于拖动 */
+}
+
+.resize-handle-bottom {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 30px; /* 🎯 增加到 30px，覆盖 StatusBar 的 20px margin + 10px 额外空间 */
+  cursor: ns-resize;
+}
+
+.resize-handle-left {
+  top: 10px; /* 从第10px开始，避开顶部拖动区域 */
+  left: 0;
+  bottom: 0;
+  width: 10px; /* 🎯 从 8px 增加到 10px */
+  cursor: ew-resize;
+}
+
+.resize-handle-right {
+  top: 10px; /* 从第10px开始，避开顶部拖动区域 */
+  right: 0;
+  bottom: 0;
+  width: 10px; /* 🎯 从 8px 增加到 10px */
+  cursor: ew-resize;
+}
+
+/* 角落手柄 - 20x20px (扩大热区) */
+/* 顶部两个角落从第10px开始，避免与拖动区域冲突 */
+.resize-handle-topleft {
+  top: 10px; /* 从第10px开始，避开拖动区域 */
+  left: 0;
+  width: 20px; /* 🎯 从 16px 增加到 20px */
+  height: 20px; /* 🎯 从 16px 增加到 20px */
+  cursor: nwse-resize;
+}
+
+.resize-handle-topright {
+  top: 10px; /* 从第10px开始，避开拖动区域 */
+  right: 0;
+  width: 20px; /* 🎯 从 16px 增加到 20px */
+  height: 20px; /* 🎯 从 16px 增加到 20px */
+  cursor: nesw-resize;
+}
+
+.resize-handle-bottomleft {
+  bottom: 0;
+  left: 0;
+  width: 20px; /* 🎯 从 16px 增加到 20px */
+  height: 30px; /* 🎯 增加到 30px，覆盖 StatusBar 的 margin 区域 */
+  cursor: nesw-resize;
+}
+
+.resize-handle-bottomright {
+  bottom: 0;
+  right: 0;
+  width: 20px; /* 🎯 从 16px 增加到 20px */
+  height: 30px; /* 🎯 增加到 30px，覆盖 StatusBar 的 margin 区域 */
+  cursor: nwse-resize;
+}
+
+/* 拖动条样式 */
+.drag-bar {
+  /* ❌ 不使用原生拖动（透明窗口有bug），使用自定义 JavaScript 拖动逻辑 */
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+/* Widget页面的body - 透明背景 */
+body.widget-mode {
+  background: transparent !important;
+  overflow: hidden;
+}
+
+/* ================================================================
+   TimeCalendar 容器样式
+   .time-calendar-container 是 TimeCalendar 组件的根元素
+   不要强制设置 background: transparent，让它显示自己的背景色
+   ================================================================ */
+.desktop-calendar-inner .time-calendar-container {
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  /* background 不设置，让组件自己控制 */
+}
+
+/* ================================================================
+   Toast UI Calendar 内部元素样式
+   使用 .toastui-calendar-* (不是 .tui-calendar-*)
+   ================================================================ */
+
+/* 日期头部（星期名称）- 透明背景 */
+.desktop-calendar-inner .toastui-calendar-month-dayname,
+.desktop-calendar-inner .toastui-calendar-week-dayname,
+.desktop-calendar-inner .toastui-calendar-day-name-item {
+  background: transparent !important;
+  background-color: transparent !important;
+  border-color: rgba(0, 0, 0, 0.2) !important;
+  font-size: 11px !important;
+}
+
+/* 日历单元格 - 浅透明背景 */
+.desktop-calendar-inner .toastui-calendar-month-daygrid-cell,
+.desktop-calendar-inner .toastui-calendar-timegrid-cell,
+.desktop-calendar-inner .toastui-calendar-panel-grid {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
+  font-size: 11px !important;
+}
+
+/* 更多按钮 */
+.desktop-calendar-inner .toastui-calendar-month-more-button {
+  background: rgba(52, 152, 219, 0.8) !important;
+  color: white !important;
+  font-size: 10px !important;
+}
+
+/* 事件卡片 - 保持可见性 */
+.desktop-calendar-inner .toastui-calendar-event,
+.desktop-calendar-inner .toastui-calendar-event-time {
+  font-size: 10px !important;
+  border-radius: 3px !important;
+  padding: 1px 4px !important;
+  opacity: 0.95 !important;
+}
+
+/* ================================================================
+   控制栏按钮样式
+   ================================================================ */
+.desktop-calendar-widget .control-button {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+}
+
+.desktop-calendar-widget .control-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* ================================================================
+   自定义滚动条样式
+   ================================================================ */
+.desktop-calendar-widget ::-webkit-scrollbar {
+  width: 0px; /* 🎯 隐藏滚动条 */
+  height: 0px;
+}
+
+.desktop-calendar-widget ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.desktop-calendar-widget ::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
+.desktop-calendar-widget ::-webkit-scrollbar-thumb:hover {
+  background: transparent;
+}
+
+/* Firefox */
+.desktop-calendar-widget {
+  scrollbar-width: none; /* 🎯 Firefox 隐藏滚动条 */
+}
+
+/* ================================================================
+   滑块样式
+   ================================================================ */
+.desktop-calendar-widget input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.desktop-calendar-widget input[type="range"]::-webkit-slider-track {
+  background: linear-gradient(90deg, #3498db, #2ecc71);
+  height: 6px;
+  border-radius: 3px;
+}
+
+.desktop-calendar-widget input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+  background: white;
+  border: 2px solid #3498db;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+
+.desktop-calendar-widget input[type="range"]::-webkit-slider-thumb:hover {
+  background: #f8f9fa;
+  transform: scale(1.1);
+}
+
+/* ================================================================
+   动画效果
+   ================================================================ */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.desktop-calendar-widget .control-bar,
+.desktop-calendar-widget .settings-panel {
+  animation: fadeInUp 0.3s ease;
+}
+
+/* ================================================================
+   响应式调整
+   ================================================================ */
+@media (max-width: 600px) {
+  .desktop-calendar-widget .control-button {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+
+  .desktop-calendar-widget .settings-panel {
+    width: 280px !important;
+  }
+}
+
+/* ================================================================
+   无障碍支持
+   ================================================================ */
+
+/* 高对比度模式 */
+@media (prefers-contrast: high) {
+  .desktop-calendar-widget {
+    border: 2px solid #000 !important;
+  }
+
+  .desktop-calendar-widget .control-button {
+    border: 1px solid #000 !important;
+  }
+}
+
+/* 减少动画 */
+@media (prefers-reduced-motion: reduce) {
+  .desktop-calendar-widget * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
