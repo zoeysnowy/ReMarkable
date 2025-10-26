@@ -32,8 +32,9 @@ export const EventManager: React.FC<EventManagerProps> = ({
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [eventTags, setEventTags] = useState<EventTag[]>([]);
   
-  // EventEditModal states
-  const [showEventEditModal, setShowEventEditModal] = useState(false);
+  // DescriptionEditor states
+  const [showDescriptionEditor, setShowDescriptionEditor] = useState(false);
+  const [editingEventForDescription, setEditingEventForDescription] = useState<Event | null>(null);
   
   const [formData, setFormData] = useState({
     title: '',
@@ -357,32 +358,78 @@ export const EventManager: React.FC<EventManagerProps> = ({
     }
   };
 
-  // 编辑事件 (使用 EventEditModal)
-  const openEventEditModal = (event: Event) => {
-    setEditingEvent(event);
-    setShowEventEditModal(true);
+  // 编辑事件描述和标签（使用DescriptionEditor）
+  const editEventDescription = (event: Event) => {
+    setEditingEventForDescription(event);
+    setShowDescriptionEditor(true);
   };
 
-  // 保存事件编辑（从EventEditModal返回）
-  const saveEventFromModal = async (updatedEvent: Event) => {
+  // 保存事件描述和标签的更新（现在支持完整事件编辑）
+  const saveEventDescription = async (description: string, tags: string[], eventData?: any) => {
+    if (!editingEventForDescription) return;
+
     try {
-      const isNewEvent = !updatedEvent.id || updatedEvent.id === '';
+      let updatedEvent: Event;
+      const isNewEvent = !editingEventForDescription.id;
       
-      if (isNewEvent) {
-        // 创建新事件
-        updatedEvent.id = Date.now().toString();
-        updatedEvent.createdAt = formatTimeForStorage(new Date());
-        updatedEvent.syncStatus = 'pending' as const;
+      if (eventData) {
+        // 完整事件编辑
+        if (isNewEvent) {
+          // 创建新事件
+          updatedEvent = {
+            id: Date.now().toString(),
+            title: eventData.title,
+            description: eventData.description,
+            startTime: eventData.startTime && eventData.startTime.trim() ? 
+              formatTimeForStorage(new Date(eventData.startTime)) : 
+              formatTimeForStorage(new Date()),
+            endTime: eventData.endTime && eventData.endTime.trim() ? 
+              formatTimeForStorage(new Date(eventData.endTime)) : 
+              formatTimeForStorage(new Date(Date.now() + 60 * 60 * 1000)),
+            location: eventData.location,
+            isAllDay: eventData.isAllDay,
+            reminder: eventData.reminder,
+            tagId: tags.length > 0 ? tags[0] : '',
+            createdAt: formatTimeForStorage(new Date()),
+            updatedAt: formatTimeForStorage(new Date()),
+            category: 'planning',
+            syncStatus: 'pending' as const
+          } as Event;
+        } else {
+          // 更新现有事件
+          updatedEvent = {
+            ...editingEventForDescription,
+            title: eventData.title || editingEventForDescription.title,
+            description: eventData.description,
+            startTime: eventData.startTime && eventData.startTime.trim() ? 
+              formatTimeForStorage(new Date(eventData.startTime)) : 
+              editingEventForDescription.startTime,
+            endTime: eventData.endTime && eventData.endTime.trim() ? 
+              formatTimeForStorage(new Date(eventData.endTime)) : 
+              editingEventForDescription.endTime,
+            location: eventData.location !== undefined ? eventData.location : editingEventForDescription.location,
+            isAllDay: eventData.isAllDay !== undefined ? eventData.isAllDay : editingEventForDescription.isAllDay,
+            reminder: eventData.reminder !== undefined ? eventData.reminder : editingEventForDescription.reminder,
+            tagId: tags.length > 0 ? tags[0] : '',
+            updatedAt: formatTimeForStorage(new Date())
+          };
+        }
+      } else {
+        // 仅描述和标签编辑
+        updatedEvent = {
+          ...editingEventForDescription,
+          description,
+          tagId: tags.length > 0 ? tags[0] : '',
+          updatedAt: formatTimeForStorage(new Date())
+        };
       }
-      
-      updatedEvent.updatedAt = formatTimeForStorage(new Date());
 
       // 更新本地状态
       if (isNewEvent) {
         setEvents(prev => [...prev, updatedEvent]);
       } else {
         setEvents(prev => prev.map(e => 
-          e.id === updatedEvent.id ? updatedEvent : e
+          e.id === editingEventForDescription.id ? updatedEvent : e
         ));
       }
 
@@ -394,40 +441,70 @@ export const EventManager: React.FC<EventManagerProps> = ({
         updatedEvents = [...allEvents, updatedEvent];
       } else {
         updatedEvents = allEvents.map((e: Event) => 
-          e.id === updatedEvent.id ? updatedEvent : e
+          e.id === editingEventForDescription.id ? updatedEvent : e
         );
       }
       
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(updatedEvents));
 
-      // 触发 ActionBasedSyncManager 同步到 Outlook
+      // 🔧 [NEW] 触发 ActionBasedSyncManager 同步到 Outlook（支持标签映射）
       if (syncManager && isNewEvent) {
-        console.log('📅 [EventManager] Recording new event for sync:', updatedEvent.title);
+        console.log('📅 [EventManager] Recording new event for sync:', updatedEvent.title, 'with tag:', updatedEvent.tagId);
         syncManager.recordLocalAction('create', 'event', updatedEvent.id, updatedEvent);
       } else if (syncManager && !isNewEvent) {
         console.log('📅 [EventManager] Recording event update for sync:', updatedEvent.title);
-        const originalEvent = events.find(e => e.id === updatedEvent.id);
-        syncManager.recordLocalAction('update', 'event', updatedEvent.id, updatedEvent, originalEvent);
+        syncManager.recordLocalAction('update', 'event', updatedEvent.id, updatedEvent, editingEventForDescription);
+      }
+
+      // 如果有 Microsoft 服务且事件有 externalId，同步到 Outlook
+      if (microsoftService && updatedEvent.externalId) {
+        try {
+          await microsoftService.updateEvent(updatedEvent.externalId, {
+            subject: updatedEvent.title,
+            body: {
+              contentType: 'text',
+              content: description
+            }
+          });
+        } catch (error) {
+          console.warn('Failed to sync event description to Outlook:', error);
+        }
       }
 
       // 关闭编辑器
-      setShowEventEditModal(false);
-      setEditingEvent(null);
+      setShowDescriptionEditor(false);
+      setEditingEventForDescription(null);
 
       // 触发事件更新
       window.dispatchEvent(new CustomEvent('timer-events-updated'));
     } catch (error) {
-      console.error('Error saving event:', error);
-      alert('保存事件失败！');
+      console.error('Error updating event description:', error);
+      alert('更新事件描述失败！');
     }
   };
 
-  // 编辑事件（原有的表单编辑）- 保留但改为调用EventEditModal
+  // 编辑事件（原有的表单编辑）
   const editEvent = (event: Event) => {
-    openEventEditModal(event);
+    setEditingEvent(event);
+    setSelectedDate(parseLocalTimeString(event.startTime)); // 🔧 使用工具函数
+    
+    const eventTag = getEventTag(event);
+    
+    setFormData({
+      title: event.title,
+      description: event.description || '',
+      startTime: formatTimeForInput(event.startTime), // 🔧 使用工具函数
+      endTime: formatTimeForInput(event.endTime),     // 🔧 使用工具函数
+      location: event.location || '',
+      isAllDay: event.isAllDay || false,
+      reminder: event.reminder || 15,
+      category: eventTag?.category || 'planning',
+      tagId: (event as any).tagId || ''
+    });
+    setShowAddForm(true);
   };
 
-  // 保存编辑的事件 - 已整合到 saveEventFromModal
+  // 保存编辑的事件
   const saveEditedEvent = async () => {
     if (!editingEvent || !formData.title.trim()) {
       alert('请输入事件标题！');
@@ -689,7 +766,7 @@ export const EventManager: React.FC<EventManagerProps> = ({
             <button
               onClick={() => {
                 console.log('🔥 [EDIT BUTTON CLICKED] This is the EventManager.tsx edit button!');
-                openEventEditModal(event);
+                editEventDescription(event);
               }}
               className="btn-edit-mini"
               title="编辑事件 (EventManager.tsx版本)"
@@ -760,7 +837,7 @@ export const EventManager: React.FC<EventManagerProps> = ({
 
         <div className="event-actions">
           <button
-            onClick={() => openEventEditModal(event)}
+            onClick={() => editEventDescription(event)}
             className="btn btn-edit"
             title="编辑事件"
           >
@@ -1039,21 +1116,19 @@ export const EventManager: React.FC<EventManagerProps> = ({
         <div className="header-actions">
           <button
             onClick={() => {
-              const newEvent: Event = {
+              setEditingEventForDescription({
                 id: '',
                 title: '',
                 description: '',
                 startTime: formatTimeForStorage(new Date()),
-                endTime: formatTimeForStorage(new Date(Date.now() + 60 * 60 * 1000)),
+                endTime: formatTimeForStorage(new Date(Date.now() + 60 * 60 * 1000)), // 1小时后
                 isAllDay: false,
                 location: '',
                 reminder: 15,
                 createdAt: formatTimeForStorage(new Date()),
-                updatedAt: formatTimeForStorage(new Date()),
-                category: 'planning'
-              };
-              setEditingEvent(newEvent);
-              setShowEventEditModal(true);
+                updatedAt: formatTimeForStorage(new Date())
+              } as Event);
+              setShowDescriptionEditor(true);
             }}
             className="btn btn-primary"
           >
@@ -1064,18 +1139,28 @@ export const EventManager: React.FC<EventManagerProps> = ({
 
       {renderEventsList()}
       
-      {/* EventEditModal for event editing */}
-      {showEventEditModal && editingEvent && (
-        <EventEditModal
-          event={editingEvent}
-          isOpen={showEventEditModal}
-          onClose={() => {
-            setShowEventEditModal(false);
-            setEditingEvent(null);
+      {/* DescriptionEditor for event editing */}
+      {showDescriptionEditor && editingEventForDescription && (
+        <DescriptionEditor
+          isOpen={showDescriptionEditor}
+          title={`编辑事件: ${editingEventForDescription.title}`}
+          initialDescription=""
+          initialTags={(editingEventForDescription as any).tagId ? [(editingEventForDescription as any).tagId] : []}
+          isFullEventEdit={true}
+          initialEventData={{
+            title: editingEventForDescription.title,
+            description: editingEventForDescription.description || '',
+            startTime: formatDateTimeForInput(editingEventForDescription.startTime),
+            endTime: formatDateTimeForInput(editingEventForDescription.endTime),
+            location: editingEventForDescription.location || '',
+            isAllDay: editingEventForDescription.isAllDay || false,
+            reminder: editingEventForDescription.reminder || 15
           }}
-          onSave={saveEventFromModal}
-          hierarchicalTags={eventTags}
-          microsoftService={microsoftService}
+          onSave={saveEventDescription}
+          onClose={() => {
+            setShowDescriptionEditor(false);
+            setEditingEventForDescription(null);
+          }}
         />
       )}
     </div>

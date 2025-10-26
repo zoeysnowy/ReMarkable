@@ -101,40 +101,37 @@ const TaskManager: React.FC<TaskManagerProps> = ({ onStartTimer }) => {
     }
   };
 
-  // 打开事件编辑器 (用于编辑任务)
-  const openTaskEditor = (task: Task) => {
-    // 将Task转换为Event格式
-    const taskAsEvent: Event = {
-      id: task.id,
-      title: task.title,
+  // 打开描述编辑器
+  const openDescriptionEditor = (task: Task) => {
+    setDescriptionEditor({
+      isOpen: true,
+      taskId: task.id,
+      title: `编辑任务：${task.title}`,
       description: task.description || '',
-      startTime: task.createdAt,
-      endTime: task.dueDate || formatTimeForStorage(new Date(Date.now() + 60 * 60 * 1000)),
-      isAllDay: false,
-      location: '',
-      reminder: 15,
-      tags: task.tags || [],
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
-      category: 'planning'
-    };
-    
-    setEditingTaskAsEvent(taskAsEvent);
-    setShowEventEditModal(true);
+      tags: task.tags || []
+    });
   };
 
-  // 保存任务编辑（从EventEditModal返回）
-  const saveTaskFromModal = (updatedEvent: Event) => {
-    // 将Event转换回Task格式
-    updateTask(updatedEvent.id, {
-      title: updatedEvent.title,
-      description: updatedEvent.description,
-      tags: updatedEvent.tags || [],
-      dueDate: updatedEvent.endTime
+  // 关闭描述编辑器
+  const closeDescriptionEditor = () => {
+    setDescriptionEditor({
+      isOpen: false,
+      taskId: '',
+      title: '',
+      description: '',
+      tags: []
     });
-    
-    setShowEventEditModal(false);
-    setEditingTaskAsEvent(null);
+  };
+
+  // 保存描述和标签
+  const saveDescriptionAndTags = (description: string, tags: string[]) => {
+    if (descriptionEditor.taskId) {
+      updateTask(descriptionEditor.taskId, { 
+        description, 
+        tags 
+      });
+    }
+    closeDescriptionEditor();
   };
 
   // 获取优先级颜色
@@ -251,9 +248,9 @@ const TaskManager: React.FC<TaskManagerProps> = ({ onStartTimer }) => {
                 </div>
                 <div className="task-actions">
                   <button
-                    onClick={() => openTaskEditor(task)}
+                    onClick={() => openDescriptionEditor(task)}
                     className="btn btn-edit-small"
-                    title="编辑任务"
+                    title="编辑描述和标签"
                   >
                     ✏️
                   </button>
@@ -372,19 +369,15 @@ const TaskManager: React.FC<TaskManagerProps> = ({ onStartTimer }) => {
         </div>
       )}
 
-      {/* EventEditModal 用于编辑任务 */}
-      {showEventEditModal && editingTaskAsEvent && (
-        <EventEditModal
-          event={editingTaskAsEvent}
-          isOpen={showEventEditModal}
-          onClose={() => {
-            setShowEventEditModal(false);
-            setEditingTaskAsEvent(null);
-          }}
-          onSave={saveTaskFromModal}
-          hierarchicalTags={[]}
-        />
-      )}
+      {/* 描述编辑器 */}
+      <DescriptionEditor
+        isOpen={descriptionEditor.isOpen}
+        onClose={closeDescriptionEditor}
+        onSave={saveDescriptionAndTags}
+        initialDescription={descriptionEditor.description}
+        initialTags={descriptionEditor.tags}
+        title={descriptionEditor.title}
+      />
     </div>
   );
 };

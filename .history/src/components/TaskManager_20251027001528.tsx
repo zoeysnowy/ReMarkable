@@ -251,9 +251,9 @@ const TaskManager: React.FC<TaskManagerProps> = ({ onStartTimer }) => {
                 </div>
                 <div className="task-actions">
                   <button
-                    onClick={() => openTaskEditor(task)}
+                    onClick={() => openDescriptionEditor(task)}
                     className="btn btn-edit-small"
-                    title="编辑任务"
+                    title="编辑描述和标签"
                   >
                     ✏️
                   </button>
@@ -372,19 +372,15 @@ const TaskManager: React.FC<TaskManagerProps> = ({ onStartTimer }) => {
         </div>
       )}
 
-      {/* EventEditModal 用于编辑任务 */}
-      {showEventEditModal && editingTaskAsEvent && (
-        <EventEditModal
-          event={editingTaskAsEvent}
-          isOpen={showEventEditModal}
-          onClose={() => {
-            setShowEventEditModal(false);
-            setEditingTaskAsEvent(null);
-          }}
-          onSave={saveTaskFromModal}
-          hierarchicalTags={[]}
-        />
-      )}
+      {/* 描述编辑器 */}
+      <DescriptionEditor
+        isOpen={descriptionEditor.isOpen}
+        onClose={closeDescriptionEditor}
+        onSave={saveDescriptionAndTags}
+        initialDescription={descriptionEditor.description}
+        initialTags={descriptionEditor.tags}
+        title={descriptionEditor.title}
+      />
     </div>
   );
 };

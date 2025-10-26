@@ -1528,12 +1528,12 @@ function App() {
 
 // 导出主应用或悬浮窗口页面
 export default function AppWrapper() {
-  // 检查是否为悬浮窗口模式
-  const isWidgetMode = window.location.hash === '#/widget-v3';
+  // 检查是否为悬浮窗口模式 v3
+  const isWidgetModeV3 = window.location.hash === '#/widget-v3';
   
-  // 如果是悬浮窗口模式，渲染桌面日历组件
-  if (isWidgetMode) {
-    return <DesktopCalendarWidget />;
+  // 如果是悬浮窗口模式 v3，渲染新版本
+  if (isWidgetModeV3) {
+    return <WidgetPage_v3 />;
   }
   
   // 否则渲染完整应用

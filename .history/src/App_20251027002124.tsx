@@ -7,7 +7,7 @@ import CalendarSync from './components/CalendarSync';
 // import UnifiedTimeline from './components/UnifiedTimeline'; // 暂时未使用
 import AppLayout, { PageType } from './components/AppLayout';
 import PageContainer from './components/PageContainer';
-import DesktopCalendarWidget from './pages/DesktopCalendarWidget';
+import WidgetPage_v3 from './pages/WidgetPage_v3'; // 悬浮窗口页面 v3（完全复刻测试页）
 import { TimerCard } from './components/TimerCard'; // 计时卡片组件
 import { DailyStatsCard } from './components/DailyStatsCard'; // 今日统计卡片组件
 import { TimerSession, Event } from './types';
@@ -21,7 +21,7 @@ import SettingsModal from './components/SettingsModal';
 import './App.css';
 
 // � 暂时禁用懒加载，测试性能
-import TagManager from './components/TagManager';
+import FigmaTagManagerV3 from './components/FigmaTagManagerV3';
 import TimeCalendar from './components/TimeCalendar';
 
 // 🚀 性能优化：生产环境禁用 console.log
@@ -938,6 +938,8 @@ function App() {
         startTime: formatTimeForStorage(new Date(Date.now() - seconds * 1000)),
         endTime: formatTimeForStorage(new Date()),
         duration: seconds,
+        description: currentTaskEditor.description || undefined,
+        tags: currentTaskEditor.tags.length > 0 ? currentTaskEditor.tags : undefined,
         completedAt: formatTimeForStorage(new Date())
       };
       
@@ -952,6 +954,12 @@ function App() {
     setIsActive(false);
     setCurrentTask('');
     setSeconds(0);
+    setCurrentTaskEditor({
+      isOpen: false,
+      title: '',
+      description: '',
+      tags: []
+    });
   };
 
   // 计时器效果（老系统）
@@ -1045,7 +1053,7 @@ function App() {
     }
   }, [microsoftService?.isSignedIn()]);
 
-  // 🔄 定期更新 lastSyncTime（与 DesktopCalendarWidget 保持一致）
+  // 🔄 定期更新 lastSyncTime（与 WidgetPage_v3 保持一致）
   useEffect(() => {
     if (!syncManager) return;
     
@@ -1068,6 +1076,54 @@ function App() {
     
     return () => clearInterval(syncTimeInterval);
   }, [syncManager]);
+
+  // 打开当前任务编辑器
+  const openCurrentTaskEditor = () => {
+    if (!currentTask) return;
+    
+    // 尝试从localStorage恢复之前的编辑数据
+    let description = currentTaskEditor.description;
+    let tags = currentTaskEditor.tags;
+    
+    try {
+      const savedData = localStorage.getItem('currentTaskEditData');
+      if (savedData) {
+        const parsed = JSON.parse(savedData);
+        if (parsed.taskName === currentTask) {
+          description = parsed.description || '';
+          tags = parsed.tags || [];
+        }
+      }
+    } catch (error) {
+      console.warn('任务数据恢复失败:', error);
+    }
+    
+    setCurrentTaskEditor({
+      isOpen: true,
+      title: currentTask,
+      description,
+      tags
+    });
+  };
+
+  // 保存当前任务编辑
+  const saveCurrentTaskEdit = (description: string, tags: string[]) => {
+    setCurrentTaskEditor({
+      ...currentTaskEditor,
+      isOpen: false,
+      description,
+      tags
+    });
+    
+    // 同时保存到localStorage作为临时缓存
+    const currentTaskData = {
+      taskName: currentTask,
+      description,
+      tags,
+      timestamp: Date.now()
+    };
+    localStorage.setItem('currentTaskEditData', JSON.stringify(currentTaskData));
+  };
 
   // 保存事件更改
   const saveEventChanges = async () => {
@@ -1273,8 +1329,8 @@ function App() {
                   <p>父标签删除，事件默认同步至原先日历</p>
                 </div>
 
-                {/* TagManager 组件 - 使用 emoji-mart 的新版本 */}
-                <TagManager 
+                {/* FigmaTagManagerV3 组件 - 使用 emoji-mart 的新版本 */}
+                <FigmaTagManagerV3 
                   microsoftService={microsoftService}
                   globalTimer={globalTimer}
                   onTimerStart={handleTimerStart}
@@ -1412,6 +1468,16 @@ function App() {
         onClose={() => setShowSettingsModal(false)} 
       />
 
+      {/* 当前任务描述编辑器 */}
+      <DescriptionEditor
+        isOpen={currentTaskEditor.isOpen}
+        title={currentTaskEditor.title}
+        initialDescription={currentTaskEditor.description}
+        initialTags={currentTaskEditor.tags}
+        onSave={saveCurrentTaskEdit}
+        onClose={() => setCurrentTaskEditor({ ...currentTaskEditor, isOpen: false })}
+      />
+
       {/* 计时器事件编辑模态框 */}
       {timerEditModal.isOpen && timerEditModal.event && (
         <EventEditModal
@@ -1528,12 +1594,12 @@ function App() {
 
 // 导出主应用或悬浮窗口页面
 export default function AppWrapper() {
-  // 检查是否为悬浮窗口模式
-  const isWidgetMode = window.location.hash === '#/widget-v3';
+  // 检查是否为悬浮窗口模式 v3
+  const isWidgetModeV3 = window.location.hash === '#/widget-v3';
   
-  // 如果是悬浮窗口模式，渲染桌面日历组件
-  if (isWidgetMode) {
-    return <DesktopCalendarWidget />;
+  // 如果是悬浮窗口模式 v3，渲染新版本
+  if (isWidgetModeV3) {
+    return <WidgetPage_v3 />;
   }
   
   // 否则渲染完整应用

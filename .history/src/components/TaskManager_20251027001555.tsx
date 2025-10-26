@@ -372,19 +372,15 @@ const TaskManager: React.FC<TaskManagerProps> = ({ onStartTimer }) => {
         </div>
       )}
 
-      {/* EventEditModal 用于编辑任务 */}
-      {showEventEditModal && editingTaskAsEvent && (
-        <EventEditModal
-          event={editingTaskAsEvent}
-          isOpen={showEventEditModal}
-          onClose={() => {
-            setShowEventEditModal(false);
-            setEditingTaskAsEvent(null);
-          }}
-          onSave={saveTaskFromModal}
-          hierarchicalTags={[]}
-        />
-      )}
+      {/* 描述编辑器 */}
+      <DescriptionEditor
+        isOpen={descriptionEditor.isOpen}
+        onClose={closeDescriptionEditor}
+        onSave={saveDescriptionAndTags}
+        initialDescription={descriptionEditor.description}
+        initialTags={descriptionEditor.tags}
+        title={descriptionEditor.title}
+      />
     </div>
   );
 };

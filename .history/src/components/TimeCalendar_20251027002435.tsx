@@ -2061,7 +2061,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         />
         </div>
 
-        {/* 📊 状态栏 - Widget 模式下由 DesktopCalendarWidget 独立显示 */}
+        {/* 📊 状态栏 - Widget 模式下由 WidgetPage_v3 独立显示 */}
         {!isWidgetMode && (
           <div style={{
             display: 'flex',

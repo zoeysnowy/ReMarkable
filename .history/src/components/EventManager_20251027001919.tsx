@@ -760,7 +760,7 @@ export const EventManager: React.FC<EventManagerProps> = ({
 
         <div className="event-actions">
           <button
-            onClick={() => openEventEditModal(event)}
+            onClick={() => editEventDescription(event)}
             className="btn btn-edit"
             title="编辑事件"
           >
@@ -1039,21 +1039,19 @@ export const EventManager: React.FC<EventManagerProps> = ({
         <div className="header-actions">
           <button
             onClick={() => {
-              const newEvent: Event = {
+              setEditingEventForDescription({
                 id: '',
                 title: '',
                 description: '',
                 startTime: formatTimeForStorage(new Date()),
-                endTime: formatTimeForStorage(new Date(Date.now() + 60 * 60 * 1000)),
+                endTime: formatTimeForStorage(new Date(Date.now() + 60 * 60 * 1000)), // 1小时后
                 isAllDay: false,
                 location: '',
                 reminder: 15,
                 createdAt: formatTimeForStorage(new Date()),
-                updatedAt: formatTimeForStorage(new Date()),
-                category: 'planning'
-              };
-              setEditingEvent(newEvent);
-              setShowEventEditModal(true);
+                updatedAt: formatTimeForStorage(new Date())
+              } as Event);
+              setShowDescriptionEditor(true);
             }}
             className="btn btn-primary"
           >
@@ -1064,18 +1062,28 @@ export const EventManager: React.FC<EventManagerProps> = ({
 
       {renderEventsList()}
       
-      {/* EventEditModal for event editing */}
-      {showEventEditModal && editingEvent && (
-        <EventEditModal
-          event={editingEvent}
-          isOpen={showEventEditModal}
-          onClose={() => {
-            setShowEventEditModal(false);
-            setEditingEvent(null);
+      {/* DescriptionEditor for event editing */}
+      {showDescriptionEditor && editingEventForDescription && (
+        <DescriptionEditor
+          isOpen={showDescriptionEditor}
+          title={`编辑事件: ${editingEventForDescription.title}`}
+          initialDescription=""
+          initialTags={(editingEventForDescription as any).tagId ? [(editingEventForDescription as any).tagId] : []}
+          isFullEventEdit={true}
+          initialEventData={{
+            title: editingEventForDescription.title,
+            description: editingEventForDescription.description || '',
+            startTime: formatDateTimeForInput(editingEventForDescription.startTime),
+            endTime: formatDateTimeForInput(editingEventForDescription.endTime),
+            location: editingEventForDescription.location || '',
+            isAllDay: editingEventForDescription.isAllDay || false,
+            reminder: editingEventForDescription.reminder || 15
           }}
-          onSave={saveEventFromModal}
-          hierarchicalTags={eventTags}
-          microsoftService={microsoftService}
+          onSave={saveEventDescription}
+          onClose={() => {
+            setShowDescriptionEditor(false);
+            setEditingEventForDescription(null);
+          }}
         />
       )}
     </div>

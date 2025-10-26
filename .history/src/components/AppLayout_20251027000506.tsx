@@ -155,7 +155,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, onPageChange, clickTrack
     { id: 'log' as PageType, label: '日志', icon: 'log' },
     { id: 'tag' as PageType, label: '标签', icon: 'tag' },
     { id: 'plan' as PageType, label: '计划', icon: 'plan' },
-    { id: 'sync' as PageType, label: '同步', icon: 'sync' }
+    { id: 'sync' as PageType, label: '同步', icon: 'sync' },
+    { id: 'test' as PageType, label: '测试', icon: 'test' }
   ];
 
   // 调试点击事件的处理器

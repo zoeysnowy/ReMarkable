@@ -427,7 +427,23 @@ export const EventManager: React.FC<EventManagerProps> = ({
     openEventEditModal(event);
   };
 
-  // 保存编辑的事件 - 已整合到 saveEventFromModal
+  // 删除旧的 editEventDescription 和 saveEventDescription 函数
+    
+    setFormData({
+      title: event.title,
+      description: event.description || '',
+      startTime: formatTimeForInput(event.startTime), // 🔧 使用工具函数
+      endTime: formatTimeForInput(event.endTime),     // 🔧 使用工具函数
+      location: event.location || '',
+      isAllDay: event.isAllDay || false,
+      reminder: event.reminder || 15,
+      category: eventTag?.category || 'planning',
+      tagId: (event as any).tagId || ''
+    });
+    setShowAddForm(true);
+  };
+
+  // 保存编辑的事件
   const saveEditedEvent = async () => {
     if (!editingEvent || !formData.title.trim()) {
       alert('请输入事件标题！');
@@ -689,7 +705,7 @@ export const EventManager: React.FC<EventManagerProps> = ({
             <button
               onClick={() => {
                 console.log('🔥 [EDIT BUTTON CLICKED] This is the EventManager.tsx edit button!');
-                openEventEditModal(event);
+                editEventDescription(event);
               }}
               className="btn-edit-mini"
               title="编辑事件 (EventManager.tsx版本)"
@@ -760,7 +776,7 @@ export const EventManager: React.FC<EventManagerProps> = ({
 
         <div className="event-actions">
           <button
-            onClick={() => openEventEditModal(event)}
+            onClick={() => editEventDescription(event)}
             className="btn btn-edit"
             title="编辑事件"
           >
@@ -1039,21 +1055,19 @@ export const EventManager: React.FC<EventManagerProps> = ({
         <div className="header-actions">
           <button
             onClick={() => {
-              const newEvent: Event = {
+              setEditingEventForDescription({
                 id: '',
                 title: '',
                 description: '',
                 startTime: formatTimeForStorage(new Date()),
-                endTime: formatTimeForStorage(new Date(Date.now() + 60 * 60 * 1000)),
+                endTime: formatTimeForStorage(new Date(Date.now() + 60 * 60 * 1000)), // 1小时后
                 isAllDay: false,
                 location: '',
                 reminder: 15,
                 createdAt: formatTimeForStorage(new Date()),
-                updatedAt: formatTimeForStorage(new Date()),
-                category: 'planning'
-              };
-              setEditingEvent(newEvent);
-              setShowEventEditModal(true);
+                updatedAt: formatTimeForStorage(new Date())
+              } as Event);
+              setShowDescriptionEditor(true);
             }}
             className="btn btn-primary"
           >
@@ -1064,18 +1078,28 @@ export const EventManager: React.FC<EventManagerProps> = ({
 
       {renderEventsList()}
       
-      {/* EventEditModal for event editing */}
-      {showEventEditModal && editingEvent && (
-        <EventEditModal
-          event={editingEvent}
-          isOpen={showEventEditModal}
-          onClose={() => {
-            setShowEventEditModal(false);
-            setEditingEvent(null);
+      {/* DescriptionEditor for event editing */}
+      {showDescriptionEditor && editingEventForDescription && (
+        <DescriptionEditor
+          isOpen={showDescriptionEditor}
+          title={`编辑事件: ${editingEventForDescription.title}`}
+          initialDescription=""
+          initialTags={(editingEventForDescription as any).tagId ? [(editingEventForDescription as any).tagId] : []}
+          isFullEventEdit={true}
+          initialEventData={{
+            title: editingEventForDescription.title,
+            description: editingEventForDescription.description || '',
+            startTime: formatDateTimeForInput(editingEventForDescription.startTime),
+            endTime: formatDateTimeForInput(editingEventForDescription.endTime),
+            location: editingEventForDescription.location || '',
+            isAllDay: editingEventForDescription.isAllDay || false,
+            reminder: editingEventForDescription.reminder || 15
           }}
-          onSave={saveEventFromModal}
-          hierarchicalTags={eventTags}
-          microsoftService={microsoftService}
+          onSave={saveEventDescription}
+          onClose={() => {
+            setShowDescriptionEditor(false);
+            setEditingEventForDescription(null);
+          }}
         />
       )}
     </div>

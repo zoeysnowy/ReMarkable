@@ -1428,6 +1428,90 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   };
 
   /**
+   * 💾 保存描述编辑器的更改
+   * 支持多标签和完整事件编辑
+   */
+  const handleSaveDescription = async (description: string, tags: string[], eventData?: any) => {
+    if (!editingEventForDescription) return;
+    
+    console.log('💾 [TimeCalendar] Saving event:', editingEventForDescription.id, {
+      tagsCount: tags.length,
+      hasEventData: !!eventData
+    });
+    
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
+      if (!saved) return;
+      
+      const existingEvents: Event[] = JSON.parse(saved);
+      const eventIndex = existingEvents.findIndex((e: Event) => e.id === editingEventForDescription.id);
+      
+      if (eventIndex === -1) return;
+
+      const originalEvent = existingEvents[eventIndex];
+      
+      // 构建更新数据
+      const updates: Partial<Event> = {
+        description,
+        tags: tags.length > 0 ? tags : undefined, // 支持多标签
+        tagId: tags.length > 0 ? tags[0] : undefined, // 向后兼容，使用第一个标签
+      };
+
+      // 如果有完整事件数据更新
+      if (eventData) {
+        updates.title = eventData.title;
+        updates.startTime = eventData.startTime;
+        updates.endTime = eventData.endTime;
+        updates.location = eventData.location;
+        updates.isAllDay = eventData.isAllDay;
+        updates.reminder = eventData.reminder;
+      }
+
+      const updatedEvent = mergeEventUpdates(originalEvent, updates);
+
+      existingEvents[eventIndex] = updatedEvent;
+      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
+      setEvents(existingEvents);
+
+      // 🔄 多标签同步：如果事件有多个标签，需要同步到所有标签映射的日历
+      const activeSyncManager = syncManager || (window as any).syncManager;
+      if (activeSyncManager && tags.length > 0) {
+        // 获取所有标签对应的日历映射
+        const tagCalendarMappings = await getCalendarMappingsForTags(tags);
+        
+        console.log('🏷️ [TimeCalendar] Multi-tag sync:', {
+          tags,
+          mappings: tagCalendarMappings
+        });
+
+        // 同步到所有映射的日历
+        for (const mapping of tagCalendarMappings) {
+          try {
+            // 为每个日历创建副本事件（使用相同的remarkableId但不同的externalId）
+            const eventForCalendar = {
+              ...updatedEvent,
+              calendarId: mapping.calendarId
+            };
+            
+            await activeSyncManager.recordLocalAction('update', 'event', updatedEvent.id, eventForCalendar, originalEvent);
+            console.log(`✅ [TimeCalendar] Synced to calendar: ${mapping.calendarName}`);
+          } catch (error) {
+            console.error(`❌ [TimeCalendar] Failed to sync to calendar ${mapping.calendarName}:`, error);
+          }
+        }
+      } else if (activeSyncManager) {
+        // 单标签或无标签的情况，使用原有逻辑
+        await activeSyncManager.recordLocalAction('update', 'event', updatedEvent.id, updatedEvent, originalEvent);
+      }
+
+      setShowDescriptionEditor(false);
+      setEditingEventForDescription(null);
+    } catch (error) {
+      console.error('❌ [TimeCalendar] Failed to save description:', error);
+    }
+  };
+
+  /**
    * 🏷️ 获取标签对应的日历映射
    */
   const getCalendarMappingsForTags = async (tagIds: string[]) => {
@@ -2061,7 +2145,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         />
         </div>
 
-        {/* 📊 状态栏 - Widget 模式下由 DesktopCalendarWidget 独立显示 */}
+        {/* 📊 状态栏 - Widget 模式下由 WidgetPage_v3 独立显示 */}
         {!isWidgetMode && (
           <div style={{
             display: 'flex',
@@ -2087,6 +2171,31 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           </div>
         )}
       </div>
+
+      {/* 📝 描述编辑器弹窗 - 支持完整事件编辑和多标签 */}
+      {showDescriptionEditor && editingEventForDescription && (
+        <DescriptionEditor
+          isOpen={showDescriptionEditor}
+          onClose={() => {
+            setShowDescriptionEditor(false);
+            setEditingEventForDescription(null);
+          }}
+          title={`编辑事件: ${editingEventForDescription.title}`}
+          initialDescription={editingEventForDescription.description || ''}
+          initialTags={editingEventForDescription.tags || (editingEventForDescription.tagId ? [editingEventForDescription.tagId] : [])}
+          onSave={handleSaveDescription}
+          isFullEventEdit={true}
+          initialEventData={{
+            title: editingEventForDescription.title,
+            description: editingEventForDescription.description || '',
+            startTime: editingEventForDescription.startTime,
+            endTime: editingEventForDescription.endTime,
+            location: editingEventForDescription.location || '',
+            isAllDay: editingEventForDescription.isAllDay || false,
+            reminder: editingEventForDescription.reminder || 15
+          }}
+        />
+      )}
 
       {/* ✏️ 事件编辑弹窗 */}
       <EventEditModal

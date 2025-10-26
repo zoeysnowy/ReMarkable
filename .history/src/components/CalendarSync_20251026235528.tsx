@@ -44,13 +44,6 @@ const CalendarSync: React.FC<CalendarSyncProps> = ({
     setSyncMessage('');
     
     try {
-      // 🔧 Electron环境：使用窗口内认证
-      if (isElectron) {
-        await handleElectronAuth();
-        return;
-      }
-      
-      // Web环境：使用标准MSAL认证
       const success = await microsoftService.signIn();
       if (success) {
         await loadUserInfo();
@@ -70,108 +63,6 @@ const CalendarSync: React.FC<CalendarSyncProps> = ({
     } catch (error) {
       console.error('Connection error:', error);
       setSyncMessage(`❌ 连接失败: ${error}`);
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-
-  const handleElectronAuth = async () => {
-    try {
-      const clientId = 'cf163673-488e-44d9-83ac-0f11d90016ca';
-      const redirectUri = 'https://login.microsoftonline.com/common/oauth2/nativeclient';
-      const scopes = [
-        'https://graph.microsoft.com/User.Read',
-        'https://graph.microsoft.com/Calendars.Read',
-        'https://graph.microsoft.com/Calendars.ReadWrite',
-        'offline_access'
-      ];
-      
-      const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?` +
-        `client_id=${clientId}&` +
-        `response_type=code&` +
-        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-        `scope=${encodeURIComponent(scopes.join(' '))}&` +
-        `response_mode=query`;
-      
-      console.log('🪟 [Electron] 打开认证窗口...');
-      setSyncMessage('正在打开登录窗口...');
-      
-      const result = await (window as any).electronAPI.microsoftLoginWindow(authUrl);
-      
-      if (!result.success) {
-        throw new Error(result.error || '登录失败');
-      }
-      
-      console.log('✅ [Electron] 获取到授权码');
-      setSyncMessage('登录成功，正在获取访问令牌...');
-      
-      // 用授权码交换访问令牌
-      const tokenResponse = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          client_id: clientId,
-          scope: scopes.join(' '),
-          code: result.code,
-          redirect_uri: redirectUri,
-          grant_type: 'authorization_code',
-        }),
-      });
-      
-      if (!tokenResponse.ok) {
-        throw new Error('获取访问令牌失败');
-      }
-      
-      const tokens = await tokenResponse.json();
-      console.log('✅ [Electron] 获取到访问令牌');
-      
-      // 保存令牌到localStorage
-      const expiresAt = Date.now() + (tokens.expires_in * 1000);
-      localStorage.setItem('ms-access-token', tokens.access_token);
-      if (tokens.refresh_token) {
-        localStorage.setItem('ms-refresh-token', tokens.refresh_token);
-      }
-      localStorage.setItem('ms-token-expires', expiresAt.toString());
-      
-      // 同步到Electron主进程
-      if ((window as any).electronAPI.setAuthTokens) {
-        await (window as any).electronAPI.setAuthTokens({
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token,
-          expiresAt: expiresAt
-        });
-      }
-      
-      setSyncMessage('✅ 认证成功！正在加载数据...');
-      
-      // 重新加载MicrosoftCalendarService的令牌
-      if (microsoftService && typeof (microsoftService as any).reloadToken === 'function') {
-        await (microsoftService as any).reloadToken();
-      }
-      
-      // 加载用户信息
-      await loadUserInfo();
-      
-      // 启动同步
-      if (syncManager) {
-        if (typeof syncManager.isActive === 'function' && !syncManager.isActive()) {
-          if (typeof syncManager.start === 'function') {
-            syncManager.start();
-          }
-        }
-      }
-      
-      setSyncMessage('✅ 成功连接到 Microsoft Calendar!');
-      
-      setTimeout(() => {
-        setSyncMessage('');
-      }, 3000);
-      
-    } catch (error: any) {
-      console.error('❌ [Electron] 认证失败:', error);
-      setSyncMessage(`❌ 认证失败: ${error.message || error}`);
     } finally {
       setIsConnecting(false);
     }

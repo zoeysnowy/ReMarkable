@@ -2061,7 +2061,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         />
         </div>
 
-        {/* 📊 状态栏 - Widget 模式下由 DesktopCalendarWidget 独立显示 */}
+        {/* 📊 状态栏 - Widget 模式下由 WidgetPage_v3 独立显示 */}
         {!isWidgetMode && (
           <div style={{
             display: 'flex',
@@ -2087,6 +2087,31 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           </div>
         )}
       </div>
+
+      {/* 📝 描述编辑器弹窗 - 支持完整事件编辑和多标签 */}
+      {showDescriptionEditor && editingEventForDescription && (
+        <DescriptionEditor
+          isOpen={showDescriptionEditor}
+          onClose={() => {
+            setShowDescriptionEditor(false);
+            setEditingEventForDescription(null);
+          }}
+          title={`编辑事件: ${editingEventForDescription.title}`}
+          initialDescription={editingEventForDescription.description || ''}
+          initialTags={editingEventForDescription.tags || (editingEventForDescription.tagId ? [editingEventForDescription.tagId] : [])}
+          onSave={handleSaveDescription}
+          isFullEventEdit={true}
+          initialEventData={{
+            title: editingEventForDescription.title,
+            description: editingEventForDescription.description || '',
+            startTime: editingEventForDescription.startTime,
+            endTime: editingEventForDescription.endTime,
+            location: editingEventForDescription.location || '',
+            isAllDay: editingEventForDescription.isAllDay || false,
+            reminder: editingEventForDescription.reminder || 15
+          }}
+        />
+      )}
 
       {/* ✏️ 事件编辑弹窗 */}
       <EventEditModal
