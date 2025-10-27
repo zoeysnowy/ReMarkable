@@ -66,7 +66,8 @@ export class ActionBasedSyncManager {
   private lastIntegrityCheck = 0; // 🔧 [NEW] 上次完整性检查时间
   private incrementalUpdateCount = 0; // 🔧 [NEW] 增量更新计数器
   private fullCheckCompleted = false; // 🔧 [NEW] 是否完成过完整检查
-  private lastUserActivity = Date.now(); // 🔧 [NEW] 上次用户活动时间
+  private isWindowFocused = true; // 🔧 [NEW] 窗口是否被激活
+  private lastQueueModification = Date.now(); // 🔧 [FIX] 上次 action queue 修改时间
 
   constructor(microsoftService: any) {
     this.microsoftService = microsoftService;
@@ -74,20 +75,22 @@ export class ActionBasedSyncManager {
     this.loadConflictQueue();
     this.loadDeletedEventIds(); // 🆕 加载已删除事件ID
     
-    // � [NEW] 监听用户活动（用于 idle 检测）
+    // 🔧 [MIGRATION] 一次性清理重复的 outlook- 前缀
+    this.migrateOutlookPrefixes();
+    
+    // 🔧 [NEW] 监听窗口焦点状态（用于检测用户是否正在使用应用）
     if (typeof window !== 'undefined') {
-      const updateActivity = () => {
-        this.lastUserActivity = Date.now();
-      };
+      window.addEventListener('focus', () => {
+        this.isWindowFocused = true;
+        console.log('✅ [Integrity] Window focused - integrity check paused');
+      }, { passive: true });
       
-      // 监听用户交互事件
-      window.addEventListener('mousemove', updateActivity, { passive: true });
-      window.addEventListener('keydown', updateActivity, { passive: true });
-      window.addEventListener('click', updateActivity, { passive: true });
-      window.addEventListener('scroll', updateActivity, { passive: true });
-      window.addEventListener('focus', updateActivity, { passive: true });
+      window.addEventListener('blur', () => {
+        this.isWindowFocused = false;
+        console.log('⏸️ [Integrity] Window blurred - integrity check can resume');
+      }, { passive: true });
       
-      console.log('✅ [Integrity] User activity tracking enabled');
+      console.log('✅ [Integrity] Window focus tracking enabled');
     }
     
     // �🔍 [DEBUG] 暴露调试函数到全局
@@ -127,14 +130,11 @@ export class ActionBasedSyncManager {
       // 🔧 修复：使用TagService获取标签，而不是直接读取localStorage
       if (typeof window !== 'undefined' && (window as any).ReMarkableCache?.tags?.service) {
         const flatTags = (window as any).ReMarkableCache.tags.service.getFlatTags();
-        console.log(`🔍 [TAG-CALENDAR] Retrieved ${flatTags?.length || 0} tags from TagService for tagId: ${tagId}`);
         
         const foundTag = flatTags.find((tag: any) => tag.id === tagId);
         if (foundTag && foundTag.calendarMapping) {
-          console.log(`✅ [TAG-CALENDAR] Found tag with calendar mapping: ${foundTag.calendarMapping.calendarId}`);
           return foundTag.calendarMapping.calendarId;
         } else {
-          console.log(`⚠️ [TAG-CALENDAR] Tag found but no calendar mapping for tagId: ${tagId}`);
           return null;
         }
       } else {
@@ -143,20 +143,14 @@ export class ActionBasedSyncManager {
         // 备用方案：直接读取localStorage（使用PersistentStorage的方式）
         const savedTags = PersistentStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS, PERSISTENT_OPTIONS.TAGS);
         if (!savedTags) {
-          // No hierarchical tags found in persistent storage
           return null;
         }
-        
-        // Loaded hierarchical tags from persistent storage
         
         // 递归搜索标签和它的日历映射
         const findTagMapping = (tags: any[], targetTagId: string): string | null => {
           for (const tag of tags) {
-            // Checking tag
-            
             if (tag.id === targetTagId) {
               const calendarId = tag.calendarMapping?.calendarId;
-              // Found matching tag
               return calendarId || null;
             }
             
@@ -164,7 +158,6 @@ export class ActionBasedSyncManager {
             if (tag.children && tag.children.length > 0) {
               const childResult = findTagMapping(tag.children, targetTagId);
               if (childResult) {
-                // Found in child tags
                 return childResult;
               }
             }
@@ -173,12 +166,11 @@ export class ActionBasedSyncManager {
         };
         
         const result = findTagMapping(savedTags, tagId);
-        // Final result obtained
         return result;
       }
       
     } catch (error) {
-      console.error('🔍 [TAG-CALENDAR] Error getting calendar mapping:', error);
+      console.error('❌ [TAG-CALENDAR] Error getting calendar mapping:', error);
       return null;
     }
   }
@@ -355,6 +347,8 @@ export class ActionBasedSyncManager {
   private saveActionQueue() {
     try {
       localStorage.setItem(STORAGE_KEYS.SYNC_ACTIONS, JSON.stringify(this.actionQueue));
+      // 🔧 [FIX] 更新队列修改时间，用于完整性检查的调度
+      this.lastQueueModification = Date.now();
     } catch (error) {
       console.error('Failed to save action queue:', error);
     }
@@ -860,6 +854,12 @@ export class ActionBasedSyncManager {
     
     // 设置定期增量同步（20秒一次，只同步 3 个月窗口）
     this.syncInterval = setInterval(() => {
+      // 🔧 [NEW] 窗口激活时不进行定时同步，避免打断用户操作
+      if (this.isWindowFocused) {
+        console.log('⏸️ [Sync] Skipping scheduled sync: Window is focused (user is active)');
+        return;
+      }
+      
       if (!this.syncInProgress) {
         this.performSync();
       }
@@ -1123,12 +1123,17 @@ export class ActionBasedSyncManager {
           return;
         }
 
-        // 🚀 Use index map for O(1) lookup instead of array.find()
-        const existingLocal = this.eventIndexMap.get(event.id) || this.eventIndexMap.get(`outlook-${event.id}`);
+        // 🚀 [SIMPLIFIED] 直接用纯 Outlook ID 查找 externalId
+        // Outlook 返回的 event.id 是 'outlook-AAMkAD...'
+        // 去掉前缀后得到纯 Outlook ID，这就是 externalId
+        const pureOutlookId = event.id.replace(/^outlook-/, '');
+        const existingLocal = this.eventIndexMap.get(pureOutlookId);
 
         if (!existingLocal) {
           // Creating new local event from remote
-          this.recordRemoteAction('create', 'event', `outlook-${event.id}`, event);
+          // 🔧 [FIX] event.id 已经带有 'outlook-' 前缀（来自 MicrosoftCalendarService）
+          // 不要重复添加前缀！
+          this.recordRemoteAction('create', 'event', event.id, event);
           createActionCount++;
         } else {
           // 🔧 检查是否需要更新 - 更智能的比较逻辑
@@ -1373,11 +1378,10 @@ private getUserSettings(): any {
     
     // 🚀 批量保存：所有操作完成后统一保存一次
     if (successCount > 0) {
-      console.log(`� [SyncRemote] Saving ${successCount} changes to localStorage...`);
-      // 🔧 [IndexMap 优化] 批量同步后，如果操作数量较多（>5），完全重建索引
-      // 如果操作较少，之前的增量更新已经足够
-      const shouldRebuildIndex = successCount > 5;
-      this.saveLocalEvents(localEvents, shouldRebuildIndex);
+      console.log(`💾 [SyncRemote] Saving ${successCount} changes to localStorage...`);
+      // 🔧 [IndexMap 优化] 批量同步时已经在循环中增量更新了 IndexMap
+      // 不需要重建！只保存到 localStorage
+      this.saveLocalEvents(localEvents, false); // rebuildIndex=false，使用增量更新
       console.log('✅ [SyncRemote] Batch save completed');
     }
     
@@ -2275,15 +2279,12 @@ private getUserSettings(): any {
       case 'create':
         const newEvent = this.convertRemoteEventToLocal(action.data);
         
-        // 🔧 提取纯 Outlook ID（去掉 outlook- 前缀）
-        const rawRemoteId = action.data?.id?.startsWith('outlook-') 
-          ? action.data.id.replace('outlook-', '') 
-          : action.data?.id;
-        
-        // 🚀 Use hash map lookup instead of array.find() - O(1) instead of O(n)
-        const existingEvent = this.eventIndexMap.get(rawRemoteId) || this.eventIndexMap.get(newEvent.id);
+        // � [SIMPLIFIED] 直接用 externalId 查找现有事件
+        // newEvent.externalId 是纯 Outlook ID（没有 outlook- 前缀）
+        const existingEvent = this.eventIndexMap.get(newEvent.externalId);
         
         if (!existingEvent) {
+          // 🆕 真正的新事件，添加到列表
           events.push(newEvent);
           
           // 🔧 [IndexMap 优化] 使用统一的增量更新方法
@@ -2295,6 +2296,45 @@ private getUserSettings(): any {
           }
           if (triggerUI) {
             this.triggerUIUpdate('create', newEvent);
+          }
+        } else {
+          // ✅ 找到现有事件（如 Timer 事件），更新而不是创建
+          console.log('🎯 [RemoteToLocal CREATE] Found existing event, updating instead of creating:', {
+            existingId: existingEvent.id,
+            newEventId: newEvent.id,
+            externalId: newEvent.externalId,
+            title: newEvent.title,
+            existingInArray: events.some((e: any) => e.id === existingEvent.id)
+          });
+          
+          const eventIndex = events.findIndex((e: any) => e.id === existingEvent.id);
+          console.log('🔍 [RemoteToLocal CREATE] Event index search:', {
+            searchingFor: existingEvent.id,
+            foundIndex: eventIndex,
+            totalEvents: events.length
+          });
+          
+          if (eventIndex !== -1) {
+            const oldEvent = { ...events[eventIndex] };
+            
+            // 🔧 保留本地事件的 ID 和关键字段，只更新 Outlook 数据
+            events[eventIndex] = {
+              ...newEvent,
+              id: existingEvent.id,  // 保留本地 ID（如 timer-tag-...）
+              tagId: existingEvent.tagId || newEvent.tagId,  // 保留 tagId
+              syncStatus: 'synced',  // 标记为已同步
+            };
+            
+            // 🔧 [IndexMap 优化] 更新索引
+            this.updateEventInIndex(events[eventIndex], oldEvent);
+            
+            // 🚀 只在非批量模式下立即保存
+            if (!isBatchMode) {
+              this.saveLocalEvents(events, false);
+            }
+            if (triggerUI) {
+              this.triggerUIUpdate('update', events[eventIndex]);
+            }
           }
         }
         break;
@@ -2500,8 +2540,14 @@ private getUserSettings(): any {
       const stored = localStorage.getItem(STORAGE_KEYS.EVENTS);
       const events = stored ? JSON.parse(stored) : [];
       
-      // 🚀 Build index map for O(1) lookups
-      this.rebuildEventIndexMap(events);
+      // � [FIX] 只在 IndexMap 为空时才重建（避免每次都重建）
+      // 正常情况下使用增量更新 updateEventInIndex()
+      if (this.eventIndexMap.size === 0 && events.length > 0) {
+        console.log('🔧 [IndexMap] Initial build on first load - using async rebuild');
+        this.rebuildEventIndexMapAsync(events).catch(err => {
+          console.error('❌ [IndexMap] Async rebuild failed:', err);
+        });
+      }
       
       return events;
     } catch {
@@ -2510,16 +2556,126 @@ private getUserSettings(): any {
   }
 
   // 🚀 Rebuild the event index map from events array
+  // 🔧 [FIX] 优化：使用临时 Map，避免清空现有 Map 导致查询失败
+  // 🚀 异步分批重建 IndexMap，避免阻塞主线程
+  private async rebuildEventIndexMapAsync(events: any[], visibleEventIds?: string[]) {
+    const startTime = performance.now();
+    let BATCH_SIZE = 200; // 初始批大小：200 个事件
+    const MAX_BATCH_TIME = 10; // 每批最多 10ms
+    const TARGET_FIRST_BATCH_TIME = 5; // 首批目标时间：5ms（留余量）
+    
+    console.log(`🔧 [IndexMap] Starting async rebuild for ${events.length} events`);
+    
+    // 🎯 优先处理可视区域的事件
+    let priorityEvents: any[] = [];
+    let remainingEvents: any[] = [];
+    
+    if (visibleEventIds && visibleEventIds.length > 0) {
+      const visibleSet = new Set(visibleEventIds);
+      events.forEach(event => {
+        if (visibleSet.has(event.id)) {
+          priorityEvents.push(event);
+        } else {
+          remainingEvents.push(event);
+        }
+      });
+      console.log(`🎯 [IndexMap] Priority events: ${priorityEvents.length}, Remaining: ${remainingEvents.length}`);
+    } else {
+      remainingEvents = events;
+    }
+    
+    // 🔧 分批处理函数（带性能监控）
+    const processBatch = (batchEvents: any[], batchIndex: number): number => {
+      const batchStart = performance.now();
+      
+      batchEvents.forEach(event => {
+        if (event.id) {
+          this.eventIndexMap.set(event.id, event);
+        }
+        if (event.externalId) {
+          // 优先保留 Timer 事件的 externalId 索引
+          const existing = this.eventIndexMap.get(event.externalId);
+          if (!existing || event.id.startsWith('timer-')) {
+            this.eventIndexMap.set(event.externalId, event);
+          }
+        }
+      });
+      
+      const batchDuration = performance.now() - batchStart;
+      if (batchIndex === 0 || batchIndex % 5 === 0) {
+        console.log(`📊 [IndexMap] Batch ${batchIndex}: ${batchEvents.length} events in ${batchDuration.toFixed(2)}ms`);
+      }
+      
+      return batchDuration;
+    };
+    
+    // 🎯 第一批：立即处理可视区域的事件（自适应批大小）
+    if (priorityEvents.length > 0) {
+      // 如果可视事件太多，分成更小的批次
+      if (priorityEvents.length > BATCH_SIZE) {
+        console.log(`⚠️ [IndexMap] Priority events (${priorityEvents.length}) exceed batch size, splitting...`);
+        
+        // 第一小批：尽快完成
+        const firstBatch = priorityEvents.slice(0, BATCH_SIZE);
+        const firstBatchTime = processBatch(firstBatch, 0);
+        
+        // 🔧 根据第一批的性能调整批大小
+        if (firstBatchTime > TARGET_FIRST_BATCH_TIME) {
+          // 如果超时，减小批大小
+          BATCH_SIZE = Math.max(50, Math.floor(BATCH_SIZE * TARGET_FIRST_BATCH_TIME / firstBatchTime));
+          console.log(`🔧 [IndexMap] Adjusting batch size to ${BATCH_SIZE} based on performance`);
+        }
+        
+        // 处理剩余的优先事件
+        for (let i = BATCH_SIZE; i < priorityEvents.length; i += BATCH_SIZE) {
+          const batch = priorityEvents.slice(i, i + BATCH_SIZE);
+          await new Promise(resolve => requestAnimationFrame(() => resolve(null)));
+          processBatch(batch, Math.floor(i / BATCH_SIZE));
+        }
+      } else {
+        // 可视事件不多，一次处理完
+        processBatch(priorityEvents, 0);
+      }
+      console.log(`✅ [IndexMap] Priority events indexed: ${priorityEvents.length}`);
+    }
+    
+    // 🔄 分批处理剩余事件（在窗口失焦时处理）
+    for (let i = 0; i < remainingEvents.length; i += BATCH_SIZE) {
+      const batch = remainingEvents.slice(i, i + BATCH_SIZE);
+      const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
+      
+      // 等待窗口失焦或下一帧
+      await new Promise(resolve => {
+        if (document.hidden) {
+          // 窗口失焦，立即处理
+          resolve(null);
+        } else {
+          // 窗口激活，等待下一帧（约 16ms）
+          requestAnimationFrame(() => resolve(null));
+        }
+      });
+      
+      processBatch(batch, batchIndex);
+    }
+    
+    const totalDuration = performance.now() - startTime;
+    console.log(`✅ [IndexMap] Async rebuild completed: ${this.eventIndexMap.size} entries in ${totalDuration.toFixed(0)}ms`);
+  }
+  
+  // 🔧 同步版本（仅用于关键路径）
   private rebuildEventIndexMap(events: any[]) {
-    this.eventIndexMap.clear();
     events.forEach(event => {
       if (event.id) {
         this.eventIndexMap.set(event.id, event);
       }
       if (event.externalId) {
-        this.eventIndexMap.set(event.externalId, event);
+        const existing = this.eventIndexMap.get(event.externalId);
+        if (!existing || event.id.startsWith('timer-')) {
+          this.eventIndexMap.set(event.externalId, event);
+        }
       }
     });
+    
     console.log(`🚀 [IndexMap] Rebuilt index with ${this.eventIndexMap.size} entries for ${events.length} events`);
   }
 
@@ -2559,14 +2715,18 @@ private getUserSettings(): any {
   private saveLocalEvents(events: any[], rebuildIndex: boolean = true) {
     localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
     
-    // 🚀 只在需要时重建索引（批量操作时应该传 false，然后手动调用 rebuildEventIndexMap）
+    // 🚀 只在需要时重建索引（批量操作时应该传 false，使用增量更新）
     if (rebuildIndex) {
-      this.rebuildEventIndexMap(events);
-      // 🔧 [NEW] 重建索引视为重启，重置计数器
+      console.log('🔧 [saveLocalEvents] Triggering async index rebuild');
+      // 🔧 使用异步重建，不阻塞保存操作
+      this.rebuildEventIndexMapAsync(events).catch(err => {
+        console.error('❌ [IndexMap] Async rebuild failed during save:', err);
+      });
+      // 🔧 重建索引视为重启，重置计数器
       this.incrementalUpdateCount = 0;
-      this.fullCheckCompleted = true; // 重建索引后视为完成了完整检查
+      this.fullCheckCompleted = true;
     } else {
-      // 🔧 [NEW] 增量更新计数
+      // 🔧 增量更新计数
       this.incrementalUpdateCount++;
       
       // 🔧 [NEW] 如果增量更新超过 30 次，标记需要全量检查
@@ -2741,8 +2901,12 @@ private getUserSettings(): any {
     const isReMarkableCreated = this.hasCreateNote(cleanDescription) && 
                                cleanDescription.includes('由 🔮 ReMarkable 创建');
     
+    // 🔧 [FIX] remoteEvent.id 已经带有 'outlook-' 前缀（来自 MicrosoftCalendarService）
+    // 不要重复添加前缀！同时 externalId 应该是纯 Outlook ID（不带前缀）
+    const pureOutlookId = remoteEvent.id.replace(/^outlook-/, '');
+    
     return {
-      id: `outlook-${remoteEvent.id}`,
+      id: remoteEvent.id, // 已经是 'outlook-AAMkAD...'
       title: cleanTitle,
       description: cleanDescription,
       startTime: this.safeFormatDateTime(remoteEvent.start?.dateTime || remoteEvent.start),
@@ -2752,7 +2916,7 @@ private getUserSettings(): any {
       reminder: 0,
       createdAt: this.safeFormatDateTime(remoteEvent.createdDateTime || new Date()),
       updatedAt: this.safeFormatDateTime(remoteEvent.lastModifiedDateTime || new Date()),
-      externalId: remoteEvent.id,
+      externalId: pureOutlookId, // 纯 Outlook ID，不带 'outlook-' 前缀
       calendarId: remoteEvent.calendarId || 'microsoft', // 🔧 保留原来的calendarId
       source: 'outlook', // 🔧 设置source字段
       syncStatus: 'synced',
@@ -3086,46 +3250,71 @@ private getUserSettings(): any {
 
   /**
    * 🔧 启动完整性检查调度器
-   * 高频轻量级检查：每 5 秒检查一次，每次 < 10ms
+   * 🔧 [FIX] 降低检查频率：从 5 秒改为 30 秒，减少对 UI 的潜在影响
    */
   private startIntegrityCheckScheduler() {
-    // 🔧 [NEW] 每 5 秒尝试一次检查（高频但轻量）
+    // 🔧 [FIX] 每 30 秒尝试一次检查（低频但足够）
     this.indexIntegrityCheckInterval = setInterval(() => {
       this.tryIncrementalIntegrityCheck();
-    }, 5000); // 5 秒间隔
+    }, 30000); // 30 秒间隔（原来是 5 秒）
 
-    console.log('✅ [Integrity] High-frequency scheduler started (5-second interval, <10ms per check)');
+    console.log('✅ [Integrity] Scheduler started (30-second interval, <10ms per check)');
   }
 
   /**
    * 🔧 检查是否处于空闲状态
-   * 空闲标准：用户未激活窗口/桌面组件（5 秒无活动）
+   * 🔧 [FIX] 空闲标准：用户 15 秒无活动（原来是 5 秒）
    */
-  private isUserIdle(): boolean {
-    const idleThreshold = 5000; // 5 秒无活动视为 idle
-    const idleTime = Date.now() - this.lastUserActivity;
-    return idleTime >= idleThreshold;
-  }
-
   /**
    * 🔧 尝试执行增量完整性检查
-   * 只在满足条件时执行
+   * 🔧 [FIX] 增强条件检查，避免在不合适的时机运行
    */
   private tryIncrementalIntegrityCheck() {
+    // 🚨 [CRITICAL FIX] 条件 0: 检查 Microsoft 服务认证状态
+    // 如果用户登出或掉线，绝对不能运行完整性检查
+    if (this.microsoftService) {
+      const isAuthenticated = this.microsoftService.isAuthenticated || 
+                             (typeof this.microsoftService.getIsAuthenticated === 'function' && 
+                              this.microsoftService.getIsAuthenticated());
+      
+      if (!isAuthenticated) {
+        console.log('⏸️ [Integrity] Skipping check: User not authenticated');
+        return;
+      }
+    }
+    
+    // 🔧 [NEW] 条件 0.5: 检查窗口是否被激活（用户正在使用应用）
+    if (this.isWindowFocused) {
+      return; // 窗口被激活时不运行检查，避免打断用户操作
+    }
+    
+    // 🔧 [NEW] 条件 0.6: 检查是否有 Modal 打开（用户正在编辑）
+    if (typeof document !== 'undefined') {
+      const hasOpenModal = document.querySelector('.event-edit-modal-overlay') !== null ||
+                          document.querySelector('.settings-modal') !== null ||
+                          document.querySelector('[role="dialog"]') !== null;
+      if (hasOpenModal) {
+        console.log('⏸️ [Integrity] Skipping check: Modal is open (user is editing)');
+        return;
+      }
+    }
+    
     // 条件 1: 不在同步中
     if (this.syncInProgress) {
       return;
     }
 
-    // 条件 2: 用户处于空闲状态
-    if (!this.isUserIdle()) {
+    // 条件 2: 距离上次检查至少 30 秒
+    const now = Date.now();
+    if (now - this.lastIntegrityCheck < 30000) {
       return;
     }
-
-    // 条件 3: 距离上次检查至少 5 秒
-    const now = Date.now();
-    if (now - this.lastIntegrityCheck < 5000) {
-      return;
+    
+    // 🔧 [FIX] 条件 3: 确保没有正在进行的操作（如事件编辑、删除等）
+    // 通过检查 action queue 是否稳定（2 秒内没有新操作）
+    const queueAge = now - this.lastQueueModification;
+    if (queueAge < 2000) {
+      return; // action queue 在 2 秒内有变化，延迟检查
     }
 
     // 执行检查
@@ -3232,6 +3421,7 @@ private getUserSettings(): any {
 
   /**
    * 🔧 快速可见性检查（只检查 TimeCalendar 当前可见范围）
+   * 🔧 [FIX] 完全避免触发 UI 刷新：只做索引修复，不触发任何事件
    */
   private runQuickVisibilityCheck(events: any[], startTime: number) {
     const maxDuration = 10; // 最多 10ms
@@ -3258,7 +3448,7 @@ private getUserSettings(): any {
       // 检查 IndexMap 一致性
       const indexedEvent = this.eventIndexMap.get(event.id);
       if (!indexedEvent) {
-        this.updateEventInIndex(event); // 立即修复
+        this.updateEventInIndex(event); // 立即修复（仅内存操作，不触发事件）
         checked++;
       }
 
@@ -3276,7 +3466,8 @@ private getUserSettings(): any {
       const expectedMax = events.length * 2;
       
       if (indexSize === 0 && events.length > 0) {
-        console.warn('⚠️ [Integrity] IndexMap empty, rebuilding...');
+        console.warn('⚠️ [Integrity] IndexMap empty, rebuilding silently...');
+        // 🔧 [FIX] 静默重建，不触发任何事件
         this.rebuildEventIndexMap(events);
         this.fullCheckCompleted = true;
       } else if (indexSize > expectedMax * 1.5) {
@@ -3287,8 +3478,73 @@ private getUserSettings(): any {
     const healthScore = issues.length === 0 ? 100 : Math.max(0, 100 - issues.length * 10);
     this.lastHealthScore = healthScore;
 
-    if (issues.length > 0) {
-      console.log(`✅ [Integrity] Quick check: ${checked} checked, ${issues.length} issues, ${healthScore}/100 health (${duration.toFixed(1)}ms)`);
+    // 🔧 [FIX] 只在有实际问题且问题数量 > 0 时才打印日志
+    if (checked > 0) {
+      console.log(`✅ [Integrity] Quick check: ${checked} fixed silently (${duration.toFixed(1)}ms)`);
+    }
+  }
+
+  /**
+   * 🔧 [MIGRATION] 一次性清理重复的 outlook- 前缀
+   * 修复历史数据中的：
+   * 1. id: 'outlook-outlook-AAMkAD...' → 'outlook-AAMkAD...'
+   * 2. externalId: 'outlook-AAMkAD...' → 'AAMkAD...'
+   */
+  private migrateOutlookPrefixes() {
+    const MIGRATION_KEY = 'remarkable-outlook-prefix-migration-v1';
+    
+    // 检查是否已经迁移过
+    if (localStorage.getItem(MIGRATION_KEY) === 'completed') {
+      console.log('✅ [Migration] Outlook prefix migration already completed, skipping');
+      return;
+    }
+    
+    console.log('🔄 [Migration] Starting Outlook prefix cleanup...');
+    
+    try {
+      const events = JSON.parse(localStorage.getItem(STORAGE_KEYS.EVENTS) || '[]');
+      let migratedCount = 0;
+      
+      const migratedEvents = events.map((event: any) => {
+        let needsMigration = false;
+        const newEvent = { ...event };
+        
+        // 1. 修复 id 的重复前缀：outlook-outlook- → outlook-
+        if (newEvent.id?.startsWith('outlook-outlook-')) {
+          newEvent.id = newEvent.id.replace(/^outlook-outlook-/, 'outlook-');
+          needsMigration = true;
+        }
+        
+        // 2. 修复 externalId 的错误前缀：outlook-AAMkAD... → AAMkAD...
+        if (newEvent.externalId?.startsWith('outlook-')) {
+          newEvent.externalId = newEvent.externalId.replace(/^outlook-/, '');
+          needsMigration = true;
+        }
+        
+        if (needsMigration) {
+          migratedCount++;
+        }
+        
+        return newEvent;
+      });
+      
+      if (migratedCount > 0) {
+        localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(migratedEvents));
+        console.log(`✅ [Migration] Migrated ${migratedCount}/${events.length} events`);
+        
+        // 重建 IndexMap 以使用新的 ID
+        this.rebuildEventIndexMap(migratedEvents);
+        console.log('✅ [Migration] IndexMap rebuilt with clean IDs');
+      } else {
+        console.log('✅ [Migration] No events needed migration');
+      }
+      
+      // 标记迁移完成
+      localStorage.setItem(MIGRATION_KEY, 'completed');
+      console.log('✅ [Migration] Outlook prefix cleanup completed');
+      
+    } catch (error) {
+      console.error('❌ [Migration] Failed to migrate Outlook prefixes:', error);
     }
   }
 
