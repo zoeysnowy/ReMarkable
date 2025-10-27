@@ -1,10 +1,9 @@
 /* 页面容器样式 */
 .page-container {
-  padding: 16px 24px;
+  padding: 16px 24px 8px 24px; /* 🔧 底部 padding 设为 8px，与 statusbar 保持距离 */
   height: 100%;
   display: flex;
   flex-direction: column;
-  /* 移除固定最大宽度 - 让AppLayout的main区域自然控制尺寸 */
   box-sizing: border-box;
 }
 
@@ -12,18 +11,26 @@
 
 .page-content {
   flex: 1;
-  overflow: visible; /* 改为visible以允许阴影显示 */
-  /* 确保内容区域能填充剩余空间 */
-  min-height: 0;
+  overflow: hidden; /* 🔧 隐藏外层滚动条，让内部组件自己处理滚动 */
+  min-height: 0; /* 🔧 重要：允许flex子元素正确收缩 */
+  display: flex;
+  flex-direction: column;
 }
 
 /* 特殊页面样式 */
 .page-container.tag-management {
-  padding: 7px 7px 7px 7px;  /* 减少所有边距，让内容更接近边缘 */
+  padding: 7px 7px 8px 7px;  /* 🔧 底部改为 8px，与 statusbar 保持距离 */
 }
 
 .page-container.time-calendar {
-  padding: 4px 8px;  /* TimeCalendar页面使用更小的padding */
+  padding: 4px 8px 8px 8px;  /* 🔧 TimeCalendar页面：顶部4px，左右8px，底部8px */
+  height: 100%; /* 🔧 确保占满父容器 */
+}
+
+.page-container.time-calendar .page-content {
+  flex: 1;
+  min-height: 0; /* 🔧 重要：允许内容正确收缩和滚动 */
+  overflow: hidden; /* 🔧 TimeCalendar 自己处理滚动 */
 }
 
 .page-container.full-width {

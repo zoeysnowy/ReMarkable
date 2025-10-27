@@ -75,26 +75,17 @@ export const TimerCard: React.FC<TimerCardProps> = ({
   const safeElapsedTime = (elapsedTime && !isNaN(elapsedTime) && elapsedTime >= 0) ? elapsedTime : 0;
   const safeStartTime = (startTime && !isNaN(startTime) && startTime > 0) ? startTime : now;
   
-  // 🔧 简化计算逻辑：直接用当前时间减去开始时间
-  // 如果有 originalStartTime（真正的开始时间），优先使用
-  // 否则回退到 startTime 或 elapsedTime 逻辑
-  const hasOriginalStartTime = originalStartTime && !isNaN(originalStartTime) && originalStartTime > 0;
-  
+  // 🔧 [FIX] 统一计算逻辑：与 Header 保持一致
+  // elapsedTime：之前累积的时长（包括暂停前的）
+  // startTime：当前这轮计时的开始时间
+  // now - startTime：当前这轮运行的时长
   let totalElapsed: number;
   
-  if (!isIdle && isRunning && hasOriginalStartTime) {
-    // 使用简单直观的计算：当前时间 - 用户设定的开始时间
-    totalElapsed = now - originalStartTime;
-    console.log('📊 [TimerCard] 使用简化计算:', {
-      当前时间: new Date(now).toLocaleString(),
-      原始开始时间: new Date(originalStartTime).toLocaleString(),
-      计算时长分钟: Math.round(totalElapsed / 60000)
-    });
-  } else if (!isIdle && isRunning && startTime) {
-    // 回退到旧逻辑（兼容性）
+  if (!isIdle && isRunning) {
+    // 运行中：累积时长 + 当前这轮的运行时长
     totalElapsed = safeElapsedTime + (now - safeStartTime);
   } else {
-    // 暂停状态或未开始
+    // 暂停或未开始：只显示累积时长
     totalElapsed = safeElapsedTime;
   }
   

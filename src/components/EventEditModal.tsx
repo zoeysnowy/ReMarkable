@@ -72,25 +72,129 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
     };
   }, [showTagDropdown]);
 
-  // 扁平化标签树
+  // 🔧 修复：直接使用已扁平化的数据，不要重复扁平化
   const flatTags = useMemo(() => {
-    const flatten = (tags: any[], level: number = 0, parentPath: string = ''): any[] => {
-      let result: any[] = [];
-      tags.forEach(tag => {
-        const path = parentPath ? `${parentPath} > ${tag.name}` : tag.name;
-        result.push({
-          ...tag,
-          level,
-          path,
-          displayName: '  '.repeat(level) + tag.name
+    console.group('🔍 [EventEditModal] 标签层级诊断 - Step 1: 接收数据');
+    console.log('hierarchicalTags 原始输入:', hierarchicalTags);
+    console.log('数据类型:', Array.isArray(hierarchicalTags) ? 'Array' : typeof hierarchicalTags);
+    console.log('数据长度:', hierarchicalTags?.length);
+    if (hierarchicalTags?.length > 0) {
+      console.log('第一个标签示例:', hierarchicalTags[0]);
+      console.log('是否有 children:', hierarchicalTags[0]?.children);
+      console.log('是否有 level:', hierarchicalTags[0]?.level);
+      console.log('❗ 数据是否已扁平化:', hierarchicalTags[0]?.level !== undefined && !hierarchicalTags[0]?.children);
+    }
+    console.groupEnd();
+    
+    // ✅ 检测数据是否已经扁平化（包含level字段且无children）
+    const isAlreadyFlat = hierarchicalTags.length > 0 && 
+                         hierarchicalTags[0].level !== undefined && 
+                         !hierarchicalTags[0].children;
+    
+    let flattened: any[];
+    
+    if (isAlreadyFlat) {
+      // ✅ 数据已扁平化，直接使用
+      console.log('✅ 数据已扁平化，直接使用原始数据');
+      flattened = hierarchicalTags;
+    } else {
+      // ❌ 数据是层级结构，需要扁平化
+      console.log('❌ 数据是层级结构，执行扁平化');
+      const flatten = (tags: any[], level: number = 0, parentPath: string = ''): any[] => {
+        let result: any[] = [];
+        tags.forEach(tag => {
+          const path = parentPath ? `${parentPath} > ${tag.name}` : tag.name;
+          const flattenedTag = {
+            ...tag,
+            level,
+            path,
+            displayName: '  '.repeat(level) + tag.name
+          };
+          result.push(flattenedTag);
+          
+          if (tag.children && tag.children.length > 0) {
+            result = result.concat(flatten(tag.children, level + 1, path));
+          }
         });
-        if (tag.children && tag.children.length > 0) {
-          result = result.concat(flatten(tag.children, level + 1, path));
-        }
-      });
-      return result;
-    };
-    return flatten(hierarchicalTags);
+        return result;
+      };
+      
+      flattened = flatten(hierarchicalTags);
+    }
+    
+    console.group('📊 [EventEditModal] 标签层级诊断 - Step 2: 扁平化结果');
+    console.log('flatTags 总数:', flattened.length);
+    console.table(flattened.map(t => ({ 
+      name: t.name, 
+      level: t.level,
+      hasChildren: !!t.children,
+      path: t.path || t.name
+    })));
+    console.groupEnd();
+    
+    // 🔧 添加全局调试函数
+    if (typeof window !== 'undefined') {
+      (window as any).debugTagHierarchy = () => {
+        console.clear();
+        console.log('═══════════════════════════════════════════');
+        console.log('🔍 EventEditModal 标签层级完整诊断');
+        console.log('═══════════════════════════════════════════\n');
+        
+        console.log('📥 Step 1: 原始输入数据 (hierarchicalTags)');
+        console.log('-------------------------------------------');
+        console.log('数据:', hierarchicalTags);
+        console.log('类型:', Array.isArray(hierarchicalTags) ? 'Array' : typeof hierarchicalTags);
+        console.log('长度:', hierarchicalTags?.length);
+        console.table(hierarchicalTags?.map((t: any) => ({
+          name: t.name,
+          hasLevel: t.level !== undefined,
+          level: t.level,
+          hasChildren: !!t.children,
+          childrenCount: t.children?.length || 0
+        })));
+        
+        console.log('\n📊 Step 2: 扁平化处理结果 (flatTags)');
+        console.log('-------------------------------------------');
+        console.log('总数:', flattened.length);
+        console.table(flattened.map(t => ({
+          name: t.name,
+          level: t.level,
+          paddingPx: (t.level || 0) * 12,
+          path: t.path
+        })));
+        
+        console.log('\n🎨 Step 3: DOM 元素检查');
+        console.log('-------------------------------------------');
+        const tagContents = document.querySelectorAll('.tag-dropdown-list .tag-content');
+        console.log('找到的 .tag-content 元素数量:', tagContents.length);
+        tagContents.forEach((el, idx) => {
+          const name = el.getAttribute('data-name');
+          const level = el.getAttribute('data-level');
+          const padding = el.getAttribute('data-padding');
+          const computedStyle = window.getComputedStyle(el);
+          const actualPaddingLeft = computedStyle.paddingLeft;
+          
+          console.log(`元素 ${idx + 1}: ${name}`, {
+            'data-level': level,
+            'data-padding': padding,
+            'style.paddingLeft (设置)': (el as HTMLElement).style.paddingLeft,
+            'computedStyle.paddingLeft (实际)': actualPaddingLeft,
+            '是否被覆盖': padding !== actualPaddingLeft
+          });
+        });
+        
+        console.log('\n═══════════════════════════════════════════');
+        console.log('💡 如果实际 paddingLeft 为 0px:');
+        console.log('   1. 检查 CSS 是否有 !important 覆盖');
+        console.log('   2. 检查是否有全局样式影响 .tag-content');
+        console.log('   3. 确认 inline style 是否正确应用');
+        console.log('═══════════════════════════════════════════');
+      };
+      
+      console.log('💡 在控制台运行 window.debugTagHierarchy() 获取完整诊断');
+    }
+    
+    return flattened;
   }, [hierarchicalTags]);
 
   // 搜索过滤标签
@@ -364,32 +468,21 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
 
         <div className="modal-body">
           {/* 标题 */}
-          <div className="form-group">
-            <label>标题 *</label>
+          <div className="form-group form-group-inline">
+            <label>标题</label>
             <input
               type="text"
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              placeholder="事件标题"
+              placeholder=""
               required
             />
           </div>
 
-          {/* 时间 */}
-          <div className="form-group">
-            <label>
-              <input
-                type="checkbox"
-                checked={formData.isAllDay}
-                onChange={(e) => setFormData({ ...formData, isAllDay: e.target.checked })}
-              />
-              全天事件
-            </label>
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>开始时间 *</label>
+          {/* 时间（开始、结束、全天在同一行） */}
+          <div className="form-row form-row-with-checkbox">
+            <div className="form-group form-group-inline">
+              <label>时间</label>
               <input
                 type={formData.isAllDay ? 'date' : 'datetime-local'}
                 value={formData.startTime}
@@ -409,8 +502,47 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
                 );
               })()}
             </div>
-            <div className="form-group">
-              <label>结束时间 *</label>
+            <div className="form-group form-group-inline">
+              <div className="duration-arrow-container">
+                {(() => {
+                  // 计算时间段
+                  if (!formData.isAllDay && formData.startTime && formData.endTime) {
+                    const start = new Date(formData.startTime);
+                    const end = new Date(formData.endTime);
+                    const diffMs = end.getTime() - start.getTime();
+                    
+                    if (diffMs > 0) {
+                      const totalHours = Math.floor(diffMs / (1000 * 60 * 60));
+                      const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+                      
+                      let durationText = '';
+                      
+                      // 如果超过24小时，显示天数
+                      if (totalHours >= 24) {
+                        const days = Math.floor(totalHours / 24);
+                        const hours = totalHours % 24;
+                        durationText = `${days}d`;
+                        if (hours > 0) {
+                          durationText += `${hours}h`;
+                        }
+                      } else if (totalHours > 0) {
+                        durationText = `${totalHours}h`;
+                        if (minutes > 0) {
+                          durationText += `${minutes}min`;
+                        }
+                      } else if (minutes > 0) {
+                        durationText = `${minutes}min`;
+                      }
+                      
+                      if (durationText) {
+                        return <span className="duration-hint">{durationText}</span>;
+                      }
+                    }
+                  }
+                  return null;
+                })()}
+                <label>→</label>
+              </div>
               <input
                 type={formData.isAllDay ? 'date' : 'datetime-local'}
                 value={formData.endTime}
@@ -418,36 +550,52 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
                 required
               />
             </div>
+            <div className="form-group form-group-inline all-day-checkbox">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={formData.isAllDay}
+                  onChange={(e) => setFormData({ ...formData, isAllDay: e.target.checked })}
+                />
+                全天
+              </label>
+            </div>
           </div>
 
           {/* 标签（多选 + 搜索） */}
-          <div className="form-group">
+          <div className="form-group form-group-inline">
             <label>标签</label>
             <div className="tag-selector" ref={tagSelectorRef}>
-              {/* 已选标签 */}
-              <div className="selected-tags">
+              {/* 已选标签 + 搜索框合并 */}
+              <div 
+                className="selected-tags-with-search"
+                onClick={() => setShowTagDropdown(true)}
+              >
                 {formData.tags.map(tagId => {
                   const tag = getTagById(tagId);
                   return tag ? (
-                    <span key={tagId} className="tag-chip" style={{ backgroundColor: tag.color }}>
+                    <span 
+                      key={tagId} 
+                      className="tag-chip" 
+                      style={{ backgroundColor: tag.color }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {tag.emoji && <span className="tag-chip-emoji">{tag.emoji}</span>}
-                      {tag.name}
+                      #{tag.name}
                       <button onClick={() => toggleTag(tagId)}>✕</button>
                     </span>
                   ) : null;
                 })}
-                {formData.tags.length === 0 && <span className="placeholder">选择标签...</span>}
+                <input
+                  type="text"
+                  className="tag-search-inline"
+                  placeholder={formData.tags.length === 0 ? "选择标签..." : "搜索..."}
+                  value={tagSearchQuery}
+                  onChange={(e) => setTagSearchQuery(e.target.value)}
+                  onFocus={() => setShowTagDropdown(true)}
+                  onClick={(e) => e.stopPropagation()}
+                />
               </div>
-
-              {/* 搜索框 */}
-              <input
-                type="text"
-                className="tag-search"
-                placeholder="搜索标签..."
-                value={tagSearchQuery}
-                onChange={(e) => setTagSearchQuery(e.target.value)}
-                onFocus={() => setShowTagDropdown(true)}
-              />
 
               {/* 下拉列表（层级显示） */}
               {showTagDropdown && (
@@ -467,24 +615,54 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
                   </div>
                   <div className="tag-dropdown-list">
                     {filteredTags.length > 0 ? (
-                      filteredTags.map(tag => (
-                        <div
-                          key={tag.id}
-                          className={`tag-option ${formData.tags.includes(tag.id) ? 'selected' : ''}`}
-                          onClick={() => toggleTag(tag.id)}
-                          style={{ paddingLeft: `${8 + tag.level * 16}px` }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={formData.tags.includes(tag.id)}
-                            readOnly
-                          />
-                          <span className="tag-color" style={{ backgroundColor: tag.color }}></span>
-                          {tag.emoji && <span className="tag-emoji">{tag.emoji}</span>}
-                          <span className="tag-name">{tag.name}</span>
-                          <span className="tag-path">{tag.path}</span>
-                        </div>
-                      ))
+                      (() => {
+                        console.group('� [EventEditModal] 标签层级诊断 - Step 3: UI 渲染');
+                        console.log('filteredTags 总数:', filteredTags.length);
+                        console.table(filteredTags.map(tag => ({
+                          name: tag.name,
+                          level: tag.level,
+                          paddingLeft: `${(tag.level || 0) * 12}px`,
+                          计算结果: (tag.level || 0) * 12
+                        })));
+                        console.groupEnd();
+                        
+                        return filteredTags.map(tag => {
+                          const paddingLeft = `${(tag.level || 0) * 12}px`;
+                          const computedPadding = (tag.level || 0) * 12;
+                          
+                          // 每个标签渲染时单独记录
+                          console.log(`🏷️ 渲染标签 "${tag.name}":`, {
+                            level: tag.level,
+                            paddingLeft,
+                            computedPadding,
+                            style对象: { paddingLeft }
+                          });
+                          
+                          return (
+                            <label
+                              key={tag.id}
+                              className={`tag-option ${formData.tags.includes(tag.id) ? 'selected' : ''}`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={formData.tags.includes(tag.id)}
+                                onChange={() => toggleTag(tag.id)}
+                              />
+                              <div 
+                                className="tag-content"
+                                style={{ paddingLeft }}
+                                data-level={tag.level || 0}
+                                data-padding={paddingLeft}
+                                data-name={tag.name}
+                              >
+                                <span className="tag-color" style={{ color: tag.color }}>#</span>
+                                {tag.emoji && <span className="tag-emoji">{tag.emoji}</span>}
+                                <span className="tag-name" style={{ color: tag.color }}>{tag.name}</span>
+                              </div>
+                            </label>
+                          );
+                        });
+                      })()
                     ) : (
                       <div className="no-tags">没有找到匹配的标签</div>
                     )}
@@ -495,37 +673,34 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
           </div>
 
           {/* 日历分组（多选） */}
-          <div className="form-group">
-            <label>日历分组</label>
+          <div className="form-group form-group-inline">
+            <label>日历</label>
             <CalendarPicker
               availableCalendars={availableCalendars}
               selectedCalendarIds={formData.calendarIds}
               onSelectionChange={(selectedIds) => {
                 setFormData(prev => ({ ...prev, calendarIds: selectedIds }));
               }}
-              placeholder="选择日历分组..."
               maxSelection={5}
             />
           </div>
 
           {/* 位置 */}
-          <div className="form-group">
+          <div className="form-group form-group-inline">
             <label>位置</label>
             <input
               type="text"
               value={formData.location}
               onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-              placeholder="事件位置"
             />
           </div>
 
-          {/* 描述 */}
-          <div className="form-group">
+          {/* 描述（放在位置下方，与位置输入框宽度一致） */}
+          <div className="form-group form-group-inline form-group-description">
             <label>描述</label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="事件描述"
               rows={4}
             />
           </div>

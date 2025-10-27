@@ -2,7 +2,7 @@
 .app-layout {
   display: grid;
   grid-template-columns: 98px 1fr;
-  grid-template-rows: 115px 1fr 41px;
+  grid-template-rows: 80px 1fr 41px; /* 🔧 修改为 80px 与 app-header 高度一致 */
   grid-template-areas:
     "header header"
     "sidebar main"
@@ -12,6 +12,8 @@
   background-color: #f8f9fa;
   font-family: 'Microsoft YaHei', Arial, sans-serif;
   overflow: hidden;
+  position: relative; /* 🔧 [FIX] 添加相对定位，为 sticky 提供定位上下文 */
+  min-height: 100vh; /* 🔧 [FIX] 确保最小高度 */
 }
 
 /* ===================
@@ -19,7 +21,7 @@
    =================== */
 .app-header {
   grid-area: header;
-  height: 115px;
+  height: 80px;
   background: white;
   border-bottom: 1px solid #e5e7eb;
   box-shadow: 0px 1px 2px rgba(0, 0, 0, 0.05);
@@ -58,10 +60,10 @@
 }
 
 .logo-image {
-  width: 60px;
-  height: 60px;
+  width: 50px;
+  height: 50px;
   display: block;
-  transition: transform 0.2s ease;
+  /* transition: transform 0.2s ease; */
 }
 
 .logo-image:hover {
@@ -250,8 +252,8 @@
 }
 
 .user-profile {
-  width: 48px;
-  height: 48px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: linear-gradient(135deg, #a855f7 0%, #3b82f6 75%);
   border: 2px solid rgba(168, 85, 247, 0.5);
@@ -266,7 +268,7 @@
 .user-profile span {
   color: white;
   font-weight: 600;
-  font-size: 18px;
+  font-size: 12px;
 }
 
 .user-profile:hover {
@@ -398,8 +400,11 @@
 .app-main {
   grid-area: main;
   padding: 7px 0;
+  padding-bottom: 0; /* 🔧 [FIX] 移除底部padding，让内容充分利用空间 */
   overflow: auto;
   background: #f8f9fa;
+  position: relative; /* 🔧 [FIX] 确保正确的堆叠上下文 */
+  z-index: 1; /* 🔧 [FIX] 确保在 statusbar 下方 */
 }
 
 /* ===================
@@ -408,10 +413,24 @@
 .app-statusbar {
   grid-area: statusbar;
   height: 41px;
+  min-height: 41px; /* 🔧 [FIX] 强制最小高度 */
+  max-height: 41px; /* 🔧 [FIX] 强制最大高度，防止高度变化 */
   background: white;
   border-top: 1px solid #e5e7eb;
-  position: relative;
+  position: fixed; /* 🔧 [FIX] 使用 fixed 定位，确保始终在视口底部 */
+  bottom: 0; /* 🔧 [FIX] 固定在底部 */
+  left: 0; /* 🔧 [FIX] 从左边开始 */
+  right: 0; /* 🔧 [FIX] 到右边结束 */
   z-index: 1000;
+  width: 100%; /* 🔧 [FIX] 确保占满宽度 */
+  overflow: hidden; /* 🔧 [FIX] 防止内容溢出导致高度变化 */
+  flex-shrink: 0; /* 🔧 [FIX] 防止被压缩 */
+  box-sizing: border-box; /* 🔧 [FIX] 确保 border 包含在高度内 */
+  /* 🚀 [PERF] 性能优化：启用硬件加速 */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-font-smoothing: subpixel-antialiased;
+  contain: layout style; /* 🚀 [PERF] CSS Containment - 隔离布局和样式计算 */
 }
 
 .status-content {
@@ -419,9 +438,13 @@
   align-items: center;
   justify-content: flex-start; /* 改为左对齐，不再自适应 */
   height: 100%;
+  min-height: 100%; /* 🔧 [FIX] 强制最小高度 */
+  max-height: 100%; /* 🔧 [FIX] 强制最大高度 */
   width: 100%;
   padding: 0; /* 移除默认padding，改用精确定位 */
   position: relative; /* 用于绝对定位子元素 */
+  box-sizing: border-box; /* 🔧 [FIX] 确保尺寸计算正确 */
+  contain: layout style; /* 🚀 [PERF] 隔离布局计算 */
 }
 
 .sync-status {
@@ -430,20 +453,48 @@
   gap: 6px;
   position: absolute; /* 绝对定位，固定位置 */
   left: 10px; /* 距离左边框10px */
+  height: 100%; /* 🔧 [FIX] 占满父容器高度 */
+  top: 0; /* 🔧 [FIX] 从顶部对齐 */
+  max-width: calc(100% - 150px); /* 🔧 为右侧连接指示器留出空间 */
+  overflow: hidden; /* 🔧 防止溢出 */
 }
 
 .sync-icon {
   width: 16px;
   height: 16px;
+  min-width: 16px; /* 🔧 [FIX] 固定尺寸 */
+  min-height: 16px; /* 🔧 [FIX] 固定尺寸 */
+  max-width: 16px; /* 🔧 [FIX] 固定尺寸 */
+  max-height: 16px; /* 🔧 [FIX] 固定尺寸 */
   object-fit: contain;
   filter: brightness(0) saturate(100%) invert(36%) sepia(14%) saturate(464%) hue-rotate(183deg) brightness(95%) contrast(88%);
   opacity: 0.8;
+  flex-shrink: 0; /* 🔧 [FIX] 防止被压缩 */
+  /* 🚀 [PERF] 图片渲染优化 */
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  transform: translateZ(0); /* 硬件加速 */
+  backface-visibility: hidden;
+  contain: layout style paint; /* 隔离渲染 */
 }
 
 .status-text {
-  font-size: 14px;
+  font-size: 13px; /* 🔧 稍微缩小以容纳更长文本 */
+  line-height: 1.2; /* 🔧 [FIX] 固定行高 */
   color: #6b7280;
   font-family: 'Microsoft YaHei', Arial, sans-serif;
+  white-space: nowrap; /* 🔧 [FIX] 防止换行 */
+  overflow: hidden; /* 🔧 [FIX] 溢出隐藏 */
+  text-overflow: ellipsis; /* 🔧 [FIX] 溢出显示省略号 */
+  flex: 1; /* 🔧 占据剩余空间 */
+  min-width: 0; /* � 允许 flex 子元素缩小 */
+  /* �🚀 [PERF] 文本渲染优化 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeSpeed; /* 优化渲染速度而非质量 */
+  font-variant-numeric: tabular-nums; /* 数字等宽，避免数字变化导致宽度跳动 */
+  contain: layout style; /* 🚀 [PERF] 隔离布局（移除 paint 以允许 ellipsis 正常工作） */
+  will-change: contents; /* 🚀 [PERF] 提示浏览器内容会变化 */
 }
 
 .connection-indicators {
@@ -452,6 +503,8 @@
   gap: 8px;
   position: absolute; /* 绝对定位，固定在右侧 */
   right: 16px; /* 距离右边框16px */
+  height: 100%; /* 🔧 [FIX] 占满父容器高度 */
+  top: 0; /* 🔧 [FIX] 从顶部对齐 */
 }
 
 .outlook-connection {
@@ -459,19 +512,30 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0; /* 🔧 [FIX] 防止被压缩 */
 }
 
 .outlook-icon {
   width: 18px;
   height: 18px;
+  min-width: 18px; /* 🔧 [FIX] 固定尺寸 */
+  min-height: 18px; /* 🔧 [FIX] 固定尺寸 */
+  max-width: 18px; /* 🔧 [FIX] 固定尺寸 */
+  max-height: 18px; /* 🔧 [FIX] 固定尺寸 */
   object-fit: contain;
+  flex-shrink: 0; /* 🔧 [FIX] 防止被压缩 */
 }
 
 .status-dot {
   width: 8px;
   height: 8px;
+  min-width: 8px; /* 🔧 [FIX] 固定尺寸 */
+  min-height: 8px; /* 🔧 [FIX] 固定尺寸 */
+  max-width: 8px; /* 🔧 [FIX] 固定尺寸 */
+  max-height: 8px; /* 🔧 [FIX] 固定尺寸 */
   border-radius: 50%;
   transition: background-color 0.2s ease;
+  flex-shrink: 0; /* 🔧 [FIX] 防止被压缩 */
 }
 
 .status-dot.connected {
@@ -486,7 +550,16 @@
 
 /* 同步状态动画效果 */
 .status-text {
-  transition: opacity 0.3s ease;
+  transition: opacity 0.3s ease; /* 只过渡透明度，不过渡尺寸 */
+}
+
+/* 🔧 [FIX] 防止 statusbar 的任何尺寸过渡 */
+.app-statusbar,
+.app-statusbar *,
+.status-content,
+.status-content * {
+  transition-property: opacity, color, background-color, border-color, transform !important;
+  /* 明确排除尺寸相关的属性 */
 }
 
 @keyframes syncPulse {
@@ -543,6 +616,12 @@
   
   .app-statusbar {
     height: 32px;
+    min-height: 32px; /* 🔧 [FIX] 强制最小高度 */
+    max-height: 32px; /* 🔧 [FIX] 强制最大高度 */
+  }
+  
+  .app-main {
+    padding-bottom: 32px; /* 🔧 [FIX] 适配小屏幕的 statusbar 高度 */
   }
   
   /* 移除 status-content 的 padding 调整，因为使用绝对定位 */
@@ -600,6 +679,12 @@
   
   .app-statusbar {
     height: 28px;
+    min-height: 28px; /* 🔧 [FIX] 强制最小高度 */
+    max-height: 28px; /* 🔧 [FIX] 强制最大高度 */
+  }
+  
+  .app-main {
+    padding-bottom: 28px; /* 🔧 [FIX] 适配最小屏幕的 statusbar 高度 */
   }
   
   /* 移除 status-content 的 padding 调整，因为使用绝对定位 */

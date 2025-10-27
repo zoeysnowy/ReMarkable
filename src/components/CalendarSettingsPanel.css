@@ -7,11 +7,12 @@
   right: 0;
   bottom: 0;
   background-color: rgba(0, 0, 0, 0.3);
-  z-index: 1000;
+  z-index: 1000; /* 确保在其他内容之上 */
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
   padding: 60px 20px;
+  pointer-events: none; /* 允许点击穿透到下层 */
 }
 
 .calendar-settings-panel {
@@ -19,7 +20,7 @@
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
   width: 100%;
-  max-width: 260px;
+  max-width: 312px; /* 🔧 从 260px 增加 20% */
   max-height: calc(100vh - 120px);
   display: flex;
   flex-direction: column;
@@ -27,7 +28,8 @@
   animation: slideDown 0.2s ease-out;
   margin-left: 20px;
   -webkit-app-region: no-drag; /* 确保在 Electron 中交互正常 */
-  pointer-events: auto; /* 确保可以接收鼠标事件 */
+  pointer-events: auto; /* 面板本身可以接收鼠标事件 */
+  z-index: 1001; /* 确保面板在 overlay 之上 */
 }
 
 @keyframes slideDown {
@@ -66,8 +68,8 @@
   font-size: 24px;
   cursor: pointer;
   padding: 0;
-  width: 30px;
-  height: 30px;
+  width: 12px;
+  height: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -82,16 +84,23 @@
 .settings-content {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: 16px 16px 16px 16px; /* 上右下左 */
+  padding-top: 8px; /* 🔧 减小顶部padding，使第一个section的文字距离顶部和下面section的距离相等 */
 }
 
 /* 增加选择器特异性，覆盖SettingsModal.css的32px */
 .calendar-settings-panel .settings-section {
-  margin-bottom: 16px; /* 缩小 32px→16px */
+  margin-bottom: 0px; /* 缩小 32px→16px */
+}
+
+/* 🔧 减小第1个section（事件透明度）的上边距 */
+.calendar-settings-panel > .settings-content > .settings-section:first-child {
+  margin-top: px;
+  padding-bottom: 8px;
 }
 
 .calendar-settings-panel .settings-section.compact-section {
-  margin-bottom: 16px;
+  margin-bottom: 0px;
 }
 
 /* 移除前3个compact-section之间的margin */
@@ -101,15 +110,21 @@
   margin-bottom: 0;
 }
 
+/* 🔧 为第3个section（显示标签）添加上边距，与第2个compact-section拉开距离 */
+.calendar-settings-panel > .settings-content > .settings-section:nth-of-type(3) {
+  margin-top: 10px;
+}
+
 .calendar-settings-panel .settings-section:last-child {
-  margin-bottom: 0;
+  margin-top: 10px;
+  margin-bottom: 0px;
 }
 
 .section-title {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   font-weight: 600;
   font-size: 14px;
   color: #495057;
@@ -184,19 +199,24 @@
   gap: 0px;
   max-height: 200px;
   overflow-y: auto;
-  padding: 2px;
+  padding: 0; /* 🔧 移除padding，避免视觉上的灰色边框效果 */
+  border: none; /* 🔧 确保没有边框 */
+  outline: none; /* 🔧 确保没有轮廓 */
 }
 
 .filter-item {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 4px 8px; /* 🔧 恢复到原始值，与日历保持一致 */
+  border-radius: 0; /* 🔧 暂时移除圆角，测试是否是边框问题 */
   cursor: pointer;
   transition: background-color 0.2s;
   user-select: none;
-  border: none; /* 移除边框 */
+  border: none !important; /* 🔧 强制移除边框 */
+  outline: none !important; /* 🔧 强制移除轮廓 */
+  box-shadow: none !important; /* 🔧 移除任何阴影 */
+  background-color: transparent !important; /* 🔧 强制透明背景 */
 }
 
 .filter-item:hover {
@@ -208,43 +228,105 @@
   height: 16px;
   cursor: pointer;
   flex-shrink: 0;
-  border: none;
-  outline: none;
+  border: 1.5px solid #cbd5e1 !important; /* 🔧 恢复边框，让用户知道可以点击 */
+  border-radius: 3px;
+  outline: none !important;
+  -webkit-appearance: none; /* 🔧 移除浏览器默认样式 */
+  -moz-appearance: none;
+  appearance: none;
+  background-color: white;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.filter-item input[type="checkbox"]:hover {
+  border-color: #94a3b8; /* 🔧 hover时边框变深 */
+}
+
+.filter-item input[type="checkbox"]:checked {
+  background-color: #667eea;
+  border-color: #667eea !important;
+}
+
+.filter-item input[type="checkbox"]:checked::after {
+  content: '✓';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
 }
 
 .tag-content {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 4px; /* 🔧 减小间距，让#、emoji、text更紧凑 */
   flex: 1;
   min-width: 0;
+  min-height: 20px; /* 🔧 设置最小高度，与日历保持一致 */
+  max-height: 24px; /* 🔧 限制最大高度，防止emoji撑高 */
+  /* 🔧 只控制上右下的padding，左侧padding由内联样式控制（用于层级缩进） */
+  padding-top: 0 !important;
+  padding-right: 0 !important;
+  padding-bottom: 0 !important;
+  /* paddingLeft 由内联样式控制：paddingLeft: ${(tag.level || 0) * 12}px */
+  background-color: transparent !important; /* 🔧 移除TagManager.css的白色背景 */
+  border-radius: 0 !important; /* 🔧 移除TagManager.css的圆角 */
+  border: none !important; /* 🔧 移除TagManager.css的灰色边框 */
+  outline: none !important; /* 🔧 移除任何轮廓 */
+  box-shadow: none !important; /* 🔧 移除任何阴影 */
+  justify-content: flex-start !important; /* 🔧 覆盖TagManager.css的space-between */
+  transition: none !important; /* 🔧 移除过渡效果 */
+}
+
+.tag-content:hover {
+  border-color: transparent !important; /* 🔧 移除hover边框 */
+  box-shadow: none !important; /* 🔧 移除hover阴影 */
 }
 
 .tag-hash {
-  font-size: 14px;
+  font-size: 12px; /* 🔧 紧凑字体 */
   font-weight: 600;
-  width: 16px;
+  width: 12px; /* 🔧 紧凑宽度 */
+  height: 16px; /* 🔧 与emoji保持一致的高度 */
   text-align: center;
   flex-shrink: 0;
-  line-height: 1;
+  line-height: 16px; /* 🔧 设置行高与高度一致 */
+  display: flex; /* 🔧 使用flex布局 */
+  align-items: center; /* 🔧 垂直居中 */
+  justify-content: center; /* 🔧 水平居中 */
+  border: none; /* 🔧 移除任何边框 */
+  outline: none; /* 🔧 移除任何轮廓 */
 }
 
 .tag-emoji {
-  font-size: 14px;
-  width: 18px;
+  font-size: 13px !important; /* 🔧 强制应用紧凑字体 */
+  width: 16px; /* 🔧 紧凑宽度 */
+  height: 16px; /* 🔧 限制高度 */
   text-align: center;
   flex-shrink: 0;
-  line-height: 1;
+  line-height: 16px; /* 🔧 设置行高与高度一致，防止emoji撑高容器 */
   font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+  display: flex; /* 🔧 使用flex布局 */
+  align-items: center; /* 🔧 垂直居中 */
+  justify-content: center; /* 🔧 水平居中 */
+  overflow: hidden; /* 🔧 防止emoji溢出 */
+  border: none; /* 🔧 移除任何边框 */
+  outline: none; /* 🔧 移除任何轮廓 */
 }
 
 .tag-name {
-  font-size: 13px;
-  line-height: 1.4;
+  font-size: 13px !important; /* 🔧 强制应用，与日历名称字体一致 */
+  line-height: 1.4; /* 🔧 与日历保持一致 */
+  /* 颜色由内联样式控制，保留标签的个性化颜色 */
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  border: none; /* 🔧 移除任何边框 */
+  outline: none; /* 🔧 移除任何轮廓 */
 }
 
 /* 移除旧的 color-indicator 和 filter-name */
@@ -260,7 +342,7 @@
 .calendar-content {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 8px; /* ✅ 恢复原始值 */
   flex: 1;
   min-width: 0;
 }
@@ -275,7 +357,7 @@
 
 .calendar-name {
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.4; /* ✅ 恢复原始值 */
   color: #495057;
   flex: 1;
   overflow: hidden;
@@ -298,7 +380,7 @@
 
 .settings-content::-webkit-scrollbar-track,
 .filter-list::-webkit-scrollbar-track {
-  background: #f8f9fa;
+  background: transparent; /* 🔧 改为透明，移除灰色背景 */
   border-radius: 3px;
 }
 

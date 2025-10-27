@@ -266,66 +266,87 @@ const StatusBar: React.FC = () => {
   const [syncStatus, setSyncStatus] = React.useState({
     lastSync: null as Date | null,
     updatedEvents: 0,
-    isConnected: true,
+    isConnected: false, // 默认未连接
     isSyncing: false
   });
+  
+  // 🔧 [FIX] 使用 ref 避免状态更新导致的重渲染
+  const statusTextRef = React.useRef<HTMLSpanElement>(null);
+  const lastUpdateRef = React.useRef<number>(0);
 
-  // 检查localStorage中的同步状态
+  // 🔧 [FIX] 优化：只在需要时加载初始状态（仅一次）
   React.useEffect(() => {
     const savedSyncTime = localStorage.getItem('lastSyncTime');
     const savedEventCount = localStorage.getItem('lastSyncEventCount');
+    const isAuthenticated = localStorage.getItem('remarkable-outlook-authenticated') === 'true';
     
     if (savedSyncTime) {
-      setSyncStatus(prev => ({
-        ...prev,
-        lastSync: new Date(savedSyncTime),
-        updatedEvents: savedEventCount ? parseInt(savedEventCount) : 0
-      }));
-    }
-  }, []);
-
-  // 模拟同步过程的函数
-  const performSync = React.useCallback(() => {
-    setSyncStatus(prev => ({ ...prev, isSyncing: true }));
-    
-    // 模拟同步延迟
-    setTimeout(() => {
-      const now = new Date();
-      const eventCount = Math.floor(Math.random() * 10) + 1; // 随机1-10个事件
-      
       setSyncStatus({
-        lastSync: now,
-        updatedEvents: eventCount,
-        isConnected: true,
+        lastSync: new Date(savedSyncTime),
+        updatedEvents: savedEventCount ? parseInt(savedEventCount) : 0,
+        isConnected: isAuthenticated, // 🔧 从 localStorage 读取实际认证状态
         isSyncing: false
       });
+    } else {
+      // 没有同步记录，但仍需要设置认证状态
+      setSyncStatus(prev => ({
+        ...prev,
+        isConnected: isAuthenticated
+      }));
+    }
+    
+    // 🔔 监听同步完成事件，更新状态栏时间
+    const handleSyncCompleted = (event: any) => {
+      const { timestamp } = event.detail;
+      console.log('✅ [StatusBar] Sync completed, updating lastSyncTime:', timestamp);
       
-      // 保存到localStorage
-      localStorage.setItem('lastSyncTime', formatTimeForStorage(now)); // 🔧 使用本地时间格式化
-      localStorage.setItem('lastSyncEventCount', eventCount.toString());
-    }, 2000); // 2秒同步延迟
-  }, []);
+      // 更新localStorage（使用本地时间格式）
+      localStorage.setItem('lastSyncTime', formatTimeForStorage(timestamp));
+      
+      // 更新状态
+      setSyncStatus(prev => ({
+        ...prev,
+        lastSync: timestamp,
+        isSyncing: false
+      }));
+    };
+    
+    window.addEventListener('action-sync-completed', handleSyncCompleted);
+    
+    // �💾 定期检查认证状态（每5秒）
+    const checkAuth = setInterval(() => {
+      const currentAuth = localStorage.getItem('remarkable-outlook-authenticated') === 'true';
+      setSyncStatus(prev => {
+        if (prev.isConnected !== currentAuth) {
+          console.log('🔄 [StatusBar] Auth status changed:', currentAuth);
+          return { ...prev, isConnected: currentAuth };
+        }
+        return prev;
+      });
+    }, 5000);
+    
+    return () => {
+      clearInterval(checkAuth);
+      window.removeEventListener('action-sync-completed', handleSyncCompleted);
+    };
+  }, []); // 空依赖，只运行一次
 
-  // 每30秒自动同步一次（在实际应用中可以调整频率）
-  React.useEffect(() => {
-    const syncInterval = setInterval(performSync, 30000);
-    return () => clearInterval(syncInterval);
-  }, [performSync]);
-
-  const formatSyncStatus = () => {
-    if (syncStatus.isSyncing) {
+  // 🔧 [PERF] 格式化函数：使用 useMemo 缓存，避免每次渲染都计算
+  const formatSyncStatus = React.useCallback((lastSync: Date | null, updatedEvents: number, isSyncing: boolean) => {
+    if (isSyncing) {
       return "正在同步...";
     }
     
-    if (!syncStatus.lastSync) {
+    if (!lastSync) {
       return "尚未同步";
     }
     
-    const now = new Date();
-    const syncTime = syncStatus.lastSync;
-    const diffInMinutes = Math.floor((now.getTime() - syncTime.getTime()) / (1000 * 60));
+    const now = Date.now();
+    const syncTime = lastSync.getTime();
+    const diffInMinutes = Math.floor((now - syncTime) / (1000 * 60));
     
-    let timeStr = syncTime.toLocaleString('zh-CN', {
+    // 🎨 保留原有的详细格式
+    const timeStr = lastSync.toLocaleString('zh-CN', {
       year: 'numeric',
       month: '2-digit', 
       day: '2-digit',
@@ -335,22 +356,57 @@ const StatusBar: React.FC = () => {
     });
     
     if (diffInMinutes < 1) {
-      return `最后同步：${timeStr} 更新事件${syncStatus.updatedEvents}个`;
+      return `最后同步：${timeStr} 更新事件${updatedEvents}个`;
     } else if (diffInMinutes < 60) {
-      return `最后同步：${timeStr} (${diffInMinutes}分钟前) 更新事件${syncStatus.updatedEvents}个`;
+      return `最后同步：${timeStr} (${diffInMinutes}分钟前) 更新事件${updatedEvents}个`;
     } else {
       const hours = Math.floor(diffInMinutes / 60);
-      return `最后同步：${timeStr} (${hours}小时前) 更新事件${syncStatus.updatedEvents}个`;
+      return `最后同步：${timeStr} (${hours}小时前) 更新事件${updatedEvents}个`;
     }
-  };
+  }, []);
+
+  // 🔧 初始文本
+  const initialText = React.useMemo(() => {
+    return formatSyncStatus(syncStatus.lastSync, syncStatus.updatedEvents, syncStatus.isSyncing);
+  }, [syncStatus, formatSyncStatus]);
+
+  // 🔧 [PERF] 使用 DOM 直接更新文本，避免 React 重渲染
+  // 每 30 秒更新一次显示文本（不触发组件重渲染）
+  React.useEffect(() => {
+    if (!syncStatus.lastSync || syncStatus.isSyncing) return;
+    
+    const updateText = () => {
+      if (!statusTextRef.current) return;
+      
+      const now = Date.now();
+      // 🔧 限流：至少 30 秒更新一次
+      if (now - lastUpdateRef.current < 30000) return;
+      
+      lastUpdateRef.current = now;
+      const newText = formatSyncStatus(syncStatus.lastSync, syncStatus.updatedEvents, syncStatus.isSyncing);
+      
+      // 直接更新 DOM，不触发 React 重渲染
+      if (statusTextRef.current.textContent !== newText) {
+        statusTextRef.current.textContent = newText;
+      }
+    };
+    
+    // 每 30 秒更新一次
+    const intervalId = setInterval(updateText, 30000);
+    
+    // 立即更新一次（以防启动时就过了很久）
+    updateText();
+    
+    return () => clearInterval(intervalId);
+  }, [syncStatus.lastSync, syncStatus.updatedEvents, syncStatus.isSyncing, formatSyncStatus]);
 
   return (
     <footer className="app-statusbar">
       <div className="status-content">
         <div className="sync-status">
           <img src={icons.sync} alt="Sync" className="sync-icon" />
-          <span className="status-text">
-            {formatSyncStatus()}
+          <span className="status-text" ref={statusTextRef}>
+            {initialText}
           </span>
         </div>
         <div className="connection-indicators">

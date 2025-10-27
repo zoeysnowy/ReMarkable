@@ -124,6 +124,85 @@ body.widget-mode {
    使用 .toastui-calendar-* (不是 .tui-calendar-*)
    ================================================================ */
 
+/* 🔧 主容器 - 移除硬编码颜色，让颜色跟随用户设置 */
+.desktop-calendar-inner .toastui-calendar {
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* 🔧 所有视图的布局容器 - 确保透明，防止闪烁 */
+.desktop-calendar-inner .toastui-calendar-layout,
+.desktop-calendar-inner .toastui-calendar-layout.toastui-calendar-week-view,
+.desktop-calendar-inner .toastui-calendar-layout.toastui-calendar-day-view,
+.desktop-calendar-inner .toastui-calendar-layout.toastui-calendar-month-view {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* 🔧 周视图和日视图的主面板 - 确保透明，但排除事件元素 */
+.desktop-calendar-inner .toastui-calendar-week-view,
+.desktop-calendar-inner .toastui-calendar-day-view {
+  background-color: transparent !important;
+}
+
+/* 🔧 周视图和日视图的容器和面板 - 透明但不影响事件 */
+.desktop-calendar-inner .toastui-calendar-week-view .toastui-calendar-panel,
+.desktop-calendar-inner .toastui-calendar-day-view .toastui-calendar-panel,
+.desktop-calendar-inner .toastui-calendar-week-view .toastui-calendar-layout,
+.desktop-calendar-inner .toastui-calendar-day-view .toastui-calendar-layout {
+  background-color: transparent !important;
+}
+
+/* 🔧 日期标题容器 - 移除硬编码颜色 */
+.desktop-calendar-inner .toastui-calendar-day-name-container {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+}
+
+/* 🔧 Task/Allday面板 - 移除硬编码颜色 */
+.desktop-calendar-inner .toastui-calendar-panel.toastui-calendar-task {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+}
+
+/* 🔧 月视图header（周标题行）- 移除硬编码背景 */
+.desktop-calendar-inner .toastui-calendar-month-header,
+.desktop-calendar-inner [data-testid="grid-header-month"] {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+}
+
+/* 🔧 月视图日期网格容器 - 移除硬编码背景 */
+.desktop-calendar-inner .toastui-calendar-month-daygrid,
+.desktop-calendar-inner .toastui-calendar-month {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* 🔧 所有panel和容器 - 统一移除硬编码border */
+.desktop-calendar-inner .toastui-calendar-panel,
+.desktop-calendar-inner .toastui-calendar-allday-panel,
+.desktop-calendar-inner .toastui-calendar-panel-title,
+.desktop-calendar-inner .toastui-calendar-panel-resizer {
+  border: none !important;
+  border-top: none !important;
+  border-bottom: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  background: transparent !important; /* 🔧 移除resizer的硬编码背景线 */
+}
+
+/* 🔧 月视图周标题行 - 移除硬编码border */
+.desktop-calendar-inner .toastui-calendar-day-names.toastui-calendar-month {
+  border: none !important;
+  border-bottom: none !important;
+  background: transparent !important;
+}
+
 /* 日期头部（星期名称）- 透明背景 */
 .desktop-calendar-inner .toastui-calendar-month-dayname,
 .desktop-calendar-inner .toastui-calendar-week-dayname,
@@ -157,7 +236,41 @@ body.widget-mode {
   border-radius: 3px !important;
   padding: 1px 4px !important;
   opacity: 0.95 !important;
+  /* 🔧 在grid单元格内垂直居中 */
+  display: flex !important;
+  align-items: center !important;
+  min-height: 20px !important;
+  height: auto !important;
 }
+
+/* 🔧 自适应文字颜色 - 使用CSS变量 */
+.desktop-calendar-inner .toastui-calendar-weekday-event,
+.desktop-calendar-inner .toastui-calendar-template-monthDayName,
+.desktop-calendar-inner .toastui-calendar-template-monthGridHeader,
+.desktop-calendar-inner .toastui-calendar-timegrid-time,
+.desktop-calendar-inner .toastui-calendar-day-name-item,
+.desktop-calendar-inner .toastui-calendar-month-dayname,
+.desktop-calendar-inner .toastui-calendar-week-dayname,
+.desktop-calendar-inner .toastui-calendar-panel.toastui-calendar-task,
+.desktop-calendar-inner .toastui-calendar-panel.toastui-calendar-milestone,
+.desktop-calendar-inner .toastui-calendar-panel.toastui-calendar-allday,
+.desktop-calendar-inner .toastui-calendar-event-allday,
+.desktop-calendar-inner .toastui-calendar-weekday-event.toastui-calendar-milestone,
+.desktop-calendar-inner .toastui-calendar-month-milestone,
+.desktop-calendar-inner .toastui-calendar-panel-title {
+  color: var(--adaptive-text-primary) !important;
+}
+
+/* 🔧 事件内部文字元素 - 也应用自适应颜色 */
+.desktop-calendar-inner .toastui-calendar-weekday-event *,
+.desktop-calendar-inner .toastui-calendar-event-title,
+.desktop-calendar-inner .toastui-calendar-event-time,
+.desktop-calendar-inner .toastui-calendar-template-time,
+.desktop-calendar-inner .toastui-calendar-month-day-event,
+.desktop-calendar-inner .toastui-calendar-month-day-event * {
+  color: var(--adaptive-text-primary) !important;
+}
+
 
 /* ================================================================
    控制栏按钮样式

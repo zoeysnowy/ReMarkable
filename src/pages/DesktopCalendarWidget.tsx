@@ -14,15 +14,26 @@ import OutlookIcon from '../assets/icons/Outlook.svg';
 
 // 包装 TimeCalendar，只在必要的 props 变化时重渲染
 const MemoizedTimeCalendar = memo(TimeCalendar, (prevProps, nextProps) => {
-  // 只有这些 props 变化时才重渲染
-  return (
-    prevProps.calendarBackgroundColor === nextProps.calendarBackgroundColor &&
-    prevProps.calendarOpacity === nextProps.calendarOpacity &&
-    prevProps.widgetLocked === nextProps.widgetLocked &&
-    prevProps.microsoftService === nextProps.microsoftService &&
-    prevProps.syncManager === nextProps.syncManager &&
-    prevProps.lastSyncTime === nextProps.lastSyncTime
-  );
+  // 返回 true = 不需要更新，返回 false = 需要更新
+  
+  // 🎨 颜色和透明度变化必须重新渲染
+  if (prevProps.calendarBackgroundColor !== nextProps.calendarBackgroundColor) {
+    console.log('🎨 [Memo] Color changed:', prevProps.calendarBackgroundColor, '→', nextProps.calendarBackgroundColor);
+    return false;
+  }
+  if (prevProps.calendarOpacity !== nextProps.calendarOpacity) {
+    console.log('🎨 [Memo] Opacity changed:', prevProps.calendarOpacity, '→', nextProps.calendarOpacity);
+    return false;
+  }
+  
+  // 其他 props 变化也需要更新
+  if (prevProps.widgetLocked !== nextProps.widgetLocked) return false;
+  if (prevProps.microsoftService !== nextProps.microsoftService) return false;
+  if (prevProps.syncManager !== nextProps.syncManager) return false;
+  if (prevProps.lastSyncTime !== nextProps.lastSyncTime) return false;
+  
+  // 所有关键 props 都没变，跳过更新
+  return true;
 });
 
 interface CustomCSSProperties extends React.CSSProperties {
@@ -30,6 +41,33 @@ interface CustomCSSProperties extends React.CSSProperties {
 }
 
 const DesktopCalendarWidget: React.FC = () => {
+  // 🆔 生成或读取唯一的 Widget ID
+  const [widgetId] = useState(() => {
+    // 1. 尝试从 URL 参数读取
+    const params = new URLSearchParams(window.location.search);
+    const urlId = params.get('widgetId');
+    if (urlId) {
+      console.log('📝 [Widget] Using widgetId from URL:', urlId);
+      return urlId;
+    }
+    
+    // 2. 尝试从 localStorage 读取
+    const savedId = localStorage.getItem('remarkable-widget-instance-id');
+    if (savedId) {
+      console.log('📝 [Widget] Using saved widgetId:', savedId);
+      return savedId;
+    }
+    
+    // 3. 生成新的 ID 并保存
+    const newId = `widget-${Date.now()}`;
+    localStorage.setItem('remarkable-widget-instance-id', newId);
+    console.log('✨ [Widget] Generated new widgetId:', newId);
+    return newId;
+  });
+
+  // 🔧 生成唯一的存储 key
+  const storageKey = `remarkable-widget-settings-${widgetId}`;
+  
   // 🔄 使用全局单例服务，确保与主应用的登录状态一致
   const [microsoftService, setMicrosoftService] = useState<any>(() => {
     // 优先使用全局实例，如果不存在则创建新实例（兼容性）
@@ -84,8 +122,56 @@ const DesktopCalendarWidget: React.FC = () => {
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null); // 定时器引用
 
   // 样式控制 - 简化版：只控制日历背景
-  const [bgOpacity, setBgOpacity] = useState(0.95); // 日历背景透明度，默认 95%
-  const [bgColor, setBgColor] = useState('#ffffff'); // 日历背景颜色，默认白色
+  // 🔧 使用 lazy initialization 确保在首次渲染前就加载设置
+  const [bgOpacity, setBgOpacity] = useState(() => {
+    const savedSettings = localStorage.getItem('desktop-calendar-widget-settings');
+    if (savedSettings) {
+      try {
+        const settings = JSON.parse(savedSettings);
+        const opacity = settings.bgOpacity !== undefined ? settings.bgOpacity : 0.95;
+        console.log('🎨 [Widget Init] Loaded bgOpacity:', opacity);
+        return opacity;
+      } catch (e) {
+        console.error('Failed to parse widget settings for opacity', e);
+      }
+    }
+    console.log('🎨 [Widget Init] Using default bgOpacity: 0.95');
+    return 0.95;
+  });
+  
+  const [bgColor, setBgColor] = useState(() => {
+    const savedSettings = localStorage.getItem('desktop-calendar-widget-settings');
+    if (savedSettings) {
+      try {
+        const settings = JSON.parse(savedSettings);
+        const color = settings.bgColor || '#ffffff';
+        console.log('🎨 [Widget Init] Loaded bgColor:', color);
+        return color;
+      } catch (e) {
+        console.error('Failed to parse widget settings for color', e);
+      }
+    }
+    console.log('🎨 [Widget Init] Using default bgColor: #ffffff');
+    return '#ffffff';
+  });
+
+  // 🎨 自适应颜色计算函数
+  const getAdaptiveColors = useMemo(() => {
+    const r = parseInt(bgColor.slice(1,3), 16);
+    const g = parseInt(bgColor.slice(3,5), 16);
+    const b = parseInt(bgColor.slice(5,7), 16);
+    const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+    const isDark = luminance < 128;
+    
+    return {
+      isDark,
+      textPrimary: isDark ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.87)',
+      textSecondary: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)',
+      iconFilter: isDark ? 'brightness(1.2)' : 'none',
+      buttonBg: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+      buttonHoverBg: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)',
+    };
+  }, [bgColor]);
 
   const widgetRef = useRef<HTMLDivElement>(null);
   
@@ -121,17 +207,18 @@ const DesktopCalendarWidget: React.FC = () => {
   const [isResizeHovering, setIsResizeHovering] = useState(false);
   const resizeHoverTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 从 localStorage 读取设置
+  // 从 localStorage 读取锁定状态并同步到主进程
   useEffect(() => {
     const savedSettings = localStorage.getItem('desktop-calendar-widget-settings');
+    console.log('🔍 [Widget] Syncing lock state from localStorage:', savedSettings);
+    
     if (savedSettings) {
       try {
         const settings = JSON.parse(savedSettings);
-        setBgOpacity(settings.bgOpacity !== undefined ? settings.bgOpacity : 0.95);
-        setBgColor(settings.bgColor || '#ffffff');
         const locked = settings.isLocked || false;
+        
+        console.log('🔒 [Widget] Setting lock status:', locked);
         setIsLocked(locked);
-        console.log('🔒 Widget locked status:', locked);
         
         // 同步锁定状态到 Electron 主进程
         if (window.electronAPI?.widgetLock) {
@@ -142,10 +229,10 @@ const DesktopCalendarWidget: React.FC = () => {
           });
         }
       } catch (e) {
-        console.error('Failed to parse widget settings', e);
+        console.error('Failed to parse widget settings for lock state', e);
       }
     } else {
-      console.log('🔓 No saved settings, widget is unlocked');
+      console.log('🔓 No saved lock state, widget is unlocked');
       // 确保主进程也是解锁状态
       if (window.electronAPI?.widgetLock) {
         window.electronAPI.widgetLock(false).then(() => {
@@ -711,7 +798,13 @@ const DesktopCalendarWidget: React.FC = () => {
     <div
       ref={widgetRef}
       className="desktop-calendar-widget"
-      style={widgetStyle}
+      style={{
+        ...widgetStyle,
+        // 🎨 设置CSS变量供子元素使用
+        ['--adaptive-text-primary' as any]: getAdaptiveColors.textPrimary,
+        ['--adaptive-text-secondary' as any]: getAdaptiveColors.textSecondary,
+        ['--adaptive-icon-filter' as any]: getAdaptiveColors.iconFilter,
+      }}
     >
       {/* 调整大小时的全屏遮罩层 */}
       {isResizing && (
@@ -817,6 +910,7 @@ const DesktopCalendarWidget: React.FC = () => {
             syncManager={syncManager}
             lastSyncTime={lastSyncTime}
             isWidgetMode={true}
+            storageKey={storageKey} // 🔧 使用唯一的存储key
             className="desktop-calendar-inner"
             style={useMemo(() => ({ 
               height: '100%', 
@@ -847,14 +941,7 @@ const DesktopCalendarWidget: React.FC = () => {
             justifyContent: 'space-between',
             alignItems: 'center',
             fontSize: '12px',
-            color: (() => {
-              const r = parseInt(bgColor.slice(1,3), 16);
-              const g = parseInt(bgColor.slice(3,5), 16);
-              const b = parseInt(bgColor.slice(5,7), 16);
-              const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-              const isDark = luminance < 128;
-              return isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)';
-            })(),
+            color: getAdaptiveColors.textSecondary,
             cursor: 'default',
             // @ts-ignore - Electron specific property
             WebkitAppRegion: 'no-drag',
@@ -867,26 +954,13 @@ const DesktopCalendarWidget: React.FC = () => {
             <img src={SyncIcon} alt="Sync" style={{ 
               width: 16, 
               height: 16,
-              filter: (() => {
-                const r = parseInt(bgColor.slice(1,3), 16);
-                const g = parseInt(bgColor.slice(3,5), 16);
-                const b = parseInt(bgColor.slice(5,7), 16);
-                const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-                return luminance < 128 ? 'brightness(1.2)' : 'none';
-              })()
+              filter: getAdaptiveColors.iconFilter
             }} />
             <span>
               {lastSyncTime ? (
                 <>
                   最后同步：<strong style={{ 
-                    color: (() => {
-                      const r = parseInt(bgColor.slice(1,3), 16);
-                      const g = parseInt(bgColor.slice(3,5), 16);
-                      const b = parseInt(bgColor.slice(5,7), 16);
-                      const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-                      const isDark = luminance < 128;
-                      return isDark ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.87)';
-                    })()
+                    color: getAdaptiveColors.textPrimary
                   }}>
                     {lastSyncTime.toLocaleString('zh-CN', {
                       year: 'numeric',
@@ -905,13 +979,7 @@ const DesktopCalendarWidget: React.FC = () => {
             <img src={OutlookIcon} alt="Outlook" style={{ 
               width: 16, 
               height: 16,
-              filter: (() => {
-                const r = parseInt(bgColor.slice(1,3), 16);
-                const g = parseInt(bgColor.slice(3,5), 16);
-                const b = parseInt(bgColor.slice(5,7), 16);
-                const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-                return luminance < 128 ? 'brightness(1.2)' : 'none';
-              })()
+              filter: getAdaptiveColors.iconFilter
             }} />
             <div
               style={{

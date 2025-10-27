@@ -12,6 +12,7 @@ import { TimerCard } from './components/TimerCard'; // 计时卡片组件
 import { DailyStatsCard } from './components/DailyStatsCard'; // 今日统计卡片组件
 import { TimerSession, Event } from './types';
 import { formatTimeForStorage } from './utils/timeUtils';
+import { getCalendarGroupColor, getAvailableCalendarsForSettings } from './utils/calendarUtils';
 import { STORAGE_KEYS, CacheManager } from './constants/storage';
 import { PersistentStorage, PERSISTENT_OPTIONS } from './utils/persistentStorage';
 import { TagService } from './services/TagService';
@@ -169,6 +170,7 @@ function App() {
           name: tag.name,
           color: tag.color,
           emoji: tag.emoji,
+          level: tag.level, // 🔧 保留层级信息
           parentId: tag.parentId,
           calendarMapping: tag.calendarMapping
         }));
@@ -319,7 +321,7 @@ function App() {
     });
 
       const startTime = Date.now();
-      setGlobalTimer({
+      const timerState = {
         isRunning: true,
         tagId: tagId,
         tagName: tag.name,
@@ -329,7 +331,11 @@ function App() {
         originalStartTime: startTime, // 保存真正的开始时间
         elapsedTime: 0,
         isPaused: false
-      });    console.log('⏰ 开始计时:', tag.name);
+      };
+      setGlobalTimer(timerState);
+      // 💾 持久化到 localStorage，供 Widget 读取
+      localStorage.setItem('remarkable-global-timer', JSON.stringify(timerState));
+      console.log('⏰ 开始计时:', tag.name);
   };
 
   const handleTimerPause = () => {
@@ -337,12 +343,15 @@ function App() {
 
     const currentElapsed = globalTimer.elapsedTime + (Date.now() - globalTimer.startTime);
     
-    setGlobalTimer({
+    const timerState = {
       ...globalTimer,
       isRunning: false,
       isPaused: true,
       elapsedTime: currentElapsed
-    });
+    };
+    setGlobalTimer(timerState);
+    // 💾 持久化暂停状态
+    localStorage.setItem('remarkable-global-timer', JSON.stringify(timerState));
 
     console.log('⏸️ 暂停计时');
   };
@@ -350,12 +359,15 @@ function App() {
   const handleTimerResume = () => {
     if (!globalTimer) return;
 
-    setGlobalTimer({
+    const timerState = {
       ...globalTimer,
       isRunning: true,
       isPaused: false,
       startTime: Date.now()
-    });
+    };
+    setGlobalTimer(timerState);
+    // 💾 持久化恢复状态
+    localStorage.setItem('remarkable-global-timer', JSON.stringify(timerState));
 
     console.log('▶️ 继续计时');
   };
@@ -365,7 +377,37 @@ function App() {
     
     if (window.confirm('确定要取消计时吗？当前计时将不会被保存。')) {
       console.log('❌ 取消计时');
+      
+      // 🔧 删除 localStorage 中的 Timer 事件
+      try {
+        const startTime = new Date(globalTimer.originalStartTime || globalTimer.startTime);
+        const timerEventId = `timer-${globalTimer.tagId}-${startTime.getTime()}`;
+        
+        const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
+        const existingEvents: Event[] = saved ? JSON.parse(saved) : [];
+        
+        // 过滤掉该 Timer 事件
+        const filteredEvents = existingEvents.filter(e => e.id !== timerEventId);
+        
+        if (filteredEvents.length < existingEvents.length) {
+          localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(filteredEvents));
+          console.log('🗑️ [Timer Cancel] Deleted timer event:', timerEventId);
+          
+          // 触发事件更新通知
+          window.dispatchEvent(new CustomEvent('eventsUpdated', {
+            detail: { 
+              eventId: timerEventId,
+              deleted: true
+            }
+          }));
+        }
+      } catch (error) {
+        console.error('❌ [Timer Cancel] Failed to delete event:', error);
+      }
+      
       setGlobalTimer(null);
+      // 💾 清除 localStorage 中的 timer 状态
+      localStorage.removeItem('remarkable-global-timer');
     }
   };
 
@@ -493,12 +535,27 @@ function App() {
       const existingEvents = saved ? JSON.parse(saved) : [];
       const eventIndex = existingEvents.findIndex((e: Event) => e.id === timerEventId);
       
+      console.log('🔍 [Timer Stop] 查找现有事件:', {
+        timerEventId,
+        eventIndex,
+        foundExisting: eventIndex !== -1,
+        existingTitle: eventIndex !== -1 ? existingEvents[eventIndex].title : 'N/A',
+        totalEventsCount: existingEvents.length
+      });
+      
       if (eventIndex === -1) {
         existingEvents.push(finalEvent);
         console.log('✅ [Timer Stop] 创建最终事件:', timerEventId);
       } else {
+        const oldEvent = existingEvents[eventIndex];
         existingEvents[eventIndex] = finalEvent;
-        console.log('✅ [Timer Stop] 更新最终事件:', timerEventId);
+        console.log('✅ [Timer Stop] 更新最终事件:', {
+          id: timerEventId,
+          oldTitle: oldEvent.title,
+          newTitle: finalEvent.title,
+          oldSyncStatus: oldEvent.syncStatus,
+          newSyncStatus: finalEvent.syncStatus
+        });
       }
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
       
@@ -538,6 +595,8 @@ function App() {
     
     // 清除计时器状态
     setGlobalTimer(null);
+    // 💾 清除 localStorage 中的 timer 状态
+    localStorage.removeItem('remarkable-global-timer');
   };
 
   // 打开计时器事件编辑框
@@ -602,61 +661,7 @@ function App() {
     const titleChars = Array.from(updatedEvent.title);
     const firstChar = titleChars.length > 0 ? titleChars[0] : '';
     
-    // 🔧 [FIX] 首先保存事件到 localStorage
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
-      const existingEvents: Event[] = saved ? JSON.parse(saved) : [];
-      const eventIndex = existingEvents.findIndex((e: Event) => e.id === updatedEvent.id);
-      
-      let originalEvent: Event | null = null;
-      let isNewEvent = false;
-      
-      if (eventIndex === -1) {
-        // 新事件：添加到数组
-        console.log('➕ [App Timer] Creating new event:', updatedEvent.id);
-        isNewEvent = true;
-        existingEvents.push(updatedEvent);
-      } else {
-        // 现有事件：更新
-        console.log('✏️ [App Timer] Updating existing event:', updatedEvent.id);
-        originalEvent = existingEvents[eventIndex];
-        const tagsChanged = JSON.stringify(originalEvent.tags) !== JSON.stringify(updatedEvent.tags);
-        if (tagsChanged) {
-          console.log('🏷️ [App Timer] Tags changed:', originalEvent.tags, '→', updatedEvent.tags);
-        }
-        existingEvents[eventIndex] = updatedEvent;
-      }
-      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
-      
-      // 🔔 [FIX] 触发全局事件更新通知（通知DailyStatsCard等组件刷新）
-      console.log('🔔 [App Timer] Dispatching eventsUpdated event');
-      window.dispatchEvent(new CustomEvent('eventsUpdated', {
-        detail: { 
-          eventId: updatedEvent.id,
-          isNewEvent,
-          tags: updatedEvent.tags
-        }
-      }));
-
-      // 🔄 [FIX] 同步到 Outlook
-      if (syncManager) {
-        try {
-          if (isNewEvent) {
-            syncManager.recordLocalAction('create', 'event', updatedEvent.id, updatedEvent);
-            console.log('✅ [App Timer] New event synced');
-          } else {
-            syncManager.recordLocalAction('update', 'event', updatedEvent.id, updatedEvent, originalEvent);
-            console.log('✅ [App Timer] Updated event synced');
-          }
-        } catch (error) {
-          console.error('❌ [App Timer] Sync failed:', error);
-        }
-      }
-    } catch (error) {
-      console.error('❌ [App Timer] Save failed:', error);
-    }
-    
-    // 如果没有计时器，创建新的计时器
+    // 🔧 如果没有计时器，创建新的计时器
     if (!globalTimer) {
       // 必须选择至少一个标签
       if (!updatedEvent.tags || updatedEvent.tags.length === 0) {
@@ -673,8 +678,6 @@ function App() {
       }
 
       // 确定计时起始时间
-      // 1. 如果用户修改了开始时间（与当前时间差距超过1分钟），使用用户设置的时间
-      // 2. 否则使用当前时间（点击保存的时间）
       const eventStartTime = new Date(updatedEvent.startTime);
       const now = new Date();
       const timeDiff = Math.abs(now.getTime() - eventStartTime.getTime());
@@ -689,6 +692,58 @@ function App() {
         useEventTime,
         finalStartTime: new Date(timerStartTime).toISOString()
       });
+
+      // 🔧 [关键修复] 使用真实事件ID，与 useEffect 中的ID保持一致
+      const realTimerEventId = `timer-${tagId}-${eventStartTime.getTime()}`;
+      
+      // 🔧 立即创建真实事件（使用真实ID），防止重复
+      const eventTitle = updatedEvent.title || (tag.emoji ? `${tag.emoji} ${tag.name}` : tag.name);
+      const timerEvent: Event = {
+        id: realTimerEventId, // 使用真实ID
+        title: eventTitle,
+        startTime: formatTimeForStorage(eventStartTime),
+        endTime: formatTimeForStorage(now), // 初始结束时间为当前时间
+        tags: [tagId],
+        tagId: tagId,
+        calendarId: (tag as any).calendarId || '',
+        location: '',
+        description: '计时中的事件',
+        isAllDay: false,
+        createdAt: formatTimeForStorage(eventStartTime),
+        updatedAt: formatTimeForStorage(now),
+        syncStatus: 'local-only', // 运行中不同步
+        remarkableSource: true,
+        isTimer: true
+      };
+
+      // 保存到 localStorage
+      try {
+        const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
+        const existingEvents: Event[] = saved ? JSON.parse(saved) : [];
+        
+        // 检查是否已存在同ID事件（避免重复）
+        const existingIndex = existingEvents.findIndex(e => e.id === realTimerEventId);
+        if (existingIndex === -1) {
+          existingEvents.push(timerEvent);
+          console.log('✅ [Timer Init] Created timer event:', realTimerEventId);
+        } else {
+          existingEvents[existingIndex] = timerEvent;
+          console.log('🔄 [Timer Init] Updated existing timer event:', realTimerEventId);
+        }
+        
+        localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
+        
+        // 触发事件更新通知
+        window.dispatchEvent(new CustomEvent('eventsUpdated', {
+          detail: { 
+            eventId: realTimerEventId,
+            isTimerEvent: true,
+            tags: [tagId]
+          }
+        }));
+      } catch (error) {
+        console.error('❌ [Timer Init] Failed to save event:', error);
+      }
 
       // 创建新的计时器
       setGlobalTimer({
@@ -769,7 +824,7 @@ function App() {
         
         const timerEvent: Event = {
           id: timerEventId,
-          title: `[专注中] ${eventTitle}`, // 🔧 添加专注标记
+          title: eventTitle, // 🔧 不添加"[专注中]"标记到localStorage，只在UI渲染时添加
           startTime: formatTimeForStorage(startTime),
           endTime: formatTimeForStorage(endTime),
           location: '',
@@ -803,14 +858,9 @@ function App() {
         
         localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
         
-        // 🔔 触发事件更新通知（让 TimeCalendar 和 DailyStatsCard 刷新）
-        window.dispatchEvent(new CustomEvent('eventsUpdated', {
-          detail: { 
-            eventId: timerEventId,
-            isTimerEvent: true,
-            tags: [globalTimer.tagId]
-          }
-        }));
+        // � 不触发 eventsUpdated（避免 TimeCalendar 和 EditModal 频繁重渲染）
+        // Timer 运行中的更新不需要立即刷新 UI，停止时会触发刷新
+        // window.dispatchEvent(new CustomEvent('eventsUpdated', {...}));
       } catch (error) {
         console.error('❌ [Timer] Failed to save timer event:', error);
       }
@@ -819,8 +869,8 @@ function App() {
     // 立即保存一次
     saveTimerEvent();
 
-    // 每5秒保存一次
-    const saveInterval = setInterval(saveTimerEvent, 5000);
+    // 🔧 每30秒保存一次（降低频率，减少性能影响）
+    const saveInterval = setInterval(saveTimerEvent, 30000);
 
     // 清理函数
     return () => {
@@ -1008,6 +1058,14 @@ function App() {
   // 监听认证状态变化并初始化同步管理器
   useEffect(() => {
     const currentAuthState = microsoftService?.isSignedIn() || false;
+    
+    // 💾 同步认证状态到 localStorage（供 Widget 读取）
+    try {
+      localStorage.setItem('remarkable-outlook-authenticated', currentAuthState.toString());
+      console.log('💾 [AUTH] Saved auth status to localStorage:', currentAuthState);
+    } catch (error) {
+      console.error('❌ [AUTH] Failed to save auth status:', error);
+    }
     
     if (currentAuthState !== lastAuthState) {
       setLastAuthState(currentAuthState);
@@ -1235,6 +1293,7 @@ function App() {
               syncManager={syncManager}
               lastSyncTime={lastSyncTime}
               availableTags={availableTagsForEdit}
+              globalTimer={globalTimer}
             />
           </PageContainer>
         );
@@ -1423,14 +1482,7 @@ function App() {
           onStartTimeChange={handleStartTimeChange}
           globalTimer={globalTimer}
           microsoftService={microsoftService}
-          availableCalendars={(() => {
-            try {
-              const cached = localStorage.getItem(STORAGE_KEYS.CALENDARS_CACHE);
-              return cached ? JSON.parse(cached) : [];
-            } catch (e) {
-              return [];
-            }
-          })()}
+          availableCalendars={getAvailableCalendarsForSettings()}
         />
       )}
 

@@ -1037,7 +1037,7 @@ header h1 {
 }
 
 .form-row {
-  margin-bottom: 15px;
+  margin-bottom: 0px;
 }
 
 .form-row label {
@@ -2700,8 +2700,9 @@ body {
   display: grid;
   grid-template-columns: 1fr 300px;  /* 左侧自适应(屏幕宽度-300px)，右侧固定300px */
   gap: 12px;  /* 紧凑间距，匹配Figma设计 */
-  height: 100%;  /* 填满主体页面 */
+  height: auto;  /* 🔧 改为 auto，让内容自适应高度，而不是填满整个页面 */
   width: 100%;  /* 使用全部容器宽度 */
+  align-items: start; /* 🔧 顶部对齐 */
 }
 
 .tag-setting-section,
@@ -2711,7 +2712,7 @@ body {
   padding: 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   border: 1px solid #e5e7eb;
-  height: 100%;
+  height: auto; /* 🔧 改为 auto，让内容决定高度 */
   display: flex;
   flex-direction: column;
 }
@@ -2774,19 +2775,19 @@ body {
 .focus-dials {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  flex: 1;
+  gap: 12px; /* 🔧 增加间距从 8px 到 12px */
+  /* 移除 flex: 1，让表盘区域不撑满容器 */
 }
 
 .dial-item {
   background: #f8fafc;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 12px 8px;
+  border-radius: 12px; /* 🔧 增加圆角从 8px 到 12px */
+  padding: 20px 12px; /* 🔧 增加内边距从 12px 到 20px，让表盘更大 */
   text-align: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  min-height: 50px;
+  min-height: 80px; /* 🔧 增加最小高度从 50px 到 80px */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2798,7 +2799,7 @@ body {
 }
 
 .dial-item span {
-  font-size: 14px;
+  font-size: 16px; /* 🔧 增加字体大小从 14px 到 16px */
   font-weight: 500;
 }
 

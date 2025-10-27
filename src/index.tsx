@@ -4,6 +4,11 @@ import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 
+// 🔧 检测 Electron 环境并添加 class 标识
+if ((window as any).electronAPI?.isElectron) {
+  document.body.classList.add('is-electron');
+}
+
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
 );

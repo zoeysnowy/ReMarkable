@@ -61,7 +61,29 @@ const CalendarSettingsPanel: React.FC<CalendarSettingsPanelProps> = ({
   const panelRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [position, setPosition] = useState({ x: 20, y: 60 });
+  
+  // 🔧 动态计算初始位置：以 time-calendar-container 为参考
+  const getInitialPosition = () => {
+    if (typeof window === 'undefined') return { x: 1588, y: 180 }; // 🔧 调整为 1640 - 52
+    
+    // 尝试获取 time-calendar-container 的位置
+    const calendarContainer = document.querySelector('.time-calendar-container');
+    if (calendarContainer) {
+      const rect = calendarContainer.getBoundingClientRect();
+      return {
+        x: rect.right - 332, // 面板宽度312px + 20px边距
+        y: rect.top + 40 // 容器顶部 + 一点间距（考虑toolbar高度）
+      };
+    }
+    
+    // 回退方案：使用窗口尺寸
+    return {
+      x: window.innerWidth - 332, // 🔧 更新为 312px + 20px边距
+      y: 180
+    };
+  };
+  
+  const [position, setPosition] = useState(getInitialPosition);
 
   useEffect(() => {
     setLocalSettings(settings);
@@ -552,37 +574,57 @@ const CalendarSettingsPanel: React.FC<CalendarSettingsPanelProps> = ({
               {availableTags.length === 0 ? (
                 <div className="empty-message">暂无标签</div>
               ) : (
-                availableTags.map(tag => (
-                  <label key={tag.id} className="filter-item">
-                    <input
-                      type="checkbox"
-                      checked={localSettings.visibleTags.includes(tag.id)}
-                      onChange={() => handleTagToggle(tag.id)}
-                    />
-                    <div 
-                      className="tag-content"
-                      style={{ paddingLeft: `${(tag.level || 0) * 12}px` }}
-                    >
-                      {/* 颜色标记 # */}
-                      <span 
-                        className="tag-hash" 
-                        style={{ color: tag.color }}
-                      >#</span>
-                      
-                      {/* Emoji */}
-                      <span className="tag-emoji">{tag.emoji || '🏷️'}</span>
-                      
-                      {/* 标签名称 */}
-                      <span 
-                        className="tag-name"
-                        style={{ 
-                          color: tag.color,
-                          fontWeight: tag.level === 0 ? 600 : 400
-                        }}
-                      >{tag.name}</span>
-                    </div>
-                  </label>
-                ))
+                (() => {
+                  // 🔍 完整的层级缩进诊断
+                  console.group('🏷️ 标签层级缩进诊断');
+                  console.log('📊 总标签数:', availableTags.length);
+                  console.table(availableTags.map(tag => ({
+                    name: tag.name,
+                    level: tag.level,
+                    paddingLeft: `${(tag.level || 0) * 12}px`,
+                    hasLevel: tag.level !== undefined,
+                    levelValue: tag.level
+                  })));
+                  console.groupEnd();
+                  
+                  return availableTags.map(tag => {
+                    const paddingLeft = `${(tag.level || 0) * 12}px`;
+                    
+                    return (
+                      <label key={tag.id} className="filter-item">
+                        <input
+                          type="checkbox"
+                          checked={localSettings.visibleTags.includes(tag.id)}
+                          onChange={() => handleTagToggle(tag.id)}
+                        />
+                        <div 
+                          className="tag-content"
+                          style={{ paddingLeft }}
+                          data-level={tag.level || 0}
+                          data-padding={paddingLeft}
+                        >
+                          {/* 颜色标记 # */}
+                          <span 
+                            className="tag-hash" 
+                            style={{ color: tag.color }}
+                          >#</span>
+                          
+                          {/* Emoji */}
+                          <span className="tag-emoji">{tag.emoji || '🏷️'}</span>
+                          
+                          {/* 标签名称 - 保留颜色 */}
+                          <span 
+                            className="tag-name"
+                            style={{ 
+                              color: tag.color
+                              // 🔧 移除 fontWeight，与日历保持一致的字重
+                            }}
+                          >{tag.name}</span>
+                        </div>
+                      </label>
+                    );
+                  });
+                })()
               )}
             </div>
           </div>

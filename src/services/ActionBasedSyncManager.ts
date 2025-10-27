@@ -946,6 +946,10 @@ export class ActionBasedSyncManager {
       
       this.lastSyncTime = new Date();
       
+      // 🔧 更新localStorage，供状态栏使用（使用本地时间格式）
+      localStorage.setItem('lastSyncTime', formatTimeForStorage(this.lastSyncTime));
+      localStorage.setItem('lastSyncEventCount', String(this.actionQueue.length || 0));
+      
       const syncDuration = performance.now() - syncStartTime;
       
       window.dispatchEvent(new CustomEvent('action-sync-completed', {

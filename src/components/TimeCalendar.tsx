@@ -9,7 +9,7 @@
  * @version 1.0.0
  */
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import ToastUIReactCalendar, { ToastUIReactCalendarType } from './ToastUIReactCalendar';
 import { EventEditModal } from './EventEditModal';
 import CalendarSettingsPanel, { CalendarSettings } from './CalendarSettingsPanel';
@@ -29,7 +29,8 @@ import {
   flattenTags,
   validateEvent,
   mergeEventUpdates,
-  getCalendarGroupColor
+  getCalendarGroupColor,
+  getAvailableCalendarsForSettings
 } from '../utils/calendarUtils';
 
 interface TimeCalendarProps {
@@ -38,9 +39,17 @@ interface TimeCalendarProps {
   syncManager?: any; // ActionBasedSyncManager instance
   lastSyncTime?: Date | null;
   availableTags?: any[]; // 🆕 添加：可用标签列表
+  globalTimer?: {
+    isRunning: boolean;
+    tagId: string;
+    startTime: number;
+    originalStartTime: number;
+    elapsedTime: number;
+  } | null; // 🆕 添加：当前运行的计时器状态
   className?: string; // 🆕 添加：CSS类名支持
   style?: React.CSSProperties; // 🆕 添加：内联样式支持
   isWidgetMode?: boolean; // 🆕 添加：是否在 widget 模式下（隐藏悬浮窗按钮）
+  storageKey?: string; // 🆕 添加：自定义存储key（用于多实例隔离）
   calendarBackgroundColor?: string; // 🆕 日历背景颜色（用于三个矩形）
   calendarOpacity?: number; // 🆕 日历透明度（0-1）
   // Widget 控制回调（仅在 widget 模式下使用）
@@ -56,9 +65,11 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   syncManager,
   lastSyncTime,
   availableTags = [],
+  globalTimer,
   className = '',
   style = {},
   isWidgetMode = false,
+  storageKey = 'remarkable-calendar-settings', // 默认key
   calendarBackgroundColor = '#ffffff', // 默认白色
   calendarOpacity = 0.95, // 默认95%不透明度
   onWidgetOpacityChange,
@@ -71,7 +82,20 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   useEffect(() => {
     const mountDuration = performance.now() - mountTimeRef.current;
     console.log(`✅ [TimeCalendar] Component mounted in ${mountDuration.toFixed(2)}ms`);
-  }, []);
+    
+    // 🔍 调试：组件挂载后检查 localStorage
+    console.log('🔍 [组件挂载后] storageKey:', storageKey);
+    const savedAfterMount = localStorage.getItem(storageKey);
+    console.log('🔍 [组件挂载后] localStorage 中的值:', savedAfterMount);
+    if (savedAfterMount) {
+      const parsed = JSON.parse(savedAfterMount);
+      console.log('🔍 [组件挂载后] 解析后的高度:', {
+        task: parsed.taskHeight,
+        allDay: parsed.allDayHeight,
+        milestone: parsed.milestoneHeight
+      });
+    }
+  }, [storageKey]);
   
   // 🔍 渲染计数器
   const renderCountRef = useRef(0);
@@ -168,16 +192,76 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   // 📅 可用日历状态
   const [availableCalendars, setAvailableCalendars] = useState<any[]>([]);
 
+  // 🔄 监听 localStorage 中的 globalTimer 变化（用于 Widget 实时更新）
+  const [localStorageTimerTrigger, setLocalStorageTimerTrigger] = useState(0);
+  const lastTimerStateRef = useRef<string | null>(null);
+  
+  // 🔄 定期检查 localStorage（Widget 场景的备用方案）
+  // 因为 Electron 中 storage 事件可能不稳定，使用轮询确保同步
+  useEffect(() => {
+    if (!globalTimer) { // 只在 Widget 场景（没有 prop）时轮询
+      console.log('� [TIMER] Starting localStorage polling for Widget');
+      
+      const checkTimer = () => {
+        const saved = localStorage.getItem('remarkable-global-timer');
+        
+        // 只在内容变化时触发更新
+        if (saved !== lastTimerStateRef.current) {
+          console.log('🔍 [TIMER] Timer state changed:', {
+            old: lastTimerStateRef.current,
+            new: saved
+          });
+          lastTimerStateRef.current = saved;
+          setLocalStorageTimerTrigger(prev => prev + 1);
+        }
+      };
+      
+      // 立即检查一次
+      checkTimer();
+      
+      // 每2秒检查一次
+      const interval = setInterval(checkTimer, 2000);
+      
+      return () => {
+        console.log('🔄 [TIMER] Stopping localStorage polling');
+        clearInterval(interval);
+      };
+    }
+  }, [globalTimer]); // 依赖 globalTimer，确保主应用不会启动轮询
+  
+  // 🎧 监听跨窗口的 storage 事件（作为补充）
+  useEffect(() => {
+    console.log('🎧 [TIMER] Setting up storage event listener');
+    
+    const handleStorageChange = (e: StorageEvent) => {
+      console.log('📡 [TIMER] Storage event detected:', {
+        key: e.key,
+        newValue: e.newValue,
+        oldValue: e.oldValue
+      });
+      
+      if (e.key === 'remarkable-global-timer') {
+        console.log('🔄 [TIMER] Timer storage changed via event, triggering recalculation');
+        lastTimerStateRef.current = e.newValue;
+        setLocalStorageTimerTrigger(prev => prev + 1);
+      }
+    };
+    
+  }, []);
+
   // ⚙️ 设置面板状态
   const [showSettings, setShowSettings] = useState(false);
   const [calendarSettings, setCalendarSettings] = useState<CalendarSettings>(() => {
+    console.log('🔍 [初始化] storageKey:', storageKey);
     try {
-      const saved = localStorage.getItem('remarkable-calendar-settings');
+      const saved = localStorage.getItem(storageKey);
+      console.log('🔍 [初始化] localStorage 原始值:', saved);
+      
       if (saved) {
         const settings = JSON.parse(saved);
+        console.log('🔍 [初始化] 解析后的设置:', settings);
         
-        // 直接使用保存的设置，包括筛选（loadSettings会验证）
-        return {
+        const initialSettings = {
           eventOpacity: settings.eventOpacity ?? 85,
           visibleTags: settings.visibleTags || [],
           visibleCalendars: settings.visibleCalendars || [],
@@ -188,11 +272,14 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           taskHeight: settings.taskHeight || 24,
           allDayHeight: settings.allDayHeight || 24
         };
+        console.log('🔍 [初始化] 最终使用的设置:', initialSettings);
+        return initialSettings;
       }
     } catch (error) {
       console.error('❌ Failed to load initial settings:', error);
     }
-    return {
+    
+    const defaultSettings = {
       eventOpacity: 85,
       visibleTags: [],
       visibleCalendars: [],
@@ -203,7 +290,35 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       taskHeight: 24,
       allDayHeight: 24
     };
+    console.log('🔍 [初始化] 使用默认设置:', defaultSettings);
+    return defaultSettings;
   });
+
+  // 📏 使用 ref 保存最新的高度设置，供 useLayoutEffect 使用
+  const heightSettingsRef = useRef({
+    taskHeight: calendarSettings.taskHeight,
+    allDayHeight: calendarSettings.allDayHeight,
+    milestoneHeight: calendarSettings.milestoneHeight
+  });
+
+  // 🎨 跟踪是否是初始加载（用于决定是否使用 !important）
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  // 更新 ref 当高度变化时
+  useEffect(() => {
+    console.log('🔍 [ref更新] 高度变化:', {
+      task: calendarSettings.taskHeight,
+      allDay: calendarSettings.allDayHeight,
+      milestone: calendarSettings.milestoneHeight
+    });
+    
+    heightSettingsRef.current = {
+      taskHeight: calendarSettings.taskHeight,
+      allDayHeight: calendarSettings.allDayHeight,
+      milestoneHeight: calendarSettings.milestoneHeight
+    };
+  }, [calendarSettings.taskHeight, calendarSettings.allDayHeight, calendarSettings.milestoneHeight]);
+
 
   //  从 localStorage 加载事件数据
   const loadEvents = useCallback(() => {
@@ -316,17 +431,35 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   }, [hierarchicalTags, validateAndCleanSettings, calendarSettings]); // 添加依赖
 
   // 💾 保存设置到 localStorage
-  const saveSettings = (settings: CalendarSettings, view?: string) => {
+  const saveSettings = useCallback((settings: CalendarSettings, view?: string) => {
     try {
       const settingsToSave = {
         ...settings,
         view: view || currentView
       };
-      localStorage.setItem('remarkable-calendar-settings', JSON.stringify(settingsToSave));
+      console.log('� [保存] storageKey:', storageKey);
+      console.log('🔍 [保存] 保存的设置:', settingsToSave);
+      console.log('🔍 [保存] 高度值:', {
+        task: settingsToSave.taskHeight,
+        allDay: settingsToSave.allDayHeight,
+        milestone: settingsToSave.milestoneHeight
+      });
+      
+      localStorage.setItem(storageKey, JSON.stringify(settingsToSave));
+      
+      // 验证保存成功
+      const verified = localStorage.getItem(storageKey);
+      console.log('🔍 [保存验证] localStorage 中的值:', verified);
     } catch (error) {
       console.error('❌ [TimeCalendar] Failed to save settings:', error);
     }
-  };
+  }, [storageKey, currentView]);
+
+  // 🔄 自动保存 calendarSettings 的变化（包括高度调整）
+  useEffect(() => {
+    console.log('🔍 [自动保存] calendarSettings 变化，触发保存');
+    saveSettings(calendarSettings);
+  }, [calendarSettings, saveSettings]);
 
   // 🔄 监听同步完成事件 - 改进为增量更新机制
   const initialSyncCompletedRef = useRef(false);
@@ -450,6 +583,13 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
 
   // 📋 加载可用日历列表
   useEffect(() => {
+    // 🔧 Widget 模式下跳过日历加载（Widget 从 localStorage 读取数据）
+    if (isWidgetMode) {
+      console.log('📋 [CALENDAR] Widget mode - skipping calendar loading');
+      setAvailableCalendars([]);
+      return;
+    }
+    
     const loadCalendars = async () => {
       if (!microsoftService) {
         console.log('📋 [CALENDAR] Microsoft service not available, skipping calendar loading');
@@ -469,7 +609,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     };
 
     loadCalendars();
-  }, [microsoftService]); // 依赖microsoftService，当它可用时重新加载
+  }, [microsoftService, isWidgetMode]); // 添加 isWidgetMode 依赖
 
   // ⚙️ 验证设置（只在标签加载完成后执行一次）
   const [settingsValidated, setSettingsValidated] = useState(false);
@@ -522,32 +662,33 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     };
   }, []); // 只在挂载/卸载时执行
 
-  // 🎨 Widget模式：强制移除 Toast UI Calendar 的内联背景色 + 注入自适应样式
+  // 🎨 注入自适应样式 + Widget模式：强制移除 Toast UI Calendar 的内联背景色
   useEffect(() => {
-    if (!isWidgetMode) return;
+    // Widget 模式下需要移除背景色
+    if (isWidgetMode) {
+      const removeInlineBackgroundColor = () => {
+        // 选择所有 Toast UI Calendar 的 layout 容器
+        const layouts = document.querySelectorAll('.toastui-calendar-layout');
+        layouts.forEach(layout => {
+          if (layout instanceof HTMLElement && layout.style.backgroundColor) {
+            layout.style.backgroundColor = 'transparent';
+          }
+        });
+        
+        // 也处理 panel 容器
+        const panels = document.querySelectorAll('.toastui-calendar-panel');
+        panels.forEach(panel => {
+          if (panel instanceof HTMLElement && panel.style.backgroundColor) {
+            panel.style.backgroundColor = 'transparent';
+          }
+        });
+      };
 
-    const removeInlineBackgroundColor = () => {
-      // 选择所有 Toast UI Calendar 的 layout 容器
-      const layouts = document.querySelectorAll('.toastui-calendar-layout');
-      layouts.forEach(layout => {
-        if (layout instanceof HTMLElement && layout.style.backgroundColor) {
-          layout.style.backgroundColor = 'transparent';
-        }
-      });
-      
-      // 也处理 panel 容器
-      const panels = document.querySelectorAll('.toastui-calendar-panel');
-      panels.forEach(panel => {
-        if (panel instanceof HTMLElement && panel.style.backgroundColor) {
-          panel.style.backgroundColor = 'transparent';
-        }
-      });
-    };
-
-    // 初始执行
-    removeInlineBackgroundColor();
+      // 初始执行
+      removeInlineBackgroundColor();
+    }
     
-    // 🎨 注入动态样式：覆盖 Toast UI Calendar 的 today 样式
+    // 🎨 注入动态样式：覆盖 Toast UI Calendar 的 today 样式（所有模式都需要）
     const styleId = 'timecalendar-adaptive-styles';
     let styleElement = document.getElementById(styleId) as HTMLStyleElement;
     
@@ -584,10 +725,21 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         box-shadow: none !important;
       }
       
-      /* 控制栏标题 - 使用高对比度主色调 */
+      /* 控制栏标题 - 使用渐变色（主应用）或纯色（Widget） */
       .toastui-calendar-title {
-        color: ${getAdaptiveColors.accentColor} !important;
+        ${isWidgetMode 
+          ? `color: ${getAdaptiveColors.accentColor} !important;` 
+          : `
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: transparent;
+          `
+        }
         font-weight: 600 !important;
+        font-size: 16px !important;
+        display: inline-block !important;
       }
       
       /* 导航按钮基础样式 - 更实心，透明度降低，无边框 */
@@ -818,24 +970,38 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       }
     `;
     
-    // 监听 DOM 变化（视图切换、事件更新时）
-    const observer = new MutationObserver(removeInlineBackgroundColor);
-    const targetNode = document.body; // 监听整个 body，确保捕获所有变化
-    
-    observer.observe(targetNode, {
-      attributes: true,
-      attributeFilter: ['style'],
-      subtree: true,
-      childList: true // 监听新增的元素
-    });
+    // 监听 DOM 变化（Widget 模式下移除背景色）
+    if (isWidgetMode) {
+      const removeInlineBackgroundColor = () => {
+        const layouts = document.querySelectorAll('.toastui-calendar-layout');
+        layouts.forEach(layout => {
+          if (layout instanceof HTMLElement && layout.style.backgroundColor) {
+            layout.style.backgroundColor = 'transparent';
+          }
+        });
+        
+        const panels = document.querySelectorAll('.toastui-calendar-panel');
+        panels.forEach(panel => {
+          if (panel instanceof HTMLElement && panel.style.backgroundColor) {
+            panel.style.backgroundColor = 'transparent';
+          }
+        });
+      };
 
-    return () => {
-      observer.disconnect();
-      // 清理样式元素
-      if (styleElement && styleElement.parentNode) {
-        styleElement.parentNode.removeChild(styleElement);
-      }
-    };
+      const observer = new MutationObserver(removeInlineBackgroundColor);
+      const targetNode = document.body;
+      
+      observer.observe(targetNode, {
+        attributes: true,
+        attributeFilter: ['style'],
+        subtree: true,
+        childList: true
+      });
+
+      return () => {
+        observer.disconnect();
+      };
+    }
   }, [isWidgetMode, currentView, getAdaptiveColors]); // 视图切换或颜色变化时重新执行
   
   useEffect(() => {
@@ -874,11 +1040,197 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     return () => clearTimeout(timer);
   }, [isCalendarReady, events.length]); // 依赖日历就绪状态和事件加载
 
+  // 🎨 在日历初始化后立即设置高度（覆盖TUI Calendar的默认值）
+  // 使用 useLayoutEffect 在浏览器绘制前同步执行，避免闪烁
+  useLayoutEffect(() => {
+    if (!isCalendarReady) {
+      console.log('🔍 [useLayoutEffect] 日历未就绪，跳过');
+      return;
+    }
+    
+    console.log('🔍 [useLayoutEffect] 日历已就绪，准备应用高度');
+    
+    // 使用 ref 获取最新的高度值，避免闭包问题
+    const { taskHeight, allDayHeight, milestoneHeight } = heightSettingsRef.current;
+    console.log('🔍 [useLayoutEffect] ref中的高度:', { taskHeight, allDayHeight, milestoneHeight });
+    
+    // 需要等待 DOM 元素渲染
+    const timer = setTimeout(() => {
+      let applied = false;
+      
+      // Task 面板
+      const taskPanels = document.querySelectorAll('.toastui-calendar-panel-task, .toastui-calendar-panel.toastui-calendar-task');
+      console.log('🔍 [useLayoutEffect] 找到 Task 面板:', taskPanels.length);
+      if (taskPanels.length > 0 && taskHeight) {
+        taskPanels.forEach((panel: Element) => {
+          (panel as HTMLElement).style.height = `${taskHeight}px`;
+        });
+        applied = true;
+      }
+      
+      // AllDay 面板
+      const allDayPanels = document.querySelectorAll('.toastui-calendar-panel-allday');
+      console.log('🔍 [useLayoutEffect] 找到 AllDay 面板:', allDayPanels.length);
+      if (allDayPanels.length > 0 && allDayHeight) {
+        allDayPanels.forEach((panel: Element) => {
+          (panel as HTMLElement).style.height = `${allDayHeight}px`;
+        });
+        applied = true;
+      }
+      
+      // Milestone 面板
+      const milestonePanels = document.querySelectorAll('.toastui-calendar-panel-milestone, .toastui-calendar-panel.toastui-calendar-milestone');
+      console.log('🔍 [useLayoutEffect] 找到 Milestone 面板:', milestonePanels.length);
+      if (milestonePanels.length > 0 && milestoneHeight) {
+        milestonePanels.forEach((panel: Element) => {
+          (panel as HTMLElement).style.height = `${milestoneHeight}px`;
+        });
+        applied = true;
+      }
+      
+      if (applied) {
+        console.log('🎨 [初始高度] 已应用面板高度:', {
+          task: taskHeight,
+          allDay: allDayHeight,
+          milestone: milestoneHeight
+        });
+      } else {
+        console.warn('⚠️ [useLayoutEffect] 没有找到任何面板元素');
+      }
+    }, 100); // 等待 DOM 渲染
+    
+    return () => clearTimeout(timer);
+  }, [isCalendarReady, currentView]); // 只在初始化和视图切换时应用，避免与 MutationObserver 冲突
+
+  // 👁️ 监听用户拖动改变面板高度，自动保存到localStorage
+  useEffect(() => {
+    if (!isCalendarReady) return;
+    
+    console.log('🔍 [MutationObserver] 开始设置监听');
+    
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+          const target = mutation.target as HTMLElement;
+          
+          // 检测到用户拖动，移除 !important 以允许拖动生效
+          if (isInitialLoad) {
+            console.log('🔍 [拖动检测] 用户开始拖动，移除 !important');
+            setIsInitialLoad(false);
+          }
+          
+          // 检查是否是我们关心的面板
+          if (target.classList.contains('toastui-calendar-task') || 
+              target.classList.contains('toastui-calendar-panel-task')) {
+            const newHeight = parseInt(target.style.height);
+            if (!isNaN(newHeight)) {
+              console.log('🔍 [拖动检测] Task 面板高度变化:', newHeight);
+              setCalendarSettings(prev => {
+                if (newHeight !== prev.taskHeight) {
+                  console.log('📏 [拖动] Task高度从', prev.taskHeight, '变为', newHeight);
+                  return { ...prev, taskHeight: newHeight };
+                }
+                return prev;
+              });
+            }
+          } else if (target.classList.contains('toastui-calendar-panel-allday')) {
+            const newHeight = parseInt(target.style.height);
+            if (!isNaN(newHeight)) {
+              console.log('🔍 [拖动检测] AllDay 面板高度变化:', newHeight);
+              setCalendarSettings(prev => {
+                if (newHeight !== prev.allDayHeight) {
+                  console.log('📏 [拖动] AllDay高度从', prev.allDayHeight, '变为', newHeight);
+                  return { ...prev, allDayHeight: newHeight };
+                }
+                return prev;
+              });
+            }
+          } else if (target.classList.contains('toastui-calendar-milestone') || 
+                     target.classList.contains('toastui-calendar-panel-milestone')) {
+            const newHeight = parseInt(target.style.height);
+            if (!isNaN(newHeight)) {
+              console.log('🔍 [拖动检测] Milestone 面板高度变化:', newHeight);
+              setCalendarSettings(prev => {
+                if (newHeight !== prev.milestoneHeight) {
+                  console.log('📏 [拖动] Milestone高度从', prev.milestoneHeight, '变为', newHeight);
+                  return { ...prev, milestoneHeight: newHeight };
+                }
+                return prev;
+              });
+            }
+          }
+        }
+      });
+    });
+    
+    // 观察所有面板元素
+    const observeTimer = setTimeout(() => {
+      const panels = document.querySelectorAll(
+        '.toastui-calendar-panel-task, .toastui-calendar-task, ' +
+        '.toastui-calendar-panel-allday, ' +
+        '.toastui-calendar-panel-milestone, .toastui-calendar-milestone'
+      );
+      
+      panels.forEach(panel => {
+        observer.observe(panel, { attributes: true, attributeFilter: ['style'] });
+      });
+      
+      console.log('� [MutationObserver] 开始监听', panels.length, '个面板的高度变化');
+      console.log('🔍 [MutationObserver] 监听的面板:', Array.from(panels).map(p => p.className));
+    }, 200);
+    
+    return () => {
+      console.log('🔍 [MutationObserver] 清理监听');
+      clearTimeout(observeTimer);
+      observer.disconnect();
+    };
+  }, [isCalendarReady, currentView]); // 只依赖日历准备状态和视图，避免不必要的重建
+
   // 🎨 将事件数据转换为 TUI Calendar 格式，应用筛选和透明度
   const useMemoCallCountRef = useRef(0);
   
   // 🔧 提取关键依赖，避免整个 calendarSettings 对象变化导致重新计算
   const { visibleTags, visibleCalendars, eventOpacity } = calendarSettings;
+  
+  // 🔧 实时读取当前运行中的 Timer（不使用 useMemo，每次都读取最新状态）
+  // 用于在 calendarEvents 计算时获取最新的 timer 状态
+  const getRunningTimerEventId = () => {
+    // 1. 优先使用传入的 globalTimer prop（主应用场景）
+    if (globalTimer && globalTimer.isRunning) {
+      const startTime = globalTimer.originalStartTime || globalTimer.startTime;
+      const eventId = `timer-${globalTimer.tagId}-${startTime}`;
+      console.log('✅ [TIMER] Using globalTimer prop:', eventId);
+      return eventId;
+    }
+    
+    // 2. 如果没有 prop，从 localStorage 读取（Widget 场景）
+    console.log('🔍 [TIMER] No globalTimer prop, checking localStorage...');
+    try {
+      const saved = localStorage.getItem('remarkable-global-timer');
+      console.log('🔍 [TIMER] localStorage value:', saved);
+      
+      if (saved) {
+        const timer = JSON.parse(saved);
+        console.log('🔍 [TIMER] Parsed timer:', timer);
+        
+        if (timer && timer.isRunning) {
+          const startTime = timer.originalStartTime || timer.startTime;
+          const eventId = `timer-${timer.tagId}-${startTime}`;
+          console.log('✅ [TIMER] Using localStorage timer:', eventId);
+          return eventId;
+        } else {
+          console.log('⚠️ [TIMER] Timer found but not running:', timer);
+        }
+      } else {
+        console.log('⚠️ [TIMER] No timer in localStorage');
+      }
+    } catch (error) {
+      console.error('❌ [TIMER] Failed to load globalTimer from localStorage:', error);
+    }
+    
+    console.log('⚠️ [TIMER] Returning null');
+    return null;
+  };
   
   const calendarEvents = useMemo(() => {
     const startTime = performance.now(); // ⏱️ 性能监控
@@ -974,13 +1326,16 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
 
     console.log(`🎨 [USEMEMO] Processing ${uniqueFiltered.length} events in ${(performance.now() - startTime).toFixed(1)}ms`);
 
+    // 🔧 每次渲染时实时读取 timer 状态（不缓存）
+    const currentRunningTimerEventId = getRunningTimerEventId();
+    
     // 🔧 优化：预计算透明度hex值，避免重复计算
     const opacity = eventOpacity / 100;
     const opacityHex = Math.floor(opacity * 255).toString(16).padStart(2, '0');
     
     const calendarEventsWithStats = uniqueFiltered
       .map(event => {
-        const calendarEvent = convertToCalendarEvent(event, hierarchicalTags);
+        const calendarEvent = convertToCalendarEvent(event, hierarchicalTags, currentRunningTimerEventId);
         
         // 🔧 一次性应用透明度（复用预计算的hex值）
         const originalColor = calendarEvent.backgroundColor || '#3788d8';
@@ -1006,7 +1361,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     }
     
     return calendarEventsWithStats;
-  }, [events, hierarchicalTags, visibleTags, visibleCalendars, eventOpacity, currentDate]);
+  }, [events, hierarchicalTags, visibleTags, visibleCalendars, eventOpacity, currentDate, globalTimer]);
   // 📅 创建日历分组配置
   const getCalendars = () => createCalendarsFromTags(hierarchicalTags);
 
@@ -1033,8 +1388,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
 
   // 获取可用的标签和日历列表
   const getAvailableTagsForSettings = () => {
-    console.log('🔍 [DEBUG] hierarchicalTags:', hierarchicalTags);
-    
     // ✅ 检测数据是否已经是扁平结构（包含level字段且无children）
     const isAlreadyFlat = hierarchicalTags.length > 0 && 
                          hierarchicalTags[0].level !== undefined && 
@@ -1042,7 +1395,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     
     // 如果已经是扁平的，直接使用；否则调用flattenTags
     const flatTags = isAlreadyFlat ? hierarchicalTags : flattenTags(hierarchicalTags);
-    console.log('🔍 [DEBUG] flatTags:', flatTags.map(t => ({ name: t.name, level: t.level })));
     
     const regularTags = flatTags.map(tag => ({
       id: tag.id,
@@ -1052,8 +1404,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       level: tag.level || 0,     // 添加层级
       calendarId: tag.calendarMapping?.calendarId // 🔗 包含日历映射信息，用于联动
     }));
-    
-    console.log('🔍 [DEBUG] regularTags:', regularTags.map(t => ({ name: t.name, level: t.level })));
     
     // ✅ 添加特殊选项："未定义标签"
     return [
@@ -1067,50 +1417,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         calendarId: undefined
       }
     ];
-  };
-
-  const getAvailableCalendarsForSettings = () => {
-    try {
-      const savedCalendars = localStorage.getItem(STORAGE_KEYS.CALENDARS_CACHE);
-      const regularCalendars = savedCalendars
-        ? JSON.parse(savedCalendars).map((cal: any) => ({
-            id: cal.id,
-            name: cal.name,
-            // 🎨 使用getCalendarGroupColor获取正确的十六进制颜色
-            color: getCalendarGroupColor(cal.id) || '#3788d8'
-          }))
-        : [];
-      
-      // ✅ 添加特殊选项："创建自本地" 和 "未同步至日历"
-      return [
-        ...regularCalendars,
-        {
-          id: 'local-created',
-          name: '🔮 创建自本地',
-          color: '#9c27b0'
-        },
-        {
-          id: 'not-synced',
-          name: '🔄 未同步至日历',
-          color: '#ff9800'
-        }
-      ];
-    } catch (error) {
-      console.error('Failed to load calendars:', error);
-      // 即使出错，也返回特殊选项
-      return [
-        {
-          id: 'local-created',
-          name: '🔮 创建自本地',
-          color: '#9c27b0'
-        },
-        {
-          id: 'not-synced',
-          name: '🔄 未同步至日历',
-          color: '#ff9800'
-        }
-      ];
-    }
   };
 
   // ====================================
@@ -1677,28 +1983,65 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     }
   });
 
+  // 🎨 使用 useMemo 缓存动态样式，确保高度设置能正确应用
+  const dynamicStyles = useMemo(() => {
+    console.log('🎨 [动态样式] 重新生成:', {
+      taskHeight: calendarSettings.taskHeight,
+      milestoneHeight: calendarSettings.milestoneHeight,
+      allDayHeight: calendarSettings.allDayHeight,
+      showTask: calendarSettings.showTask,
+      showMilestone: calendarSettings.showMilestone,
+      showAllDay: calendarSettings.showAllDay,
+      isInitialLoad
+    });
+    
+    // 初始加载时使用 !important 防止闪烁，拖动后移除以允许用户调整
+    const important = isInitialLoad ? ' !important' : '';
+    
+    return `
+      /* All Day 面板 - 只控制显示/隐藏 */
+      .toastui-calendar-panel-allday {
+        ${calendarSettings.showAllDay === false ? 'display: none !important;' : ''}
+      }
+      
+      /* Task 面板 - 初始高度（可拖动修改） */
+      .toastui-calendar-panel-task,
+      .toastui-calendar-panel.toastui-calendar-task {
+        ${calendarSettings.showTask === false ? 'display: none !important;' : ''}
+        height: ${calendarSettings.taskHeight}px${important};
+      }
+      
+      /* AllDay 面板 - 初始高度（可拖动修改） */
+      .toastui-calendar-panel-allday {
+        height: ${calendarSettings.allDayHeight}px${important};
+      }
+      
+      /* Milestone 面板 - 只控制显示/隐藏 */
+      .toastui-calendar-panel-milestone,
+      .toastui-calendar-panel.toastui-calendar-milestone {
+        ${calendarSettings.showMilestone === false ? 'display: none !important;' : ''}
+      }
+      
+      /* Milestone 事件 - 所有视图 */
+      .toastui-calendar-weekday-event.toastui-calendar-milestone,
+      .toastui-calendar-month-milestone {
+        ${calendarSettings.showMilestone === false ? 'display: none !important;' : ''}
+        ${calendarSettings.milestoneHeight ? `height: ${calendarSettings.milestoneHeight}px !important; line-height: ${calendarSettings.milestoneHeight}px !important;` : ''}
+      }`;
+  }, [
+    calendarSettings.taskHeight,
+    calendarSettings.milestoneHeight,
+    calendarSettings.allDayHeight,
+    calendarSettings.showTask,
+    calendarSettings.showMilestone,
+    calendarSettings.showAllDay,
+    isInitialLoad  // 当移除 !important 时重新生成 CSS
+  ]);
+
   return (
     <>
       {/* 💅 动态CSS样式 - 应用事件类型高度设置 */}
-      <style>{`
-        /* All Day 面板 - 周视图和日视图 */
-        .toastui-calendar-panel-allday {
-          ${calendarSettings.showAllDay === false ? 'display: none !important;' : ''}
-          ${calendarSettings.allDayHeight ? `min-height: ${calendarSettings.allDayHeight}px !important;` : 'min-height: 24px !important;'}
-        }
-        
-        /* Task 面板 - 周视图和日视图 */
-        .toastui-calendar-panel-task {
-          ${calendarSettings.showTask === false ? 'display: none !important;' : ''}
-          ${calendarSettings.taskHeight ? `min-height: ${calendarSettings.taskHeight}px !important;` : 'min-height: 24px !important;'}
-        }
-        
-        /* Milestone 事件 - 所有视图 */
-        .toastui-calendar-weekday-event.toastui-calendar-milestone,
-        .toastui-calendar-month-milestone {
-          ${calendarSettings.showMilestone === false ? 'display: none !important;' : ''}
-          ${calendarSettings.milestoneHeight ? `height: ${calendarSettings.milestoneHeight}px !important; line-height: ${calendarSettings.milestoneHeight}px !important;` : ''}
-        }
+      <style>{dynamicStyles}{`
         
         /* 月视图事件左对齐 */
         .toastui-calendar-month .toastui-calendar-weekday-event,
@@ -1856,24 +2199,26 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         {/* 📅 TUI Calendar 主体 */}
         <div style={{ 
           flex: 1, 
-          minHeight: 0, 
-          marginBottom: isWidgetMode ? '0' : '8px', // 🎨 Widget 模式下无底部边距（由外部 StatusBar 控制间距）
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          marginBottom: isWidgetMode ? '0' : '4px', // 🔧 减少底部边距从 8px 到 4px
           backgroundColor: bgRgba, // 使用可调节的背景色
           borderRadius: isWidgetMode ? '20px' : '4px', // 🎨 Widget 模式使用大圆角
-          border: 'none', // � 移除边框
+          border: 'none', // 🔧 移除边框
           boxShadow: isWidgetMode 
             ? (calendarOpacity > 0.5 
                 ? '0 4px 12px rgba(0,0,0,0.15)' 
                 : '0 2px 8px rgba(0,0,0,0.1)') 
             : 'none', // 🎨 Widget 模式添加阴影
-          overflow: 'hidden', // 🎨 确保圆角裁剪生效
+          overflow: 'hidden', // 🔧 改回 hidden，让 TUI Calendar 内部的 vlayout-area 处理滚动
           backdropFilter: calendarOpacity < 1 ? 'blur(10px)' : 'none' // 毛玻璃效果
         }}>
         <ToastUIReactCalendar
           ref={calendarRef}
-            height="100%"
+          height="100%"
           view={currentView}
-            events={calendarEvents}
+          events={calendarEvents}
           calendars={getCalendars()}
           onClickEvent={handleClickEvent}
           onSelectDateTime={handleSelectDateTime}
@@ -1891,12 +2236,12 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           }}
           month={{
             dayNames: ['日', '一', '二', '三', '四', '五', '六'],
-            visibleWeeksCount: 6,
+            visibleWeeksCount: 4, // 🔧 固定显示 4 周
             workweek: false,
             narrowWeekend: false,
             startDayOfWeek: 0,
-            isAlways6Weeks: true,
-            visibleEventCount: 4
+            isAlways6Weeks: false, // 🔧 改为 false，让月视图根据实际周数自适应高度
+            visibleEventCount: 6 // 🔧 增加可见事件数量从 4 到 6
           }}
           template={{
             // 月视图：星期名称行（日、一、二...）
@@ -2067,13 +2412,14 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            padding: '8px 12px',
+            padding: '6px 12px', // 🔧 减少 padding 从 8px 到 6px
             background: bgRgba,
             borderRadius: '4px',
             border: `1px solid ${getAdaptiveColors.borderMedium}`, // 🎨 自适应边框
             fontSize: '12px',
             color: getAdaptiveColors.textSecondary, // 🎨 自适应文字颜色
             flexShrink: 0,
+            marginTop: '4px', // 🔧 添加上边距，与日历主体保持 4px 间距
             backdropFilter: calendarOpacity < 1 ? 'blur(10px)' : 'none'
           }}>
             <span>
@@ -2105,9 +2451,9 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         }}
         onSave={handleSaveEventFromModal}
         onDelete={handleDeleteEventFromModal}
-        hierarchicalTags={hierarchicalTags}
+        hierarchicalTags={getAvailableTagsForSettings()}
         microsoftService={microsoftService}
-        availableCalendars={availableCalendars}
+        availableCalendars={getAvailableCalendarsForSettings()}
       />
 
       {/* ⚙️ 设置面板 */}

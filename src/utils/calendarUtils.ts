@@ -110,6 +110,56 @@ export function getCalendarGroupColor(calendarId: string): string | null {
 }
 
 /**
+ * 获取可用日历列表（用于EventEditModal的availableCalendars）
+ * 包含所有同步的日历 + 特殊选项（"创建自本地"、"未同步至日历"）
+ * 
+ * @returns 日历列表，每个日历包含 id, name, color（十六进制颜色值）
+ */
+export function getAvailableCalendarsForSettings(): Array<{ id: string; name: string; color: string }> {
+  try {
+    const savedCalendars = localStorage.getItem('remarkable-calendars-cache');
+    const regularCalendars = savedCalendars
+      ? JSON.parse(savedCalendars).map((cal: any) => ({
+          id: cal.id,
+          name: cal.name,
+          // 🎨 使用getCalendarGroupColor获取正确的十六进制颜色
+          color: getCalendarGroupColor(cal.id) || '#3788d8'
+        }))
+      : [];
+    
+    // ✅ 添加特殊选项："创建自本地" 和 "未同步至日历"
+    return [
+      ...regularCalendars,
+      {
+        id: 'local-created',
+        name: '🔮 创建自本地',
+        color: '#9c27b0'
+      },
+      {
+        id: 'not-synced',
+        name: '🔄 未同步至日历',
+        color: '#ff9800'
+      }
+    ];
+  } catch (error) {
+    console.error('Failed to load calendars:', error);
+    // 即使出错，也返回特殊选项
+    return [
+      {
+        id: 'local-created',
+        name: '🔮 创建自本地',
+        color: '#9c27b0'
+      },
+      {
+        id: 'not-synced',
+        name: '🔄 未同步至日历',
+        color: '#ff9800'
+      }
+    ];
+  }
+}
+
+/**
  * 将Microsoft颜色名称转换为十六进制颜色
  * @param colorName Microsoft颜色名称
  * @returns 十六进制颜色值
@@ -192,7 +242,8 @@ export function flattenTags(tags: any[]): any[] {
  */
 export function convertToCalendarEvent(
   event: Event, 
-  tags: any[] = []
+  tags: any[] = [],
+  runningTimerEventId: string | null = null
 ): Partial<EventObject> {
   const startDate = parseLocalTimeString(event.startTime);
   const endDate = parseLocalTimeString(event.endTime);
@@ -235,10 +286,15 @@ export function convertToCalendarEvent(
     category = 'time';
   }
   
+  // 🔧 前端渲染时添加"[专注中]"标记（仅计时中的事件）
+  // localStorage 中不包含此标记，避免事件重复
+  const isTimerRunning = runningTimerEventId !== null && event.id === runningTimerEventId;
+  const displayTitle = isTimerRunning ? `[专注中] ${event.title}` : event.title;
+  
   return {
     id: event.id,
     calendarId: calendarId,
-    title: event.title,
+    title: displayTitle,
     body: event.description || '',
     start: startDate,
     end: endDate,

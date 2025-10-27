@@ -221,6 +221,24 @@ const TagManager: React.FC<TagManagerProps> = ({
       parentId: tag.parentId || undefined
     }));
     
+    // 🔍 诊断：输出所有标签的层级信息
+    console.log('🔍 [TagManager] 标签层级信息:');
+    console.table(migratedTags.map(tag => ({
+      name: tag.name,
+      level: tag.level,
+      parentId: tag.parentId || '(无)',
+      hasLevel: tag.level !== undefined
+    })));
+    
+    // 🔧 如果有标签的level被计算出来了，保存回存储（一次性迁移）
+    const hasLevelCalculated = migratedTags.some(tag => 
+      tag.level !== undefined && tag.level > 0 && savedTags.find(t => t.id === tag.id && t.level === undefined)
+    );
+    if (hasLevelCalculated) {
+      console.log('💾 [TagManager] Saving calculated levels to storage...');
+      saveTagsToStorage(migratedTags);
+    }
+    
     // 如果有保存的数据，使用它们，否则初始化为空
     setTags(migratedTags);
     setCheckinCounts(savedCounts);
@@ -293,7 +311,13 @@ const TagManager: React.FC<TagManagerProps> = ({
     // 使用 setTimeout 防抖，避免频繁触发
     const timer = setTimeout(() => {
       if (onTagsChange && tags.length > 0) {
-        console.log('🏷️ [FigmaTagManager] Calling onTagsChange with tags:', tags.map(t => ({id: t.id, name: t.name})));
+        // 🔍 添加层级信息诊断
+        console.log('🏷️ [FigmaTagManager] Calling onTagsChange with tags:', tags.map(t => ({
+          id: t.id, 
+          name: t.name, 
+          level: t.level, // 🔍 检查level是否存在
+          parentId: t.parentId
+        })));
         onTagsChange(tags);
       } else if (onTagsChange && tags.length === 0) {
         console.log('🏷️ [FigmaTagManager] Tags array is empty, not calling onTagsChange');
@@ -1793,7 +1817,7 @@ const TagManager: React.FC<TagManagerProps> = ({
         }}
       >
       */}
-        <div style={{ padding: '20px', backgroundColor: 'white', minHeight: '100vh' }}>
+        <div style={{ padding: '20px', backgroundColor: 'white' }}>
           <div style={{ position: 'relative' }}>
         
         {/* 搜索框 - 响应式定位，右对齐 */}
