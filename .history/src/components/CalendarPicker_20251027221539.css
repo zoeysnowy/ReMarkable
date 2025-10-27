@@ -1,0 +1,274 @@
+/* CalendarPicker.css - 优雅的日历选择组件样式 */
+
+.calendar-picker {
+  position: relative;
+  width: 100%;
+}
+
+/* 已选日历 + 搜索框合并容器（与 TagPicker 完全一致） */
+.selected-calendars-with-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 20px;
+  border: none;
+  border-radius: 6px;
+  min-height: 38px;
+  background: transparent;
+  cursor: text;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.selected-calendars-with-search:hover {
+  border-color: transparent;
+}
+
+.selected-calendars-with-search:focus-within {
+  border-color: transparent;
+  box-shadow: none;
+  background: transparent;
+}
+
+/* 日历标签芯片（透明毛玻璃质感 + 彩色边框） */
+.calendar-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 16px;
+  border: 1px solid;
+  font-size: 13px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+  cursor: default;
+}
+
+.calendar-chip:hover {
+  background: rgba(255, 255, 255, 0.8);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.calendar-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.calendar-chip button {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  width: 10px;
+  height: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.15s ease;
+  opacity: 0.5;
+}
+
+.calendar-chip button:hover {
+  opacity: 1;
+  background-color: rgba(0, 0, 0, 0.08);
+  transform: scale(1.1);
+}
+
+/* 内联搜索框（与 TagPicker 完全一致） */
+.calendar-search-inline {
+  flex: 1;
+  min-width: 120px;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  padding: 4px 2px;
+  font-size: 13px;
+  color: #333;
+  box-shadow: none !important;
+}
+
+.calendar-search-inline::placeholder {
+  color: #999;
+  font-style: italic;
+}
+
+/* 下拉列表 */
+.calendar-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  margin-top: 4px;
+  overflow: hidden;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.calendar-dropdown-header {
+  padding: 8px 10px;
+  background: #f9f9f9;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.calendar-dropdown-title {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 13px;
+}
+
+.calendar-dropdown-close {
+  background: none;
+  border: none;
+  font-size: 10px;
+  color: #999;
+  cursor: pointer;
+  padding: 0;
+  width: 12px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.calendar-dropdown-close:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: #666;
+}
+
+/* 下拉列表内容区 */
+.calendar-dropdown-list {
+  padding: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+/* 使用 CalendarSettingsPanel 的样式 */
+.calendar-dropdown-list .filter-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  border-radius: 4px;
+  margin-bottom: 2px;
+}
+
+.calendar-dropdown-list .filter-item:hover {
+  background-color: #f8f9fa;
+}
+
+.calendar-dropdown-list .filter-item.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Checkbox 样式 - 与 Settings 一致 */
+.calendar-dropdown-list .filter-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+  border: 1.5px solid #cbd5e1 !important;
+  border-radius: 3px;
+  outline: none !important;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-color: white;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.calendar-dropdown-list .filter-item input[type="checkbox"]:hover {
+  border-color: #94a3b8;
+}
+
+.calendar-dropdown-list .filter-item input[type="checkbox"]:checked {
+  background-color: #667eea;
+  border-color: #667eea !important;
+}
+
+.calendar-dropdown-list .filter-item input[type="checkbox"]:checked::after {
+  content: '✓';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.calendar-dropdown-list .filter-item input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+}
+
+/* 日历内容容器 */
+.calendar-dropdown-list .calendar-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 日历颜色圆点 */
+.calendar-dropdown-list .calendar-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+/* 日历名称 */
+.calendar-dropdown-list .calendar-name {
+  font-size: 13px;
+  line-height: 1.4;
+  color: #495057;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 空消息 */
+.no-calendars {
+  padding: 20px;
+  text-align: center;
+  color: #6c757d;
+  font-size: 13px;
+}

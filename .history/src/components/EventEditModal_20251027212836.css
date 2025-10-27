@@ -1,0 +1,800 @@
+.event-edit-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.event-edit-modal {
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+  padding: 8px 20px;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.close-button:hover {
+  background-color: #f0f0f0;
+}
+
+.modal-body {
+  padding: 16px;
+  overflow-y: auto;
+  flex: 1;
+  position: relative;
+  z-index: auto;
+}
+
+.form-group {
+  margin-bottom: 8px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 400;
+  color: #333;
+  font-size: 14px;
+}
+
+/* 内联表单组（标签和输入框在同一行） */
+.form-group-inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.form-group-inline label {
+  margin-bottom: 0;
+  min-width: 70px;
+  flex-shrink: 0;
+  font-weight: 400;
+}
+
+.form-group-inline input[type="text"],
+.form-group-inline input[type="datetime-local"],
+.form-group-inline input[type="date"] {
+  flex: 1;
+}
+
+/* 内联模式下的标签选择器和日历选择器 */
+.form-group-inline .tag-selector,
+.form-group-inline .calendar-picker {
+  flex: 1;
+  min-width: 0;
+}
+
+.form-group input[type="text"]:not(.tag-search-inline):not(.calendar-search-inline),
+.form-group input[type="datetime-local"],
+.form-group input[type="date"],
+.form-group textarea {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #4285f4;
+  box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.1);
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* 带复选框的表单行（开始、结束、全天） */
+.form-row-with-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-row-with-checkbox .form-group:first-of-type {
+  flex: 1;
+}
+
+/* 调整"结束"字段 - 减少宽度为开始的一半 */
+.form-row-with-checkbox .form-group:last-of-type {
+  flex: 0.5;
+  margin-left: 8px;
+}
+
+.form-row-with-checkbox .all-day-checkbox {
+  flex: 0 0 auto;
+  min-width: auto;
+  display: flex;
+  align-items: center;
+  padding-top: 0;
+  margin-left: 8px;
+}
+
+.form-row-with-checkbox .all-day-checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  white-space: nowrap;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.form-row-with-checkbox .all-day-checkbox input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+/* 标签选择器样式 */
+.tag-selector {
+  position: relative;
+  z-index: 10;
+}
+
+/* 🔧 已选标签 + 搜索框合并区域 */
+.selected-tags-with-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 8px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  min-height: 38px;
+  background: #fafafa;
+  cursor: text;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.selected-tags-with-search:hover {
+  border-color: #bbb;
+}
+
+.selected-tags-with-search:focus-within {
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+  background: white; /* 🔧 聚焦时背景变白 */
+}
+
+/* 🔧 内联搜索框 - 无边框 */
+.tag-search-inline {
+  flex: 1;
+  min-width: 120px;
+  border: none !important; /* 🔧 强制移除边框 */
+  outline: none !important;
+  background: transparent !important;
+  padding: 4px 2px;
+  font-size: 13px;
+  color: #333;
+  box-shadow: none !important; /* 🔧 移除阴影 */
+}
+
+.tag-search-inline::placeholder {
+  color: #999;
+  font-style: italic;
+}
+
+.selected-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  min-height: 16px;
+  background: #fafafa;
+  margin-bottom: 8px;
+}
+
+.selected-tags .placeholder {
+  color: #999;
+  font-style: italic;
+  font-size: 13px;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0px;
+  padding: 2px 6px;
+  border-radius: 16px;
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.tag-chip button {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  padding: 0;
+  width: 16px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 12px;
+  transition: background-color 0.2s;
+}
+
+.tag-chip-emoji {
+  margin-right: 0px;
+  font-size: 12px;
+}
+
+.tag-chip button:hover {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+.tag-search {
+  font-size: 12px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  box-sizing: border-box;
+  height: 24px;
+}
+
+.tag-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100000; /* 🔧 提高层级，确保显示在最上层 */
+}
+
+.tag-dropdown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e0e0e0;
+  background: #f9f9f9;
+  border-radius: 6px 6px 0 0;
+}
+
+.tag-dropdown-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+}
+
+.tag-dropdown-close {
+  background: transparent;
+  border: none;
+  font-size: 13px;
+  color: #666;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.tag-dropdown-close:hover {
+  background: #e0e0e0;
+  color: #333;
+}
+
+.tag-dropdown-list {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.tag-dropdown-list .tag-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background-color: transparent !important;
+  position: relative;
+  border-radius: 4px;
+  margin-bottom: 2px;
+}
+
+.tag-dropdown-list .tag-option:hover {
+  background-color: #f8f9fa !important;
+}
+
+.tag-dropdown-list .tag-option.selected {
+  background-color: rgba(102, 126, 234, 0.08) !important;
+}
+
+/* 🔧 标签内容容器 - 使用内联样式控制 paddingLeft */
+.tag-dropdown-list .tag-content {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  min-height: 20px;
+  max-height: 24px;
+  /* 只控制上右下的padding，左侧padding由内联样式控制（用于层级缩进） */
+  padding-top: 0 !important;
+  padding-right: 0 !important;
+  padding-bottom: 0 !important;
+  /* paddingLeft 由内联样式控制：paddingLeft: ${(tag.level || 0) * 12}px */
+  background-color: transparent !important;
+  border-radius: 0 !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  justify-content: flex-start !important;
+  transition: none !important;
+}
+
+/* 🔧 Checkbox 样式，与Settings一致 */
+.tag-dropdown-list .tag-option input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+  border: 1.5px solid #cbd5e1 !important;
+  border-radius: 3px;
+  outline: none !important;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-color: white;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.tag-dropdown-list .tag-option input[type="checkbox"]:hover {
+  border-color: #94a3b8;
+}
+
+.tag-dropdown-list .tag-option input[type="checkbox"]:checked {
+  background-color: #667eea;
+  border-color: #667eea !important;
+}
+
+.tag-dropdown-list .tag-option input[type="checkbox"]:checked::after {
+  content: '✓';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+/* 🔧 颜色标签（# 号），使用标签颜色 */
+.tag-dropdown-list .tag-color {
+  font-size: 14px;
+  font-weight: 600;
+  flex-shrink: 0;
+  line-height: 1;
+  margin-right: -2px;
+}
+
+/* 🔧 Emoji 样式，与Settings一致 */
+.tag-dropdown-list .tag-emoji {
+  font-size: 13px !important;
+  width: 16px;
+  height: 16px;
+  text-align: center;
+  flex-shrink: 0;
+  line-height: 16px;
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: none;
+  outline: none;
+  margin-right: 0; /* 🔧 移除margin，使用gap控制 */
+}
+
+/* 🔧 标签名样式，使用标签颜色 */
+.tag-dropdown-list .tag-name {
+  font-size: 13px !important;
+  line-height: 1.4;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: none;
+  outline: none;
+  font-weight: 500; /* 🔧 使用中等粗细，让颜色更明显 */
+  /* color 由内联样式设置为标签颜色 */
+}
+
+.tag-path {
+  display: none; /* 🔧 隐藏路径显示，保持简洁 */
+}
+
+.no-tags {
+  padding: 20px;
+  text-align: center;
+  color: #999;
+}
+
+/* Modal Footer */
+.modal-footer {
+  padding: 10px 16px;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+
+.footer-left,
+.footer-right {
+  display: flex;
+  gap: 8px;
+}
+
+.modal-footer button {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.delete-button {
+  background-color: #dc3545;
+  color: white;
+}
+
+.delete-button:hover {
+  background-color: #c82333;
+}
+
+.cancel-button {
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+.cancel-button:hover {
+  background-color: #e0e0e0;
+}
+
+.save-button {
+  background-color: #4285f4;
+  color: white;
+}
+
+.save-button:hover {
+  background-color: #3367d6;
+}
+
+.save-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+/* 计时器时长提示 */
+.timer-duration-hint {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background-color: #f0f7ff;
+  border: 1px solid #d0e7ff;
+  border-radius: 6px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.timer-duration-hint .hint-icon {
+  font-size: 16px;
+  margin-right: 6px;
+}
+
+.timer-duration-hint .hint-text {
+  font-weight: 600;
+  color: #1e40af;
+  display: flex;
+  align-items: center;
+}
+
+.timer-duration-hint .hint-note {
+  font-size: 12px;
+  color: #64748b;
+  font-style: italic;
+}
+
+/* Microsoft日历集成样式 */
+.microsoft-calendar-section {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+  background: #f9fafb;
+}
+
+.ms-auth-prompt {
+  text-align: center;
+}
+
+.auth-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.auth-status.success {
+  color: #059669;
+}
+
+.status-icon {
+  font-size: 16px;
+}
+
+.calendar-count {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.auth-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: #dc2626;
+  background: #fef2f2;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #fecaca;
+}
+
+.error-icon {
+  font-size: 16px;
+}
+
+.btn-connect-ms {
+  padding: 10px 20px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.btn-connect-ms:hover {
+  background: #2563eb;
+  transform: translateY(-1px);
+}
+
+.ms-connected {
+  /* 已连接状态样式 */
+}
+
+.ms-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: 12px 0;
+}
+
+.btn-sync-ms,
+.btn-disconnect-ms {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.btn-sync-ms {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+
+.btn-sync-ms:hover {
+  background: #e5e7eb;
+}
+
+.btn-disconnect-ms {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+.btn-disconnect-ms:hover {
+  background: #fee2e2;
+}
+
+.ms-calendar-list {
+  margin-top: 12px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 12px;
+}
+
+.ms-calendar-list h5 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.calendar-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.calendar-chip {
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 16px;
+  padding: 2px 8px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.calendar-name {
+  color: #374151;
+  font-weight: 500;
+}
+
+.calendar-id {
+  color: #9ca3af;
+  font-family: monospace;
+}
+
+/* Microsoft登录模态框 */
+.ms-login-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20000;
+}
+
+.ms-login-modal {
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.ms-login-modal .modal-header {
+  padding: 14px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ms-login-modal .modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #1f2937;
+}
+
+.ms-login-modal .close-button {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.ms-login-modal .close-button:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+/* 响应式设计 */
+@media (max-width: 640px) {
+  .ms-actions {
+    flex-direction: column;
+  }
+  
+  .calendar-chips {
+    justify-content: center;
+  }
+  
+  .ms-login-modal {
+    width: 95%;
+    margin: 10px;
+  }
+}

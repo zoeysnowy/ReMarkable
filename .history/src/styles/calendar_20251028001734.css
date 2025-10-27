@@ -1,0 +1,575 @@
+/**
+ * ReMarkable TimeCalendar 自定义样式
+ * 
+ * 基于 TUI Calendar，使用 UTF-8 编码
+ * 字体: Microsoft YaHei, Arial, sans-serif
+ * 
+ * @charset UTF-8
+ * @author Zoey Gong
+ * @version 1.0.0
+ */
+
+@charset "UTF-8";
+
+/* ============================================
+   ReMarkable 主题色变量
+   ============================================ */
+:root {
+  --remarkable-primary: #667eea;
+  --remarkable-secondary: #764ba2;
+  --remarkable-success: #28a745;
+  --remarkable-danger: #dc3545;
+  --remarkable-warning: #ffc107;
+  --remarkable-info: #17a2b8;
+  --remarkable-light: #f8f9fa;
+  --remarkable-dark: #343a40;
+  --remarkable-border: #e9ecef;
+  --remarkable-text: #495057;
+  --remarkable-text-light: #6c757d;
+  --remarkable-bg: #ffffff;
+  --remarkable-hover: #f5f5f5;
+}
+
+/* ============================================
+   全局字体设置 - UTF-8 编码支持
+   ============================================ */
+.toastui-calendar,
+.toastui-calendar * {
+  font-family: "Microsoft YaHei", Arial, sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================
+   日历主容器
+   ============================================ */
+.toastui-calendar {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--remarkable-text);
+  background-color: var(--remarkable-bg);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(102, 126, 234, 0.1);
+  border: 1px solid var(--remarkable-border);
+}
+
+/* ============================================
+   月视图样式
+   ============================================ */
+.toastui-calendar-month {
+  width: 100%;
+  height: 100%;
+}
+
+.toastui-calendar-month-header {
+  display: flex;
+  align-items: center;
+  height: 45px;
+  border-bottom: 2px solid var(--remarkable-primary);
+  background: linear-gradient(135deg, var(--remarkable-primary) 0%, var(--remarkable-secondary) 100%);
+}
+
+.toastui-calendar-month-week-item {
+  flex: 1;
+  text-align: center;
+  font-weight: 600;
+  color: white;
+  padding: 10px 0;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+}
+
+/* 周末高亮 */
+.toastui-calendar-month-week-item:first-child,
+.toastui-calendar-month-week-item:last-child {
+  color: #ffd700;
+}
+
+.toastui-calendar-month-body {
+  height: calc(100% - 45px);
+  display: grid;
+  grid-template-rows: repeat(6, 1fr);
+}
+
+.toastui-calendar-month-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-bottom: 1px solid var(--remarkable-border);
+}
+
+.toastui-calendar-month-week:last-child {
+  border-bottom: none;
+}
+
+.toastui-calendar-month-date {
+  position: relative;
+  min-height: 80px;
+  padding: 6px;
+  border-right: 1px solid var(--remarkable-border);
+  overflow: hidden;
+  background-color: var(--remarkable-bg);
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.toastui-calendar-month-date:last-child {
+  border-right: none;
+}
+
+.toastui-calendar-month-date:hover {
+  background-color: var(--remarkable-hover);
+  transform: scale(1.02);
+}
+
+.toastui-calendar-month-date.toastui-calendar-today {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%);
+  border: 2px solid var(--remarkable-primary);
+}
+
+.toastui-calendar-month-date.toastui-calendar-other-month {
+  color: var(--remarkable-text-light);
+  background-color: var(--remarkable-light);
+  opacity: 0.6;
+}
+
+.toastui-calendar-month-date.toastui-calendar-weekend {
+  background-color: #fafbff;
+}
+
+.toastui-calendar-month-date-number {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  text-align: left;
+  color: var(--remarkable-text);
+}
+
+.toastui-calendar-month-date.toastui-calendar-today .toastui-calendar-month-date-number {
+  color: var(--remarkable-primary);
+  font-weight: 700;
+  font-size: 16px;
+}
+
+/* ============================================
+   事件卡片样式
+   ============================================ */
+.toastui-calendar-event {
+  position: relative;
+  margin: 2px 0;
+  padding: 3px 8px;
+  padding-left: 8px; /* 为左侧indicator留出空间 */
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* 左侧indicator竖线 - 使用border-left保持不透明 */
+.toastui-calendar-event::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background-color: inherit; /* 继承父元素的borderColor */
+  border-radius: 4px 0 0 4px;
+  opacity: 1 !important; /* 强制不透明 */
+}
+
+.toastui-calendar-event:hover {
+  opacity: 0.9;
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+  z-index: 10;
+}
+
+.toastui-calendar-event-allday {
+  background: linear-gradient(135deg, var(--remarkable-primary) 0%, var(--remarkable-secondary) 100%);
+  color: white;
+  border: none;
+  font-weight: 500;
+}
+
+.toastui-calendar-event-time {
+  background-color: white;
+  color: var(--remarkable-text);
+  border-left: 3px solid var(--remarkable-primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* ============================================
+   日历控制按钮
+   ============================================ */
+.toastui-calendar-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  /* background 由内联样式控制，支持 Widget 自适应 */
+  border-radius: 6px;
+  border: 1px solid var(--remarkable-border);
+  flex-shrink: 0;
+}
+
+.toastui-calendar-navigation {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toastui-calendar-nav-button {
+  padding: 6px 12px;
+  border: 1px solid var(--remarkable-border);
+  border-radius: 4px;
+  background-color: white;
+  color: var(--remarkable-text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* 添加日程按钮特殊样式 */
+.toastui-calendar-add-button {
+  padding: 4px 12px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--remarkable-primary) 0%, var(--remarkable-secondary) 100%);
+  color: white;
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: bold;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.toastui-calendar-add-button:hover {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.5);
+  filter: brightness(1.1);
+}
+
+.toastui-calendar-add-button:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.4);
+}
+
+.toastui-calendar-nav-button:hover {
+  background: linear-gradient(135deg, var(--remarkable-primary) 0%, var(--remarkable-secondary) 100%);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+  border-color: transparent;
+}
+
+.toastui-calendar-nav-button.active {
+  background: linear-gradient(135deg, var(--remarkable-primary) 0%, var(--remarkable-secondary) 100%);
+  color: white;
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.toastui-calendar-title {
+  font-size: 16px;
+  font-weight: 700;
+  /* 🎯 移除渐变色，改用动态 accentColor（在 TimeCalendar.tsx 中通过内联样式注入） */
+  margin: 0 16px;
+  letter-spacing: 0.5px;
+}
+
+.toastui-calendar-view-controls {
+  display: flex;
+  gap: 6px;
+  background-color: white;
+  padding: 4px;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.toastui-calendar-view-button {
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background-color: transparent;
+  color: var(--remarkable-text);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.toastui-calendar-view-button:hover {
+  background-color: var(--remarkable-light);
+  color: var(--remarkable-primary);
+}
+
+.toastui-calendar-view-button.active {
+  background: linear-gradient(135deg, var(--remarkable-primary) 0%, var(--remarkable-secondary) 100%);
+  color: white;
+  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
+}
+
+/* ============================================
+   周/日视图样式
+   ============================================ */
+.toastui-calendar-week-view,
+.toastui-calendar-day-view {
+  height: 100%;
+  background-color: white;
+}
+
+.toastui-calendar-week-header {
+  height: 60px;
+  border-bottom: 2px solid var(--remarkable-primary);
+  background: linear-gradient(to bottom, #ffffff 0%, #f8f9fa 100%);
+}
+
+.toastui-calendar-time-label {
+  color: var(--remarkable-text-light);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.toastui-calendar-hour-row {
+  border-bottom: 1px solid var(--remarkable-border);
+}
+
+.toastui-calendar-hour-row:hover {
+  background-color: rgba(102, 126, 234, 0.02);
+}
+
+/* ============================================
+   响应式设计
+   ============================================ */
+@media (max-width: 768px) {
+  .toastui-calendar-controls {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .toastui-calendar-title {
+    font-size: 18px;
+    margin: 0 12px;
+  }
+  
+  .toastui-calendar-nav-button {
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+  
+  .toastui-calendar-month-date-number {
+    font-size: 12px;
+  }
+  
+  .toastui-calendar-event {
+    font-size: 11px;
+    padding: 2px 6px;
+  }
+}
+
+/* ============================================
+   深色模式支持 (预留)
+   ============================================ */
+@media (prefers-color-scheme: dark) {
+  /* 深色模式样式将在未来版本中添加 */
+}
+
+/* ============================================
+   动画效果
+   ============================================ */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.toastui-calendar-event {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* ============================================
+   自定义滚动条
+   ============================================ */
+.toastui-calendar ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.toastui-calendar ::-webkit-scrollbar-track {
+  background: var(--remarkable-light);
+  border-radius: 4px;
+}
+
+.toastui-calendar ::-webkit-scrollbar-thumb {
+  background: var(--remarkable-primary);
+  border-radius: 4px;
+}
+
+.toastui-calendar ::-webkit-scrollbar-thumb:hover {
+  background: var(--remarkable-secondary);
+}
+
+/* ============================================
+   打印样式
+   ============================================ */
+@media print {
+  .toastui-calendar-controls,
+  .toastui-calendar-view-controls {
+    display: none;
+  }
+  
+  .toastui-calendar {
+    box-shadow: none;
+    border: 1px solid #000;
+  }
+  
+  .toastui-calendar-event {
+    box-shadow: none;
+    border: 1px solid #666;
+  }
+}
+
+/* ============================================
+   🔧 响应式布局优化 - 让日历充分利用可用空间
+   ============================================ */
+
+/* 周/日视图：让内容自适应容器高度，消除底部空白 */
+.toastui-calendar-layout.toastui-calendar-week-view,
+.toastui-calendar-layout.toastui-calendar-day-view {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* 时间面板（左侧时间轴 + 主内容区）：占满剩余空间 */
+.toastui-calendar-panel.toastui-calendar-time {
+  flex: 1 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+/* 周/日视图的主内容滚动区域：自适应高度 */
+.toastui-calendar-week-view .toastui-calendar-panel.toastui-calendar-time .toastui-calendar-vlayout-area,
+.toastui-calendar-day-view .toastui-calendar-panel.toastui-calendar-time .toastui-calendar-vlayout-area {
+  flex: 1 !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+}
+
+/* 月视图：让日期格子自适应高度 */
+.toastui-calendar-month {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+}
+
+/* 月视图头部（星期名称行） */
+.toastui-calendar-month-dayname-container {
+  flex-shrink: 0 !important;
+}
+
+/* 🔧 覆盖旧的 grid 布局 */
+.toastui-calendar-month-body {
+  display: flex !important; /* 覆盖 grid */
+  flex: 1 !important;
+  flex-direction: column !important;
+  height: auto !important; /* 覆盖 calc(100% - 45px) */
+}
+
+/* 月视图日期网格：占据剩余空间 */
+.toastui-calendar-month-daygrid {
+  flex: 1 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important; /* 🔧 强制 100% 高度 */
+}
+
+/* 月视图日期格子布局 */
+.toastui-calendar-month-daygrid-layout {
+  flex: 1 !important;
+  height: 100% !important; /* 🔧 改回 100%，而不是 auto */
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* 月视图每周行 */
+.toastui-calendar-month-daygrid-layout .toastui-calendar-daygrid-row {
+  flex: 1 !important;
+  min-height: 80px !important;
+  display: flex !important; /* 覆盖 grid */
+}
+
+/* 月视图每周的格子 */
+.toastui-calendar-month-week {
+  flex: 1 !important;
+  display: flex !important; /* 覆盖 grid */
+}
+
+/* 月视图日期内容：自适应高度 */
+.toastui-calendar-month-dayname {
+  flex-shrink: 0 !important;
+}
+
+.toastui-calendar-month-grid-line {
+  height: 100% !important;
+}
+
+/* 移除固定高度限制，让内容自然流动 */
+.toastui-calendar-panel {
+  max-height: none !important;
+}
+
+/* 确保时间轴和内容区域高度一致 */
+.toastui-calendar-time-date,
+.toastui-calendar-time-hour {
+  height: 100% !important;
+}
+
+/* 优化滚动性能 */
+.toastui-calendar-week-view-day-names,
+.toastui-calendar-time-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--remarkable-primary) var(--remarkable-light);
+}
+
+/* 减少容器间的间距 */
+.toastui-calendar-layout {
+  gap: 0 !important;
+  padding: 0 !important;
+}
+
+/* 🔧 Electron 环境特殊优化 */
+.is-electron .toastui-calendar-panel.toastui-calendar-time {
+  /* Electron 中确保完全填充 */
+  height: 100% !important;
+}
+
+.is-electron .toastui-calendar-layout {
+  /* Electron 中移除额外边距 */
+  margin: 0 !important;
+}
