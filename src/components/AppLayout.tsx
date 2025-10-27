@@ -158,47 +158,25 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, onPageChange, clickTrack
     { id: 'sync' as PageType, label: '同步', icon: 'sync' }
   ];
 
-  // 调试点击事件的处理器
+  // 处理导航点击
   const handleNavClick = (pageId: PageType, event: React.MouseEvent) => {
-    console.log('🔧 [Sidebar] Nav item clicked:', pageId, event);
-    
-    // 如果在Electron环境，添加额外的调试信息
-    if (window.electronAPI?.debugLog) {
-      window.electronAPI.debugLog('Sidebar nav click', {
-        pageId,
-        currentPage,
-        timestamp: new Date().toISOString(),
-        eventType: event.type,
-        target: event.currentTarget.className
-      });
-    }
-    
-    // 确保事件传递
     event.preventDefault();
     event.stopPropagation();
     
     try {
       onPageChange(pageId);
-      console.log('🔧 [Sidebar] Page change called successfully for:', pageId);
     } catch (error) {
-      console.error('🔧 [Sidebar] Error calling onPageChange:', error);
-      if (window.electronAPI?.debugLog) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        window.electronAPI.debugLog('Page change error', { pageId, error: errorMessage });
-      }
+      console.error('[Sidebar] Error calling onPageChange:', error);
     }
   };
 
-  // 添加原生事件处理作为备用方案
+  // 原生事件处理作为备用方案
   const handleNativeClick = (pageId: PageType) => {
     return (event: any) => {
-      console.log('🔧 [Sidebar] Native click for:', pageId);
-      
-      // 直接调用页面切换
       if (typeof onPageChange === 'function') {
         onPageChange(pageId);
       } else {
-        console.error('🔧 [Sidebar] onPageChange is not a function:', typeof onPageChange);
+        console.error('[Sidebar] onPageChange is not a function:', typeof onPageChange);
       }
     };
   };
@@ -211,10 +189,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, onPageChange, clickTrack
             key={item.id}
             className={`nav-item ${currentPage === item.id ? 'active' : ''}`}
             onClick={(e) => handleNavClick(item.id, e)}
-            onMouseDown={(e) => {
-              console.log('🔧 [Sidebar] Mouse down on:', item.id);
-              e.preventDefault();
-            }}
             onTouchStart={handleNativeClick(item.id)}
             style={{ 
               pointerEvents: 'auto',
@@ -295,10 +269,9 @@ const StatusBar: React.FC = () => {
       }));
     }
     
-    // 🔔 监听同步完成事件，更新状态栏时间
+    // 监听同步完成事件，更新状态栏时间
     const handleSyncCompleted = (event: any) => {
       const { timestamp } = event.detail;
-      console.log('✅ [StatusBar] Sync completed, updating lastSyncTime:', timestamp);
       
       // 更新localStorage（使用本地时间格式）
       localStorage.setItem('lastSyncTime', formatTimeForStorage(timestamp));
@@ -313,12 +286,11 @@ const StatusBar: React.FC = () => {
     
     window.addEventListener('action-sync-completed', handleSyncCompleted);
     
-    // �💾 定期检查认证状态（每5秒）
+    // 定期检查认证状态（每5秒）
     const checkAuth = setInterval(() => {
       const currentAuth = localStorage.getItem('remarkable-outlook-authenticated') === 'true';
       setSyncStatus(prev => {
         if (prev.isConnected !== currentAuth) {
-          console.log('🔄 [StatusBar] Auth status changed:', currentAuth);
           return { ...prev, isConnected: currentAuth };
         }
         return prev;
@@ -331,7 +303,7 @@ const StatusBar: React.FC = () => {
     };
   }, []); // 空依赖，只运行一次
 
-  // 🔧 [PERF] 格式化函数：使用 useMemo 缓存，避免每次渲染都计算
+  // 格式化同步状态：使用 useMemo 缓存，避免每次渲染都计算
   const formatSyncStatus = React.useCallback((lastSync: Date | null, updatedEvents: number, isSyncing: boolean) => {
     if (isSyncing) {
       return "正在同步...";

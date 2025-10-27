@@ -16,13 +16,11 @@ import OutlookIcon from '../assets/icons/Outlook.svg';
 const MemoizedTimeCalendar = memo(TimeCalendar, (prevProps, nextProps) => {
   // 返回 true = 不需要更新，返回 false = 需要更新
   
-  // 🎨 颜色和透明度变化必须重新渲染
+  // 颜色和透明度变化必须重新渲染
   if (prevProps.calendarBackgroundColor !== nextProps.calendarBackgroundColor) {
-    console.log('🎨 [Memo] Color changed:', prevProps.calendarBackgroundColor, '→', nextProps.calendarBackgroundColor);
     return false;
   }
   if (prevProps.calendarOpacity !== nextProps.calendarOpacity) {
-    console.log('🎨 [Memo] Opacity changed:', prevProps.calendarOpacity, '→', nextProps.calendarOpacity);
     return false;
   }
   
@@ -41,73 +39,53 @@ interface CustomCSSProperties extends React.CSSProperties {
 }
 
 const DesktopCalendarWidget: React.FC = () => {
-  // 🆔 生成或读取唯一的 Widget ID
+  // 生成或读取唯一的 Widget ID
   const [widgetId] = useState(() => {
     // 1. 尝试从 URL 参数读取
     const params = new URLSearchParams(window.location.search);
     const urlId = params.get('widgetId');
     if (urlId) {
-      console.log('📝 [Widget] Using widgetId from URL:', urlId);
       return urlId;
     }
     
     // 2. 尝试从 localStorage 读取
     const savedId = localStorage.getItem('remarkable-widget-instance-id');
     if (savedId) {
-      console.log('📝 [Widget] Using saved widgetId:', savedId);
       return savedId;
     }
     
     // 3. 生成新的 ID 并保存
     const newId = `widget-${Date.now()}`;
     localStorage.setItem('remarkable-widget-instance-id', newId);
-    console.log('✨ [Widget] Generated new widgetId:', newId);
     return newId;
   });
 
-  // 🔧 生成唯一的存储 key
+  // 生成唯一的存储 key
   const storageKey = `remarkable-widget-settings-${widgetId}`;
   
-  // 🔄 使用全局单例服务，确保与主应用的登录状态一致
+  // 使用全局单例服务，确保与主应用的登录状态一致
   const [microsoftService, setMicrosoftService] = useState<any>(() => {
     // 优先使用全局实例，如果不存在则创建新实例（兼容性）
     if (typeof window !== 'undefined' && (window as any).microsoftCalendarService) {
-      console.log('✅ [Widget] 使用全局 microsoftCalendarService 实例');
-      console.log('🔍 [Widget] 登录状态:', (window as any).microsoftCalendarService.isSignedIn());
       return (window as any).microsoftCalendarService;
     }
-    console.warn('⚠️ [Widget] 全局实例不存在，创建新的 MicrosoftCalendarService');
     return new MicrosoftCalendarService();
   });
   
-  // 🔄 延迟检查全局服务（给App.tsx时间初始化）
+  // 延迟检查全局服务（给App.tsx时间初始化）
   useEffect(() => {
     const checkGlobalService = () => {
       if (typeof window !== 'undefined' && (window as any).microsoftCalendarService) {
         const globalService = (window as any).microsoftCalendarService;
         if (globalService !== microsoftService) {
-          console.log('🔄 [Widget] 发现全局服务，切换到全局实例');
-          console.log('🔍 [Widget] 全局服务登录状态:', globalService.isSignedIn());
           setMicrosoftService(globalService);
-        } else {
-          console.log('✅ [Widget] 已经在使用全局服务');
         }
-      } else {
-        console.log('⚠️ [Widget] 全局服务仍未初始化，稍后重试...');
       }
     };
     
-    // 延迟1秒后检查（给App.tsx初始化时间）
-    const timer = setTimeout(() => {
-      console.log('⏰ [Widget] 开始检查全局服务...');
-      checkGlobalService();
-    }, 1000);
-    
-    // 再延迟3秒检查一次（以防第一次太早）
-    const timer2 = setTimeout(() => {
-      console.log('⏰ [Widget] 第二次检查全局服务...');
-      checkGlobalService();
-    }, 3000);
+    // 延迟1秒和3秒后检查（给App.tsx初始化时间）
+    const timer = setTimeout(checkGlobalService, 1000);
+    const timer2 = setTimeout(checkGlobalService, 3000);
     
     return () => {
       clearTimeout(timer);
@@ -122,20 +100,18 @@ const DesktopCalendarWidget: React.FC = () => {
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null); // 定时器引用
 
   // 样式控制 - 简化版：只控制日历背景
-  // 🔧 使用 lazy initialization 确保在首次渲染前就加载设置
+  // 使用 lazy initialization 确保在首次渲染前就加载设置
   const [bgOpacity, setBgOpacity] = useState(() => {
     const savedSettings = localStorage.getItem('desktop-calendar-widget-settings');
     if (savedSettings) {
       try {
         const settings = JSON.parse(savedSettings);
         const opacity = settings.bgOpacity !== undefined ? settings.bgOpacity : 0.95;
-        console.log('🎨 [Widget Init] Loaded bgOpacity:', opacity);
         return opacity;
       } catch (e) {
         console.error('Failed to parse widget settings for opacity', e);
       }
     }
-    console.log('🎨 [Widget Init] Using default bgOpacity: 0.95');
     return 0.95;
   });
   
@@ -145,17 +121,15 @@ const DesktopCalendarWidget: React.FC = () => {
       try {
         const settings = JSON.parse(savedSettings);
         const color = settings.bgColor || '#ffffff';
-        console.log('🎨 [Widget Init] Loaded bgColor:', color);
         return color;
       } catch (e) {
         console.error('Failed to parse widget settings for color', e);
       }
     }
-    console.log('🎨 [Widget Init] Using default bgColor: #ffffff');
     return '#ffffff';
   });
 
-  // 🎨 自适应颜色计算函数
+  // 自适应颜色计算函数
   const getAdaptiveColors = useMemo(() => {
     const r = parseInt(bgColor.slice(1,3), 16);
     const g = parseInt(bgColor.slice(3,5), 16);
@@ -210,34 +184,27 @@ const DesktopCalendarWidget: React.FC = () => {
   // 从 localStorage 读取锁定状态并同步到主进程
   useEffect(() => {
     const savedSettings = localStorage.getItem('desktop-calendar-widget-settings');
-    console.log('🔍 [Widget] Syncing lock state from localStorage:', savedSettings);
     
     if (savedSettings) {
       try {
         const settings = JSON.parse(savedSettings);
         const locked = settings.isLocked || false;
         
-        console.log('🔒 [Widget] Setting lock status:', locked);
         setIsLocked(locked);
         
         // 同步锁定状态到 Electron 主进程
         if (window.electronAPI?.widgetLock) {
-          window.electronAPI.widgetLock(locked).then(() => {
-            console.log('✅ Lock state synced to main process:', locked);
-          }).catch((error: Error) => {
-            console.error('❌ Failed to sync lock state:', error);
+          window.electronAPI.widgetLock(locked).catch((error: Error) => {
+            console.error('Failed to sync lock state:', error);
           });
         }
       } catch (e) {
         console.error('Failed to parse widget settings for lock state', e);
       }
     } else {
-      console.log('🔓 No saved lock state, widget is unlocked');
       // 确保主进程也是解锁状态
       if (window.electronAPI?.widgetLock) {
-        window.electronAPI.widgetLock(false).then(() => {
-          console.log('✅ Main process unlocked');
-        });
+        window.electronAPI.widgetLock(false);
       }
     }
   }, []);
