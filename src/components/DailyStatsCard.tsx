@@ -65,7 +65,7 @@ export const DailyStatsCard: React.FC<DailyStatsCardProps> = ({
   };
 
   const tagStats = useMemo(() => {
-    const targetDateStr = Date().toDateString();
+    const targetDateStr = currentDate.toDateString();
     const dayEvents = events.filter(event => {
       const eventDate = new Date(event.startTime);
       return eventDate.toDateString() === targetDateStr;
