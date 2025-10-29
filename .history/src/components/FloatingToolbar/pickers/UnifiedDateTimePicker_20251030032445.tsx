@@ -21,8 +21,7 @@ const TimeColumn: React.FC<{
   value: number | null;
   onChange: (value: number | null) => void;
   disabled?: boolean;
-  scrollTrigger?: number; // 外部触发器，用于强制重新滚动
-}> = ({ type, value, onChange, disabled, scrollTrigger }) => {
+}> = ({ type, value, onChange, disabled }) => {
   const max = type === 'hour' ? 23 : 59;
   const items = Array.from({ length: max + 1 }, (_, i) => i);
   
@@ -46,62 +45,37 @@ const TimeColumn: React.FC<{
   // 当值改变时，滚动到中间组的对应位置
   useEffect(() => {
     if (columnRef.current && contentRef.current) {
-      // 确保DOM已经渲染，使用requestAnimationFrame延迟到下一帧
-      requestAnimationFrame(() => {
-        if (!columnRef.current || !contentRef.current) return;
-        
-        // 动态读取当前的cell高度（以防CSS还未应用）
-        const firstCell = contentRef.current.querySelector('.time-cell');
-        if (firstCell) {
-          const computedHeight = window.getComputedStyle(firstCell).height;
-          const parsedHeight = parseFloat(computedHeight);
-          if (!isNaN(parsedHeight)) {
-            cellHeightRef.current = parsedHeight;
-          }
-        }
-        
-        const cellHeight = cellHeightRef.current;
-        const containerHeight = columnRef.current.clientHeight;
-        
-        console.log(`📏 [TimeColumn] ${type} dimensions - cellHeight: ${cellHeight}px, containerHeight: ${containerHeight}px`);
-        
-        // 验证值是否有效
-        if (!cellHeight || !containerHeight || isNaN(cellHeight) || isNaN(containerHeight)) {
-          console.warn(`⚠️ [TimeColumn] ${type} invalid dimensions, skipping scroll`);
-          return;
-        }
-        
-        // 计算滚动到中间组的位置
-        // 每组有 (max + 2) 个项（包括 -- 和 0 到 max）
-        const groupSize = max + 2;
-        
-        let selectedIndex;
-        if (value === null) {
-          // -- 在每组的第一个位置，滚动到中间组的 --
-          selectedIndex = groupSize;
-        } else {
-          // 数字在 -- 之后，+1 是 -- 的位置，再 + value
-          selectedIndex = groupSize + 1 + value;
-        }
-        
-        // 计算滚动位置，让选中项在距离顶部约1/3的位置，这样4个列的选中值会在同一水平线上
-        const offsetFromTop = containerHeight * 0.3; // 距离顶部30%的位置
-        const scrollTop = selectedIndex * cellHeight - offsetFromTop;
-        
-        console.log(`📍 [TimeColumn] ${type} scrolling to value: ${value}, index: ${selectedIndex}, scrollTop: ${scrollTop.toFixed(2)}px`);
-        
-        isScrollingRef.current = true;
-        columnRef.current.scrollTo({
-          top: Math.max(0, scrollTop),
-          behavior: 'smooth'
-        });
-        
-        setTimeout(() => {
-          isScrollingRef.current = false;
-        }, 300);
+      const cellHeight = cellHeightRef.current; // 使用动态获取的高度
+      const containerHeight = columnRef.current.clientHeight;
+      
+      // 计算滚动到中间组的位置
+      // 每组有 (max + 2) 个项（包括 -- 和 0 到 max）
+      const groupSize = max + 2;
+      
+      let selectedIndex;
+      if (value === null) {
+        // -- 在每组的第一个位置，滚动到中间组的 --
+        selectedIndex = groupSize;
+      } else {
+        // 数字在 -- 之后，+1 是 -- 的位置，再 + value
+        selectedIndex = groupSize + 1 + value;
+      }
+      
+      // 计算滚动位置，让选中项在距离顶部约1/3的位置，这样4个列的选中值会在同一水平线上
+      const offsetFromTop = containerHeight * 0.3; // 距离顶部30%的位置
+      const scrollTop = selectedIndex * cellHeight - offsetFromTop;
+      
+      isScrollingRef.current = true;
+      columnRef.current.scrollTo({
+        top: Math.max(0, scrollTop),
+        behavior: 'smooth'
       });
+      
+      setTimeout(() => {
+        isScrollingRef.current = false;
+      }, 300);
     }
-  }, [value, max, type, scrollTrigger]); // 添加scrollTrigger依赖，使其变化时也触发滚动
+  }, [value, max]);
   
   // 处理无限滚动：当滚动到边界时，跳转回中间组
   useEffect(() => {
@@ -279,7 +253,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
   const [editYear, setEditYear] = useState(dayjs().year().toString());
   const [editMonth, setEditMonth] = useState((dayjs().month() + 1).toString());
   const [selectedQuickBtn, setSelectedQuickBtn] = useState<string | null>(null);
-  const [scrollTrigger, setScrollTrigger] = useState<number>(0); // 用于强制重新滚动
 
   const containerRef = useRef<HTMLDivElement>(null);
   const editContainerRef = useRef<HTMLDivElement>(null);
@@ -639,7 +612,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
     setEndTime({ hour: 12, minute: 0 });
     setSelectedQuickBtn('morning');
     setCurrentMonth(today); // 确保当前月份可见
-    setScrollTrigger(prev => prev + 1); // 触发强制滚动
   };
 
   // 快捷选择：下午（当前日期 12:00 - 18:00）
@@ -651,7 +623,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
     setEndTime({ hour: 18, minute: 0 });
     setSelectedQuickBtn('afternoon');
     setCurrentMonth(today); // 确保当前月份可见
-    setScrollTrigger(prev => prev + 1); // 触发强制滚动
   };
 
   // 快捷选择：晚上（当前日期 18:00 - 23:59）
@@ -663,7 +634,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
     setEndTime({ hour: 23, minute: 59 });
     setSelectedQuickBtn('evening');
     setCurrentMonth(today); // 确保当前月份可见
-    setScrollTrigger(prev => prev + 1); // 触发强制滚动
   };
 
   return (
@@ -829,7 +799,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
                 hour === null ? setStartTime(null) : setStartTime({ hour, minute: startTime?.minute ?? 0 });
               }}
               disabled={false}
-              scrollTrigger={scrollTrigger}
             />
             <TimeColumn
               type="minute"
@@ -839,7 +808,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
                 minute === null ? setStartTime(null) : setStartTime({ hour: startTime?.hour ?? 0, minute });
               }}
               disabled={false}
-              scrollTrigger={scrollTrigger}
             />
             <TimeColumn
               type="hour"
@@ -849,7 +817,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
                 hour === null ? setEndTime(null) : setEndTime({ hour, minute: endTime?.minute ?? 0 });
               }}
               disabled={false}
-              scrollTrigger={scrollTrigger}
             />
             <TimeColumn
               type="minute"
@@ -859,7 +826,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
                 minute === null ? setEndTime(null) : setEndTime({ hour: endTime?.hour ?? 0, minute });
               }}
               disabled={false}
-              scrollTrigger={scrollTrigger}
             />
           </div>
         </div>

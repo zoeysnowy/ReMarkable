@@ -829,7 +829,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
                 hour === null ? setStartTime(null) : setStartTime({ hour, minute: startTime?.minute ?? 0 });
               }}
               disabled={false}
-              scrollTrigger={scrollTrigger}
             />
             <TimeColumn
               type="minute"
@@ -839,7 +838,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
                 minute === null ? setStartTime(null) : setStartTime({ hour: startTime?.hour ?? 0, minute });
               }}
               disabled={false}
-              scrollTrigger={scrollTrigger}
             />
             <TimeColumn
               type="hour"
@@ -849,7 +847,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
                 hour === null ? setEndTime(null) : setEndTime({ hour, minute: endTime?.minute ?? 0 });
               }}
               disabled={false}
-              scrollTrigger={scrollTrigger}
             />
             <TimeColumn
               type="minute"
@@ -859,7 +856,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
                 minute === null ? setEndTime(null) : setEndTime({ hour: endTime?.hour ?? 0, minute });
               }}
               disabled={false}
-              scrollTrigger={scrollTrigger}
             />
           </div>
         </div>

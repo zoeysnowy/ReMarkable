@@ -21,8 +21,7 @@ const TimeColumn: React.FC<{
   value: number | null;
   onChange: (value: number | null) => void;
   disabled?: boolean;
-  scrollTrigger?: number; // 外部触发器，用于强制重新滚动
-}> = ({ type, value, onChange, disabled, scrollTrigger }) => {
+}> = ({ type, value, onChange, disabled }) => {
   const max = type === 'hour' ? 23 : 59;
   const items = Array.from({ length: max + 1 }, (_, i) => i);
   
@@ -101,7 +100,7 @@ const TimeColumn: React.FC<{
         }, 300);
       });
     }
-  }, [value, max, type, scrollTrigger]); // 添加scrollTrigger依赖，使其变化时也触发滚动
+  }, [value, max, type]);
   
   // 处理无限滚动：当滚动到边界时，跳转回中间组
   useEffect(() => {
@@ -279,7 +278,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
   const [editYear, setEditYear] = useState(dayjs().year().toString());
   const [editMonth, setEditMonth] = useState((dayjs().month() + 1).toString());
   const [selectedQuickBtn, setSelectedQuickBtn] = useState<string | null>(null);
-  const [scrollTrigger, setScrollTrigger] = useState<number>(0); // 用于强制重新滚动
 
   const containerRef = useRef<HTMLDivElement>(null);
   const editContainerRef = useRef<HTMLDivElement>(null);
@@ -639,7 +637,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
     setEndTime({ hour: 12, minute: 0 });
     setSelectedQuickBtn('morning');
     setCurrentMonth(today); // 确保当前月份可见
-    setScrollTrigger(prev => prev + 1); // 触发强制滚动
   };
 
   // 快捷选择：下午（当前日期 12:00 - 18:00）
@@ -651,7 +648,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
     setEndTime({ hour: 18, minute: 0 });
     setSelectedQuickBtn('afternoon');
     setCurrentMonth(today); // 确保当前月份可见
-    setScrollTrigger(prev => prev + 1); // 触发强制滚动
   };
 
   // 快捷选择：晚上（当前日期 18:00 - 23:59）
@@ -663,7 +659,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
     setEndTime({ hour: 23, minute: 59 });
     setSelectedQuickBtn('evening');
     setCurrentMonth(today); // 确保当前月份可见
-    setScrollTrigger(prev => prev + 1); // 触发强制滚动
   };
 
   return (
@@ -829,7 +824,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
                 hour === null ? setStartTime(null) : setStartTime({ hour, minute: startTime?.minute ?? 0 });
               }}
               disabled={false}
-              scrollTrigger={scrollTrigger}
             />
             <TimeColumn
               type="minute"
@@ -839,7 +833,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
                 minute === null ? setStartTime(null) : setStartTime({ hour: startTime?.hour ?? 0, minute });
               }}
               disabled={false}
-              scrollTrigger={scrollTrigger}
             />
             <TimeColumn
               type="hour"
@@ -849,7 +842,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
                 hour === null ? setEndTime(null) : setEndTime({ hour, minute: endTime?.minute ?? 0 });
               }}
               disabled={false}
-              scrollTrigger={scrollTrigger}
             />
             <TimeColumn
               type="minute"
@@ -859,7 +851,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
                 minute === null ? setEndTime(null) : setEndTime({ hour: endTime?.hour ?? 0, minute });
               }}
               disabled={false}
-              scrollTrigger={scrollTrigger}
             />
           </div>
         </div>
