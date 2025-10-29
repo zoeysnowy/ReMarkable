@@ -1,0 +1,430 @@
+/* ==================== 快照查看器容器 ==================== */
+
+.snapshot-viewer {
+  padding: 20px;
+  max-width: 900px;
+  margin: 0 auto;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', sans-serif;
+}
+
+.snapshot-viewer.loading,
+.snapshot-viewer.empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: #666;
+}
+
+.loading-spinner {
+  font-size: 24px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ==================== 标题栏 ==================== */
+
+.snapshot-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.snapshot-header h3 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.toggle-changes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.toggle-changes input[type="checkbox"] {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+}
+
+/* ==================== 变化统计 ==================== */
+
+.changes-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  border-radius: 12px;
+  background: #f9fafb;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.stat-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.stat-item .icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.stat-item .label {
+  font-size: 14px;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.stat-item .count {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.stat-item.added {
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  color: #065f46;
+}
+
+.stat-item.checked {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  color: #1e40af;
+}
+
+.stat-item.dropped {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  color: #92400e;
+}
+
+.stat-item.deleted {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  color: #991b1b;
+}
+
+/* ==================== 变化区块 ==================== */
+
+.changes-section {
+  margin-bottom: 32px;
+}
+
+.changes-section h4 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.all-items {
+  margin-bottom: 32px;
+}
+
+.all-items h4 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ==================== 任务卡片 ==================== */
+
+.task-card {
+  position: relative;
+  padding: 16px;
+  border-radius: 8px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.task-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transform: translateX(4px);
+}
+
+.task-card.added {
+  border-left: 4px solid #10b981;
+  background: #f0fdf4;
+}
+
+.task-card.checked {
+  border-left: 4px solid #3b82f6;
+  background: #eff6ff;
+}
+
+.task-card.dropped {
+  border-left: 4px solid #f59e0b;
+  background: #fffbeb;
+}
+
+.task-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.task-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: default;
+}
+
+.task-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: #111827;
+  flex: 1;
+}
+
+.task-title.completed {
+  text-decoration: line-through;
+  color: #9ca3af;
+}
+
+.task-description {
+  margin-left: 30px;
+  font-size: 14px;
+  color: #6b7280;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-left: 30px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.task-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.task-tags .tag {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #e5e7eb;
+  color: #374151;
+  font-size: 12px;
+}
+
+.task-due-date,
+.task-time {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 高亮徽章 */
+.highlight-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.highlight-badge.added {
+  background: #10b981;
+  color: white;
+}
+
+.highlight-badge.checked {
+  background: #3b82f6;
+  color: white;
+}
+
+.highlight-badge.dropped {
+  background: #f59e0b;
+  color: white;
+}
+
+/* ==================== 删除的任务 ==================== */
+
+.deleted-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.deleted-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.deleted-icon {
+  font-size: 20px;
+}
+
+.deleted-id {
+  font-size: 14px;
+  font-family: 'Courier New', monospace;
+}
+
+/* ==================== 空状态 ==================== */
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #9ca3af;
+  font-size: 16px;
+}
+
+/* ==================== 响应式设计 ==================== */
+
+@media (max-width: 768px) {
+  .snapshot-viewer {
+    padding: 12px;
+  }
+
+  .snapshot-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .snapshot-header h3 {
+    font-size: 24px;
+  }
+
+  .changes-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .stat-item .icon {
+    font-size: 24px;
+  }
+
+  .stat-item .count {
+    font-size: 20px;
+  }
+
+  .task-card {
+    padding: 12px;
+  }
+
+  .task-title {
+    font-size: 14px;
+  }
+}
+
+/* ==================== 深色模式 ==================== */
+
+@media (prefers-color-scheme: dark) {
+  .snapshot-viewer {
+    background: #111827;
+    color: #f9fafb;
+  }
+
+  .snapshot-header {
+    border-bottom-color: #374151;
+  }
+
+  .snapshot-header h3 {
+    color: #f9fafb;
+  }
+
+  .toggle-changes {
+    color: #9ca3af;
+  }
+
+  .changes-section h4,
+  .all-items h4 {
+    color: #e5e7eb;
+  }
+
+  .task-card {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .task-card.added {
+    background: #064e3b;
+    border-left-color: #10b981;
+  }
+
+  .task-card.checked {
+    background: #1e3a8a;
+    border-left-color: #3b82f6;
+  }
+
+  .task-card.dropped {
+    background: #78350f;
+    border-left-color: #f59e0b;
+  }
+
+  .task-title {
+    color: #f9fafb;
+  }
+
+  .task-title.completed {
+    color: #6b7280;
+  }
+
+  .task-description,
+  .task-meta {
+    color: #9ca3af;
+  }
+
+  .task-tags .tag {
+    background: #374151;
+    color: #d1d5db;
+  }
+
+  .deleted-item {
+    background: #7f1d1d;
+    border-color: #991b1b;
+    color: #fecaca;
+  }
+
+  .empty-state {
+    color: #6b7280;
+  }
+}

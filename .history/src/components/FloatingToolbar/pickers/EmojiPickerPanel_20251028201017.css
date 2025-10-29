@@ -1,0 +1,59 @@
+/* EmojiPickerPanel 样式 */
+.emoji-picker-panel {
+  min-width: 320px;
+}
+
+.emoji-categories {
+  display: flex;
+  gap: 4px;
+  padding: 0 8px 8px 8px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.emoji-category-btn {
+  flex: 1;
+  padding: 6px 12px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #6b7280;
+  transition: all 0.2s;
+}
+
+.emoji-category-btn:hover {
+  background-color: #f3f4f6;
+}
+
+.emoji-category-btn.active {
+  background-color: #3b82f6;
+  color: white;
+  font-weight: 500;
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  padding: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.emoji-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: transform 0.1s, background-color 0.2s;
+}
+
+.emoji-item:hover {
+  background-color: #f3f4f6;
+  transform: scale(1.15);
+}

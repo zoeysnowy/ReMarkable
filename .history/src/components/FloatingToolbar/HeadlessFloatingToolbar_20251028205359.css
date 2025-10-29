@@ -1,0 +1,280 @@
+/* HeadlessFloatingToolbar - Headless UI 风格样式 */
+
+.headless-floating-toolbar {
+  position: fixed;
+  pointer-events: none;
+}
+
+.headless-toolbar-container {
+  pointer-events: auto;
+  filter: drop-shadow(0 10px 25px rgba(0, 0, 0, 0.1)) 
+          drop-shadow(0 4px 6px rgba(0, 0, 0, 0.05));
+}
+
+.headless-toolbar-main {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  box-shadow: 
+    0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* 按钮基础样式 */
+.headless-toolbar-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+  overflow: hidden;
+}
+
+.headless-toolbar-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0));
+  opacity: 0;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.headless-toolbar-btn:hover::before {
+  opacity: 1;
+}
+
+/* 文本格式化按钮 */
+.headless-toolbar-text-btn {
+  background: rgba(71, 85, 105, 0.05);
+  color: #475569;
+  border: 1px solid rgba(71, 85, 105, 0.1);
+}
+
+.headless-toolbar-text-btn:hover {
+  background: rgba(71, 85, 105, 0.1);
+  color: #334155;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.headless-toolbar-text-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 快捷操作按钮 */
+.headless-toolbar-action-btn {
+  background: rgba(148, 163, 184, 0.1);
+  color: #64748b;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.headless-toolbar-action-btn:hover {
+  background: rgba(148, 163, 184, 0.15);
+  color: #475569;
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.headless-toolbar-action-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* 激活状态 */
+.headless-toolbar-btn-active {
+  color: white !important;
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.headless-toolbar-btn-active::before {
+  opacity: 0.2;
+}
+
+/* Menu 和 Popover 容器 */
+.headless-toolbar-menu,
+.headless-toolbar-popover {
+  position: relative;
+}
+
+/* 面板基础样式 */
+.headless-toolbar-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  min-width: 200px;
+  max-width: 400px;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 16px;
+  padding: 0;
+  box-shadow: 
+    0 25px 50px -12px rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  outline: none;
+  overflow: hidden;
+}
+
+/* Emoji 面板特殊样式 */
+.headless-emoji-panel {
+  min-width: 352px;
+  padding: 0;
+}
+
+.headless-emoji-panel .em-picker {
+  border: none;
+  border-radius: 16px;
+  background: transparent;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .headless-toolbar-main {
+    gap: 2px;
+    padding: 6px;
+  }
+
+  .headless-toolbar-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+    border-radius: 8px;
+  }
+
+  .headless-toolbar-panel {
+    max-width: calc(100vw - 32px);
+    left: 0;
+    right: 0;
+    transform: none;
+    margin: 0 16px;
+  }
+}
+
+/* 深色模式支持 */
+@media (prefers-color-scheme: dark) {
+  .headless-toolbar-main {
+    background: rgba(30, 30, 30, 0.95);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .headless-toolbar-text-btn {
+    background: rgba(148, 163, 184, 0.1);
+    color: #cbd5e1;
+    border-color: rgba(148, 163, 184, 0.2);
+  }
+
+  .headless-toolbar-text-btn:hover {
+    background: rgba(148, 163, 184, 0.2);
+    color: #f1f5f9;
+  }
+
+  .headless-toolbar-action-btn {
+    background: rgba(100, 116, 139, 0.1);
+    color: #94a3b8;
+    border-color: rgba(100, 116, 139, 0.2);
+  }
+
+  .headless-toolbar-action-btn:hover {
+    background: rgba(100, 116, 139, 0.2);
+    color: #cbd5e1;
+  }
+
+  .headless-toolbar-panel {
+    background: rgba(30, 30, 30, 0.98);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* 动画优化 */
+@media (prefers-reduced-motion: reduce) {
+  .headless-toolbar-btn,
+  .headless-toolbar-btn::before {
+    transition: none;
+  }
+}
+
+/* 高对比度模式 */
+@media (prefers-contrast: high) {
+  .headless-toolbar-main {
+    border: 2px solid;
+  }
+
+  .headless-toolbar-btn {
+    border: 1px solid;
+  }
+}
+
+/* 聚焦样式 */
+.headless-toolbar-btn:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* 磨砂玻璃效果增强 */
+@supports (backdrop-filter: blur()) {
+  .headless-toolbar-main {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(20px) saturate(180%) brightness(110%);
+  }
+
+  .headless-toolbar-panel {
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(24px) saturate(180%) brightness(105%);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .headless-toolbar-main {
+      background: rgba(20, 20, 20, 0.8);
+      backdrop-filter: blur(20px) saturate(180%) brightness(120%);
+    }
+
+    .headless-toolbar-panel {
+      background: rgba(20, 20, 20, 0.9);
+      backdrop-filter: blur(24px) saturate(180%) brightness(115%);
+    }
+  }
+}
+
+/* 微妙的渐变光效 */
+.headless-toolbar-main::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, 
+    transparent, 
+    rgba(255, 255, 255, 0.4), 
+    transparent
+  );
+  border-radius: 16px 16px 0 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .headless-toolbar-main::after {
+    background: linear-gradient(90deg, 
+      transparent, 
+      rgba(255, 255, 255, 0.1), 
+      transparent
+    );
+  }
+}

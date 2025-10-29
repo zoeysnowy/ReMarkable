@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Timer Events</title>
+</head>
+<body>
+    <h1>Debug Timer Events in localStorage</h1>
+    <button onclick="checkEvents()">检查Events</button>
+    <button onclick="checkRunningTimer()">检查Running Timer</button>
+    <div id="output"></div>
+
+    <script>
+        function checkEvents() {
+            const events = JSON.parse(localStorage.getItem('remarkable-events') || '[]');
+            const timerEvents = events.filter(e => e.id && e.id.includes('timer-'));
+            
+            document.getElementById('output').innerHTML = `
+                <h3>Events总数: ${events.length}</h3>
+                <h3>Timer Events: ${timerEvents.length}</h3>
+                <pre>${JSON.stringify(timerEvents, null, 2)}</pre>
+            `;
+        }
+
+        function checkRunningTimer() {
+            const runningTimerEventId = localStorage.getItem('remarkable-running-timer-event-id');
+            
+            document.getElementById('output').innerHTML = `
+                <h3>Running Timer Event ID: ${runningTimerEventId}</h3>
+            `;
+        }
+    </script>
+</body>
+</html>
