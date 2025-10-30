@@ -241,7 +241,11 @@ const StatusBar: React.FC = () => {
     lastSync: null as Date | null,
     updatedEvents: 0,
     isConnected: false, // 默认未连接
-    isSyncing: false
+    isSyncing: false,
+    // 📊 详细同步统计
+    syncFailed: 0,
+    calendarCreated: 0,
+    syncSuccess: 0
   });
   
   // 🔧 [FIX] 使用 ref 避免状态更新导致的重渲染
@@ -252,20 +256,36 @@ const StatusBar: React.FC = () => {
   React.useEffect(() => {
     const savedSyncTime = localStorage.getItem('lastSyncTime');
     const savedEventCount = localStorage.getItem('lastSyncEventCount');
+    const savedSyncStats = localStorage.getItem('syncStats');
     const isAuthenticated = localStorage.getItem('remarkable-outlook-authenticated') === 'true';
+    
+    // 📊 解析同步统计信息
+    let syncStats = { syncFailed: 0, calendarCreated: 0, syncSuccess: 0 };
+    if (savedSyncStats) {
+      try {
+        syncStats = JSON.parse(savedSyncStats);
+        console.log('📊 [StatusBar] Loaded sync stats from localStorage:', syncStats);
+      } catch (e) {
+        console.error('Failed to parse sync stats:', e);
+      }
+    } else {
+      console.log('📊 [StatusBar] No sync stats found in localStorage');
+    }
     
     if (savedSyncTime) {
       setSyncStatus({
         lastSync: new Date(savedSyncTime),
         updatedEvents: savedEventCount ? parseInt(savedEventCount) : 0,
         isConnected: isAuthenticated, // 🔧 从 localStorage 读取实际认证状态
-        isSyncing: false
+        isSyncing: false,
+        ...syncStats
       });
     } else {
       // 没有同步记录，但仍需要设置认证状态
       setSyncStatus(prev => ({
         ...prev,
-        isConnected: isAuthenticated
+        isConnected: isAuthenticated,
+        ...syncStats
       }));
     }
     
@@ -276,35 +296,60 @@ const StatusBar: React.FC = () => {
       // 更新localStorage（使用本地时间格式）
       localStorage.setItem('lastSyncTime', formatTimeForStorage(timestamp));
       
+      // 📊 重新读取同步统计信息
+      let syncStats = { syncFailed: 0, calendarCreated: 0, syncSuccess: 0 };
+      const savedSyncStats = localStorage.getItem('syncStats');
+      if (savedSyncStats) {
+        try {
+          syncStats = JSON.parse(savedSyncStats);
+          console.log('📊 [StatusBar] Sync completed, reloaded stats:', syncStats);
+        } catch (e) {
+          console.error('Failed to parse sync stats on sync complete:', e);
+        }
+      }
+      
       // 更新状态
       setSyncStatus(prev => ({
         ...prev,
         lastSync: timestamp,
-        isSyncing: false
+        isSyncing: false,
+        ...syncStats
       }));
     };
     
     window.addEventListener('action-sync-completed', handleSyncCompleted);
     
-    // 定期检查认证状态（每5秒）
-    const checkAuth = setInterval(() => {
-      const currentAuth = localStorage.getItem('remarkable-outlook-authenticated') === 'true';
-      setSyncStatus(prev => {
-        if (prev.isConnected !== currentAuth) {
-          return { ...prev, isConnected: currentAuth };
-        }
-        return prev;
-      });
-    }, 5000);
+    // 监听认证过期事件
+    const handleAuthExpired = (event: any) => {
+      console.error('🔴 [StatusBar] Auth expired event received:', event.detail);
+      setSyncStatus(prev => ({
+        ...prev,
+        isConnected: false
+      }));
+      
+      // 显示通知
+      if (event.detail?.message) {
+        alert(event.detail.message);
+      }
+    };
+    
+    window.addEventListener('auth-expired', handleAuthExpired);
     
     return () => {
-      clearInterval(checkAuth);
       window.removeEventListener('action-sync-completed', handleSyncCompleted);
+      window.removeEventListener('auth-expired', handleAuthExpired);
     };
   }, []); // 空依赖，只运行一次
 
   // 格式化同步状态：使用 useMemo 缓存，避免每次渲染都计算
-  const formatSyncStatus = React.useCallback((lastSync: Date | null, updatedEvents: number, isSyncing: boolean) => {
+  const formatSyncStatus = React.useCallback((
+    lastSync: Date | null, 
+    updatedEvents: number, 
+    isSyncing: boolean,
+    syncFailed: number,
+    calendarCreated: number,
+    syncSuccess: number
+  ) => {
     if (isSyncing) {
       return "正在同步...";
     }
@@ -327,19 +372,42 @@ const StatusBar: React.FC = () => {
       second: '2-digit'
     });
     
+    // 📊 构建详细同步日志
+    const logs: string[] = [];
+    if (syncFailed > 0) {
+      logs.push(`${syncFailed}个事项同步至日历失败❌`);
+    }
+    if (calendarCreated > 0) {
+      logs.push(`新增日历事项${calendarCreated}个💌`);
+    }
+    if (syncSuccess > 0) {
+      logs.push(`${syncSuccess}个事项成功同步至日历✅`);
+    }
+    
+    console.log('📊 [formatSyncStatus] Building logs:', { syncFailed, calendarCreated, syncSuccess, logs });
+    
+    const logStr = logs.length > 0 ? ` ${logs.join('，')}` : '';
+    
     if (diffInMinutes < 1) {
-      return `最后同步：${timeStr} 更新事件${updatedEvents}个`;
+      return `最后同步：${timeStr}${logStr}`;
     } else if (diffInMinutes < 60) {
-      return `最后同步：${timeStr} (${diffInMinutes}分钟前) 更新事件${updatedEvents}个`;
+      return `最后同步：${timeStr} (${diffInMinutes}分钟前)${logStr}`;
     } else {
       const hours = Math.floor(diffInMinutes / 60);
-      return `最后同步：${timeStr} (${hours}小时前) 更新事件${updatedEvents}个`;
+      return `最后同步：${timeStr} (${hours}小时前)${logStr}`;
     }
   }, []);
 
   // 🔧 初始文本
   const initialText = React.useMemo(() => {
-    return formatSyncStatus(syncStatus.lastSync, syncStatus.updatedEvents, syncStatus.isSyncing);
+    return formatSyncStatus(
+      syncStatus.lastSync, 
+      syncStatus.updatedEvents, 
+      syncStatus.isSyncing,
+      syncStatus.syncFailed,
+      syncStatus.calendarCreated,
+      syncStatus.syncSuccess
+    );
   }, [syncStatus, formatSyncStatus]);
 
   // 🔧 [PERF] 使用 DOM 直接更新文本，避免 React 重渲染
@@ -355,7 +423,14 @@ const StatusBar: React.FC = () => {
       if (now - lastUpdateRef.current < 30000) return;
       
       lastUpdateRef.current = now;
-      const newText = formatSyncStatus(syncStatus.lastSync, syncStatus.updatedEvents, syncStatus.isSyncing);
+      const newText = formatSyncStatus(
+        syncStatus.lastSync, 
+        syncStatus.updatedEvents, 
+        syncStatus.isSyncing,
+        syncStatus.syncFailed,
+        syncStatus.calendarCreated,
+        syncStatus.syncSuccess
+      );
       
       // 直接更新 DOM，不触发 React 重渲染
       if (statusTextRef.current.textContent !== newText) {
@@ -370,7 +445,7 @@ const StatusBar: React.FC = () => {
     updateText();
     
     return () => clearInterval(intervalId);
-  }, [syncStatus.lastSync, syncStatus.updatedEvents, syncStatus.isSyncing, formatSyncStatus]);
+  }, [syncStatus.lastSync, syncStatus.updatedEvents, syncStatus.isSyncing, syncStatus.syncFailed, syncStatus.calendarCreated, syncStatus.syncSuccess, formatSyncStatus]);
 
   return (
     <footer className="app-statusbar">

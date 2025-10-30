@@ -46,15 +46,25 @@ export interface FloatingToolbarProps {
   
   // 回调函数
   onTextFormat?: (command: string, value?: string) => void;
-  onTagSelect?: (tag: string) => void;
+  onTagSelect?: (tagIds: string[]) => void; // 改为数组（支持多选）
   onEmojiSelect?: (emoji: string) => void;
   onDateRangeSelect?: (startDate: Date, endDate: Date) => void;
   onPrioritySelect?: (priority: 'low' | 'medium' | 'high' | 'urgent') => void;
   onColorSelect?: (color: string) => void;
   
   // 数据源
-  availableTags?: string[];
-  currentTags?: string[];
+  availableTags?: Array<{
+    id: string;
+    name: string;
+    color: string;
+    emoji?: string;
+    level?: number;
+    parentId?: string;
+  }>; // 改为层级标签
+  currentTags?: string[]; // 保持 ID 数组
+  
+  // 键盘控制
+  activePickerIndex?: number | null; // 通过数字键激活的 picker 索引
 }
 
 export interface ToolbarPosition {

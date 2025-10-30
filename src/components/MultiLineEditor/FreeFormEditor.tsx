@@ -11,7 +11,7 @@
  * 这个架构与 TagManager 完全一致！
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef, useEffect } from 'react';
 import './FreeFormEditor.css';
 
 export interface FreeFormLine<T = any> {
@@ -43,8 +43,37 @@ export const FreeFormEditor = <T,>({
   style,
 }: FreeFormEditorProps<T>) => {
   
+  // 记录已经初始化过内容的行
+  const initializedLinesRef = useRef<Set<string>>(new Set());
+  
+  // 当 lines 变化时，重置初始化标记（除非是用户正在编辑）
+  useEffect(() => {
+    const activeElement = document.activeElement;
+    const activeLineId = activeElement?.getAttribute('data-line-id');
+    
+    // 清除不存在的行的标记
+    const currentLineIds = new Set(lines.map(l => l.id));
+    initializedLinesRef.current.forEach(lineId => {
+      if (!currentLineIds.has(lineId)) {
+        initializedLinesRef.current.delete(lineId);
+      }
+    });
+    
+    // 更新内容（跳过正在编辑的行）
+    lines.forEach(line => {
+      if (line.id !== activeLineId) {
+        const element = document.querySelector(`[data-line-id="${line.id}"]`) as HTMLElement;
+        if (element && element.innerHTML !== line.content) {
+          element.innerHTML = line.content || '';
+        }
+      }
+    });
+  }, [lines]);
+  
   // ==================== 文本保存 ====================
-  const handleLineBlur = useCallback((lineId: string, content: string) => {
+  const handleLineBlur = useCallback((lineId: string, element: HTMLElement) => {
+    // 保存整个 innerHTML（包含标签 spans）
+    const content = element.innerHTML;
     const updatedLines = lines.map(line =>
       line.id === lineId ? { ...line, content } : line
     );
@@ -88,8 +117,46 @@ export const FreeFormEditor = <T,>({
       }, 10);
     }
     
-    // Backspace: 如果内容为空，删除行并聚焦上一行
+    // Backspace: 删除标签或删除空行
     else if (e.key === 'Backspace') {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        
+        // 检查光标前面是否是标签
+        if (range.collapsed) {
+          const container = range.startContainer;
+          const offset = range.startOffset;
+          
+          // 如果光标在文本节点开头
+          if (container.nodeType === Node.TEXT_NODE && offset === 0) {
+            const prevSibling = container.previousSibling;
+            // 如果前一个兄弟节点是标签
+            if (prevSibling && (prevSibling as HTMLElement).classList?.contains('inline-tag')) {
+              e.preventDefault();
+              prevSibling.remove();
+              // 触发保存
+              const target = e.currentTarget as HTMLElement;
+              handleLineBlur(lineId, target);
+              return;
+            }
+          }
+          // 如果光标在元素开头
+          else if (container.nodeType === Node.ELEMENT_NODE) {
+            const childAtOffset = (container as Element).childNodes[offset - 1];
+            if (childAtOffset && (childAtOffset as HTMLElement).classList?.contains('inline-tag')) {
+              e.preventDefault();
+              childAtOffset.remove();
+              // 触发保存
+              const target = e.currentTarget as HTMLElement;
+              handleLineBlur(lineId, target);
+              return;
+            }
+          }
+        }
+      }
+      
+      // 原有逻辑：如果内容为空，删除行并聚焦上一行
       const target = e.currentTarget as HTMLElement;
       if (target.textContent === '' && currentIndex > 0) {
         e.preventDefault();
@@ -114,6 +181,46 @@ export const FreeFormEditor = <T,>({
             sel?.addRange(range);
           }
         }, 10);
+      }
+    }
+    
+    // Delete: 删除光标后的标签
+    else if (e.key === 'Delete') {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        
+        // 检查光标后面是否是标签
+        if (range.collapsed) {
+          const container = range.startContainer;
+          const offset = range.startOffset;
+          
+          // 如果光标在文本节点末尾
+          if (container.nodeType === Node.TEXT_NODE && offset === container.textContent!.length) {
+            const nextSibling = container.nextSibling;
+            // 如果后一个兄弟节点是标签
+            if (nextSibling && (nextSibling as HTMLElement).classList?.contains('inline-tag')) {
+              e.preventDefault();
+              nextSibling.remove();
+              // 触发保存
+              const target = e.currentTarget as HTMLElement;
+              handleLineBlur(lineId, target);
+              return;
+            }
+          }
+          // 如果光标在元素中
+          else if (container.nodeType === Node.ELEMENT_NODE) {
+            const childAtOffset = (container as Element).childNodes[offset];
+            if (childAtOffset && (childAtOffset as HTMLElement).classList?.contains('inline-tag')) {
+              e.preventDefault();
+              childAtOffset.remove();
+              // 触发保存
+              const target = e.currentTarget as HTMLElement;
+              handleLineBlur(lineId, target);
+              return;
+            }
+          }
+        }
       }
     }
     
@@ -210,9 +317,18 @@ export const FreeFormEditor = <T,>({
             data-line-id={line.id}
             contentEditable
             suppressContentEditableWarning
-            onBlur={(e) => handleLineBlur(line.id, e.currentTarget.textContent || '')}
+            onBlur={(e) => handleLineBlur(line.id, e.currentTarget)}
             onKeyDown={(e) => handleLineKeyDown(e, line.id, line.level)}
             onClick={() => onLineClick?.(line)}
+            ref={(el) => {
+              if (el && !initializedLinesRef.current.has(line.id)) {
+                // 只在首次渲染时设置 innerHTML
+                if (el.innerHTML !== line.content) {
+                  el.innerHTML = line.content || '';
+                }
+                initializedLinesRef.current.add(line.id);
+              }
+            }}
             style={{
               outline: 'none',
               border: 'none',
@@ -222,9 +338,7 @@ export const FreeFormEditor = <T,>({
               userSelect: 'text',
               minWidth: '100px',
             }}
-          >
-            {line.content}
-          </span>
+          />
           
           {/* 后缀装饰（标签、时间等）*/}
           {renderLineSuffix && (

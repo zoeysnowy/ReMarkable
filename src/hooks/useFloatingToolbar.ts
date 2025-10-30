@@ -116,38 +116,68 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions) {
         if (timeSinceLastPress < 500) {
           console.log('🎯 [FloatingToolbar] 双击 Alt 检测成功');
           
-          // 显示工具栏
+          // 显示工具栏 - 优先在光标位置显示
           const selection = window.getSelection();
-          const selectedText = selection?.toString().trim();
           
-          if (selectedText || selection?.rangeCount) {
-            // 有选区或光标位置
-            const pos = calculatePosition();
-            if (!pos && selection?.rangeCount) {
-              // 没有选区时，在光标位置显示
-              const range = document.createRange();
-              const sel = window.getSelection();
-              if (sel && sel.anchorNode) {
-                range.setStart(sel.anchorNode, sel.anchorOffset);
-                range.collapse(true);
-                const rect = range.getBoundingClientRect();
-                
+          if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            
+            // 如果有选中文本，使用选区位置
+            if (selection.toString().trim()) {
+              const rect = range.getBoundingClientRect();
+              // 显示在选区左侧的下方
+              setPosition({
+                top: rect.bottom + window.scrollY + 8,
+                left: rect.left + window.scrollX,
+                show: true,
+              });
+            } else {
+              // 没有选中文本，使用光标位置
+              // 尝试多种方法获取光标位置
+              let cursorRect: DOMRect | null = null;
+              
+              // 方法1: 使用新的 range
+              try {
+                const cursorRange = document.createRange();
+                cursorRange.setStart(range.startContainer, range.startOffset);
+                cursorRange.collapse(true);
+                cursorRect = cursorRange.getBoundingClientRect();
+                console.log('📍 [FloatingToolbar] 方法1 cursorRect:', cursorRect);
+              } catch (e) {
+                console.warn('⚠️ [FloatingToolbar] 方法1 失败:', e);
+              }
+              
+              // 方法2: 如果方法1失败或返回无效矩形，使用 activeElement
+              if (!cursorRect || (cursorRect.width === 0 && cursorRect.height === 0)) {
+                const activeElement = document.activeElement as HTMLElement;
+                if (activeElement) {
+                  cursorRect = activeElement.getBoundingClientRect();
+                  console.log('📍 [FloatingToolbar] 方法2 activeElement rect:', cursorRect);
+                }
+              }
+              
+              if (cursorRect && cursorRect.height > 0) {
+                // 显示在光标的右下方，偏移一些距离避免挡住文本
                 setPosition({
-                  top: rect.top + window.scrollY - 8,
-                  left: rect.left + window.scrollX,
+                  top: cursorRect.bottom + window.scrollY + 8,
+                  left: cursorRect.left + window.scrollX + 20,
+                  show: true,
+                });
+              } else {
+                console.warn('⚠️ [FloatingToolbar] 无法获取有效的光标位置');
+                // 降级方案：在屏幕中间偏右位置显示
+                setPosition({
+                  top: window.scrollY + 100,
+                  left: window.scrollX + 200,
                   show: true,
                 });
               }
-            } else if (pos) {
-              setPosition({
-                top: pos.top,
-                left: pos.left,
-                show: true,
-              });
             }
             
             setToolbarActive(true);
             console.log('✅ [FloatingToolbar] 工具栏已呼出，等待数字键选择');
+          } else {
+            console.warn('⚠️ [FloatingToolbar] 无法获取光标位置');
           }
           
           // 重置计时器
@@ -175,9 +205,10 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions) {
             onMenuSelect(menuIndex);
           }
           
-          // 隐藏工具栏
-          hideToolbar();
+          // 不再隐藏工具栏，只是取消激活状态
+          // 这样工具栏保持显示，用户可以与打开的 picker 交互
           setToolbarActive(false);
+          console.log('✅ [FloatingToolbar] 菜单已打开，工具栏保持显示');
         } else {
           console.warn(`⚠️ [FloatingToolbar] 菜单索引 ${menuIndex} 超出范围 (最大 ${menuItemCount - 1})`);
         }

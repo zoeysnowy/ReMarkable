@@ -26,9 +26,21 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps> = ({
   onColorSelect,
   availableTags = [],
   currentTags = [],
+  activePickerIndex,
 }) => {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [activePicker, setActivePicker] = useState<string | null>(null);
+
+  // 监听 activePickerIndex 变化，通过数字键激活对应的 picker
+  useEffect(() => {
+    if (activePickerIndex !== null && activePickerIndex !== undefined) {
+      const feature = config.features[activePickerIndex];
+      if (feature) {
+        console.log(`⌨️ [Toolbar] 通过数字键激活: ${feature} (索引 ${activePickerIndex})`);
+        setActivePicker(feature);
+      }
+    }
+  }, [activePickerIndex, config.features]);
 
   // 监听 activePicker 变化
   useEffect(() => {
@@ -92,20 +104,23 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps> = ({
           key={feature}
           content={
             <div className="headless-emoji-tippy-content">
-              <Picker
-                data={data}
-                onEmojiSelect={(emoji: any) => {
-                  onEmojiSelect?.(emoji.native);
-                  setActivePicker(null);
-                }}
-                theme="light"
-                set="native"
-                locale="zh"
-                perLine={8}
-                emojiSize={20}
-                previewPosition="none"
-                skinTonePosition="none"
-              />
+              {/* 只在 picker 激活时才渲染 Emoji Picker */}
+              {activePicker === feature && (
+                <Picker
+                  data={data}
+                  onEmojiSelect={(emoji: any) => {
+                    onEmojiSelect?.(emoji.native);
+                    setActivePicker(null);
+                  }}
+                  theme="light"
+                  set="native"
+                  locale="zh"
+                  perLine={8}
+                  emojiSize={20}
+                  previewPosition="none"
+                  skinTonePosition="none"
+                />
+              )}
             </div>
           }
           visible={activePicker === feature}
@@ -140,22 +155,25 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps> = ({
           key={feature}
           content={
             <div className="headless-date-tippy-content">
-              <UnifiedDateTimePicker
-                onSelect={(start: string | null, end: string | null) => {
-                  console.log('📅 [Toolbar] DateTime onSelect callback', { start, end });
-                  if (start && end) {
-                    onDateRangeSelect?.(new Date(start), new Date(end));
-                  }
-                  console.log('📅 [Toolbar] Calling setActivePicker(null) from onSelect');
-                  setActivePicker(null);
-                }}
-                onClose={() => {
-                  console.log('📅 [Toolbar] DateTime onClose callback', {
-                    stack: new Error().stack
-                  });
-                  setActivePicker(null);
-                }}
-              />
+              {/* 只在 picker 激活时才渲染 DateTimePicker */}
+              {activePicker === feature && (
+                <UnifiedDateTimePicker
+                  onSelect={(start: string | null, end: string | null) => {
+                    console.log('📅 [Toolbar] DateTime onSelect callback', { start, end });
+                    if (start && end) {
+                      onDateRangeSelect?.(new Date(start), new Date(end));
+                    }
+                    console.log('📅 [Toolbar] Calling setActivePicker(null) from onSelect');
+                    setActivePicker(null);
+                  }}
+                  onClose={() => {
+                    console.log('📅 [Toolbar] DateTime onClose callback', {
+                      stack: new Error().stack
+                    });
+                    setActivePicker(null);
+                  }}
+                />
+              )}
             </div>
           }
           visible={activePicker === feature}
@@ -205,19 +223,21 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps> = ({
         key={feature}
         content={
           <div className="headless-picker-tippy-content">
-            {feature === 'tag' && (
+            {/* 只在 picker 激活时才渲染对应的组件 */}
+            {activePicker === feature && feature === 'tag' && (
               <TagPicker
                 availableTags={availableTags}
                 selectedTags={currentTags}
-                onSelect={(tag) => {
-                  onTagSelect?.(tag);
-                  setActivePicker(null);
+                onSelect={(tagIds) => {
+                  // 标签选择是多选模式，不应该在每次选择后关闭
+                  onTagSelect?.(tagIds);
+                  // setActivePicker(null); // 移除自动关闭
                 }}
                 onClose={() => setActivePicker(null)}
               />
             )}
             
-            {feature === 'priority' && (
+            {activePicker === feature && feature === 'priority' && (
               <PriorityPicker
                 onSelect={(priority) => {
                   onPrioritySelect?.(priority);
@@ -227,7 +247,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps> = ({
               />
             )}
 
-            {feature === 'color' && (
+            {activePicker === feature && feature === 'color' && (
               <ColorPicker
                 onSelect={(color) => {
                   onColorSelect?.(color);
@@ -271,7 +291,6 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps> = ({
         position: 'fixed',
         top: `${position.top}px`,
         left: `${position.left}px`,
-        transform: 'translateX(-50%)',
         zIndex: 10000,
       }}
     >

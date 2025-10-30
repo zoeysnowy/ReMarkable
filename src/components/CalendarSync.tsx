@@ -30,6 +30,35 @@ const CalendarSync: React.FC<CalendarSyncProps> = ({
     }
   }, [microsoftService]);
 
+  // 监听认证过期事件
+  useEffect(() => {
+    const handleAuthExpired = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      console.log('🚨 [CalendarSync] 认证已过期:', customEvent.detail);
+      
+      // 清除用户信息
+      setUserInfo(null);
+      
+      // 显示认证过期消息
+      setSyncMessage('❌ 认证已过期，请重新登录 Microsoft 账户');
+      
+      // 停止同步管理器
+      if (syncManager && typeof syncManager.isActive === 'function' && syncManager.isActive()) {
+        if (typeof syncManager.stop === 'function') {
+          syncManager.stop();
+        } else if (typeof syncManager.stopSync === 'function') {
+          syncManager.stopSync();
+        }
+      }
+    };
+
+    window.addEventListener('auth-expired', handleAuthExpired);
+    
+    return () => {
+      window.removeEventListener('auth-expired', handleAuthExpired);
+    };
+  }, [syncManager]);
+
   const loadUserInfo = async () => {
     try {
       const info = await microsoftService.getUserInfo();

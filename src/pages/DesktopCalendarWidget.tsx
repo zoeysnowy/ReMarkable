@@ -46,38 +46,50 @@ const DesktopCalendarWidget: React.FC = () => {
   // 生成唯一的存储 key
   const storageKey = `remarkable-widget-settings-${widgetId}`;
   
-  // 使用全局单例服务，确保与主应用的登录状态一致
-  const [microsoftService, setMicrosoftService] = useState<any>(() => {
-    // 优先使用全局实例，如果不存在则创建新实例（兼容性）
-    if (typeof window !== 'undefined' && (window as any).microsoftCalendarService) {
-      return (window as any).microsoftCalendarService;
-    }
-    return new MicrosoftCalendarService();
-  });
+  // 🔧 Widget 不应该有自己的服务实例，只使用全局实例
+  const [microsoftService, setMicrosoftService] = useState<any>(null);
   
-  // 延迟检查全局服务（给App.tsx时间初始化）
+  // 🔧 持续检查全局服务，直到主应用初始化完成
   useEffect(() => {
     const checkGlobalService = () => {
       if (typeof window !== 'undefined' && (window as any).microsoftCalendarService) {
         const globalService = (window as any).microsoftCalendarService;
-        if (globalService !== microsoftService) {
-          setMicrosoftService(globalService);
-        }
+        console.log('✅ [Widget] 找到全局 microsoftCalendarService');
+        setMicrosoftService(globalService);
+        return true; // 找到了
       }
+      console.log('⏳ [Widget] 等待全局 microsoftCalendarService...');
+      return false; // 还没找到
     };
     
-    // 延迟1秒和3秒后检查（给App.tsx初始化时间）
-    const timer = setTimeout(checkGlobalService, 1000);
-    const timer2 = setTimeout(checkGlobalService, 3000);
+    // 立即检查一次
+    if (checkGlobalService()) {
+      return; // 如果找到了就不需要后续检查
+    }
+    
+    // 每秒检查一次，直到找到为止
+    const intervalId = setInterval(() => {
+      if (checkGlobalService()) {
+        clearInterval(intervalId);
+      }
+    }, 1000);
     
     return () => {
-      clearTimeout(timer);
-      clearTimeout(timer2);
+      clearInterval(intervalId);
     };
   }, []); // 空依赖数组，只在挂载时执行一次
   
-  const [syncManager, setSyncManager] = useState<any>(null);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [updatedEventCount, setUpdatedEventCount] = useState(0); // 🔧 追踪同步更新的事件数量
+  const [isAuthenticated, setIsAuthenticated] = useState(false); // 🔧 追踪认证状态
+  
+  // 📊 详细同步统计
+  const [syncStats, setSyncStats] = useState({
+    syncFailed: 0,
+    calendarCreated: 0,
+    syncSuccess: 0
+  });
+  
   const [isLocked, setIsLocked] = useState(false);
   const [showControls, setShowControls] = useState(false);
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null); // 定时器引用
@@ -247,65 +259,27 @@ const DesktopCalendarWidget: React.FC = () => {
   // 🔄 使用全局同步管理器，确保与主应用数据一致
   useEffect(() => {
     const checkAuthAndInitSync = () => {
-      // 🔧 优先检查 localStorage 中的认证状态（主应用会更新这个标记）
+      // 🔧 只使用 localStorage 中的认证状态（主应用会更新这个标记）
       const storedAuthState = localStorage.getItem('remarkable-outlook-authenticated') === 'true';
-      const serviceAuthState = microsoftService.isSignedIn();
       
-      // 使用 localStorage 为准，因为主应用会实时更新这个值
-      const isAuthenticated = storedAuthState || serviceAuthState;
+      console.log('🔍 [Widget] 检查认证状态:', {
+        storedAuthState,
+        hasMicrosoftService: !!microsoftService
+      });
       
-      // 只在状态变化或首次检查时输出日志
-      if (isAuthenticated || !syncManager) {
-        console.log('🔍 [Widget] 检查认证状态:', {
-          storedAuthState,
-          serviceAuthState,
-          finalAuthState: isAuthenticated
-        });
-      }
+      // 更新认证状态
+      setIsAuthenticated(storedAuthState);
       
-      if (isAuthenticated && !syncManager) {
-        console.log('🚀 [Widget] 用户已登录，尝试使用全局同步管理器...');
-        
-        // 优先使用全局 syncManager
-        if (typeof window !== 'undefined' && (window as any).syncManager) {
-          console.log('✅ [Widget] 使用全局 syncManager 实例');
-          const globalSync = (window as any).syncManager;
-          setSyncManager(globalSync);
-          
-          // 立即获取同步时间
-          const time = globalSync.getLastSyncTime?.();
-          if (time) {
-            console.log('🕐 [Widget] 获取到全局同步时间:', time);
-            setLastSyncTime(time);
-          }
-          return;
-        }
-        
-        // 如果全局 syncManager 不存在，创建新实例（兼容性）
-        console.warn('⚠️ [Widget] 全局 syncManager 不存在，创建新实例');
-        try {
-          const newSyncManager = new ActionBasedSyncManager(microsoftService);
-          setSyncManager(newSyncManager);
-          
-          // 启动同步管理器
-          newSyncManager.start();
-          console.log('✅ [Widget] 同步管理器初始化成功');
-          
-          // 暴露到全局用于调试
-          if (typeof window !== 'undefined') {
-            (window as any).widgetSyncManager = newSyncManager;
-          }
-        } catch (error) {
-          console.error('❌ [Widget] 同步管理器初始化失败:', error);
-        }
-      } else if (!isAuthenticated && syncManager) {
-        console.log('⏸️ [Widget] 用户已登出，停止同步管理器...');
-        syncManager.stop();
-        setSyncManager(null);
-      }
+      // 🔧 在 Electron 环境中，Widget 和主应用是独立的 window 对象
+      // 不需要尝试获取全局 syncManager，直接从 localStorage 读取即可
     };
     
-    checkAuthAndInitSync();
+    // 只有在 microsoftService 存在时才检查
+    if (microsoftService) {
+      checkAuthAndInitSync();
+    } else {
+      console.log('⏳ [Widget] 等待 microsoftService 初始化...');
+    }
     
     // 🔧 监听 localStorage 变化（实时响应主应用的认证状态更新）
     const handleStorageChange = (e: StorageEvent) => {
@@ -317,48 +291,83 @@ const DesktopCalendarWidget: React.FC = () => {
     
     window.addEventListener('storage', handleStorageChange);
     
-    // 定期检查认证状态（每分钟）
-    const authCheckInterval = setInterval(checkAuthAndInitSync, 60000);
+    // 定期检查认证状态（每30秒）
+    const authCheckInterval = setInterval(checkAuthAndInitSync, 30000);
     
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       clearInterval(authCheckInterval);
-      if (syncManager) {
-        syncManager.stop();
-      }
     };
-  }, [microsoftService, syncManager]);
+  }, [microsoftService]);
 
-  // 🔄 定期更新 lastSyncTime
+  // 🔄 定期更新 lastSyncTime 和 updatedEventCount（只从 localStorage 读取）
   useEffect(() => {
-    if (!syncManager) {
-      console.log('⚠️ [Widget] syncManager 为空，无法更新同步时间');
-      return;
-    }
-    
-    const updateSyncTime = () => {
+    const updateSyncStatus = () => {
       try {
-        const time = syncManager.getLastSyncTime?.();
-        if (time) {
-          console.log('🕐 [Widget] 更新同步时间:', time.toLocaleString('zh-CN'));
-          setLastSyncTime(time);
+        // 🔧 从 localStorage 读取同步时间（Electron 窗口间通信方式）
+        const storedTime = localStorage.getItem('lastSyncTime');
+        if (storedTime) {
+          try {
+            const parsedTime = new Date(storedTime);
+            if (!isNaN(parsedTime.getTime())) {
+              console.log('🕐 [Widget] 从 localStorage 读取同步时间:', parsedTime.toLocaleString('zh-CN'));
+              setLastSyncTime(parsedTime);
+            }
+          } catch (parseError) {
+            console.error('❌ [Widget] 解析同步时间失败:', parseError);
+          }
         } else {
-          console.log('⚠️ [Widget] getLastSyncTime 返回空值');
+          console.log('⏳ [Widget] localStorage 中暂无同步时间');
+        }
+
+        // 🔧 从 localStorage 读取更新事件数量
+        const storedEventCount = localStorage.getItem('lastSyncEventCount');
+        if (storedEventCount) {
+          const count = parseInt(storedEventCount, 10);
+          if (!isNaN(count)) {
+            console.log('📊 [Widget] 从 localStorage 读取事件数量:', count);
+            setUpdatedEventCount(count);
+          }
+        }
+        
+        // 📊 从 localStorage 读取同步统计信息
+        const storedSyncStats = localStorage.getItem('syncStats');
+        if (storedSyncStats) {
+          try {
+            const stats = JSON.parse(storedSyncStats);
+            console.log('📊 [Widget] 从 localStorage 读取同步统计:', stats);
+            setSyncStats(stats);
+          } catch (e) {
+            console.error('❌ [Widget] 解析同步统计失败:', e);
+          }
         }
       } catch (error) {
-        console.error('❌ [Widget] 获取同步时间失败:', error);
+        console.error('❌ [Widget] 获取同步状态失败:', error);
       }
     };
     
     // 立即更新一次
-    console.log('🔄 [Widget] 开始定期更新同步时间...');
-    updateSyncTime();
+    console.log('🔄 [Widget] 开始监听同步状态更新...');
+    updateSyncStatus();
     
-    // 每5秒更新一次（更频繁以确保同步）
-    const syncTimeInterval = setInterval(updateSyncTime, 5000);
+    // 监听 localStorage 变化（实时响应主应用的同步完成）
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'lastSyncTime' || e.key === 'lastSyncEventCount' || e.key === 'syncStats') {
+        console.log('🔔 [Widget] 检测到同步状态变化:', e.key, '=', e.newValue);
+        updateSyncStatus();
+      }
+    };
     
-    return () => clearInterval(syncTimeInterval);
-  }, [syncManager]);
+    window.addEventListener('storage', handleStorageChange);
+    
+    // 每10秒轮询一次（兜底）
+    const syncStatusInterval = setInterval(updateSyncStatus, 10000);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(syncStatusInterval);
+    };
+  }, []); // 🔧 不依赖任何状态，只依赖 localStorage
 
   // 移除控制栏自动显示逻辑，不再需要
   // useEffect(() => {
@@ -881,7 +890,6 @@ const DesktopCalendarWidget: React.FC = () => {
               console.log('📝 Timer started:', taskTitle); 
             }, [])}
             microsoftService={microsoftService}
-            syncManager={syncManager}
             lastSyncTime={lastSyncTime}
             isWidgetMode={true}
             storageKey={storageKey} // 🔧 使用唯一的存储key
@@ -945,6 +953,20 @@ const DesktopCalendarWidget: React.FC = () => {
                       second: '2-digit'
                     })}
                   </strong>
+                  {/* 📊 详细同步日志 */}
+                  {(() => {
+                    const logs: string[] = [];
+                    if (syncStats.syncFailed > 0) {
+                      logs.push(`${syncStats.syncFailed}个事项同步至日历失败❌`);
+                    }
+                    if (syncStats.calendarCreated > 0) {
+                      logs.push(`新增日历事项${syncStats.calendarCreated}个💌`);
+                    }
+                    if (syncStats.syncSuccess > 0) {
+                      logs.push(`${syncStats.syncSuccess}个事项成功同步至日历✅`);
+                    }
+                    return logs.length > 0 ? <> {logs.join('，')}</> : null;
+                  })()}
                 </>
               ) : '正在同步...'}
             </span>
@@ -960,13 +982,13 @@ const DesktopCalendarWidget: React.FC = () => {
                 width: '8px',
                 height: '8px',
                 borderRadius: '50%',
-                backgroundColor: microsoftService?.isSignedIn() ? '#4ade80' : '#ef4444',
-                boxShadow: microsoftService?.isSignedIn()
+                backgroundColor: isAuthenticated ? '#4ade80' : '#ef4444',
+                boxShadow: isAuthenticated
                   ? '0 0 8px rgba(74, 222, 128, 0.6)'
                   : '0 0 8px rgba(239, 68, 68, 0.6)',
                 transition: 'all 0.3s ease'
               }}
-              title={microsoftService?.isSignedIn() ? '已连接' : '未连接'}
+              title={isAuthenticated ? '已连接' : '未连接'}
             />
           </div>
         </div>

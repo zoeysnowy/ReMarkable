@@ -497,6 +497,13 @@ export class MicrosoftCalendarService {
             ok: retryResponse.ok
           });
           
+          if (retryResponse.status === 401) {
+            // 重试后仍然是 401，说明 token 真的过期了
+            console.error('🔴 [callGraphAPI] Still 401 after retry - authentication truly failed');
+            this.handleAuthenticationFailure();
+            throw new Error('认证已过期，请重新登录 Microsoft 账户');
+          }
+          
           if (!retryResponse.ok) {
             const errorText = await retryResponse.text();
             console.error('❌ [callGraphAPI] Retry failed:', errorText);
@@ -1261,6 +1268,31 @@ export class MicrosoftCalendarService {
 
   isSignedIn(): boolean {
     return this.isAuthenticated && !!this.accessToken;
+  }
+
+  /**
+   * 处理认证失败（401 错误）
+   * 清除认证状态并通知应用
+   */
+  handleAuthenticationFailure(): void {
+    console.error('🔴 [Auth] Authentication failed - Token expired or invalid');
+    
+    // 清除认证状态
+    this.isAuthenticated = false;
+    this.accessToken = null;
+    
+    // 清除 localStorage 中的认证标记
+    localStorage.setItem('remarkable-outlook-authenticated', 'false');
+    
+    // 触发自定义事件通知应用
+    window.dispatchEvent(new CustomEvent('auth-expired', {
+      detail: { 
+        message: 'Microsoft 账户认证已过期，请重新登录',
+        timestamp: new Date()
+      }
+    }));
+    
+    console.log('📢 [Auth] Dispatched auth-expired event');
   }
 
   /**

@@ -82,6 +82,13 @@ export class ActionBasedSyncManager {
     lastCheckTime: number;      // 最后检查的时间
   }> = new Map();
   private syncRoundCounter = 0; // 同步轮次计数器
+  
+  // 📊 [NEW] 同步统计信息
+  private syncStats = {
+    syncFailed: 0,        // 同步至日历失败
+    calendarCreated: 0,   // 新增日历事项
+    syncSuccess: 0        // 成功同步至日历
+  };
 
   constructor(microsoftService: any) {
     this.microsoftService = microsoftService;
@@ -1024,6 +1031,15 @@ export class ActionBasedSyncManager {
     this.syncInProgress = true;
     console.log('🔄 [performSync] Starting sync cycle...');
     
+    // 📊 重置同步统计
+    console.log('📊 [performSync] Resetting sync stats (previous values):', this.syncStats);
+    this.syncStats = {
+      syncFailed: 0,
+      calendarCreated: 0,
+      syncSuccess: 0
+    };
+    console.log('📊 [performSync] Sync stats reset to:', this.syncStats);
+    
     const syncStartTime = performance.now();
 
     try {
@@ -1044,8 +1060,14 @@ export class ActionBasedSyncManager {
       }
       
       await this.fetchRemoteChanges();
+      console.log('📊 [After fetchRemoteChanges] Current stats:', this.syncStats);
+      
       await this.syncPendingLocalActions();
+      console.log('📊 [After syncPendingLocalActions] Current stats:', this.syncStats);
+      
       await this.syncPendingRemoteActions();
+      console.log('📊 [After syncPendingRemoteActions] Current stats:', this.syncStats);
+      
       await this.resolveConflicts();
       this.cleanupSynchronizedActions();
       
@@ -1057,6 +1079,11 @@ export class ActionBasedSyncManager {
       // 🔧 更新localStorage，供状态栏使用（使用本地时间格式）
       localStorage.setItem('lastSyncTime', formatTimeForStorage(this.lastSyncTime));
       localStorage.setItem('lastSyncEventCount', String(this.actionQueue.length || 0));
+      
+      // 📊 保存同步统计信息
+      localStorage.setItem('syncStats', JSON.stringify(this.syncStats));
+      console.log('📊 [Sync Stats] Final statistics:', this.syncStats);
+      console.log('📊 [Sync Stats] Saved to localStorage:', JSON.stringify(this.syncStats));
       
       const syncDuration = performance.now() - syncStartTime;
       
@@ -1537,6 +1564,8 @@ private getUserSettings(): any {
       action => action.source === 'local' && !action.synchronized
     );
     
+    console.log('📊 [syncPendingLocalActions] Starting. Found:', pendingLocalActions.length, 'pending local actions');
+    
     // 🔧 [NEW] 按重试次数排序，优先处理失败次数少的（新创建的事件优先）
     pendingLocalActions.sort((a, b) => 
       (a.retryCount || 0) - (b.retryCount || 0)
@@ -1668,6 +1697,26 @@ private getUserSettings(): any {
       action.synchronizedAt = new Date();
       action.lastError = undefined; // 🔧 [NEW] 清除错误信息
       action.userNotified = false; // 🔧 [NEW] 重置通知状态
+      
+      // 📊 更新统计信息
+      console.log('📊 [Stats] Checking action for stats update:', { 
+        source: action.source, 
+        type: action.type,
+        entityId: action.entityId 
+      });
+      
+      if (action.source === 'local') {
+        if (action.type === 'create') {
+          this.syncStats.calendarCreated++;
+          console.log('📊 [Stats] Calendar created count:', this.syncStats.calendarCreated);
+        } else if (action.type === 'update' || action.type === 'delete') {
+          this.syncStats.syncSuccess++;
+          console.log('📊 [Stats] Sync success count:', this.syncStats.syncSuccess);
+        }
+      } else {
+        console.log('📊 [Stats] Skipping - not a local action (source:', action.source + ')');
+      }
+      
       this.saveActionQueue();
       console.log('✅ [SYNC SINGLE ACTION] Action completed successfully:', action.id);
       
@@ -1685,7 +1734,13 @@ private getUserSettings(): any {
       action.lastError = errorMessage;
       action.retryCount = (action.retryCount || 0) + 1;
       
-      // 🔧 [NEW] 每失败3次通知用户一次（3, 6, 9...）
+      // � 更新失败统计（仅针对本地到远程的同步）
+      if (action.source === 'local') {
+        this.syncStats.syncFailed++;
+        console.log('📊 [Stats] Sync failed count:', this.syncStats.syncFailed);
+      }
+      
+      // �🔧 [NEW] 每失败3次通知用户一次（3, 6, 9...）
       const shouldNotify = action.retryCount % 3 === 0 && !action.userNotified;
       
       if (shouldNotify) {

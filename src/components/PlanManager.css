@@ -8,6 +8,18 @@
   background: #F5F5F7;
 }
 
+/* ==================== Tippy 自定义主题 ==================== */
+.tippy-box[data-theme~='light'] {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  padding: 0;
+}
+
+.tippy-box[data-theme~='light'] .tippy-content {
+  padding: 0;
+}
+
 /* ==================== 左侧列表区 ==================== */
 .plan-list {
   flex: 1;
@@ -445,4 +457,23 @@
 .plan-items::-webkit-scrollbar-thumb:hover,
 .plan-detail-content::-webkit-scrollbar-thumb:hover {
   background: #A1A1A6;
+}
+
+/* ==================== 标签 Chip (Mention 样式) ==================== */
+.plan-tag-chip {
+  display: inline-block !important;
+  padding: 2px 8px !important;
+  margin: 0 2px !important;
+  border-radius: 4px !important;
+  font-weight: 500 !important;
+  font-size: 0.9em !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  white-space: nowrap !important;
+  vertical-align: middle !important;
+}
+
+.plan-tag-chip:hover {
+  opacity: 0.8;
+  filter: brightness(0.95);
 }

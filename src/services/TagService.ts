@@ -25,6 +25,7 @@ export interface FlatTag {
   color: string;
   emoji?: string;
   parentId?: string;
+  level?: number;
   calendarMapping?: {
     calendarId: string;
     calendarName: string;
@@ -53,7 +54,9 @@ class TagServiceClass {
       if (savedTags && Array.isArray(savedTags) && savedTags.length > 0) {
         console.log('🏷️ [TagService] Loading existing tags from persistent storage:', savedTags.length);
         this.tags = savedTags;
+        // ✅ 重新扁平化以确保添加 level 字段（兼容旧数据）
         this.flatTags = this.flattenTags(savedTags);
+        console.log('🏷️ [TagService] Flattened tags sample:', this.flatTags.slice(0, 3));
       } else {
         console.log('🏷️ [TagService] No existing tags found, creating default structure');
         await this.createDefaultTags();
@@ -128,24 +131,42 @@ class TagServiceClass {
   private flattenTags(tags: HierarchicalTag[]): FlatTag[] {
     const result: FlatTag[] = [];
     
-    const flatten = (tags: HierarchicalTag[], parentId?: string) => {
+    const flatten = (tags: HierarchicalTag[], parentId?: string, level: number = 0) => {
       tags.forEach(tag => {
         result.push({
           id: tag.id,
           name: tag.name,
           color: tag.color,
-          emoji: tag.emoji, // 🔧 修复：添加 emoji 字段
-          parentId: tag.parentId || parentId, // ✅ 优先使用标签自身的parentId，兼容扁平和层级两种结构
+          emoji: tag.emoji,
+          parentId: tag.parentId || parentId,
+          level: level,
           calendarMapping: tag.calendarMapping
         });
         
         if (tag.children && tag.children.length > 0) {
-          flatten(tag.children, tag.id);
+          flatten(tag.children, tag.id, level + 1);
         }
       });
     };
     
     flatten(tags);
+    
+    // 如果标签有 parentId 但 level 仍然是 0，说明是扁平结构，需要重新计算 level
+    const needsLevelRecalc = result.some(tag => tag.parentId && tag.level === 0);
+    if (needsLevelRecalc) {
+      const tagMap = new Map(result.map(tag => [tag.id, tag]));
+      result.forEach(tag => {
+        let level = 0;
+        let currentId = tag.parentId;
+        while (currentId) {
+          level++;
+          const parent = tagMap.get(currentId);
+          currentId = parent?.parentId;
+        }
+        tag.level = level;
+      });
+    }
+    
     return result;
   }
 
@@ -190,6 +211,16 @@ class TagServiceClass {
 
   // 获取所有标签（扁平结构）
   getFlatTags(): FlatTag[] {
+    // 如果还没有初始化，尝试同步加载
+    if (!this.initialized || this.flatTags.length === 0) {
+      console.warn('⚠️ [TagService] getFlatTags called before initialization, attempting sync load');
+      const savedTags = PersistentStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS, PERSISTENT_OPTIONS.TAGS);
+      if (savedTags && Array.isArray(savedTags) && savedTags.length > 0) {
+        this.tags = savedTags;
+        this.flatTags = this.flattenTags(savedTags);
+        console.log('🏷️ [TagService] Sync loaded tags:', this.flatTags.length);
+      }
+    }
     return [...this.flatTags];
   }
 
@@ -282,6 +313,51 @@ class TagServiceClass {
     this.tags = [];
     this.flatTags = [];
     await this.initialize();
+  }
+
+  // 构建标签的完整路径（带颜色和 emoji）
+  getTagPath(tagId: string): string {
+    const flatTags = this.getFlatTags();
+    const tag = flatTags.find(t => t.id === tagId);
+    
+    if (!tag) {
+      console.warn('⚠️ [TagService] Tag not found:', tagId);
+      return '';
+    }
+    
+    // 构建层级路径，包含emoji
+    const pathParts: { emoji?: string; name: string; color: string }[] = [];
+    let currentTag = tag;
+    
+    while (currentTag) {
+      pathParts.unshift({
+        emoji: currentTag.emoji,
+        name: currentTag.name,
+        color: currentTag.color
+      });
+      
+      if (currentTag.parentId) {
+        const parentTag = flatTags.find(t => t.id === currentTag.parentId);
+        if (parentTag) {
+          currentTag = parentTag;
+        } else {
+          break;
+        }
+      } else {
+        break;
+      }
+    }
+    
+    // 生成格式：#emoji名称
+    return pathParts.map(part => `#${part.emoji || ''}${part.name}`).join('/');
+  }
+
+  // 构建多个标签的路径（用于插入编辑器）
+  buildTagsText(tagIds: string[]): string {
+    if (tagIds.length === 0) return '';
+    
+    const paths = tagIds.map(id => this.getTagPath(id)).filter(p => p);
+    return paths.join(' ');
   }
 }
 
