@@ -16,6 +16,16 @@ const TEMP_FILES = [
   'console-cleanup-report.json',
 ];
 
+// 扫描模式：查找可疑的备份文件
+const BACKUP_PATTERNS = [
+  /_clean\.(css|ts|tsx|js)$/,
+  /_backup\.(css|ts|tsx|js)$/,
+  /_old\.(css|ts|tsx|js)$/,
+  /_tmp\.(css|ts|tsx|js)$/,
+  /\.backup\.(css|ts|tsx|js)$/,
+  /\.old\.(css|ts|tsx|js)$/,
+];
+
 // Demo/测试页面（需要确认是否在使用）
 const DEMO_PAGES = [
   'src/pages/PlanItemEditorDemo.tsx',
@@ -50,6 +60,50 @@ function getFileSize(filePath) {
   } catch {
     return '0';
   }
+}
+
+function scanDirectory(dirPath) {
+  const fullPath = path.join(__dirname, dirPath);
+  if (!fs.existsSync(fullPath)) return [];
+  
+  const files = [];
+  function scan(currentPath) {
+    const entries = fs.readdirSync(currentPath, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullEntryPath = path.join(currentPath, entry.name);
+      if (entry.isDirectory()) {
+        scan(fullEntryPath);
+      } else {
+        const relativePath = path.relative(__dirname, fullEntryPath);
+        files.push(relativePath);
+      }
+    }
+  }
+  scan(fullPath);
+  return files;
+}
+
+function findBackupFiles() {
+  const srcFiles = scanDirectory('src');
+  const backupFiles = [];
+  
+  for (const file of srcFiles) {
+    // 检查是否匹配备份模式
+    if (BACKUP_PATTERNS.some(pattern => pattern.test(file))) {
+      // 检查是否被引用
+      const baseName = path.basename(file);
+      const isUsed = searchForImports(baseName);
+      
+      if (!isUsed) {
+        backupFiles.push({
+          path: file,
+          size: parseFloat(getFileSize(file))
+        });
+      }
+    }
+  }
+  
+  return backupFiles;
 }
 
 function searchForImports(fileName, searchPaths = ['src/**/*.{ts,tsx}']) {
@@ -145,13 +199,27 @@ ELECTRON_TEST_FILES.forEach(file => {
   }
 });
 
+// 新增：扫描备份文件
+console.log('\n📋 可疑的备份文件:\n');
+const backupFiles = findBackupFiles();
+let backupFilesSize = 0;
+if (backupFiles.length > 0) {
+  backupFiles.forEach(({ path: file, size }) => {
+    backupFilesSize += size;
+    console.log(`   ❌ ${file} (${size} KB) - 未被引用的备份文件`);
+  });
+} else {
+  console.log('   ✅ 未发现备份文件');
+}
+
 console.log('\n' + '━'.repeat(80));
 console.log('\n📊 统计汇总:');
 console.log(`   🗑️  临时文件: ${tempFilesCount} 个，共 ${tempFilesSize.toFixed(2)} KB`);
 console.log(`   🎭 Demo页面: ${demoFilesCount} 个，共 ${demoFilesSize.toFixed(2)} KB`);
 console.log(`   🤔 可疑组件: ${suspiciousCount} 个，共 ${suspiciousSize.toFixed(2)} KB`);
 console.log(`   🧪 测试文件: ${testFilesCount} 个，共 ${testFilesSize.toFixed(2)} KB`);
-console.log(`   📦 总计可清理: ${(tempFilesSize + demoFilesSize + suspiciousSize).toFixed(2)} KB\n`);
+console.log(`   � 备份文件: ${backupFiles.length} 个，共 ${backupFilesSize.toFixed(2)} KB`);
+console.log(`   �📦 总计可清理: ${(tempFilesSize + demoFilesSize + suspiciousSize + backupFilesSize).toFixed(2)} KB\n`);
 
 console.log('💡 建议:');
 console.log('   1. 临时文件可以直接删除');
