@@ -41,30 +41,24 @@ class TagServiceClass {
   // 初始化标签系统
   async initialize(): Promise<void> {
     if (this.initialized) {
-      console.log('🏷️ [TagService] Already initialized, skipping...');
       return;
     }
 
-    console.log('🏷️ [TagService] Initializing tag system...');
     
     try {
       // 从持久化存储加载标签
       const savedTags = PersistentStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS, PERSISTENT_OPTIONS.TAGS);
       
       if (savedTags && Array.isArray(savedTags) && savedTags.length > 0) {
-        console.log('🏷️ [TagService] Loading existing tags from persistent storage:', savedTags.length);
         this.tags = savedTags;
         // ✅ 重新扁平化以确保添加 level 字段（兼容旧数据）
         this.flatTags = this.flattenTags(savedTags);
-        console.log('🏷️ [TagService] Flattened tags sample:', this.flatTags.slice(0, 3));
       } else {
-        console.log('🏷️ [TagService] No existing tags found, creating default structure');
         await this.createDefaultTags();
       }
       
       this.initialized = true;
       this.notifyListeners();
-      console.log('✅ [TagService] Tag system initialized successfully');
     } catch (error) {
       console.error('❌ [TagService] Failed to initialize:', error);
       // 即使出错也要创建默认标签确保应用可用
@@ -121,7 +115,6 @@ class TagServiceClass {
   private async saveTags(): Promise<void> {
     try {
       PersistentStorage.setItem(STORAGE_KEYS.HIERARCHICAL_TAGS, this.tags, PERSISTENT_OPTIONS.TAGS);
-      console.log('💾 [TagService] Tags saved to persistent storage');
     } catch (error) {
       console.error('❌ [TagService] Failed to save tags:', error);
     }
@@ -213,12 +206,10 @@ class TagServiceClass {
   getFlatTags(): FlatTag[] {
     // 如果还没有初始化，尝试同步加载
     if (!this.initialized || this.flatTags.length === 0) {
-      console.warn('⚠️ [TagService] getFlatTags called before initialization, attempting sync load');
       const savedTags = PersistentStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS, PERSISTENT_OPTIONS.TAGS);
       if (savedTags && Array.isArray(savedTags) && savedTags.length > 0) {
         this.tags = savedTags;
         this.flatTags = this.flattenTags(savedTags);
-        console.log('🏷️ [TagService] Sync loaded tags:', this.flatTags.length);
       }
     }
     return [...this.flatTags];
@@ -321,7 +312,6 @@ class TagServiceClass {
     const tag = flatTags.find(t => t.id === tagId);
     
     if (!tag) {
-      console.warn('⚠️ [TagService] Tag not found:', tagId);
       return '';
     }
     

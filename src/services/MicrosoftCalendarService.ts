@@ -441,14 +441,6 @@ export class MicrosoftCalendarService {
     const url = `https://graph.microsoft.com/v1.0${endpoint}`;
     
     // 🔍 [DEBUG] 添加详细的API调用日志
-    console.log('🌐 [callGraphAPI] Making request:', {
-      method: method,
-      endpoint: endpoint,
-      url: url,
-      hasBody: !!body,
-      bodySize: body ? JSON.stringify(body).length : 0,
-      simulationMode: this.simulationMode
-    });
     
     if (body && method !== 'GET') {
       MSCalendarLogger.log('📦 [callGraphAPI] Request body:', JSON.stringify(body, null, 2));
@@ -465,12 +457,6 @@ export class MicrosoftCalendarService {
         body: body ? JSON.stringify(body) : undefined
       });
       
-      console.log('📡 [callGraphAPI] Response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok,
-        headers: Object.fromEntries(response.headers.entries())
-      });
 
       if (!response.ok) {
         console.error('❌ [callGraphAPI] Request failed:', {
@@ -495,11 +481,6 @@ export class MicrosoftCalendarService {
             body: body ? JSON.stringify(body) : undefined
           });
           
-          console.log('📡 [callGraphAPI] Retry response:', {
-            status: retryResponse.status,
-            statusText: retryResponse.statusText,
-            ok: retryResponse.ok
-          });
           
           if (retryResponse.status === 401) {
             // 重试后仍然是 401，说明 token 真的过期了
@@ -525,12 +506,6 @@ export class MicrosoftCalendarService {
       }
 
       const result = response.status === 204 ? null : await response.json();
-      console.log('✅ [callGraphAPI] Request successful:', {
-        method: method,
-        endpoint: endpoint,
-        status: response.status,
-        hasResult: !!result
-      });
       
       return result;
       
@@ -920,10 +895,6 @@ export class MicrosoftCalendarService {
 
     // Querying specific calendar
     
-    console.log(`📅 [getEventsFromCalendar] Querying calendar ${calendarId}:`, {
-      start: queryStartDate.toISOString(),
-      end: queryEndDate.toISOString()
-    });
 
     const queryParams = new URLSearchParams({
       '$select': 'id,subject,body,bodyPreview,start,end,location,organizer,attendees,isAllDay,createdDateTime,lastModifiedDateTime',
@@ -1091,10 +1062,6 @@ export class MicrosoftCalendarService {
             timeZone: 'Asia/Shanghai'
           };
           
-          console.log('⏰ [updateEvent] Time fields set:', {
-            startDateTime: startFormatted,
-            endDateTime: endFormatted
-          });
           
         } catch (timeError) {
           MSCalendarLogger.error('❌ [updateEvent] Time format error:', timeError);
@@ -1579,13 +1546,6 @@ export class MicrosoftCalendarService {
   async syncEventToCalendar(event: any, calendarId?: string): Promise<string> {
     const targetCalendarId = calendarId || this.getSelectedCalendarId();
     
-    console.log('🎯 [syncEventToCalendar] Debug info:', {
-      eventTitle: event.subject || event.title,
-      providedCalendarId: calendarId,
-      selectedCalendarId: this.getSelectedCalendarId(),
-      finalTargetCalendarId: targetCalendarId,
-      isTimerEvent: event.timerSessionId ? true : false
-    });
     
     if (!targetCalendarId) {
       throw new Error('未指定目标日历，请先选择默认日历');

@@ -24,7 +24,6 @@ export const useIndentManager = <T,>() => {
 
       // 如果是第一项，不能增加缩进
       if (currentIndex === 0) {
-        console.log('🚫 [IndentManager] 第一项无法增加缩进');
         return null;
       }
 
@@ -36,9 +35,6 @@ export const useIndentManager = <T,>() => {
       const maxAllowedLevel = previousLevel + 1;
 
       if (currentLevel >= maxAllowedLevel) {
-        console.log(
-          `🚫 [IndentManager] 已达到最大层级限制 (${maxAllowedLevel})`
-        );
         return null;
       }
 
@@ -50,12 +46,6 @@ export const useIndentManager = <T,>() => {
       for (let i = currentIndex - 1; i >= 0; i--) {
         if ((sortedItems[i].level || 0) < newLevel) {
           newParentId = sortedItems[i].id;
-          console.log('🎯 [IndentManager] 找到父项:', {
-            childId: itemId,
-            parentId: newParentId,
-            parentName: sortedItems[i].content,
-            newLevel,
-          });
           break;
         }
       }
@@ -75,7 +65,6 @@ export const useIndentManager = <T,>() => {
       items: MultiLineEditorItem<T>[]
     ): IndentChangeResult | null => {
       if (currentLevel === 0) {
-        console.log('🚫 [IndentManager] 已经是顶级层级');
         return null;
       }
 
@@ -93,12 +82,6 @@ export const useIndentManager = <T,>() => {
         for (let i = currentIndex - 1; i >= 0; i--) {
           if ((sortedItems[i].level || 0) < newLevel) {
             newParentId = sortedItems[i].id;
-            console.log('🎯 [IndentManager] 找到新父项:', {
-              childId: itemId,
-              parentId: newParentId,
-              parentName: sortedItems[i].content,
-              newLevel,
-            });
             break;
           }
         }
@@ -120,7 +103,6 @@ export const useIndentManager = <T,>() => {
     const uniquePositions = Array.from(new Set(positions));
 
     if (positions.length !== uniquePositions.length) {
-      console.warn('⚠️ [IndentManager] 发现重复的 position，正在修复...');
       return sortedItems.map((item, index) => ({
         ...item,
         position: index,
@@ -151,7 +133,6 @@ export const useIndentManager = <T,>() => {
 
       // 防止循环引用
       if (visited.has(item.id)) {
-        console.warn('⚠️ [IndentManager] 检测到循环引用:', item.id, item.content);
         return 0;
       }
       visited.add(item.id);
@@ -159,12 +140,6 @@ export const useIndentManager = <T,>() => {
       // 找到父项目
       const parent = allItems.find((t) => t.id === item.parentId);
       if (!parent) {
-        console.warn(
-          '⚠️ [IndentManager] 找不到父项目:',
-          item.parentId,
-          '对于项目:',
-          item.content
-        );
         return 0;
       }
 

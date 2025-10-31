@@ -54,7 +54,6 @@ export const MultiLineEditor = <T,>({
 
       // 如果是空内容且不是新创建的项目，删除
       if (content === '' && itemId !== newItemId) {
-        console.log('🗑️ [MultiLineEditor] 删除空项目:', itemId);
         onItemsChange(items.filter((item) => item.id !== itemId));
         return;
       }
@@ -77,7 +76,6 @@ export const MultiLineEditor = <T,>({
   // ==================== 键盘事件处理 ====================
   const handleItemKeyDown = useCallback(
     (e: React.KeyboardEvent, itemId: string, level: number) => {
-      console.log('⌨️ [MultiLineEditor] KeyDown:', e.key, { itemId, level });
 
       // Enter: 创建同级项
       if (e.key === 'Enter' && !e.shiftKey) {
@@ -229,7 +227,6 @@ export const MultiLineEditor = <T,>({
   const handleGrayTextClick = useCallback((e: React.MouseEvent) => {
     if (!enableGrayTextCreation) return;
 
-    console.log('🖱️ [MultiLineEditor] Gray Text 点击');
     e.stopPropagation();
     
     setIsCreatingNew(true);
@@ -324,7 +321,6 @@ export const MultiLineEditor = <T,>({
           suppressContentEditableWarning
           onClick={handleGrayTextClick}
           onFocus={(e) => {
-            console.log('🎯 [MultiLineEditor] Gray Text focused');
             // 如果不在创建模式，激活创建
             if (!isCreatingNew) {
               handleGrayTextClick(e as any);

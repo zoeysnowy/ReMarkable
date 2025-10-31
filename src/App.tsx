@@ -28,7 +28,7 @@ import TagManager from './components/TagManager';
 import TimeCalendar from './components/TimeCalendar';
 import PlanManager, { PlanItem } from './components/PlanManager';
 
-import { logger } from 'utils/logger';
+import { logger } from './utils/logger';
 
 const AppLogger = logger.module('App');
 // 🚀 性能优化：生产环境禁用 AppLogger.log
@@ -1072,18 +1072,18 @@ function App() {
       if (currentAuthState) {
         AppLogger.log('🚀 用户已登录，初始化同步管理器...');
         
-        // 创建同步管理器实✅
+        // 创建同步管理器实例
         if (!syncManager) {
           try {
             const newSyncManager = new ActionBasedSyncManager(microsoftService);
             setSyncManager(newSyncManager);
             
-            // 🔧 初始✅ EventService（注入同步管理器✅
+            // 🔧 初始化 EventService（注入同步管理器）
             EventService.initialize(newSyncManager);
             
-            // 启动同步管理器（会延✅秒后执行首次同步✅
+            // 启动同步管理器（会延迟5秒后执行首次同步）
             newSyncManager.start();
-            AppLogger.log('✅ 同步管理器初始化成功（首次同步延迟秒）');
+            AppLogger.log('✅ 同步管理器初始化成功（首次同步延迟5秒）');
             AppLogger.log('✅ EventService 初始化成功');
             
             // 暴露到全局用于调试
@@ -1381,7 +1381,7 @@ function App() {
 
       case 'plan':
         content = (
-          <PageContainer title="计划" subtitle="我的任务与日程管✅>
+          <PageContainer title="计划" subtitle="我的任务与日程管理">
             <PlanManager
               items={planItems}
               onSave={handleSavePlanItem}

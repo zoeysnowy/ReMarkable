@@ -72,7 +72,6 @@ export class PersistentStorage {
           const backupKey = `${storageKey}-backup`;
           const backup = localStorage.getItem(backupKey);
           if (backup) {
-            console.log('🔄 [PersistentStorage] Restoring from backup:', key);
             const parsedBackup = JSON.parse(backup);
             // 恢复主存储
             localStorage.setItem(storageKey, backup);

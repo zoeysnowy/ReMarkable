@@ -177,12 +177,6 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
       const firstTag = getTagById(formData.tags[0]);
       if (firstTag) {
         finalTitle = `${firstTag.emoji || ''}${firstTag.name}`;
-        console.log('📝 [EventEditModal] Auto-filling title from tag:', {
-          tagId: firstTag.id,
-          tagName: firstTag.name,
-          emoji: firstTag.emoji,
-          generatedTitle: finalTitle
-        });
       }
     }
 
@@ -261,12 +255,10 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
     
     // 安全检查各个时间值
     if (!globalTimer.elapsedTime || isNaN(globalTimer.elapsedTime) || globalTimer.elapsedTime < 0) {
-      console.warn('⚠️ [calculateDuration] 异常的 elapsedTime:', globalTimer.elapsedTime);
       return null;
     }
     
     if (!globalTimer.startTime || isNaN(globalTimer.startTime) || globalTimer.startTime <= 0) {
-      console.warn('⚠️ [calculateDuration] 异常的 startTime:', globalTimer.startTime);
       return null;
     }
     
@@ -280,20 +272,10 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
     if (globalTimer.isRunning && hasOriginalStartTime && globalTimer.originalStartTime) {
       // 使用简单直观的计算：当前时间 - 用户设定的开始时间
       totalElapsed = now - globalTimer.originalStartTime;
-      console.log('📊 [EventEditModal] 使用简化计算:', {
-        当前时间: new Date(now).toLocaleString(),
-        原始开始时间: new Date(globalTimer.originalStartTime).toLocaleString(),
-        计算时长分钟: Math.round(totalElapsed / 60000)
-      });
     } else if (globalTimer.isRunning) {
       // 回退到旧逻辑（兼容性）
       const currentRunTime = now - globalTimer.startTime;
       if (currentRunTime < 0) {
-        console.warn('⚠️ [calculateDuration] 负的运行时间，startTime 在未来:', {
-          now: new Date(now).toLocaleString(),
-          startTime: new Date(globalTimer.startTime).toLocaleString(),
-          diff: currentRunTime
-        });
         totalElapsed = globalTimer.elapsedTime; // 只使用已保存的时长
       } else {
         totalElapsed = globalTimer.elapsedTime + currentRunTime;
@@ -483,7 +465,6 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
                     {filteredTags.length > 0 ? (
                       (() => {
                         console.group('� [EventEditModal] 标签层级诊断 - Step 3: UI 渲染');
-                        console.log('filteredTags 总数:', filteredTags.length);
                         console.table(filteredTags.map(tag => ({
                           name: tag.name,
                           level: tag.level,
@@ -497,12 +478,6 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
                           const computedPadding = (tag.level || 0) * 12;
                           
                           // 每个标签渲染时单独记录
-                          console.log(`🏷️ 渲染标签 "${tag.name}":`, {
-                            level: tag.level,
-                            paddingLeft,
-                            computedPadding,
-                            style对象: { paddingLeft }
-                          });
                           
                           return (
                             <label

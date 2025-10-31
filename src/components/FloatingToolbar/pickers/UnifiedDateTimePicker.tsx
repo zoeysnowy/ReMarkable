@@ -38,7 +38,6 @@ const TimeColumn: React.FC<{
       if (firstCell) {
         const computedHeight = window.getComputedStyle(firstCell).height;
         cellHeightRef.current = parseFloat(computedHeight);
-        console.log(`📏 [TimeColumn] ${type} cell height from CSS:`, cellHeightRef.current);
       }
     }
   }, []); // 只在组件挂载时获取一次
@@ -63,7 +62,6 @@ const TimeColumn: React.FC<{
         const cellHeight = cellHeightRef.current;
         const containerHeight = columnRef.current.clientHeight;
         
-        console.log(`📏 [TimeColumn] ${type} dimensions - cellHeight: ${cellHeight}px, containerHeight: ${containerHeight}px`);
         
         // 验证值是否有效
         if (!cellHeight || !containerHeight || isNaN(cellHeight) || isNaN(containerHeight)) {
@@ -88,7 +86,6 @@ const TimeColumn: React.FC<{
         const offsetFromTop = containerHeight * 0.3; // 距离顶部30%的位置
         const scrollTop = selectedIndex * cellHeight - offsetFromTop;
         
-        console.log(`📍 [TimeColumn] ${type} scrolling to value: ${value}, index: ${selectedIndex}, scrollTop: ${scrollTop.toFixed(2)}px`);
         
         isScrollingRef.current = true;
         columnRef.current.scrollTo({
@@ -120,7 +117,6 @@ const TimeColumn: React.FC<{
       
       // 如果滚动到接近顶部（第1组），跳转到第2组相同位置
       if (scrollTop < groupHeight * 0.5) {
-        console.log(`🔄 [TimeColumn] ${type} 回位到第2组（从第1组）, scrollTop:`, scrollTop.toFixed(2), '→', (scrollTop + groupHeight).toFixed(2));
         isScrollingRef.current = true;
         column.scrollTop = scrollTop + groupHeight;
         setTimeout(() => {
@@ -129,7 +125,6 @@ const TimeColumn: React.FC<{
       }
       // 如果滚动到接近底部（第3组），跳转到第2组相同位置
       else if (scrollTop > scrollHeight - clientHeight - groupHeight * 0.5) {
-        console.log(`🔄 [TimeColumn] ${type} 回位到第2组（从第3组）, scrollTop:`, scrollTop.toFixed(2), '→', (scrollTop - groupHeight).toFixed(2));
         isScrollingRef.current = true;
         column.scrollTop = scrollTop - groupHeight;
         setTimeout(() => {
@@ -143,7 +138,6 @@ const TimeColumn: React.FC<{
   }, [max]);
   
   const handleChange = (item: number | null) => {
-    console.log(`⏰ [Time] ${type}:`, item === null ? '不选择' : item);
     if (!disabled) {
       onChange(item);
     }
@@ -174,7 +168,6 @@ const TimeColumn: React.FC<{
     );
   };
   
-  console.log(`🔄 [TimeColumn] Rendering ${type} column with value:`, value, 'max:', max, 'groups:', 3);
   
   return (
     <div className={`time-column ${disabled ? 'disabled' : ''}`} ref={columnRef}>
@@ -305,10 +298,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
       const target = e.target as HTMLElement;
       const isInside = containerRef.current?.contains(target);
       const className = typeof target.className === 'string' ? target.className : '';
-      console.log('🌍 [Picker Global] Click', {
-        target: target.tagName + (className ? '.' + className.substring(0, 30) : ''),
-        isInside
-      });
     };
 
     document.addEventListener('click', handleGlobalClick, true);
@@ -334,7 +323,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
   };
 
   const handleDateClick = (date: Dayjs) => {
-    console.log('📅 [Picker] Date clicked:', date.format('YYYY-MM-DD'));
     setSelectedQuickBtn(null); // 清除快捷按钮选中状态
     if (!selectedDates.start || (selectedDates.start && selectedDates.end)) {
       // 开始新的选择
@@ -385,7 +373,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
   };
 
   const handleQuickSelect = (days: number) => {
-    console.log('⚡ [Picker] Quick select:', days, 'days');
     const end = dayjs();
     const start = end.subtract(days, 'day');
     setSelectedDates({ start, end });
@@ -430,7 +417,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
   };
 
   const handleApply = (e?: React.MouseEvent) => {
-    console.log('✅ [Picker] Apply clicked');
     e?.stopPropagation();
     
     // 只在点击确定时才调用 onSelect
@@ -455,7 +441,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
   };
 
   const handleCancel = (e?: React.MouseEvent) => {
-    console.log('❌ [Picker] Cancel clicked');
     e?.stopPropagation();
     setSelectedDates({ start: dayjs(), end: dayjs() });
     setStartTime(null);
@@ -633,7 +618,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
   // 快捷选择：上午（当前日期 00:00 - 12:00）
   const handleSelectMorning = () => {
     const today = dayjs();
-    console.log('☀️ [Morning] Setting times - start: 00:00, end: 12:00');
     setSelectedDates({ start: today, end: today });
     setStartTime({ hour: 0, minute: 0 });
     setEndTime({ hour: 12, minute: 0 });
@@ -645,7 +629,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
   // 快捷选择：下午（当前日期 12:00 - 18:00）
   const handleSelectAfternoon = () => {
     const today = dayjs();
-    console.log('🌤️ [Afternoon] Setting times - start: 12:00, end: 18:00');
     setSelectedDates({ start: today, end: today });
     setStartTime({ hour: 12, minute: 0 });
     setEndTime({ hour: 18, minute: 0 });
@@ -657,7 +640,6 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
   // 快捷选择：晚上（当前日期 18:00 - 23:59）
   const handleSelectEvening = () => {
     const today = dayjs();
-    console.log('🌙 [Evening] Setting times - start: 18:00, end: 23:59');
     setSelectedDates({ start: today, end: today });
     setStartTime({ hour: 18, minute: 0 });
     setEndTime({ hour: 23, minute: 59 });

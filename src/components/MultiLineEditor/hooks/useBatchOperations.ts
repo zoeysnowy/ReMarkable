@@ -37,7 +37,6 @@ export const useBatchOperations = <T,>(items: MultiLineEditorItem<T>[]) => {
     (itemIds: string[]): MultiLineEditorItem<T>[] => {
       if (itemIds.length === 0) return items;
 
-      console.log('🗑️ [BatchOperations] 批量删除:', itemIds.length, '个项目');
 
       const idsSet = new Set(itemIds);
       return items.filter((item) => !idsSet.has(item.id));
@@ -67,7 +66,6 @@ export const useBatchOperations = <T,>(items: MultiLineEditorItem<T>[]) => {
 
       // 检查是否已经在顶部
       if (minIndex === 0) {
-        console.log('⚠️ [BatchOperations] 已经在最顶部');
         return null;
       }
 
@@ -107,7 +105,6 @@ export const useBatchOperations = <T,>(items: MultiLineEditorItem<T>[]) => {
 
       // 检查是否已经在底部
       if (maxIndex === sortedItems.length - 1) {
-        console.log('⚠️ [BatchOperations] 已经在最底部');
         return null;
       }
 

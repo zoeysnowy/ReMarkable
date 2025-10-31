@@ -47,13 +47,11 @@ export class CacheManager {
     // 🔧 只在版本真正不同时才清理，避免每次启动都清理
     if (currentVersion === null) {
       // 第一次运行，设置版本号但不清理
-      console.log('🔧 [CacheManager] First run, setting version without clearing');
       localStorage.setItem(STORAGE_VERSION.KEY, STORAGE_VERSION.CURRENT);
       return;
     }
     
     if (currentVersion !== STORAGE_VERSION.CURRENT) {
-      console.log('🔄 [CacheManager] Detected version change from', currentVersion, 'to', STORAGE_VERSION.CURRENT);
       
       // 只清理旧的 meaningful- 前缀的缓存，不清理 remarkable- 缓存
       const oldKeys = [
@@ -70,21 +68,17 @@ export class CacheManager {
       
       oldKeys.forEach(key => {
         if (localStorage.getItem(key)) {
-          console.log(`🗑️ [CacheManager] Removing old cache: ${key}`);
           localStorage.removeItem(key);
         }
       });
       
       // 设置新版本号
       localStorage.setItem(STORAGE_VERSION.KEY, STORAGE_VERSION.CURRENT);
-      console.log('✅ [CacheManager] Cache cleanup completed');
     } else {
-      console.log('✅ [CacheManager] Version check passed, no cleanup needed');
     }
   }
   
   static clearAllCache(): void {
-    console.log('🧹 [CacheManager] Clearing all ReMarkable cache');
     
     Object.values(STORAGE_KEYS).forEach(key => {
       localStorage.removeItem(key);
@@ -92,10 +86,8 @@ export class CacheManager {
     
     // 不清除开发环境的持久化存储
     // 保护开发环境的持久化存储键 remarkable-dev-persistent-*
-    console.log('🛡️ [CacheManager] Preserving development persistent storage');
     
     localStorage.removeItem(STORAGE_VERSION.KEY);
-    console.log('✅ [CacheManager] All cache cleared (except dev persistent storage)');
   }
   
   static getCacheInfo(): Record<string, any> {

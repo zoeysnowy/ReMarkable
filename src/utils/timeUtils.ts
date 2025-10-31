@@ -25,7 +25,6 @@ export const parseLocalTimeString = (timeString: string | Date): Date => {
   
   // 如果是空字符串或undefined，返回当前时间
   if (!timeString) {
-    console.warn('⚠️ [parseLocalTimeString] Empty time string, using current time');
     return new Date();
   }
   

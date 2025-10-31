@@ -90,7 +90,6 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     enabled: true,
     menuItemCount: toolbarConfig.features.length,
     onMenuSelect: (menuIndex: number) => {
-      console.log(`📋 [PlanManager] 菜单选择: 索引 ${menuIndex}, 功能 ${toolbarConfig.features[menuIndex]}`);
       setActivePickerIndex(menuIndex);
       // 延迟重置，确保 HeadlessFloatingToolbar 能接收到变化
       setTimeout(() => setActivePickerIndex(null), 100);
@@ -189,7 +188,6 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   useEffect(() => {
     // 订阅标签变化
     const listener = () => {
-      console.log('🏷️ [PlanManager] TagService 标签已更新');
       setTagServiceVersion(v => v + 1);
     };
     
@@ -198,9 +196,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     // 初始加载时检查一次
     const tags = TagService.getFlatTags();
     if (tags.length > 0) {
-      console.log('🏷️ [PlanManager] 初始标签加载成功:', tags.length);
     } else {
-      console.warn('⚠️ [PlanManager] 标签为空，可能 TagService 未初始化');
     }
     
     return () => TagService.removeListener(listener);
@@ -210,7 +206,6 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   const existingTags = useMemo(() => {
     const allTags = TagService.getFlatTags();
     if (allTags.length > 0) {
-      console.log('🏷️ [PlanManager] 获取标签:', allTags.length, '个');
     }
     
     // 获取当前计划项中使用的标签名
@@ -608,12 +603,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         activePickerIndex={activePickerIndex}
         onTextFormat={floatingToolbar.applyFormat}
         onTagSelect={(tagIds: string[]) => {
-          console.log('🏷️ [onTagSelect] 收到标签 IDs:', tagIds);
-          console.log('🏷️ [onTagSelect] 之前选中的标签 (ref):', currentSelectedTagsRef.current);
           
           // 找出新增的标签（只插入新增的）
           const newTagIds = tagIds.filter(id => !currentSelectedTagsRef.current.includes(id));
-          console.log('🏷️ [onTagSelect] 新增的标签:', newTagIds);
           
           // 立即更新 ref，避免连续调用时重复
           currentSelectedTagsRef.current = tagIds;
@@ -726,19 +718,15 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         }}
         onEmojiSelect={(emoji: string) => {
           // TODO: 应用 emoji 到当前选中的项目
-          console.log('Selected emoji:', emoji);
         }}
         onDateRangeSelect={(start: Date, end: Date) => {
           // TODO: 应用日期范围到当前选中的项目
-          console.log('Selected date range:', start, end);
         }}
         onPrioritySelect={(priority: 'low' | 'medium' | 'high' | 'urgent') => {
           // TODO: 应用优先级到当前选中的项目
-          console.log('Selected priority:', priority);
         }}
         onColorSelect={(color: string) => {
           // TODO: 应用颜色到当前选中的项目
-          console.log('Selected color:', color);
         }}
         availableTags={existingTags}
         currentTags={currentSelectedTags}

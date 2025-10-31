@@ -60,7 +60,6 @@ class SnapshotService {
     snapshots.push(snapshot);
     localStorage.setItem(STORAGE_KEYS.BASE_SNAPSHOTS, JSON.stringify(snapshots));
 
-    console.log('📸 [Snapshot] 创建基准快照:', snapshot.id);
     return snapshot;
   }
 
@@ -86,7 +85,6 @@ class SnapshotService {
     // 更新日期索引
     this.updateDateIndex(record.date, record.id);
 
-    console.log('📝 [Snapshot] 记录变化:', record.id, `${jsonPatches.length} patches`);
     return record;
   }
 
@@ -94,12 +92,10 @@ class SnapshotService {
    * 恢复指定日期的快照
    */
   restoreSnapshot(date: string): PlanItem[] {
-    console.log('🔄 [Snapshot] 恢复快照:', date);
 
     // 1. 找到最近的基准快照
     const baseSnapshot = this.findNearestBaseSnapshot(date);
     if (!baseSnapshot) {
-      console.warn('⚠️ [Snapshot] 未找到基准快照，返回空列表');
       return [];
     }
 
@@ -264,7 +260,6 @@ class SnapshotService {
     const filteredRecords = records.filter((r) => r.date >= cutoffStr);
     localStorage.setItem(STORAGE_KEYS.CHANGE_RECORDS, JSON.stringify(filteredRecords));
 
-    console.log('🧹 [Snapshot] 清理完成，保留最近', daysToKeep, '天的数据');
   }
 }
 

@@ -219,10 +219,6 @@ const DesktopCalendarWidget: React.FC = () => {
   // 初始化 widget-mode 样式
   useEffect(() => {
     widgetLogger.log('🎨 [Renderer] DesktopCalendarWidget mounted');
-    console.log('🔍 [Renderer] 检查 electronAPI:', {
-      hasElectronAPI: !!window.electronAPI,
-      hasWidgetMove: !!window.electronAPI?.widgetMove
-    });
     
     document.body.classList.add('widget-mode');
     document.body.style.backgroundColor = 'transparent';
@@ -235,16 +231,6 @@ const DesktopCalendarWidget: React.FC = () => {
       const dragBar = document.querySelector('.drag-bar') as HTMLElement;
       if (dragBar) {
         const computedStyle = window.getComputedStyle(dragBar);
-        console.log('✅ [Renderer] Drag bar found:', {
-          element: dragBar,
-          webkitAppRegion: computedStyle.getPropertyValue('-webkit-app-region'),
-          pointerEvents: computedStyle.pointerEvents,
-          cursor: computedStyle.cursor,
-          position: computedStyle.position,
-          zIndex: computedStyle.zIndex,
-          width: computedStyle.width,
-          height: computedStyle.height
-        });
       } else {
         widgetLogger.error('❌ [Renderer] Drag bar NOT found!');
       }
@@ -265,10 +251,6 @@ const DesktopCalendarWidget: React.FC = () => {
       // 🔧 只使用 localStorage 中的认证状态（主应用会更新这个标记）
       const storedAuthState = localStorage.getItem('remarkable-outlook-authenticated') === 'true';
       
-      console.log('🔍 [Widget] 检查认证状态:', {
-        storedAuthState,
-        hasMicrosoftService: !!microsoftService
-      });
       
       // 更新认证状态
       setIsAuthenticated(storedAuthState);
@@ -629,15 +611,6 @@ const DesktopCalendarWidget: React.FC = () => {
     sentMoveRef.current.x = totalMoveX;
     sentMoveRef.current.y = totalMoveY;
     
-    console.log('🚚 [Renderer] 拖动中:', { 
-      currentScreen: { x: e.screenX, y: e.screenY },
-      totalMove: { x: totalMoveX, y: totalMoveY },
-      delta: { x: deltaX, y: deltaY },
-      pending: pendingMoveRef.current,
-      timeSinceLastMove: `${timeSinceLastMove}ms`,
-      fps: Math.round(1000 / timeSinceLastMove),
-      ipcBusy: ipcBusyRef.current
-    });
     
     // ⚡ 关键优化：如果上一个IPC还在处理,跳过本次发送
     if (ipcBusyRef.current) {
@@ -678,15 +651,6 @@ const DesktopCalendarWidget: React.FC = () => {
             
             const avgTime = perfRef.current.totalTime / perfRef.current.moveCount;
             
-            console.log('✅ [Renderer] widgetMove 完成:', {
-              sent: { x: moveX, y: moveY },
-              result,
-              duration: `${ipcDuration.toFixed(2)}ms`,
-              avg: `${avgTime.toFixed(2)}ms`,
-              min: `${perfRef.current.minTime.toFixed(2)}ms`,
-              max: `${perfRef.current.maxTime.toFixed(2)}ms`,
-              count: perfRef.current.moveCount
-            });
           }).catch((error) => {
             widgetLogger.error('❌ [Renderer] widgetMove 失败:', error);
             ipcBusyRef.current = false; // 出错时也要释放
@@ -708,14 +672,6 @@ const DesktopCalendarWidget: React.FC = () => {
     // 打印性能总结
     if (perfRef.current.moveCount > 0) {
       const avgTime = perfRef.current.totalTime / perfRef.current.moveCount;
-      console.log('📊 [Renderer] 拖动性能总结:', {
-        totalMoves: perfRef.current.moveCount,
-        avgIpcTime: `${avgTime.toFixed(2)}ms`,
-        minIpcTime: `${perfRef.current.minTime.toFixed(2)}ms`,
-        maxIpcTime: `${perfRef.current.maxTime.toFixed(2)}ms`,
-        totalTime: `${perfRef.current.totalTime.toFixed(2)}ms`,
-        avgFps: Math.round(1000 / (avgTime + 32)) // 32ms是节流时间
-      });
     }
     
     setIsDragging(false);

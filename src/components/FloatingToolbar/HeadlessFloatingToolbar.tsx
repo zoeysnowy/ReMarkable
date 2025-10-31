@@ -36,7 +36,6 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps> = ({
     if (activePickerIndex !== null && activePickerIndex !== undefined) {
       const feature = config.features[activePickerIndex];
       if (feature) {
-        console.log(`⌨️ [Toolbar] 通过数字键激活: ${feature} (索引 ${activePickerIndex})`);
         setActivePicker(feature);
       }
     }
@@ -44,11 +43,6 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps> = ({
 
   // 监听 activePicker 变化
   useEffect(() => {
-    console.log('🔄 [Toolbar] activePicker changed', { 
-      from: 'previous',
-      to: activePicker,
-      stack: new Error().stack?.split('\n').slice(0, 5).join('\n')
-    });
   }, [activePicker]);
 
   if (!position.show) return null;
@@ -159,17 +153,12 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps> = ({
               {activePicker === feature && (
                 <UnifiedDateTimePicker
                   onSelect={(start: string | null, end: string | null) => {
-                    console.log('📅 [Toolbar] DateTime onSelect callback', { start, end });
                     if (start && end) {
                       onDateRangeSelect?.(new Date(start), new Date(end));
                     }
-                    console.log('📅 [Toolbar] Calling setActivePicker(null) from onSelect');
                     setActivePicker(null);
                   }}
                   onClose={() => {
-                    console.log('📅 [Toolbar] DateTime onClose callback', {
-                      stack: new Error().stack
-                    });
                     setActivePicker(null);
                   }}
                 />
@@ -178,10 +167,6 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps> = ({
           }
           visible={activePicker === feature}
           onClickOutside={() => {
-            console.log('�️ [Toolbar] Tippy onClickOutside triggered', {
-              activePicker,
-              stack: new Error().stack
-            });
             setActivePicker(null);
           }}
           placement="bottom-start"
@@ -203,11 +188,6 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps> = ({
             style={{ backgroundColor: activePicker === feature ? btnConfig.color : undefined }}
             onClick={(e) => {
               e.stopPropagation();
-              console.log('� [Toolbar] Button clicked', { 
-                feature, 
-                currentActivePicker: activePicker,
-                willSetTo: activePicker === feature ? null : feature
-              });
               setActivePicker(activePicker === feature ? null : feature);
             }}
           >

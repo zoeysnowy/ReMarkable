@@ -106,7 +106,6 @@ export const TimerCard: React.FC<TimerCardProps> = ({
     });
     
     // 发生异常时，使用默认值继续执行
-    console.warn('🔧 [TimerCard] 使用安全默认值');
   }
   
   // 确保总时长为正数且合理

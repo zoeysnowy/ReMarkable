@@ -68,7 +68,6 @@ export const useKeyboardNav = <T,>() => {
       const currentIndex = sortedItems.findIndex((item) => item.id === itemId);
 
       if (currentIndex === 0) {
-        console.log('⚠️ [KeyboardNav] 已经在最顶部');
         return null;
       }
 
@@ -95,7 +94,6 @@ export const useKeyboardNav = <T,>() => {
       const currentIndex = sortedItems.findIndex((item) => item.id === itemId);
 
       if (currentIndex === sortedItems.length - 1) {
-        console.log('⚠️ [KeyboardNav] 已经在最底部');
         return null;
       }
 
@@ -156,12 +154,6 @@ export const useKeyboardNav = <T,>() => {
         })),
       ];
 
-      console.log('➕ [KeyboardNav] 创建同级项目:', {
-        newItemId,
-        level,
-        position: newPosition,
-        parentId,
-      });
 
       return { newItemId, newItems: updatedItems };
     },
@@ -202,12 +194,6 @@ export const useKeyboardNav = <T,>() => {
         })),
       ];
 
-      console.log('➕ [KeyboardNav] 创建子项目:', {
-        newItemId,
-        level: newLevel,
-        position: newPosition,
-        parentId: parentItemId,
-      });
 
       return { newItemId, newItems: updatedItems };
     },

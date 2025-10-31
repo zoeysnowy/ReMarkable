@@ -81,19 +81,11 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   const mountTimeRef = useRef(performance.now());
   useEffect(() => {
     const mountDuration = performance.now() - mountTimeRef.current;
-    console.log(`✅ [TimeCalendar] Component mounted in ${mountDuration.toFixed(2)}ms`);
     
     // 🔍 调试：组件挂载后检查 localStorage
-    console.log('🔍 [组件挂载后] storageKey:', storageKey);
     const savedAfterMount = localStorage.getItem(storageKey);
-    console.log('🔍 [组件挂载后] localStorage 中的值:', savedAfterMount);
     if (savedAfterMount) {
       const parsed = JSON.parse(savedAfterMount);
-      console.log('🔍 [组件挂载后] 解析后的高度:', {
-        task: parsed.taskHeight,
-        allDay: parsed.allDayHeight,
-        milestone: parsed.milestoneHeight
-      });
     }
   }, [storageKey]);
   
@@ -105,7 +97,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   
   // 只在前3次渲染时打印日志
   if (renderCountRef.current <= 3) {
-    console.log(`📊 [TimeCalendar] Render #${renderCountRef.current} started`);
   }
   
   // 🎨 转换背景色为 rgba
@@ -160,14 +151,12 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       if (saved) {
         const savedDate = new Date(saved);
         if (!isNaN(savedDate.getTime())) {
-          console.log(`📅 [INIT] Restored last viewed date: ${savedDate.toLocaleDateString()}`);
           return savedDate;
         }
       }
     } catch (error) {
       console.error('❌ Failed to restore current date:', error);
     }
-    console.log(`📅 [INIT] Using today's date`);
     return new Date();
   });
   
@@ -201,7 +190,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   // 因为 Electron 中 storage 事件可能不稳定，使用轮询确保同步
   useEffect(() => {
     if (!globalTimer) { // 只在 Widget 场景（没有 prop）时轮询
-      console.log('🔄 [TIMER] Starting localStorage polling for Widget (focusing on events)');
       
       const checkTimer = () => {
         const eventsData = localStorage.getItem('remarkable-events');
@@ -216,10 +204,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         
         // 🔄 同时检查timer状态变化（作为补充）
         if (timerState !== lastTimerStateRef.current) {
-          console.log('🔍 [TIMER] Timer state changed:', {
-            old: lastTimerStateRef.current,
-            new: timerState
-          });
           lastTimerStateRef.current = timerState;
           setLocalStorageTimerTrigger(prev => prev + 1);
         }
@@ -232,7 +216,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       const interval = setInterval(checkTimer, 2000);
       
       return () => {
-        console.log('🔄 [TIMER] Stopping localStorage polling');
         clearInterval(interval);
       };
     }
@@ -240,7 +223,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   
   // 🎧 监听跨窗口的 storage 事件（作为补充）
   useEffect(() => {
-    console.log('🎧 [TIMER] Setting up storage event listener');
     
     const handleStorageChange = (e: StorageEvent) => {
       // console.log('📡 [TIMER] Storage event detected:', {
@@ -250,7 +232,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       // });
       
       if (e.key === 'remarkable-global-timer') {
-        console.log('🔄 [TIMER] Timer storage changed via event, triggering recalculation');
         lastTimerStateRef.current = e.newValue;
         setLocalStorageTimerTrigger(prev => prev + 1);
       }
@@ -261,7 +242,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     
     // ✅ 清理函数
     return () => {
-      console.log('🎧 [TIMER] Removing storage event listener');
       window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
@@ -269,14 +249,11 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   // ⚙️ 设置面板状态
   const [showSettings, setShowSettings] = useState(false);
   const [calendarSettings, setCalendarSettings] = useState<CalendarSettings>(() => {
-    console.log('🔍 [初始化] storageKey:', storageKey);
     try {
       const saved = localStorage.getItem(storageKey);
-      console.log('🔍 [初始化] localStorage 原始值:', saved);
       
       if (saved) {
         const settings = JSON.parse(saved);
-        console.log('🔍 [初始化] 解析后的设置:', settings);
         
         const initialSettings = {
           eventOpacity: settings.eventOpacity ?? 85,
@@ -289,7 +266,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           taskHeight: settings.taskHeight || 24,
           allDayHeight: settings.allDayHeight || 24
         };
-        console.log('🔍 [初始化] 最终使用的设置:', initialSettings);
         return initialSettings;
       }
     } catch (error) {
@@ -307,7 +283,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       taskHeight: 24,
       allDayHeight: 24
     };
-    console.log('🔍 [初始化] 使用默认设置:', defaultSettings);
     return defaultSettings;
   });
 
@@ -323,11 +298,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
 
   // 更新 ref 当高度变化时
   useEffect(() => {
-    console.log('🔍 [ref更新] 高度变化:', {
-      task: calendarSettings.taskHeight,
-      allDay: calendarSettings.allDayHeight,
-      milestone: calendarSettings.milestoneHeight
-    });
     
     heightSettingsRef.current = {
       taskHeight: calendarSettings.taskHeight,
@@ -371,7 +341,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       const savedTags = PersistentStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS, PERSISTENT_OPTIONS.TAGS);
       if (savedTags && Array.isArray(savedTags)) {
         setHierarchicalTags(savedTags);
-        console.log(`📥 [LOAD] Loading ${savedTags.length} tags`);
       }
     } catch (error) {
       console.error('❌ [LOAD] Failed to load tags:', error);
@@ -414,16 +383,13 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       
       // ✅ 核心修复：如果清理后有效标签太少（< 2个），直接清空筛选，避免无意义的筛选
       if (validVisibleTags.length > 0 && validVisibleTags.length < 2) {
-        console.log('✅ [TimeCalendar] Too few valid tags after cleanup, clearing tag filter');
         validVisibleTags = [];
       }
       
       // 如果清理后筛选列表为空，说明所有之前保存的ID都无效了
       if (settings.visibleTags && settings.visibleTags.length > 0 && validVisibleTags.length === 0) {
-        console.log('✅ [TimeCalendar] All saved tag filters are invalid, clearing tag filter');
       }
       if (settings.visibleCalendars && settings.visibleCalendars.length > 0 && validVisibleCalendars.length === 0) {
-        console.log('✅ [TimeCalendar] All saved calendar filters are invalid, clearing calendar filter');
       }
     }
 
@@ -447,7 +413,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         // 如果设置被清理过，更新state并保存
         if (cleanedSettings.visibleTags.length !== settings.visibleTags?.length || 
             cleanedSettings.visibleCalendars.length !== settings.visibleCalendars?.length) {
-          console.log('🧹 [TimeCalendar] Cleaning invalid filters');
           setCalendarSettings(prev => ({
             ...prev,
             visibleTags: cleanedSettings.visibleTags,
@@ -468,19 +433,11 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         ...settings,
         view: view || currentView
       };
-      console.log('� [保存] storageKey:', storageKey);
-      console.log('🔍 [保存] 保存的设置:', settingsToSave);
-      console.log('🔍 [保存] 高度值:', {
-        task: settingsToSave.taskHeight,
-        allDay: settingsToSave.allDayHeight,
-        milestone: settingsToSave.milestoneHeight
-      });
       
       localStorage.setItem(storageKey, JSON.stringify(settingsToSave));
       
       // 验证保存成功
       const verified = localStorage.getItem(storageKey);
-      console.log('🔍 [保存验证] localStorage 中的值:', verified);
     } catch (error) {
       console.error('❌ [TimeCalendar] Failed to save settings:', error);
     }
@@ -488,7 +445,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
 
   // 🔄 自动保存 calendarSettings 的变化（包括高度调整）
   useEffect(() => {
-    console.log('🔍 [自动保存] calendarSettings 变化，触发保存');
     saveSettings(calendarSettings);
   }, [calendarSettings, saveSettings]);
 
@@ -501,16 +457,13 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   useEffect(() => {
     // ✅ 防止重复绑定事件监听器
     if (eventListenersAttachedRef.current) {
-      console.log('⚠️ [EVENT] Event listeners already attached, skipping');
       return;
     }
 
-    console.log('🎧 [EVENT] Attaching event listeners');
     let syncDebounceTimer: NodeJS.Timeout | null = null;
 
     const handleSyncCompleted = () => {
       // ✅ 同步完成后，重新加载事件以显示最新数据
-      console.log('🔄 [SYNC] Sync completed, reloading events to update UI');
       
       if (syncDebounceTimer) {
         clearTimeout(syncDebounceTimer);
@@ -522,7 +475,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         // 标记初始同步完成
         if (!initialSyncCompletedRef.current) {
           initialSyncCompletedRef.current = true;
-          console.log('✅ [SYNC] Initial sync completed');
         }
         
         isSyncingRef.current = false; // ✅ 同步完成
@@ -532,7 +484,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     const handleSyncStarted = () => {
       // ✅ 同步开始时设置标志
       isSyncingRef.current = true;
-      console.log('🔄 [SYNC] Sync started, will ignore local-events-changed');
     };
 
     const handleLocalEventsChanged = (event: unknown) => {
@@ -541,11 +492,9 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       
       // ✅ 如果正在同步，忽略事件变化（防止无限循环）
       if (isSyncingRef.current) {
-        console.log('⏭️ [EVENT] Ignoring during sync:', detail?.action || 'unknown');
         return;
       }
       
-      console.log('🔄 [EVENT] Local events changed:', detail?.action || 'unknown');
       
       // ✅ 优化防抖处理：Widget模式下使用更短的延迟
       if (syncDebounceTimer) {
@@ -561,11 +510,9 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       const customEvent = event as CustomEvent;
       const detail = customEvent.detail;
       
-      console.log('🔄 [EVENT] Events updated:', detail?.eventId || 'unknown', detail);
       
       // ⚡ Timer 事件立即更新，跳过防抖
       if (detail?.isTimerEvent) {
-        console.log('⚡ [EVENT] Timer event detected, updating immediately');
         loadEvents();
         return;
       }
@@ -591,14 +538,12 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
 
     // 初始加载 - 从缓存加载，确保离线可用（只加载一次）
     if (!eventsLoadedRef.current) {
-      console.log('� [INIT] Initial loading events from cache');
       loadEvents();
       loadHierarchicalTags();
       eventsLoadedRef.current = true;
     }
 
     return () => {
-      console.log('🎧 [EVENT] Removing event listeners');
       if (syncDebounceTimer) {
         clearTimeout(syncDebounceTimer);
       }
@@ -625,23 +570,19 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   useEffect(() => {
     // 🔧 Widget 模式下跳过日历加载（Widget 从 localStorage 读取数据）
     if (isWidgetMode) {
-      console.log('📋 [CALENDAR] Widget mode - skipping calendar loading');
       setAvailableCalendars([]);
       return;
     }
     
     const loadCalendars = async () => {
       if (!microsoftService) {
-        console.log('📋 [CALENDAR] Microsoft service not available, skipping calendar loading');
         setAvailableCalendars([]);
         return;
       }
 
       try {
-        console.log('📋 [CALENDAR] Loading available calendars...');
         const calendars = await microsoftService.getAllCalendars();
         setAvailableCalendars(calendars);
-        console.log('📋 [CALENDAR] Loaded calendars:', calendars.length);
       } catch (error) {
         console.error('❌ [CALENDAR] Failed to load calendars:', error);
         setAvailableCalendars([]);
@@ -672,12 +613,10 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     const newTagIds = Array.from(currentTagIds).filter(id => !previousTagIdsRef.current.has(id));
     
     if (newTagIds.length > 0) {
-      console.log('🆕 [TimeCalendar] Detected new tags:', newTagIds);
       
       // 如果当前有筛选（visibleTags不为空），则将新标签添加到筛选中
       if (calendarSettings.visibleTags.length > 0) {
         const updatedVisibleTags = [...calendarSettings.visibleTags, ...newTagIds];
-        console.log('✅ [TimeCalendar] Auto-adding new tags to filter:', newTagIds);
         
         setCalendarSettings(prev => ({
           ...prev,
@@ -690,7 +629,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         });
       } else {
         // 如果当前没有筛选（显示所有标签），保持不变
-        console.log('ℹ️ [TimeCalendar] No filter active, new tags will be visible automatically');
       }
     }
     
@@ -702,7 +640,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   useEffect(() => {
     try {
       localStorage.setItem('remarkable-calendar-current-date', currentDate.toISOString());
-      console.log(`💾 [SAVE] Saved current date: ${currentDate.toLocaleDateString()}`);
     } catch (error) {
       console.error('❌ Failed to save current date:', error);
     }
@@ -714,7 +651,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   
   // 🔄 组件挂载时重置初始化标志，并准备恢复日期
   useEffect(() => {
-    console.log(`📅 [MOUNT] TimeCalendar component mounted`);
     calendarInitializedRef.current = false;
     
     // 立即恢复日期到 state，这样日历渲染时就是正确的位置
@@ -724,7 +660,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         const restoredDate = new Date(savedDate);
         if (!isNaN(restoredDate.getTime())) {
           setCurrentDate(restoredDate);
-          console.log(`📅 [MOUNT] Restored date to state: ${restoredDate.toLocaleDateString()}`);
         }
       } catch (error) {
         console.error('❌ Failed to restore date:', error);
@@ -735,7 +670,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     setIsCalendarReady(true);
     
     return () => {
-      console.log(`📅 [UNMOUNT] TimeCalendar component unmounted`);
       setIsCalendarReady(false);
     };
   }, []); // 只在挂载/卸载时执行
@@ -1104,7 +1038,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
               
               if (!isSameDay) {
                 instance.setDate(restoredDate);
-                console.log(`📅 [INIT] Fine-tuned calendar to: ${restoredDate.toLocaleDateString()}`);
               }
               calendarInitializedRef.current = true;
             }
@@ -1122,15 +1055,12 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   // 使用 useLayoutEffect 在浏览器绘制前同步执行，避免闪烁
   useLayoutEffect(() => {
     if (!isCalendarReady) {
-      console.log('🔍 [useLayoutEffect] 日历未就绪，跳过');
       return;
     }
     
-    console.log('🔍 [useLayoutEffect] 日历已就绪，准备应用高度');
     
     // 使用 ref 获取最新的高度值，避免闭包问题
     const { taskHeight, allDayHeight, milestoneHeight } = heightSettingsRef.current;
-    console.log('🔍 [useLayoutEffect] ref中的高度:', { taskHeight, allDayHeight, milestoneHeight });
     
     // 需要等待 DOM 元素渲染
     const timer = setTimeout(() => {
@@ -1138,7 +1068,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       
       // Task 面板
       const taskPanels = document.querySelectorAll('.toastui-calendar-panel-task, .toastui-calendar-panel.toastui-calendar-task');
-      console.log('🔍 [useLayoutEffect] 找到 Task 面板:', taskPanels.length);
       if (taskPanels.length > 0 && taskHeight) {
         taskPanels.forEach((panel: Element) => {
           (panel as HTMLElement).style.height = `${taskHeight}px`;
@@ -1148,7 +1077,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       
       // AllDay 面板
       const allDayPanels = document.querySelectorAll('.toastui-calendar-panel-allday');
-      console.log('🔍 [useLayoutEffect] 找到 AllDay 面板:', allDayPanels.length);
       if (allDayPanels.length > 0 && allDayHeight) {
         allDayPanels.forEach((panel: Element) => {
           (panel as HTMLElement).style.height = `${allDayHeight}px`;
@@ -1158,7 +1086,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       
       // Milestone 面板
       const milestonePanels = document.querySelectorAll('.toastui-calendar-panel-milestone, .toastui-calendar-panel.toastui-calendar-milestone');
-      console.log('🔍 [useLayoutEffect] 找到 Milestone 面板:', milestonePanels.length);
       if (milestonePanels.length > 0 && milestoneHeight) {
         milestonePanels.forEach((panel: Element) => {
           (panel as HTMLElement).style.height = `${milestoneHeight}px`;
@@ -1167,13 +1094,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       }
       
       if (applied) {
-        console.log('🎨 [初始高度] 已应用面板高度:', {
-          task: taskHeight,
-          allDay: allDayHeight,
-          milestone: milestoneHeight
-        });
       } else {
-        console.warn('⚠️ [useLayoutEffect] 没有找到任何面板元素');
       }
     }, 100); // 等待 DOM 渲染
     
@@ -1184,7 +1105,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   useEffect(() => {
     if (!isCalendarReady) return;
     
-    console.log('🔍 [MutationObserver] 开始设置监听');
     
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
@@ -1193,7 +1113,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           
           // 检测到用户拖动，移除 !important 以允许拖动生效
           if (isInitialLoad) {
-            console.log('🔍 [拖动检测] 用户开始拖动，移除 !important');
             setIsInitialLoad(false);
           }
           
@@ -1202,10 +1121,8 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
               target.classList.contains('toastui-calendar-panel-task')) {
             const newHeight = parseInt(target.style.height);
             if (!isNaN(newHeight)) {
-              console.log('🔍 [拖动检测] Task 面板高度变化:', newHeight);
               setCalendarSettings(prev => {
                 if (newHeight !== prev.taskHeight) {
-                  console.log('📏 [拖动] Task高度从', prev.taskHeight, '变为', newHeight);
                   return { ...prev, taskHeight: newHeight };
                 }
                 return prev;
@@ -1214,10 +1131,8 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           } else if (target.classList.contains('toastui-calendar-panel-allday')) {
             const newHeight = parseInt(target.style.height);
             if (!isNaN(newHeight)) {
-              console.log('🔍 [拖动检测] AllDay 面板高度变化:', newHeight);
               setCalendarSettings(prev => {
                 if (newHeight !== prev.allDayHeight) {
-                  console.log('📏 [拖动] AllDay高度从', prev.allDayHeight, '变为', newHeight);
                   return { ...prev, allDayHeight: newHeight };
                 }
                 return prev;
@@ -1227,10 +1142,8 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
                      target.classList.contains('toastui-calendar-panel-milestone')) {
             const newHeight = parseInt(target.style.height);
             if (!isNaN(newHeight)) {
-              console.log('🔍 [拖动检测] Milestone 面板高度变化:', newHeight);
               setCalendarSettings(prev => {
                 if (newHeight !== prev.milestoneHeight) {
-                  console.log('📏 [拖动] Milestone高度从', prev.milestoneHeight, '变为', newHeight);
                   return { ...prev, milestoneHeight: newHeight };
                 }
                 return prev;
@@ -1253,12 +1166,9 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         observer.observe(panel, { attributes: true, attributeFilter: ['style'] });
       });
       
-      console.log('� [MutationObserver] 开始监听', panels.length, '个面板的高度变化');
-      console.log('🔍 [MutationObserver] 监听的面板:', Array.from(panels).map(p => p.className));
     }, 200);
     
     return () => {
-      console.log('🔍 [MutationObserver] 清理监听');
       clearTimeout(observeTimer);
       observer.disconnect();
     };
@@ -1278,11 +1188,9 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       if (globalTimer && globalTimer.isRunning) {
         const startTime = globalTimer.originalStartTime || globalTimer.startTime;
         const eventId = `timer-${globalTimer.tagId}-${startTime}`;
-        console.log('✅ [TIMER] Using globalTimer prop:', eventId);
         return eventId;
       } else {
         // 主应用中globalTimer存在但不运行，说明timer已停止
-        console.log('⚠️ [TIMER] GlobalTimer prop exists but not running - timer stopped');
         return null;
       }
     }
@@ -1377,15 +1285,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       remarkableSource: true
     };
 
-    console.log('🔄 [REALTIME TIMER] Generated realtime timer event:', {
-      id: realtimeEvent.id,
-      startTime: realtimeEvent.startTime,
-      endTime: realtimeEvent.endTime,
-      duration: `${Math.floor((now.getTime() - timerStartTime.getTime()) / 1000 / 60)} minutes`,
-      hasGlobalTimer: !!globalTimer,
-      timerIsRunning: currentTimer.isRunning,
-      timerEventId: timerEventId
-    });
 
     return realtimeEvent;
   };
@@ -1396,7 +1295,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     
     // 只在前3次调用时打印日志
     if (useMemoCallCountRef.current <= 3) {
-      console.log(`🎨 [useMemo #${useMemoCallCountRef.current}] Computing calendar events: ${events.length} raw events`);
     }
 
     // 🔧 [方案3] 处理实时timer事件：合并已保存事件和实时timer状态
@@ -1409,7 +1307,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       // 添加实时timer事件
       eventsToProcess.push(realtimeTimerEvent);
       
-      console.log('🔄 [REALTIME TIMER] Merged realtime timer event, total events:', eventsToProcess.length);
     }
 
     // 🚀 性能优化：只加载当前视图范围 ±3个月的事件（减少DOM节点）
@@ -1430,7 +1327,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     
     // 只在前3次调用时打印日志
     if (useMemoCallCountRef.current <= 3) {
-      console.log(`📅 [useMemo] Date range filter: ${events.length} → ${filteredByDateRange.length} events`);
     }
     
     // 精确语义：只要选择非空，就启用筛选（不做"等价全选"的推断）
@@ -1548,7 +1444,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     
     // 只在前3次调用时打印日志
     if (useMemoCallCountRef.current <= 3) {
-      console.log(`⏱️ [useMemo] Total: ${(endTime - startTime).toFixed(1)}ms | Filtered: ${calendarEventsWithStats.length} events`);
     }
     
     return calendarEventsWithStats;
@@ -1559,22 +1454,14 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   // ⚙️ 处理设置变更
   const handleSettingsChange = (newSettings: CalendarSettings) => {
     const startTime = performance.now();
-    console.log('⚙️ [Settings] Change received:', {
-      tags: newSettings.visibleTags.length,
-      calendars: newSettings.visibleCalendars.length,
-      opacity: newSettings.eventOpacity
-    });
     
     const setStateStart = performance.now();
     setCalendarSettings(newSettings);
-    console.log(`⚙️ [Settings] setState completed in ${(performance.now() - setStateStart).toFixed(2)}ms`);
     
     const saveStart = performance.now();
     saveSettings(newSettings);
-    console.log(`⚙️ [设置变更] saveSettings 完成，耗时: ${(performance.now() - saveStart).toFixed(2)}ms`);
     
     const endTime = performance.now();
-    console.log(`⚙️ [设置变更] 总耗时: ${(endTime - startTime).toFixed(2)}ms`);
   };
 
   // 获取可用的标签和日历列表
@@ -1635,7 +1522,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
    * 📅 选择日期时间 - 打开创建事件模态框
    */
   const handleSelectDateTime = useCallback((selectionInfo: any) => {
-    console.log('📅 [TimeCalendar] Time selection:', selectionInfo);
     
     const { start, end, isAllday } = selectionInfo;
     
@@ -1666,7 +1552,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
    * 我们使用 onSelectDateTime 和模态框来创建事件
    */
   const handleBeforeCreateEvent = useCallback((eventData: any) => {
-    console.log('⚠️ [TimeCalendar] beforeCreateEvent blocked (use modal instead):', eventData);
     // 返回 false 阻止默认的事件创建
     return false;
   }, []);
@@ -1675,7 +1560,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
    * 📝 更新事件 - 支持拖拽和编辑
    */
   const handleBeforeUpdateEvent = async (updateInfo: any) => {
-    console.log('📝 [TimeCalendar] Updating event:', updateInfo);
     
     try {
       const { event: calendarEvent, changes } = updateInfo;
@@ -1718,7 +1602,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       if (activeSyncManager) {
         try {
           await activeSyncManager.recordLocalAction('update', 'event', updatedEvent.id, updatedEvent, originalEvent);
-          console.log('✅ [TimeCalendar] Event updated and synced');
         } catch (error) {
           console.error('❌ [TimeCalendar] Failed to sync updated event:', error);
         }
@@ -1732,7 +1615,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
    * 🗑️ 删除事件
    */
   const handleBeforeDeleteEvent = async (eventInfo: any) => {
-    console.log('🗑️ [TimeCalendar] Deleting event:', eventInfo.event.id);
     
     try {
       const eventId = eventInfo.event.id;
@@ -1754,7 +1636,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       setEvents(updatedEvents);
 
       // � 触发全局事件更新通知（通知DailyStatsCard等组件刷新）
-      console.log('🔔 [TimeCalendar] Dispatching eventsUpdated event after delete');
       window.dispatchEvent(new CustomEvent('eventsUpdated', {
         detail: { 
           eventId: eventId,
@@ -1768,7 +1649,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       if (activeSyncManager) {
         try {
           await activeSyncManager.recordLocalAction('delete', 'event', eventId, null, eventToDelete);
-          console.log('✅ [TimeCalendar] Event deleted and synced');
         } catch (error) {
           console.error('❌ [TimeCalendar] Failed to sync deleted event:', error);
         }
@@ -1782,7 +1662,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
    * 💾 保存编辑弹窗的更改
    */
   const handleSaveEventFromModal = async (updatedEvent: Event) => {
-    console.log('💾 [TimeCalendar] Saving event:', updatedEvent.id, 'tags:', updatedEvent.tags);
     
     try {
       // 验证时间字段
@@ -1807,7 +1686,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           const tag = flatTags.find(t => t.id === tagId);
           if (tag) {
             updatedEvent.title = tag.emoji ? `${tag.emoji} ${tag.name}` : tag.name;
-            console.log('🏷️ [TimeCalendar] Using tag name as title:', updatedEvent.title);
           }
         }
       }
@@ -1822,27 +1700,22 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       
       if (eventIndex === -1) {
         // 新事件：添加到数组
-        console.log('➕ [TimeCalendar] Creating new event:', updatedEvent.id);
         isNewEvent = true;
         existingEvents.push(updatedEvent);
       } else {
         // 现有事件：更新
-        console.log('✏️ [TimeCalendar] Updating existing event:', updatedEvent.id);
         originalEvent = existingEvents[eventIndex];
         const tagsChanged = JSON.stringify(originalEvent.tags) !== JSON.stringify(updatedEvent.tags);
         if (tagsChanged) {
-          console.log('🏷️ [TimeCalendar] Tags changed:', originalEvent.tags, '→', updatedEvent.tags);
         }
         existingEvents[eventIndex] = updatedEvent;
       }
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
       
       // 🎨 立即更新 UI - 触发 events state 更新
-      console.log('🎨 [TimeCalendar] Updating UI immediately');
       setEvents([...existingEvents]);
 
       // � 触发全局事件更新通知（通知DailyStatsCard等组件刷新）
-      console.log('🔔 [TimeCalendar] Dispatching eventsUpdated event');
       window.dispatchEvent(new CustomEvent('eventsUpdated', {
         detail: { 
           eventId: updatedEvent.id,
@@ -1856,15 +1729,12 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       if (activeSyncManager) {
         // 🔧 [FIX] 跳过 syncStatus 为 'local-only' 的事件（例如：运行中的 Timer）
         if (updatedEvent.syncStatus === 'local-only') {
-          console.log('⏭️ [TimeCalendar] Skipping sync for local-only event (Timer in progress):', updatedEvent.id);
         } else {
           try {
             if (isNewEvent) {
               await activeSyncManager.recordLocalAction('create', 'event', updatedEvent.id, updatedEvent);
-              console.log('✅ [TimeCalendar] New event synced');
             } else {
               await activeSyncManager.recordLocalAction('update', 'event', updatedEvent.id, updatedEvent, originalEvent);
-              console.log('✅ [TimeCalendar] Updated event synced');
             }
           } catch (error) {
             console.error('❌ [TimeCalendar] Sync failed:', error);
@@ -1880,7 +1750,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
    * 🗑️ 从编辑弹窗删除事件
    */
   const handleDeleteEventFromModal = async (eventId: string) => {
-    console.log('🗑️ [TimeCalendar] Deleting event from modal:', eventId);
     
     try {
       // 从 localStorage 删除
@@ -1900,7 +1769,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       setEvents(updatedEvents);
 
       // � 触发全局事件更新通知（通知DailyStatsCard等组件刷新）
-      console.log('🔔 [TimeCalendar] Dispatching eventsUpdated event after delete from modal');
       window.dispatchEvent(new CustomEvent('eventsUpdated', {
         detail: { 
           eventId: eventId,
@@ -1914,7 +1782,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       if (activeSyncManager) {
         try {
           await activeSyncManager.recordLocalAction('delete', 'event', eventId, eventToDelete);
-          console.log('✅ [TimeCalendar] Event deleted and synced from modal');
         } catch (error) {
           console.error('❌ [TimeCalendar] Failed to sync deleted event:', error);
         }
@@ -1966,11 +1833,9 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   const handleViewChange = useCallback((view: 'month' | 'week' | 'day') => {
     // ✅ 如果视图相同，直接返回，避免不必要的渲染
     if (currentView === view) {
-      console.log(`🎮 [VIEW] Already in ${view} view, skipping`);
       return;
     }
 
-    console.log(`🎮 [VIEW] Changing from ${currentView} to ${view}`);
     
     // ✅ 批量更新：在同一个操作中更新视图和保存设置
     setCurrentView(view);
@@ -1984,23 +1849,18 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         const dateRange = instance.getDateRangeStart().toDate().toLocaleDateString() + 
                          ' ~ ' + 
                          instance.getDateRangeEnd().toDate().toLocaleDateString();
-        console.log(`🎮 [VIEW] Changed to: ${view}, Date Range: ${dateRange}`);
       } else {
-        console.log(`🎮 [VIEW] Changed to: ${view}`);
       }
     }, 0);
   }, [currentView, calendarSettings]); // ✅ 添加依赖
 
   const goToToday = () => {
-    console.log(`📅 [NAV] goToToday called`);
     const instance = calendarRef.current?.getInstance();
     if (instance) {
       instance.today();
       const newDate = new Date();
       setCurrentDate(newDate);
-      console.log(`📅 [NAV] Go to Today: ${newDate.toLocaleDateString()}, currentView: ${currentView}`);
     } else {
-      console.warn(`⚠️ [NAV] Calendar instance not found`);
     }
   };
 
@@ -2017,7 +1877,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       }
       
       setCurrentDate(newDate);
-      console.log(`📅 [NAV] Go to Previous: ${newDate.toLocaleDateString()}`);
     }
   };
 
@@ -2034,7 +1893,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       }
       
       setCurrentDate(newDate);
-      console.log(`📅 [NAV] Go to Next: ${newDate.toLocaleDateString()}`);
     }
   };
 
@@ -2050,7 +1908,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
                               document.querySelector('.time-calendar-container');
       
       if (!calendarElement) {
-        console.warn('🖱️ [WHEEL] Calendar element not found');
         return;
       }
 
@@ -2081,7 +1938,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
             newDate.setDate(newDate.getDate() + 7); // 前进 7 天
             instance.setDate(newDate);
             setCurrentDate(newDate);
-            console.log(`🖱️ [WHEEL] Scroll forward 1 week: ${newDate.toLocaleDateString()}`);
           }
           accumulatedDelta = 0; // 重置累积
           wheelEvent.preventDefault();
@@ -2095,7 +1951,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
             newDate.setDate(newDate.getDate() - 7); // 后退 7 天
             instance.setDate(newDate);
             setCurrentDate(newDate);
-            console.log(`🖱️ [WHEEL] Scroll backward 1 week: ${newDate.toLocaleDateString()}`);
           }
           accumulatedDelta = 0; // 重置累积
           wheelEvent.preventDefault();
@@ -2103,12 +1958,10 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       };
 
       calendarElement.addEventListener('wheel', handleWheel as EventListener, { passive: false });
-      console.log('🖱️ [WHEEL] Month view wheel navigation enabled (weekly scroll, threshold: 150px)');
 
       // 清理函数
       return () => {
         calendarElement.removeEventListener('wheel', handleWheel as EventListener);
-        console.log('🖱️ [WHEEL] Month view wheel navigation disabled');
       };
     }, 100); // 延迟 100ms 等待 DOM
 
@@ -2170,21 +2023,11 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     
     // 只在前3次渲染时打印日志
     if (renderCountRef.current <= 3) {
-      console.log(`⏱️ [TimeCalendar] Render #${renderCountRef.current} completed in ${renderDuration.toFixed(2)}ms`);
     }
   });
 
   // 🎨 使用 useMemo 缓存动态样式，确保高度设置能正确应用
   const dynamicStyles = useMemo(() => {
-    console.log('🎨 [动态样式] 重新生成:', {
-      taskHeight: calendarSettings.taskHeight,
-      milestoneHeight: calendarSettings.milestoneHeight,
-      allDayHeight: calendarSettings.allDayHeight,
-      showTask: calendarSettings.showTask,
-      showMilestone: calendarSettings.showMilestone,
-      showAllDay: calendarSettings.showAllDay,
-      isInitialLoad
-    });
     
     // 初始加载时使用 !important 防止闪烁，拖动后移除以允许用户调整
     const important = isInitialLoad ? ' !important' : '';
@@ -2345,12 +2188,10 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
                   if (window.electronAPI && window.electronAPI.toggleWidget) {
                     try {
                       const result = await window.electronAPI.toggleWidget();
-                      console.log('Widget toggle result:', result);
                     } catch (error) {
                       console.error('Failed to toggle widget:', error);
                     }
                   } else {
-                    console.warn('toggleWidget function not available');
                   }
                 }}
                 title="打开桌面悬浮日历"
