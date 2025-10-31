@@ -1812,11 +1812,10 @@ const TagManager: React.FC<TagManagerProps> = ({
         }
         
         .tag-list-scroll-container {
-          flex: 1; /* 占据剩余空间 */
+          max-height: 500px;
           overflow-y: auto;
           scrollbar-width: none; /* Firefox */
           -ms-overflow-style: none; /* IE/Edge */
-          min-height: 0; /* 允许flex收缩 */
         }
         
         .tag-list-scroll-container::-webkit-scrollbar {
@@ -2258,22 +2257,18 @@ const TagManager: React.FC<TagManagerProps> = ({
                 }}
               >#</span>
               
-              {/* Emoji - 固定24px，使用SVG图标 */}
+              {/* Emoji - 固定24px */}
               <span 
                 style={{
                   fontSize: '16px',
                   width: '24px',
-                  height: '24px',
                   textAlign: 'center',
                   padding: '2px',
                   borderRadius: '4px',
-                  marginLeft: '4px',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
+                  marginLeft: '4px'
                 }}
               >
-                <img src={icons.emoji} alt="emoji" width="16" height="16" style={{ opacity: 0.5 }} />
+                ??
               </span>
               
               {/* 新标签文字输入区域 - 扩大整个区域 */}

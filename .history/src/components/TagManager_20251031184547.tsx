@@ -1812,11 +1812,10 @@ const TagManager: React.FC<TagManagerProps> = ({
         }
         
         .tag-list-scroll-container {
-          flex: 1; /* 占据剩余空间 */
+          max-height: 500px;
           overflow-y: auto;
           scrollbar-width: none; /* Firefox */
           -ms-overflow-style: none; /* IE/Edge */
-          min-height: 0; /* 允许flex收缩 */
         }
         
         .tag-list-scroll-container::-webkit-scrollbar {
