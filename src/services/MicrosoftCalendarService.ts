@@ -6,6 +6,7 @@ import { STORAGE_KEYS } from '../constants/storage';
 import { logger } from '../utils/logger';
 
 const MSCalendarLogger = logger.module('MSCalendar');
+
 export interface GraphEvent {
   id?: string;
   subject?: string;
@@ -115,7 +116,7 @@ export class MicrosoftCalendarService {
       this.initializeGraph();
       
     } catch (error) {
-      MSCalendarLogger.error('�?MicrosoftCalendarService constructor error:', error);
+      MSCalendarLogger.error('❌ MicrosoftCalendarService constructor error:', error);
       this.enableSimulationMode();
     }
   }
@@ -135,7 +136,7 @@ export class MicrosoftCalendarService {
       }
       return [];
     } catch (error) {
-      MSCalendarLogger.error('�?[Cache] Failed to get cached calendar groups:', error);
+      MSCalendarLogger.error('❌ [Cache] Failed to get cached calendar groups:', error);
       return [];
     }
   }
@@ -153,37 +154,38 @@ export class MicrosoftCalendarService {
       }
       return [];
     } catch (error) {
-      MSCalendarLogger.error('�?[Cache] Failed to get cached calendars:', error);
+      MSCalendarLogger.error('❌ [Cache] Failed to get cached calendars:', error);
       return [];
     }
   }
 
   /**
-   * 缓存日历分组�?localStorage（永久存储）
+   * 缓存日历分组到 localStorage（永久存储）
    */
   private setCachedCalendarGroups(groups: CalendarGroup[]): void {
     try {
       localStorage.setItem(STORAGE_KEYS.CALENDAR_GROUPS_CACHE, JSON.stringify(groups));
       MSCalendarLogger.log('💾 [Cache] Saved calendar groups to cache:', groups.length, 'groups');
     } catch (error) {
-      MSCalendarLogger.error('�?[Cache] Failed to save calendar groups to cache:', error);
+      MSCalendarLogger.error('❌ [Cache] Failed to save calendar groups to cache:', error);
     }
   }
 
   /**
-   * 缓存日历列表�?localStorage（永久存储）
+   * 缓存日历列表到 localStorage（永久存储）
    */
   private setCachedCalendars(calendars: Calendar[]): void {
     try {
       localStorage.setItem(STORAGE_KEYS.CALENDARS_CACHE, JSON.stringify(calendars));
       MSCalendarLogger.log('💾 [Cache] Saved calendars to cache:', calendars.length, 'calendars');
     } catch (error) {
-      MSCalendarLogger.error('�?[Cache] Failed to save calendars to cache:', error);
+      MSCalendarLogger.error('❌ [Cache] Failed to save calendars to cache:', error);
     }
   }
 
   /**
-   * 获取同步元数�?   */
+   * 获取同步元数据
+   */
   public getSyncMeta(): CalendarSyncMeta | null {
     try {
       const cached = localStorage.getItem(STORAGE_KEYS.CALENDAR_SYNC_META);
@@ -192,19 +194,20 @@ export class MicrosoftCalendarService {
       }
       return null;
     } catch (error) {
-      MSCalendarLogger.error('�?[Cache] Failed to get sync meta:', error);
+      MSCalendarLogger.error('❌ [Cache] Failed to get sync meta:', error);
       return null;
     }
   }
 
   /**
-   * 更新同步元数�?   */
+   * 更新同步元数据
+   */
   private setSyncMeta(meta: CalendarSyncMeta): void {
     try {
       localStorage.setItem(STORAGE_KEYS.CALENDAR_SYNC_META, JSON.stringify(meta));
       MSCalendarLogger.log('💾 [Cache] Updated sync meta:', meta);
     } catch (error) {
-      MSCalendarLogger.error('�?[Cache] Failed to save sync meta:', error);
+      MSCalendarLogger.error('❌ [Cache] Failed to save sync meta:', error);
     }
   }
 
@@ -222,26 +225,29 @@ export class MicrosoftCalendarService {
       // 获取日历分组
       const groups = await this.fetchCalendarGroups();
       
-      // 获取所有日�?      const calendars = await this.fetchAllCalendars();
+      // 获取所有日历
+      const calendars = await this.fetchAllCalendars();
 
       // 更新缓存
       this.setCachedCalendarGroups(groups);
       this.setCachedCalendars(calendars);
 
-      // 更新同步元数�?      this.setSyncMeta({
+      // 更新同步元数据
+      this.setSyncMeta({
         lastSyncTime: new Date().toISOString(),
         calendarGroupsCount: groups.length,
         calendarsCount: calendars.length,
         isOfflineMode: false
       });
 
-      MSCalendarLogger.log('�?[Sync] Remote calendar sync completed successfully');
+      MSCalendarLogger.log('✅ [Sync] Remote calendar sync completed successfully');
       return { groups, calendars };
       
     } catch (error) {
-      MSCalendarLogger.error('�?[Sync] Failed to sync from remote:', error);
+      MSCalendarLogger.error('❌ [Sync] Failed to sync from remote:', error);
       
-      // 标记为离线模�?      const currentMeta = this.getSyncMeta();
+      // 标记为离线模式
+      const currentMeta = this.getSyncMeta();
       if (currentMeta) {
         this.setSyncMeta({
           ...currentMeta,
@@ -277,15 +283,16 @@ export class MicrosoftCalendarService {
   }
 
   /**
-   * 清除所有日历缓�?   */
+   * 清除所有日历缓存
+   */
   public clearCalendarCache(): void {
     try {
       localStorage.removeItem(STORAGE_KEYS.CALENDAR_GROUPS_CACHE);
       localStorage.removeItem(STORAGE_KEYS.CALENDARS_CACHE);
       localStorage.removeItem(STORAGE_KEYS.CALENDAR_SYNC_META);
-      MSCalendarLogger.log('🗑�?[Cache] Cleared all calendar cache');
+      MSCalendarLogger.log('🗑️ [Cache] Cleared all calendar cache');
     } catch (error) {
-      MSCalendarLogger.error('�?[Cache] Failed to clear calendar cache:', error);
+      MSCalendarLogger.error('❌ [Cache] Failed to clear calendar cache:', error);
     }
   }
 
@@ -297,7 +304,8 @@ export class MicrosoftCalendarService {
   }
 
   /**
-   * 内部方法：从远程获取所有日�?   */
+   * 内部方法：从远程获取所有日历
+   */
   private async fetchAllCalendars(): Promise<Calendar[]> {
     return await this.getAllCalendars();
   }
@@ -319,7 +327,7 @@ export class MicrosoftCalendarService {
       
       return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
     } catch (error) {
-      MSCalendarLogger.error('�?Time conversion error:', error);
+      MSCalendarLogger.error('❌ Time conversion error:', error);
       return utcTimeStr;
     }
   }
@@ -336,13 +344,13 @@ export class MicrosoftCalendarService {
           const now = Date.now();
           
           if (now < expiresTime - 60000) {
-            MSCalendarLogger.log('�?[Electron] 从localStorage加载了有效的访问令牌');
+            MSCalendarLogger.log('✅ [Electron] 从localStorage加载了有效的访问令牌');
             this.accessToken = token;
             this.isAuthenticated = true;
             this.simulationMode = false;
             return;
           } else {
-            MSCalendarLogger.log('⚠️ [Electron] 访问令牌已过�?);
+            MSCalendarLogger.log('⚠️ [Electron] 访问令牌已过期');
           }
         }
       }
@@ -353,7 +361,7 @@ export class MicrosoftCalendarService {
       try {
         const redirectResponse = await this.msalInstance.handleRedirectPromise();
         if (redirectResponse) {
-          MSCalendarLogger.log('�?重定向认证成�?', redirectResponse.account?.username);
+          MSCalendarLogger.log('✅ 重定向认证成功:', redirectResponse.account?.username);
           this.msalInstance.setActiveAccount(redirectResponse.account);
           await this.acquireToken();
           return;
@@ -368,7 +376,7 @@ export class MicrosoftCalendarService {
         await this.acquireToken();
       }
     } catch (error) {
-      MSCalendarLogger.error('�?MSAL initialization failed:', error);
+      MSCalendarLogger.error('❌ MSAL initialization failed:', error);
       this.enableSimulationMode();
     }
   }
@@ -407,10 +415,11 @@ export class MicrosoftCalendarService {
             return;
           }
         } catch (interactiveError: any) {
-          MSCalendarLogger.error('�?Interactive token acquisition failed:', interactiveError);
+          MSCalendarLogger.error('❌ Interactive token acquisition failed:', interactiveError);
           
-          // 如果弹窗被阻止，提示用户使用重定向方�?          if (interactiveError.message && interactiveError.message.includes('popup_window_error')) {
-            MSCalendarLogger.warn('⚠️ 令牌获取弹窗被阻止，建议使用重定向方式重新登�?);
+          // 如果弹窗被阻止，提示用户使用重定向方式
+          if (interactiveError.message && interactiveError.message.includes('popup_window_error')) {
+            MSCalendarLogger.warn('⚠️ 令牌获取弹窗被阻止，建议使用重定向方式重新登录');
             if (typeof window !== 'undefined') {
               setTimeout(() => {
                 alert('无法打开认证弹窗，请点击"连接"按钮重新登录');
@@ -432,7 +441,7 @@ export class MicrosoftCalendarService {
     const url = `https://graph.microsoft.com/v1.0${endpoint}`;
     
     // 🔍 [DEBUG] 添加详细的API调用日志
-    MSCalendarLogger.log('🌐 [callGraphAPI] Making request:', {
+    console.log('🌐 [callGraphAPI] Making request:', {
       method: method,
       endpoint: endpoint,
       url: url,
@@ -456,7 +465,7 @@ export class MicrosoftCalendarService {
         body: body ? JSON.stringify(body) : undefined
       });
       
-      MSCalendarLogger.log('📡 [callGraphAPI] Response received:', {
+      console.log('📡 [callGraphAPI] Response received:', {
         status: response.status,
         statusText: response.statusText,
         ok: response.ok,
@@ -464,7 +473,7 @@ export class MicrosoftCalendarService {
       });
 
       if (!response.ok) {
-        MSCalendarLogger.error('�?[callGraphAPI] Request failed:', {
+        console.error('❌ [callGraphAPI] Request failed:', {
           status: response.status,
           statusText: response.statusText,
           method: method,
@@ -486,36 +495,37 @@ export class MicrosoftCalendarService {
             body: body ? JSON.stringify(body) : undefined
           });
           
-          MSCalendarLogger.log('📡 [callGraphAPI] Retry response:', {
+          console.log('📡 [callGraphAPI] Retry response:', {
             status: retryResponse.status,
             statusText: retryResponse.statusText,
             ok: retryResponse.ok
           });
           
           if (retryResponse.status === 401) {
-            // 重试后仍然是 401，说�?token 真的过期�?            MSCalendarLogger.error('🔴 [callGraphAPI] Still 401 after retry - authentication truly failed');
+            // 重试后仍然是 401，说明 token 真的过期了
+            MSCalendarLogger.error('🔴 [callGraphAPI] Still 401 after retry - authentication truly failed');
             this.handleAuthenticationFailure();
-            throw new Error('认证已过期，请重新登�?Microsoft 账户');
+            throw new Error('认证已过期，请重新登录 Microsoft 账户');
           }
           
           if (!retryResponse.ok) {
             const errorText = await retryResponse.text();
-            MSCalendarLogger.error('�?[callGraphAPI] Retry failed:', errorText);
+            MSCalendarLogger.error('❌ [callGraphAPI] Retry failed:', errorText);
             throw new Error(`Graph API call failed: ${retryResponse.status} ${retryResponse.statusText}`);
           }
           
           const result = retryResponse.status === 204 ? null : await retryResponse.json();
-          MSCalendarLogger.log('�?[callGraphAPI] Retry successful');
+          MSCalendarLogger.log('✅ [callGraphAPI] Retry successful');
           return result;
         } else {
           const errorText = await response.text();
-          MSCalendarLogger.error('�?[callGraphAPI] Error response:', errorText);
+          MSCalendarLogger.error('❌ [callGraphAPI] Error response:', errorText);
           throw new Error(`Graph API call failed: ${response.status} ${response.statusText}`);
         }
       }
 
       const result = response.status === 204 ? null : await response.json();
-      MSCalendarLogger.log('�?[callGraphAPI] Request successful:', {
+      console.log('✅ [callGraphAPI] Request successful:', {
         method: method,
         endpoint: endpoint,
         status: response.status,
@@ -525,7 +535,7 @@ export class MicrosoftCalendarService {
       return result;
       
     } catch (error) {
-      MSCalendarLogger.error('�?[callGraphAPI] Exception occurred:', {
+      console.error('❌ [callGraphAPI] Exception occurred:', {
         method: method,
         endpoint: endpoint,
         error: error,
@@ -545,7 +555,7 @@ export class MicrosoftCalendarService {
     try {
       await this.callGraphAPI('/me?$select=id,displayName');
     } catch (error) {
-      MSCalendarLogger.error('�?API connection test failed:', error);
+      MSCalendarLogger.error('❌ API connection test failed:', error);
       throw error;
     }
   }
@@ -560,13 +570,14 @@ export class MicrosoftCalendarService {
         MSCalendarLogger.log('🔧 Electron环境：使用外部浏览器认证');
         
         try {
-          // 先尝试无声登�?          const silentResult = await this.msalInstance.ssoSilent({
+          // 先尝试无声登录
+          const silentResult = await this.msalInstance.ssoSilent({
             scopes: MICROSOFT_GRAPH_CONFIG.scopes,
             account: this.msalInstance.getAllAccounts()[0]
           });
           
           if (silentResult) {
-            MSCalendarLogger.log('�?无声登录成功');
+            MSCalendarLogger.log('✅ 无声登录成功');
             this.msalInstance.setActiveAccount(silentResult.account);
             return true;
           }
@@ -592,12 +603,16 @@ export class MicrosoftCalendarService {
         }
         
         // 显示提示信息
-        alert('请在外部浏览器中完成Microsoft账户登录，然后返回应用。\n\n如果浏览器没有自动打开，请手动复制链接到浏览器中打开�?);
+        alert('请在外部浏览器中完成Microsoft账户登录，然后返回应用。\n\n如果浏览器没有自动打开，请手动复制链接到浏览器中打开。');
         
-        // 这里需要等待用户在外部浏览器完成登�?        // 在实际应用中，可能需要实现一个回调机�?        MSCalendarLogger.log('⚠️ 请在外部浏览器中完成登录，然后手动刷新应�?);
+        // 这里需要等待用户在外部浏览器完成登录
+        // 在实际应用中，可能需要实现一个回调机制
+        MSCalendarLogger.log('⚠️ 请在外部浏览器中完成登录，然后手动刷新应用');
         
-        return false; // 暂时返回false，需要用户手动刷�?      } else {
-        // Web环境：先尝试弹窗，如果失败则使用重定�?        MSCalendarLogger.log('🌐 Web环境：使用弹窗认�?);
+        return false; // 暂时返回false，需要用户手动刷新
+      } else {
+        // Web环境：先尝试弹窗，如果失败则使用重定向
+        MSCalendarLogger.log('🌐 Web环境：使用弹窗认证');
         try {
           const loginResponse = await this.msalInstance.loginPopup({
             scopes: MICROSOFT_GRAPH_CONFIG.scopes
@@ -609,19 +624,21 @@ export class MicrosoftCalendarService {
           
           // 检查是否是弹窗被阻止的错误
           if (popupError.message && popupError.message.includes('popup_window_error')) {
-            MSCalendarLogger.log('🔄 弹窗被阻止，使用重定向认证方�?);
+            MSCalendarLogger.log('🔄 弹窗被阻止，使用重定向认证方式');
             
             // 显示用户友好提示
             if (typeof window !== 'undefined') {
-              if (window.confirm('弹窗被浏览器阻止。是否使用页面重定向方式进行认证？\n\n点击确定将跳转到Microsoft登录页面，登录完成后会返回到此页面�?)) {
+              if (window.confirm('弹窗被浏览器阻止。是否使用页面重定向方式进行认证？\n\n点击确定将跳转到Microsoft登录页面，登录完成后会返回到此页面。')) {
                 await this.msalInstance.loginRedirect({
                   scopes: MICROSOFT_GRAPH_CONFIG.scopes
                 });
-                return true; // 重定向不会立即返回结�?              } else {
-                throw new Error('用户取消了认证流�?);
+                return true; // 重定向不会立即返回结果
+              } else {
+                throw new Error('用户取消了认证流程');
               }
             } else {
-              // 直接使用重定�?              await this.msalInstance.loginRedirect({
+              // 直接使用重定向
+              await this.msalInstance.loginRedirect({
                 scopes: MICROSOFT_GRAPH_CONFIG.scopes
               });
               return true;
@@ -643,9 +660,10 @@ export class MicrosoftCalendarService {
       return false;
       
     } catch (error) {
-      MSCalendarLogger.error('�?Login error:', error);
+      MSCalendarLogger.error('❌ Login error:', error);
       
-      // 如果认证失败，提供更详细的错误信�?      if (typeof window !== 'undefined' && window.electronAPI) {
+      // 如果认证失败，提供更详细的错误信息
+      if (typeof window !== 'undefined' && window.electronAPI) {
         window.electronAPI.showNotification(
           '认证失败', 
           '无法连接到Microsoft账户，请检查网络连接或稍后重试'
@@ -665,7 +683,7 @@ export class MicrosoftCalendarService {
       try {
         await this.msalInstance.logoutPopup({ account });
       } catch (error) {
-        MSCalendarLogger.error('�?Logout error:', error);
+        MSCalendarLogger.error('❌ Logout error:', error);
       }
     }
     this.accessToken = null;
@@ -687,7 +705,7 @@ export class MicrosoftCalendarService {
     try {
       return await this.callGraphAPI('/me');
     } catch (error) {
-      MSCalendarLogger.error('�?Get user info error:', error);
+      MSCalendarLogger.error('❌ Get user info error:', error);
       this.enableSimulationMode();
       throw error;
     }
@@ -698,7 +716,7 @@ export class MicrosoftCalendarService {
       const settings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
       return settings ? JSON.parse(settings) : null;
     } catch (error) {
-      MSCalendarLogger.error('�?Error reading user settings:', error);
+      MSCalendarLogger.error('❌ Error reading user settings:', error);
       return null;
     }
   }
@@ -721,7 +739,8 @@ export class MicrosoftCalendarService {
         try {
           await this.acquireToken();
         } catch (authError) {
-          // 继续到模拟模�?        }
+          // 继续到模拟模式
+        }
       }
     }
 
@@ -789,7 +808,8 @@ export class MicrosoftCalendarService {
       userFilterStart.setHours(0, 0, 0, 0);
 
       const userFilterEnd = new Date(now);
-      userFilterEnd.setDate(now.getDate() + 2); // 保持和查询范围一�?      userFilterEnd.setHours(23, 59, 59, 999);
+      userFilterEnd.setDate(now.getDate() + 2); // 保持和查询范围一致
+      userFilterEnd.setHours(23, 59, 59, 999);
 
       const filteredEvents = events.filter((event: any) => {
         if (!event.start?.dateTime) return false;
@@ -808,12 +828,14 @@ export class MicrosoftCalendarService {
         
         const rawDescription = outlookEvent.body?.content || `${outlookEvent.subject} - 来自 Outlook 的日程`;
         
-        // 🆕 处理组织者信�?        const organizer = outlookEvent.organizer?.emailAddress ? {
+        // 🆕 处理组织者信息
+        const organizer = outlookEvent.organizer?.emailAddress ? {
           name: outlookEvent.organizer.emailAddress.name || outlookEvent.organizer.emailAddress.address,
           email: outlookEvent.organizer.emailAddress.address
         } : null;
         
-        // 🆕 处理与会者信�?        const attendees = outlookEvent.attendees ? outlookEvent.attendees.map((attendee: any) => ({
+        // 🆕 处理与会者信息
+        const attendees = outlookEvent.attendees ? outlookEvent.attendees.map((attendee: any) => ({
           name: attendee.emailAddress?.name || attendee.emailAddress?.address,
           email: attendee.emailAddress?.address,
           type: attendee.type || 'required',
@@ -852,15 +874,16 @@ export class MicrosoftCalendarService {
       return processedEvents;
       
     } catch (parseError) {
-      MSCalendarLogger.error('�?Error parsing response:', parseError);
+      MSCalendarLogger.error('❌ Error parsing response:', parseError);
       this.enableSimulationMode();
       return this.getSimulatedEvents();
     }
   }
 
-  // 🔧 获取指定日历的事�?  public async getEventsFromCalendar(calendarId: string, startDate?: Date, endDate?: Date): Promise<GraphEvent[]> {
+  // 🔧 获取指定日历的事件
+  public async getEventsFromCalendar(calendarId: string, startDate?: Date, endDate?: Date): Promise<GraphEvent[]> {
     if (this.simulationMode) {
-      // MSCalendarLogger.log('📝 Simulating getEventsFromCalendar for:', calendarId);
+      // console.log('📝 Simulating getEventsFromCalendar for:', calendarId);
       return this.getSimulatedEvents();
     }
 
@@ -868,13 +891,14 @@ export class MicrosoftCalendarService {
       throw new Error('No access token available');
     }
 
-    // �?使用传入的日期范围，或回退到用户设�?    let queryStartDate: Date;
+    // ✅ 使用传入的日期范围，或回退到用户设置
+    let queryStartDate: Date;
     let queryEndDate: Date;
     
     if (startDate && endDate) {
       queryStartDate = startDate;
       queryEndDate = endDate;
-      // MSCalendarLogger.log('📅 [getEventsFromCalendar] Using provided date range:', {
+      // console.log('📅 [getEventsFromCalendar] Using provided date range:', {
       //   start: startDate.toLocaleDateString(),
       //   end: endDate.toLocaleDateString()
       // });
@@ -891,12 +915,12 @@ export class MicrosoftCalendarService {
       queryEndDate.setDate(now.getDate() + 2);
       queryEndDate.setHours(23, 59, 59, 999);
       
-      // MSCalendarLogger.log('📅 [getEventsFromCalendar] Using ongoingDays setting:', ongoingDays);
+      // console.log('📅 [getEventsFromCalendar] Using ongoingDays setting:', ongoingDays);
     }
 
     // Querying specific calendar
     
-    MSCalendarLogger.log(`📅 [getEventsFromCalendar] Querying calendar ${calendarId}:`, {
+    console.log(`📅 [getEventsFromCalendar] Querying calendar ${calendarId}:`, {
       start: queryStartDate.toISOString(),
       end: queryEndDate.toISOString()
     });
@@ -914,7 +938,8 @@ export class MicrosoftCalendarService {
       let pageCount = 0;
       const MAX_PAGES = 10; // 防止无限循环
       
-      // 🔧 [CRITICAL FIX] 处理分页，确保获取所有事�?      while (nextLink && pageCount < MAX_PAGES) {
+      // 🔧 [CRITICAL FIX] 处理分页，确保获取所有事件
+      while (nextLink && pageCount < MAX_PAGES) {
         pageCount++;
         
         let response = await fetch(nextLink, {
@@ -943,7 +968,8 @@ export class MicrosoftCalendarService {
         const events = data.value || [];
         allEvents = allEvents.concat(events);
         
-        // 检查是否有下一�?        nextLink = data['@odata.nextLink'] || null;
+        // 检查是否有下一页
+        nextLink = data['@odata.nextLink'] || null;
         
         if (nextLink) {
           MSCalendarLogger.log(`📄 [Pagination] Fetched page ${pageCount} with ${events.length} events, fetching next page...`);
@@ -955,7 +981,7 @@ export class MicrosoftCalendarService {
       }
       
       if (pageCount > 1) {
-        MSCalendarLogger.log(`�?[Pagination] Fetched ${allEvents.length} events from ${pageCount} pages for calendar ${calendarId}`);
+        MSCalendarLogger.log(`✅ [Pagination] Fetched ${allEvents.length} events from ${pageCount} pages for calendar ${calendarId}`);
       }
 
       // Got events from calendar
@@ -966,12 +992,14 @@ export class MicrosoftCalendarService {
         
         const rawDescription = outlookEvent.body?.content || `${outlookEvent.subject} - 来自 Outlook 的日程`;
         
-        // 🆕 处理组织者信�?        const organizer = outlookEvent.organizer?.emailAddress ? {
+        // 🆕 处理组织者信息
+        const organizer = outlookEvent.organizer?.emailAddress ? {
           name: outlookEvent.organizer.emailAddress.name || outlookEvent.organizer.emailAddress.address,
           email: outlookEvent.organizer.emailAddress.address
         } : null;
         
-        // 🆕 处理与会者信�?        const attendees = outlookEvent.attendees ? outlookEvent.attendees.map((attendee: any) => ({
+        // 🆕 处理与会者信息
+        const attendees = outlookEvent.attendees ? outlookEvent.attendees.map((attendee: any) => ({
           name: attendee.emailAddress?.name || attendee.emailAddress?.address,
           email: attendee.emailAddress?.address,
           type: attendee.type || 'required',
@@ -1010,12 +1038,12 @@ export class MicrosoftCalendarService {
       return processedEvents;
       
     } catch (error) {
-      MSCalendarLogger.error(`�?Error getting events from calendar ${calendarId}:`, error);
+      MSCalendarLogger.error(`❌ Error getting events from calendar ${calendarId}:`, error);
       return [];
     }
   }
 
-  // 🔧 统一�?updateEvent 方法
+  // 🔧 统一的 updateEvent 方法
   async updateEvent(eventId: string, eventData: any): Promise<any> {
     if (this.simulationMode) {
       MSCalendarLogger.log('📝 Simulating event update:', eventId);
@@ -1035,7 +1063,8 @@ export class MicrosoftCalendarService {
         body: eventData.body || { contentType: 'text', content: eventData.description || '' }
       };
       
-      // 🔧 强化时间字段处理和验�?      if (startDateTime && endDateTime) {
+      // 🔧 强化时间字段处理和验证
+      if (startDateTime && endDateTime) {
         try {
           const startFormatted = typeof startDateTime === 'string' ? startDateTime : formatTimeForStorage(startDateTime);
           const endFormatted = typeof endDateTime === 'string' ? endDateTime : formatTimeForStorage(endDateTime);
@@ -1062,24 +1091,25 @@ export class MicrosoftCalendarService {
             timeZone: 'Asia/Shanghai'
           };
           
-          MSCalendarLogger.log('�?[updateEvent] Time fields set:', {
+          console.log('⏰ [updateEvent] Time fields set:', {
             startDateTime: startFormatted,
             endDateTime: endFormatted
           });
           
         } catch (timeError) {
-          MSCalendarLogger.error('�?[updateEvent] Time format error:', timeError);
+          MSCalendarLogger.error('❌ [updateEvent] Time format error:', timeError);
           throw new Error(`Time format error: ${timeError instanceof Error ? timeError.message : 'Unknown time error'}`);
         }
       } else {
         MSCalendarLogger.warn('⚠️ [updateEvent] Missing time data, skipping time fields');
       }
       
-      // 🔧 只有当位置信息存在时才添加位置字�?      if (eventData.location) {
+      // 🔧 只有当位置信息存在时才添加位置字段
+      if (eventData.location) {
         outlookEventData.location = { displayName: eventData.location };
       }
       
-      // 🔧 只有�?isAllDay 字段明确指定时才添加
+      // 🔧 只有当 isAllDay 字段明确指定时才添加
       if (typeof eventData.isAllDay === 'boolean') {
         outlookEventData.isAllDay = eventData.isAllDay;
       }
@@ -1093,15 +1123,15 @@ export class MicrosoftCalendarService {
         MSCalendarLogger.warn('⚠️ Event not found for update, may have been deleted:', eventId);
         throw new Error(`Event not found: ${eventId}`);
       }
-      MSCalendarLogger.error('�?Failed to update event:', error);
+      MSCalendarLogger.error('❌ Failed to update event:', error);
       throw error;
     }
   }
 
-  // 🔧 统一�?deleteEvent 方法
+  // 🔧 统一的 deleteEvent 方法
   async deleteEvent(eventId: string): Promise<void> {
     if (this.simulationMode) {
-      MSCalendarLogger.log('🗑�?Simulating event deletion:', eventId);
+      MSCalendarLogger.log('🗑️ Simulating event deletion:', eventId);
       return;
     }
 
@@ -1118,12 +1148,12 @@ export class MicrosoftCalendarService {
         MSCalendarLogger.log('⚠️ Event already deleted or not found, treating as successful deletion:', eventId);
         return; // 删除成功
       }
-      MSCalendarLogger.error('�?Failed to delete event:', error);
+      MSCalendarLogger.error('❌ Failed to delete event:', error);
       throw error;
     }
   }
 
-  // 🔧 统一�?createEvent 方法
+  // 🔧 统一的 createEvent 方法
   async createEvent(eventData: any): Promise<any> {
     if (this.simulationMode) {
       return this.createSimulatedEvent(eventData);
@@ -1156,13 +1186,13 @@ export class MicrosoftCalendarService {
       return eventResponse;
       
     } catch (error) {
-      MSCalendarLogger.error('�?Failed to create event:', error);
+      MSCalendarLogger.error('❌ Failed to create event:', error);
       this.enableSimulationMode();
       return this.createSimulatedEvent(eventData);
     }
   }
 
-  // 🔧 统一�?forceSync 方法 - 简化版，不触发window事件
+  // 🔧 统一的 forceSync 方法 - 简化版，不触发window事件
   async forceSync(): Promise<GraphEvent[]> {
     MSCalendarLogger.log(`🚀 [forceSync] Starting manual sync (no auto-events)...`);
     try {
@@ -1174,7 +1204,7 @@ export class MicrosoftCalendarService {
       
       return events;
     } catch (error) {
-      MSCalendarLogger.error('�?Force sync error:', error);
+      MSCalendarLogger.error('❌ Force sync error:', error);
       throw error;
     }
   }
@@ -1217,12 +1247,13 @@ export class MicrosoftCalendarService {
       try {
         listener(events);
       } catch (error) {
-        MSCalendarLogger.error('�?Event listener error:', error);
+        MSCalendarLogger.error('❌ Event listener error:', error);
       }
     });
   }
 
-  // 🔧 临时禁用的方�?  startRealTimeSync() {
+  // 🔧 临时禁用的方法
+  startRealTimeSync() {
     MSCalendarLogger.log(`⏸️ [startRealTimeSync] TEMPORARILY DISABLED - preventing infinite loop`);
     return;
   }
@@ -1244,12 +1275,14 @@ export class MicrosoftCalendarService {
   }
 
   /**
-   * 处理认证失败�?01 错误�?   * 清除认证状态并通知应用
+   * 处理认证失败（401 错误）
+   * 清除认证状态并通知应用
    */
   handleAuthenticationFailure(): void {
     MSCalendarLogger.error('🔴 [Auth] Authentication failed - Token expired or invalid');
     
-    // 清除认证状�?    this.isAuthenticated = false;
+    // 清除认证状态
+    this.isAuthenticated = false;
     this.accessToken = null;
     
     // 清除 localStorage 中的认证标记
@@ -1258,7 +1291,7 @@ export class MicrosoftCalendarService {
     // 触发自定义事件通知应用
     window.dispatchEvent(new CustomEvent('auth-expired', {
       detail: { 
-        message: 'Microsoft 账户认证已过期，请重新登�?,
+        message: 'Microsoft 账户认证已过期，请重新登录',
         timestamp: new Date()
       }
     }));
@@ -1267,13 +1300,13 @@ export class MicrosoftCalendarService {
   }
 
   /**
-   * 重新加载令牌（用�?Electron 环境认证后）
+   * 重新加载令牌（用于 Electron 环境认证后）
    */
   async reloadToken(): Promise<boolean> {
     try {
       MSCalendarLogger.log('🔄 [ReloadToken] 重新加载访问令牌...');
       
-      // �?localStorage 加载
+      // 从 localStorage 加载
       const token = localStorage.getItem('ms-access-token');
       const expiresAt = localStorage.getItem('ms-token-expires');
       
@@ -1282,21 +1315,21 @@ export class MicrosoftCalendarService {
         const now = Date.now();
         
         if (now < expiresTime - 60000) {
-          MSCalendarLogger.log('�?[ReloadToken] 成功加载有效的访问令�?);
+          MSCalendarLogger.log('✅ [ReloadToken] 成功加载有效的访问令牌');
           this.accessToken = token;
           this.isAuthenticated = true;
           this.simulationMode = false;
           return true;
         } else {
-          MSCalendarLogger.log('⚠️ [ReloadToken] 访问令牌已过�?);
+          MSCalendarLogger.log('⚠️ [ReloadToken] 访问令牌已过期');
           return false;
         }
       }
       
-      MSCalendarLogger.log('⚠️ [ReloadToken] 未找到访问令�?);
+      MSCalendarLogger.log('⚠️ [ReloadToken] 未找到访问令牌');
       return false;
     } catch (error) {
-      MSCalendarLogger.error('�?[ReloadToken] 重新加载令牌失败:', error);
+      MSCalendarLogger.error('❌ [ReloadToken] 重新加载令牌失败:', error);
       return false;
     }
   }
@@ -1322,7 +1355,8 @@ export class MicrosoftCalendarService {
   // =================================
 
   /**
-   * 获取所有日历分�?   */
+   * 获取所有日历分组
+   */
   async getCalendarGroups(): Promise<CalendarGroup[]> {
     if (!this.isAuthenticated || !this.accessToken) {
       throw new Error('未认证，无法获取日历分组');
@@ -1343,11 +1377,11 @@ export class MicrosoftCalendarService {
       const data = await response.json();
       this.calendarGroups = data.value || [];
       
-      MSCalendarLogger.log('�?成功获取日历分组:', this.calendarGroups.length, '�?);
+      MSCalendarLogger.log('✅ 成功获取日历分组:', this.calendarGroups.length, '个');
       return this.calendarGroups;
       
     } catch (error) {
-      MSCalendarLogger.error('�?获取日历分组失败:', error);
+      MSCalendarLogger.error('❌ 获取日历分组失败:', error);
       throw error;
     }
   }
@@ -1375,17 +1409,18 @@ export class MicrosoftCalendarService {
       const data = await response.json();
       const calendars = data.value || [];
       
-      MSCalendarLogger.log(`�?成功获取分组 ${groupId} 下的日历:`, calendars.length, '�?);
+      MSCalendarLogger.log(`✅ 成功获取分组 ${groupId} 下的日历:`, calendars.length, '个');
       return calendars;
       
     } catch (error) {
-      MSCalendarLogger.error('�?获取日历列表失败:', error);
+      MSCalendarLogger.error('❌ 获取日历列表失败:', error);
       throw error;
     }
   }
 
   /**
-   * 获取用户的所有日历（包括默认日历�?   */
+   * 获取用户的所有日历（包括默认日历）
+   */
   async getAllCalendars(): Promise<Calendar[]> {
     if (!this.isAuthenticated || !this.accessToken) {
       throw new Error('未认证，无法获取日历列表');
@@ -1400,17 +1435,17 @@ export class MicrosoftCalendarService {
       });
 
       if (!response.ok) {
-        throw new Error(`获取所有日历失�? ${response.status}`);
+        throw new Error(`获取所有日历失败: ${response.status}`);
       }
 
       const data = await response.json();
       this.calendars = data.value || [];
       
-      MSCalendarLogger.log('�?成功获取所有日�?', this.calendars.length, '�?);
+      MSCalendarLogger.log('✅ 成功获取所有日历:', this.calendars.length, '个');
       return this.calendars;
       
     } catch (error) {
-      MSCalendarLogger.error('�?获取所有日历失�?', error);
+      MSCalendarLogger.error('❌ 获取所有日历失败:', error);
       throw error;
     }
   }
@@ -1442,17 +1477,18 @@ export class MicrosoftCalendarService {
       const newGroup = await response.json();
       this.calendarGroups.push(newGroup);
       
-      MSCalendarLogger.log('�?成功创建日历分组:', newGroup.name);
+      MSCalendarLogger.log('✅ 成功创建日历分组:', newGroup.name);
       return newGroup;
       
     } catch (error) {
-      MSCalendarLogger.error('�?创建日历分组失败:', error);
+      MSCalendarLogger.error('❌ 创建日历分组失败:', error);
       throw error;
     }
   }
 
   /**
-   * 在指定分组中创建新日�?   */
+   * 在指定分组中创建新日历
+   */
   async createCalendarInGroup(groupId: string, name: string, color?: string): Promise<Calendar> {
     if (!this.isAuthenticated || !this.accessToken) {
       throw new Error('未认证，无法创建日历');
@@ -1479,11 +1515,11 @@ export class MicrosoftCalendarService {
 
       const newCalendar = await response.json();
       
-      MSCalendarLogger.log('�?成功创建日历:', newCalendar.name);
+      MSCalendarLogger.log('✅ 成功创建日历:', newCalendar.name);
       return newCalendar;
       
     } catch (error) {
-      MSCalendarLogger.error('�?创建日历失败:', error);
+      MSCalendarLogger.error('❌ 创建日历失败:', error);
       throw error;
     }
   }
@@ -1510,10 +1546,10 @@ export class MicrosoftCalendarService {
 
       this.calendarGroups = this.calendarGroups.filter(group => group.id !== groupId);
       
-      MSCalendarLogger.log('�?成功删除日历分组');
+      MSCalendarLogger.log('✅ 成功删除日历分组');
       
     } catch (error) {
-      MSCalendarLogger.error('�?删除日历分组失败:', error);
+      MSCalendarLogger.error('❌ 删除日历分组失败:', error);
       throw error;
     }
   }
@@ -1538,11 +1574,12 @@ export class MicrosoftCalendarService {
   }
 
   /**
-   * 同步事件到指定日�?   */
+   * 同步事件到指定日历
+   */
   async syncEventToCalendar(event: any, calendarId?: string): Promise<string> {
     const targetCalendarId = calendarId || this.getSelectedCalendarId();
     
-    MSCalendarLogger.log('🎯 [syncEventToCalendar] Debug info:', {
+    console.log('🎯 [syncEventToCalendar] Debug info:', {
       eventTitle: event.subject || event.title,
       providedCalendarId: calendarId,
       selectedCalendarId: this.getSelectedCalendarId(),
@@ -1559,7 +1596,7 @@ export class MicrosoftCalendarService {
     }
 
     try {
-      // 转换事件格式�?Outlook 格式
+      // 转换事件格式为 Outlook 格式
       const startDateTime = event.start?.dateTime || event.startTime;
       const endDateTime = event.end?.dateTime || event.endTime;
       
@@ -1593,16 +1630,16 @@ export class MicrosoftCalendarService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        MSCalendarLogger.error('�?Graph API Error Response:', errorText);
-        throw new Error(`同步事件到指定日历失�? ${response.status} - ${errorText}`);
+        MSCalendarLogger.error('❌ Graph API Error Response:', errorText);
+        throw new Error(`同步事件到指定日历失败: ${response.status} - ${errorText}`);
       }
 
       const createdEvent = await response.json();
-      MSCalendarLogger.log('�?成功同步事件到日�?', targetCalendarId);
+      MSCalendarLogger.log('✅ 成功同步事件到日历:', targetCalendarId);
       return createdEvent.id;
       
     } catch (error) {
-      MSCalendarLogger.error('�?同步事件到指定日历失�?', error);
+      MSCalendarLogger.error('❌ 同步事件到指定日历失败:', error);
       throw error;
     }
   }

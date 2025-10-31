@@ -1,11 +1,11 @@
 /**
  * DesktopCalendarWidget - Electron 桌面窗口页面（全屏模式）
  * 完全复刻 DesktopCalendarWidgetV3 的样式和透明度逻辑
- * 但布局适配 Electron 全屏窗口（不使用 position: fixed�?
+ * 但布局适配 Electron 全屏窗口（不使用 position: fixed）
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
-import TimeCalendar from '../components/TimeCalendar'; // �?使用原始 TimeCalendar
+import TimeCalendar from '../components/TimeCalendar'; // ✅ 使用原始 TimeCalendar
 import { MicrosoftCalendarService } from '../services/MicrosoftCalendarService';
 import { ActionBasedSyncManager } from '../services/ActionBasedSyncManager';
 import { logger } from '../utils/logger';
@@ -15,9 +15,9 @@ import '../components/DesktopCalendarWidget.css'; // 导入桌面日历 CSS
 import SyncIcon from '../assets/icons/Sync.svg';
 import OutlookIcon from '../assets/icons/Outlook.svg';
 
-// �?修复：移除过度优化的memo，让TimeCalendar正常响应内部数据变化
+// ❌ 修复：移除过度优化的memo，让TimeCalendar正常响应内部数据变化
 // TimeCalendar内部使用useState和useEffect管理数据，应该允许正常重渲染
-// 原memo逻辑会阻止响应localStorage和事件监听器的数据更�?
+// 原memo逻辑会阻止响应localStorage和事件监听器的数据更新
 const MemoizedTimeCalendar = TimeCalendar;
 
 interface CustomCSSProperties extends React.CSSProperties {
@@ -25,49 +25,49 @@ interface CustomCSSProperties extends React.CSSProperties {
 }
 
 const DesktopCalendarWidget: React.FC = () => {
-  // 生成或读取唯一�?Widget ID
+  // 生成或读取唯一的 Widget ID
   const [widgetId] = useState(() => {
-    // 1. 尝试�?URL 参数读取
+    // 1. 尝试从 URL 参数读取
     const params = new URLSearchParams(window.location.search);
     const urlId = params.get('widgetId');
     if (urlId) {
       return urlId;
     }
     
-    // 2. 尝试�?localStorage 读取
+    // 2. 尝试从 localStorage 读取
     const savedId = localStorage.getItem('remarkable-widget-instance-id');
     if (savedId) {
       return savedId;
     }
     
-    // 3. 生成新的 ID 并保�?
+    // 3. 生成新的 ID 并保存
     const newId = `widget-${Date.now()}`;
     localStorage.setItem('remarkable-widget-instance-id', newId);
     return newId;
   });
 
-  // 生成唯一的存�?key
+  // 生成唯一的存储 key
   const storageKey = `remarkable-widget-settings-${widgetId}`;
   
   // 🔧 Widget 不应该有自己的服务实例，只使用全局实例
   const [microsoftService, setMicrosoftService] = useState<any>(null);
   
-  // 🔧 持续检查全局服务，直到主应用初始化完�?
+  // 🔧 持续检查全局服务，直到主应用初始化完成
   useEffect(() => {
     const checkGlobalService = () => {
       if (typeof window !== 'undefined' && (window as any).microsoftCalendarService) {
         const globalService = (window as any).microsoftCalendarService;
-        widgetLogger.log('�?[Widget] 找到全局 microsoftCalendarService');
+        widgetLogger.log('✅ [Widget] 找到全局 microsoftCalendarService');
         setMicrosoftService(globalService);
-        return true; // 找到�?
+        return true; // 找到了
       }
-      widgetLogger.log('�?[Widget] 等待全局 microsoftCalendarService...');
+      widgetLogger.log('⏳ [Widget] 等待全局 microsoftCalendarService...');
       return false; // 还没找到
     };
     
-    // 立即检查一�?
+    // 立即检查一次
     if (checkGlobalService()) {
-      return; // 如果找到了就不需要后续检�?
+      return; // 如果找到了就不需要后续检查
     }
     
     // 每秒检查一次，直到找到为止
@@ -80,11 +80,11 @@ const DesktopCalendarWidget: React.FC = () => {
     return () => {
       clearInterval(intervalId);
     };
-  }, []); // 空依赖数组，只在挂载时执行一�?
+  }, []); // 空依赖数组，只在挂载时执行一次
   
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
-  const [updatedEventCount, setUpdatedEventCount] = useState(0); // 🔧 追踪同步更新的事件数�?
-  const [isAuthenticated, setIsAuthenticated] = useState(false); // 🔧 追踪认证状�?
+  const [updatedEventCount, setUpdatedEventCount] = useState(0); // 🔧 追踪同步更新的事件数量
+  const [isAuthenticated, setIsAuthenticated] = useState(false); // 🔧 追踪认证状态
   
   // 📊 详细同步统计
   const [syncStats, setSyncStats] = useState({
@@ -95,10 +95,10 @@ const DesktopCalendarWidget: React.FC = () => {
   
   const [isLocked, setIsLocked] = useState(false);
   const [showControls, setShowControls] = useState(false);
-  const hideTimerRef = useRef<NodeJS.Timeout | null>(null); // 定时器引�?
+  const hideTimerRef = useRef<NodeJS.Timeout | null>(null); // 定时器引用
 
   // 样式控制 - 简化版：只控制日历背景
-  // 使用 lazy initialization 确保在首次渲染前就加载设�?
+  // 使用 lazy initialization 确保在首次渲染前就加载设置
   const [bgOpacity, setBgOpacity] = useState(() => {
     const savedSettings = localStorage.getItem('desktop-calendar-widget-settings');
     if (savedSettings) {
@@ -147,17 +147,17 @@ const DesktopCalendarWidget: React.FC = () => {
 
   const widgetRef = useRef<HTMLDivElement>(null);
   
-  // 调整大小状�?
+  // 调整大小状态
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartRef = useRef<{ x: number; y: number; width: number; height: number; edge: string } | null>(null);
-  const resizeThrottleRef = useRef<number>(0); // 节流用的时间�?
+  const resizeThrottleRef = useRef<number>(0); // 节流用的时间戳
   
   // Resize 性能追踪
   const resizePerfRef = useRef({ count: 0, totalTime: 0, maxTime: 0, minTime: Infinity });
   const lastResizeTimeRef = useRef<number>(0);
   const resizeIpcBusyRef = useRef<boolean>(false); // IPC忙碌标志
   
-  // 拖动状�?- 恢复自定义拖动实�?
+  // 拖动状态 - 恢复自定义拖动实现
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
   const dragThrottleRef = useRef<number>(0);
@@ -170,7 +170,7 @@ const DesktopCalendarWidget: React.FC = () => {
     minTime: number;
   }>({ moveCount: 0, totalTime: 0, maxTime: 0, minTime: Infinity });
   
-  // �?新增：IPC忙碌标志和delta累积
+  // ⚡ 新增：IPC忙碌标志和delta累积
   const ipcBusyRef = useRef<boolean>(false);
   const pendingMoveRef = useRef<{ x: number; y: number } | null>(null);
   const sentMoveRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 }); // 追踪已发送的总移动量
@@ -179,7 +179,7 @@ const DesktopCalendarWidget: React.FC = () => {
   const [isResizeHovering, setIsResizeHovering] = useState(false);
   const resizeHoverTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // �?localStorage 读取锁定状态并同步到主进程
+  // 从 localStorage 读取锁定状态并同步到主进程
   useEffect(() => {
     const savedSettings = localStorage.getItem('desktop-calendar-widget-settings');
     
@@ -190,7 +190,7 @@ const DesktopCalendarWidget: React.FC = () => {
         
         setIsLocked(locked);
         
-        // 同步锁定状态到 Electron 主进�?
+        // 同步锁定状态到 Electron 主进程
         if (window.electronAPI?.widgetLock) {
           window.electronAPI.widgetLock(locked).catch((error: Error) => {
             widgetLogger.error('Failed to sync lock state:', error);
@@ -200,7 +200,7 @@ const DesktopCalendarWidget: React.FC = () => {
         widgetLogger.error('Failed to parse widget settings for lock state', e);
       }
     } else {
-      // 确保主进程也是解锁状�?
+      // 确保主进程也是解锁状态
       if (window.electronAPI?.widgetLock) {
         window.electronAPI.widgetLock(false);
       }
@@ -216,10 +216,10 @@ const DesktopCalendarWidget: React.FC = () => {
     return () => clearTimeout(t);
   }, [bgOpacity, bgColor, isLocked]);
 
-  // 初始�?widget-mode 样式
+  // 初始化 widget-mode 样式
   useEffect(() => {
     widgetLogger.log('🎨 [Renderer] DesktopCalendarWidget mounted');
-    widgetLogger.log('🔍 [Renderer] 检�?electronAPI:', {
+    console.log('🔍 [Renderer] 检查 electronAPI:', {
       hasElectronAPI: !!window.electronAPI,
       hasWidgetMove: !!window.electronAPI?.widgetMove
     });
@@ -235,7 +235,7 @@ const DesktopCalendarWidget: React.FC = () => {
       const dragBar = document.querySelector('.drag-bar') as HTMLElement;
       if (dragBar) {
         const computedStyle = window.getComputedStyle(dragBar);
-        widgetLogger.log('�?[Renderer] Drag bar found:', {
+        console.log('✅ [Renderer] Drag bar found:', {
           element: dragBar,
           webkitAppRegion: computedStyle.getPropertyValue('-webkit-app-region'),
           pointerEvents: computedStyle.pointerEvents,
@@ -246,7 +246,7 @@ const DesktopCalendarWidget: React.FC = () => {
           height: computedStyle.height
         });
       } else {
-        widgetLogger.error('�?[Renderer] Drag bar NOT found!');
+        widgetLogger.error('❌ [Renderer] Drag bar NOT found!');
       }
     }, 500);
     
@@ -259,42 +259,42 @@ const DesktopCalendarWidget: React.FC = () => {
     };
   }, []);
 
-  // 🔄 使用全局同步管理器，确保与主应用数据一�?
+  // 🔄 使用全局同步管理器，确保与主应用数据一致
   useEffect(() => {
     const checkAuthAndInitSync = () => {
-      // 🔧 只使�?localStorage 中的认证状态（主应用会更新这个标记�?
+      // 🔧 只使用 localStorage 中的认证状态（主应用会更新这个标记）
       const storedAuthState = localStorage.getItem('remarkable-outlook-authenticated') === 'true';
       
-      widgetLogger.log('🔍 [Widget] 检查认证状�?', {
+      console.log('🔍 [Widget] 检查认证状态:', {
         storedAuthState,
         hasMicrosoftService: !!microsoftService
       });
       
-      // 更新认证状�?
+      // 更新认证状态
       setIsAuthenticated(storedAuthState);
       
-      // 🔧 �?Electron 环境中，Widget 和主应用是独立的 window 对象
+      // 🔧 在 Electron 环境中，Widget 和主应用是独立的 window 对象
       // 不需要尝试获取全局 syncManager，直接从 localStorage 读取即可
     };
     
-    // 只有�?microsoftService 存在时才检�?
+    // 只有在 microsoftService 存在时才检查
     if (microsoftService) {
       checkAuthAndInitSync();
     } else {
-      widgetLogger.log('�?[Widget] 等待 microsoftService 初始�?..');
+      widgetLogger.log('⏳ [Widget] 等待 microsoftService 初始化...');
     }
     
     // 🔧 监听 localStorage 变化（实时响应主应用的认证状态更新）
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'remarkable-outlook-authenticated') {
-        widgetLogger.log('🔔 [Widget] 检测到认证状态变�?', e.newValue);
+        widgetLogger.log('🔔 [Widget] 检测到认证状态变化:', e.newValue);
         checkAuthAndInitSync();
       }
     };
     
     window.addEventListener('storage', handleStorageChange);
     
-    // 定期检查认证状态（�?0秒）
+    // 定期检查认证状态（每30秒）
     const authCheckInterval = setInterval(checkAuthAndInitSync, 30000);
     
     return () => {
@@ -303,76 +303,76 @@ const DesktopCalendarWidget: React.FC = () => {
     };
   }, [microsoftService]);
 
-  // 🔄 定期更新 lastSyncTime �?updatedEventCount（只�?localStorage 读取�?
+  // 🔄 定期更新 lastSyncTime 和 updatedEventCount（只从 localStorage 读取）
   useEffect(() => {
     const updateSyncStatus = () => {
       try {
-        // 🔧 �?localStorage 读取同步时间（Electron 窗口间通信方式�?
+        // 🔧 从 localStorage 读取同步时间（Electron 窗口间通信方式）
         const storedTime = localStorage.getItem('lastSyncTime');
         if (storedTime) {
           try {
             const parsedTime = new Date(storedTime);
             if (!isNaN(parsedTime.getTime())) {
-              widgetLogger.log('🕐 [Widget] �?localStorage 读取同步时间:', parsedTime.toLocaleString('zh-CN'));
+              widgetLogger.log('🕐 [Widget] 从 localStorage 读取同步时间:', parsedTime.toLocaleString('zh-CN'));
               setLastSyncTime(parsedTime);
             }
           } catch (parseError) {
-            widgetLogger.error('�?[Widget] 解析同步时间失败:', parseError);
+            widgetLogger.error('❌ [Widget] 解析同步时间失败:', parseError);
           }
         } else {
-          widgetLogger.log('�?[Widget] localStorage 中暂无同步时�?);
+          widgetLogger.log('⏳ [Widget] localStorage 中暂无同步时间');
         }
 
-        // 🔧 �?localStorage 读取更新事件数量
+        // 🔧 从 localStorage 读取更新事件数量
         const storedEventCount = localStorage.getItem('lastSyncEventCount');
         if (storedEventCount) {
           const count = parseInt(storedEventCount, 10);
           if (!isNaN(count)) {
-            widgetLogger.log('📊 [Widget] �?localStorage 读取事件数量:', count);
+            widgetLogger.log('📊 [Widget] 从 localStorage 读取事件数量:', count);
             setUpdatedEventCount(count);
           }
         }
         
-        // 📊 �?localStorage 读取同步统计信息
+        // 📊 从 localStorage 读取同步统计信息
         const storedSyncStats = localStorage.getItem('syncStats');
         if (storedSyncStats) {
           try {
             const stats = JSON.parse(storedSyncStats);
-            widgetLogger.log('📊 [Widget] �?localStorage 读取同步统计:', stats);
+            widgetLogger.log('📊 [Widget] 从 localStorage 读取同步统计:', stats);
             setSyncStats(stats);
           } catch (e) {
-            widgetLogger.error('�?[Widget] 解析同步统计失败:', e);
+            widgetLogger.error('❌ [Widget] 解析同步统计失败:', e);
           }
         }
       } catch (error) {
-        widgetLogger.error('�?[Widget] 获取同步状态失�?', error);
+        widgetLogger.error('❌ [Widget] 获取同步状态失败:', error);
       }
     };
     
-    // 立即更新一�?
-    widgetLogger.log('🔄 [Widget] 开始监听同步状态更�?..');
+    // 立即更新一次
+    widgetLogger.log('🔄 [Widget] 开始监听同步状态更新...');
     updateSyncStatus();
     
     // 监听 localStorage 变化（实时响应主应用的同步完成）
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'lastSyncTime' || e.key === 'lastSyncEventCount' || e.key === 'syncStats') {
-        widgetLogger.log('🔔 [Widget] 检测到同步状态变�?', e.key, '=', e.newValue);
+        widgetLogger.log('🔔 [Widget] 检测到同步状态变化:', e.key, '=', e.newValue);
         updateSyncStatus();
       }
     };
     
     window.addEventListener('storage', handleStorageChange);
     
-    // �?0秒轮询一次（兜底�?
+    // 每10秒轮询一次（兜底）
     const syncStatusInterval = setInterval(updateSyncStatus, 10000);
     
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       clearInterval(syncStatusInterval);
     };
-  }, []); // 🔧 不依赖任何状态，只依�?localStorage
+  }, []); // 🔧 不依赖任何状态，只依赖 localStorage
 
-  // 移除控制栏自动显示逻辑，不再需�?
+  // 移除控制栏自动显示逻辑，不再需要
   // useEffect(() => {
   //   const handleMouseMove = (e: MouseEvent) => {
   //     const isNearTop = e.clientY <= 10;
@@ -395,12 +395,12 @@ const DesktopCalendarWidget: React.FC = () => {
   //   };
   // }, []);
 
-  // 动态注�?CSS 控制日历内部元素透明�?
+  // 动态注入 CSS 控制日历内部元素透明度
   // 移除错误的动态CSS注入逻辑
-  // calendar.css 中的静态样式已经足够，不需要动态覆�?
-  // bgOpacity 只应该影�?TimeCalendar �?backgroundColor，不应该影响内部元素
+  // calendar.css 中的静态样式已经足够，不需要动态覆盖
+  // bgOpacity 只应该影响 TimeCalendar 的 backgroundColor，不应该影响内部元素
 
-  // 锁定切换（调�?Electron API�?- 使用 useCallback 优化
+  // 锁定切换（调用 Electron API） - 使用 useCallback 优化
   const handleLockToggle = useCallback(async (newLockState?: boolean) => {
     const targetState = newLockState !== undefined ? newLockState : !isLocked;
     widgetLogger.log('🔄 handleLockToggle called:', { current: isLocked, target: targetState });
@@ -410,9 +410,9 @@ const DesktopCalendarWidget: React.FC = () => {
     if (window.electronAPI?.widgetLock) {
       try {
         const result = await window.electronAPI.widgetLock(targetState);
-        widgetLogger.log('�?Widget lock state changed:', { locked: targetState, result });
+        widgetLogger.log('✅ Widget lock state changed:', { locked: targetState, result });
       } catch (error) {
-        widgetLogger.error('�?Failed to set widget lock:', error);
+        widgetLogger.error('❌ Failed to set widget lock:', error);
       }
     } else {
       widgetLogger.warn('⚠️ electronAPI.widgetLock not available');
@@ -421,15 +421,15 @@ const DesktopCalendarWidget: React.FC = () => {
 
   // 调整大小处理
   const handleResizeStart = useCallback((edge: string, e: React.MouseEvent) => {
-    widgetLogger.log('🎯 [Resize] handleResizeStart 被调�?', { edge, isLocked });
+    widgetLogger.log('🎯 [Resize] handleResizeStart 被调用!', { edge, isLocked });
     if (isLocked) {
-      widgetLogger.log('�?[Resize] �?isLocked 阻止');
+      widgetLogger.log('❌ [Resize] 被 isLocked 阻止');
       return;
     }
     e.preventDefault();
     e.stopPropagation();
     
-    widgetLogger.log('�?[Resize] 开始调整大�?', edge);
+    widgetLogger.log('✅ [Resize] 开始调整大小:', edge);
     setIsResizing(true);
     const bounds = widgetRef.current?.getBoundingClientRect();
     if (bounds) {
@@ -444,7 +444,7 @@ const DesktopCalendarWidget: React.FC = () => {
     }
   }, [isLocked]);
 
-  // 调整大小手柄悬停处理（保�?秒）
+  // 调整大小手柄悬停处理（保持2秒）
   const handleResizeHover = useCallback(() => {
     setIsResizeHovering(true);
     
@@ -453,14 +453,14 @@ const DesktopCalendarWidget: React.FC = () => {
       clearTimeout(resizeHoverTimerRef.current);
     }
     
-    // 🎯 2秒后隐藏（满�?至少维持2�?的要求）
+    // 🎯 2秒后隐藏（满足"至少维持2秒"的要求）
     resizeHoverTimerRef.current = setTimeout(() => {
       setIsResizeHovering(false);
     }, 2000);
   }, []);
 
   const handleResizeLeave = useCallback(() => {
-    // 不立即隐藏，等待计时�?
+    // 不立即隐藏，等待计时器
   }, []);
 
   const handleResizeMove = useCallback((e: MouseEvent) => {
@@ -482,11 +482,11 @@ const DesktopCalendarWidget: React.FC = () => {
     if (edge.includes('bottom')) newHeight = height + deltaY;
     if (edge.includes('top')) newHeight = height - deltaY;
     
-    // 最小尺寸限�?
+    // 最小尺寸限制
     newWidth = Math.max(400, newWidth);
     newHeight = Math.max(300, newHeight);
     
-    // 🔧 激进的节流：拖动中�?00ms最多更新一次（减少渲染次数�?
+    // 🔧 激进的节流：拖动中每100ms最多更新一次（减少渲染次数）
     const now = Date.now();
     if (now - resizeThrottleRef.current < 100) {
       // 静默跳过，不打印日志
@@ -517,37 +517,37 @@ const DesktopCalendarWidget: React.FC = () => {
         })
         .catch((error: any) => {
           resizeIpcBusyRef.current = false; // 出错也要重置
-          widgetLogger.error('�?[Renderer] widgetResize 失败:', error);
+          widgetLogger.error('❌ [Renderer] widgetResize 失败:', error);
         });
     }
   }, [isResizing]); // 移除 isDragging 依赖
 
   const handleResizeEnd = useCallback(async (event?: MouseEvent) => {
-    widgetLogger.log('🏁 [Resize] handleResizeEnd 被调�?', { isResizing, hasEvent: !!event });
+    widgetLogger.log('🏁 [Resize] handleResizeEnd 被调用!', { isResizing, hasEvent: !!event });
     if (!isResizing) {
       widgetLogger.log('⚠️ [Resize] isResizing=false, 跳过结束逻辑');
       return;
     }
     
-    widgetLogger.log('�?[Resize] 结束 resize');
+    widgetLogger.log('✅ [Resize] 结束 resize');
     
-    // 如果有event，立即应用最终尺�?
+    // 如果有event，立即应用最终尺寸
     if (event && resizeStartRef.current) {
       const deltaX = event.clientX - resizeStartRef.current.x;
       const deltaY = event.clientY - resizeStartRef.current.y;
       const newWidth = Math.max(400, resizeStartRef.current.width + deltaX);
       const newHeight = Math.max(300, resizeStartRef.current.height + deltaY);
       
-      widgetLogger.log('📐 [Resize] 应用最终尺�?', { newWidth, newHeight });
+      widgetLogger.log('📐 [Resize] 应用最终尺寸:', { newWidth, newHeight });
       
-      // 强制应用最终尺�?
+      // 强制应用最终尺寸
       try {
         await window.electronAPI.widgetResize({
           width: newWidth,
           height: newHeight
         });
       } catch (error) {
-        widgetLogger.error('�?应用最终尺寸失�?', error);
+        widgetLogger.error('❌ 应用最终尺寸失败:', error);
       }
     }
     
@@ -560,28 +560,28 @@ const DesktopCalendarWidget: React.FC = () => {
     
     setIsResizing(false);
     resizeStartRef.current = null;
-    widgetLogger.log('�?[Resize] 状态已重置');
+    widgetLogger.log('✅ [Resize] 状态已重置');
   }, [isResizing]);
 
-  // 监听鼠标移动和释�?
+  // 监听鼠标移动和释放
   useEffect(() => {
     if (isResizing) {
-      widgetLogger.log('👂 [Resize] 添加 mousemove �?mouseup 监听�?);
+      widgetLogger.log('👂 [Resize] 添加 mousemove 和 mouseup 监听器');
       window.addEventListener('mousemove', handleResizeMove);
       window.addEventListener('mouseup', handleResizeEnd);
       return () => {
-        widgetLogger.log('🔇 [Resize] 移除 mousemove �?mouseup 监听�?);
+        widgetLogger.log('🔇 [Resize] 移除 mousemove 和 mouseup 监听器');
         window.removeEventListener('mousemove', handleResizeMove);
         window.removeEventListener('mouseup', handleResizeEnd);
       };
     }
   }, [isResizing, handleResizeMove, handleResizeEnd]);
 
-  // 拖动处理 - 简化版，依赖主进程的尺寸恢复机�?
-  // ===== 拖动相关逻辑 - 自定义拖动实�?=====
+  // 拖动处理 - 简化版，依赖主进程的尺寸恢复机制
+  // ===== 拖动相关逻辑 - 自定义拖动实现 =====
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     if (isLocked || isResizing) {
-      widgetLogger.log('🚫 [Renderer] 拖动被阻�?', { isLocked, isResizing });
+      widgetLogger.log('🚫 [Renderer] 拖动被阻止:', { isLocked, isResizing });
       return;
     }
     
@@ -591,7 +591,7 @@ const DesktopCalendarWidget: React.FC = () => {
     // 重置性能统计
     perfRef.current = { moveCount: 0, totalTime: 0, maxTime: 0, minTime: Infinity };
     
-    widgetLogger.log('🎬 [Renderer] 开始拖�?', { screenX: e.screenX, screenY: e.screenY });
+    widgetLogger.log('🎬 [Renderer] 开始拖动:', { screenX: e.screenX, screenY: e.screenY });
     setIsDragging(true);
     dragStartRef.current = {
       x: e.screenX,
@@ -618,18 +618,18 @@ const DesktopCalendarWidget: React.FC = () => {
     const deltaX = totalMoveX - sentMoveRef.current.x;
     const deltaY = totalMoveY - sentMoveRef.current.y;
     
-    // �?关键优化：累积delta,避免IPC请求排队
+    // ⚡ 关键优化：累积delta,避免IPC请求排队
     if (!pendingMoveRef.current) {
       pendingMoveRef.current = { x: 0, y: 0 };
     }
     pendingMoveRef.current.x += deltaX;
     pendingMoveRef.current.y += deltaY;
     
-    // 更新已计算的总移动量（包括pending�?
+    // 更新已计算的总移动量（包括pending）
     sentMoveRef.current.x = totalMoveX;
     sentMoveRef.current.y = totalMoveY;
     
-    widgetLogger.log('🚚 [Renderer] 拖动�?', { 
+    console.log('🚚 [Renderer] 拖动中:', { 
       currentScreen: { x: e.screenX, y: e.screenY },
       totalMove: { x: totalMoveX, y: totalMoveY },
       delta: { x: deltaX, y: deltaY },
@@ -639,14 +639,14 @@ const DesktopCalendarWidget: React.FC = () => {
       ipcBusy: ipcBusyRef.current
     });
     
-    // �?关键优化：如果上一个IPC还在处理,跳过本次发�?
+    // ⚡ 关键优化：如果上一个IPC还在处理,跳过本次发送
     if (ipcBusyRef.current) {
-      widgetLogger.log('⏭️ [Renderer] IPC忙碌�?跳过本次请求');
+      widgetLogger.log('⏭️ [Renderer] IPC忙碌中,跳过本次请求');
       dragThrottleRef.current = now;
       return;
     }
     
-    // �?节流：至少等�?6ms (60fps)
+    // ⚡ 节流：至少等待16ms (60fps)
     if (now - dragThrottleRef.current < 16) {
       return;
     }
@@ -664,7 +664,7 @@ const DesktopCalendarWidget: React.FC = () => {
           const ipcStartTime = performance.now();
           ipcBusyRef.current = true; // 标记IPC忙碌
           
-          // �?不等待返回，立即发送下一个移�?
+          // � 不等待返回，立即发送下一个移动
           window.electronAPI.widgetMove({ x: moveX, y: moveY }).then((result) => {
             const ipcEndTime = performance.now();
             const ipcDuration = ipcEndTime - ipcStartTime;
@@ -678,7 +678,7 @@ const DesktopCalendarWidget: React.FC = () => {
             
             const avgTime = perfRef.current.totalTime / perfRef.current.moveCount;
             
-            widgetLogger.log('�?[Renderer] widgetMove 完成:', {
+            console.log('✅ [Renderer] widgetMove 完成:', {
               sent: { x: moveX, y: moveY },
               result,
               duration: `${ipcDuration.toFixed(2)}ms`,
@@ -688,16 +688,16 @@ const DesktopCalendarWidget: React.FC = () => {
               count: perfRef.current.moveCount
             });
           }).catch((error) => {
-            widgetLogger.error('�?[Renderer] widgetMove 失败:', error);
-            ipcBusyRef.current = false; // 出错时也要释�?
+            widgetLogger.error('❌ [Renderer] widgetMove 失败:', error);
+            ipcBusyRef.current = false; // 出错时也要释放
           });
           
         } catch (error) {
-          widgetLogger.error('�?[Renderer] widgetMove 异常:', error);
+          widgetLogger.error('❌ [Renderer] widgetMove 异常:', error);
           ipcBusyRef.current = false;
         }
       } else {
-        widgetLogger.error('�?[Renderer] widgetMove API 不存�?);
+        widgetLogger.error('❌ [Renderer] widgetMove API 不存在');
       }
     }
   }, [isDragging, isResizing]);
@@ -708,32 +708,32 @@ const DesktopCalendarWidget: React.FC = () => {
     // 打印性能总结
     if (perfRef.current.moveCount > 0) {
       const avgTime = perfRef.current.totalTime / perfRef.current.moveCount;
-      widgetLogger.log('📊 [Renderer] 拖动性能总结:', {
+      console.log('📊 [Renderer] 拖动性能总结:', {
         totalMoves: perfRef.current.moveCount,
         avgIpcTime: `${avgTime.toFixed(2)}ms`,
         minIpcTime: `${perfRef.current.minTime.toFixed(2)}ms`,
         maxIpcTime: `${perfRef.current.maxTime.toFixed(2)}ms`,
         totalTime: `${perfRef.current.totalTime.toFixed(2)}ms`,
-        avgFps: Math.round(1000 / (avgTime + 32)) // 32ms是节流时�?
+        avgFps: Math.round(1000 / (avgTime + 32)) // 32ms是节流时间
       });
     }
     
     setIsDragging(false);
     dragStartRef.current = null;
     
-    // 🔧 重置所有ref状�?
+    // 🔧 重置所有ref状态
     ipcBusyRef.current = false;
     pendingMoveRef.current = null;
     sentMoveRef.current = { x: 0, y: 0 };
     
-    // �?重置IPC状�?
+    // ⚡ 重置IPC状态
     ipcBusyRef.current = false;
     pendingMoveRef.current = null;
     
     // 通知主进程拖动结束，重置目标尺寸
     if ((window.electronAPI as any)?.widgetDragEnd) {
       (window.electronAPI as any).widgetDragEnd().catch((err: Error) => {
-        widgetLogger.error('�?[Renderer] widgetDragEnd 失败:', err);
+        widgetLogger.error('❌ [Renderer] widgetDragEnd 失败:', err);
       });
     }
   }, []);
@@ -741,11 +741,11 @@ const DesktopCalendarWidget: React.FC = () => {
   // 监听拖动
   useEffect(() => {
     if (isDragging) {
-      widgetLogger.log('👂 [Renderer] 开始监�?mousemove �?mouseup');
+      widgetLogger.log('👂 [Renderer] 开始监听 mousemove 和 mouseup');
       window.addEventListener('mousemove', handleDragMove);
       window.addEventListener('mouseup', handleDragEnd);
       return () => {
-        widgetLogger.log('🔇 [Renderer] 停止监听 mousemove �?mouseup');
+        widgetLogger.log('🔇 [Renderer] 停止监听 mousemove 和 mouseup');
         window.removeEventListener('mousemove', handleDragMove);
         window.removeEventListener('mouseup', handleDragEnd);
       };
@@ -772,13 +772,13 @@ const DesktopCalendarWidget: React.FC = () => {
     overflow: 'hidden',
     cursor: 'default',
     userSelect: 'none',
-    position: 'relative', // 🎯 �?absolute 定位�?resize handles 提供定位上下�?
+    position: 'relative', // 🎯 为 absolute 定位的 resize handles 提供定位上下文
     transition: 'opacity 0.2s ease', // 只保留透明度过渡，移除缩放动画
     WebkitAppRegion: 'no-drag' // 默认不可拖动，只有拖动条可以拖动
   };
 
   // 渲染时输出状态（调试用）
-  // widgetLogger.log('🎨 [Render] Widget状�?', { isLocked, isDragging, isResizing, showControls });
+  // console.log('🎨 [Render] Widget状态:', { isLocked, isDragging, isResizing, showControls });
 
   return (
     <div
@@ -792,7 +792,7 @@ const DesktopCalendarWidget: React.FC = () => {
         ['--adaptive-icon-filter' as any]: getAdaptiveColors.iconFilter,
       }}
     >
-      {/* 调整大小时的全屏遮罩�?*/}
+      {/* 调整大小时的全屏遮罩层 */}
       {isResizing && (
         <div style={{
           position: 'fixed',
@@ -802,13 +802,13 @@ const DesktopCalendarWidget: React.FC = () => {
           bottom: 0,
           zIndex: 9999,
           cursor: 'default',
-          pointerEvents: 'none' // 不阻止鼠标事件传�?
+          pointerEvents: 'none' // 不阻止鼠标事件传播
         }} />
       )}
       
-      {/* 不需要拖动遮罩层 - window 级别的监听器足够�?*/}
+      {/* 不需要拖动遮罩层 - window 级别的监听器足够了 */}
 
-      {/* 顶部拖动�?- 自定义拖动实�?*/}
+      {/* 顶部拖动条 - 自定义拖动实现 */}
       {!isLocked && (
         <div
           className="drag-bar"
@@ -843,7 +843,7 @@ const DesktopCalendarWidget: React.FC = () => {
           }}
           onMouseDown={handleDragStart}
         >
-          {/* 拖动条提示文�?*/}
+          {/* 拖动条提示文字 */}
           <span style={{
             fontSize: '9px',
             fontWeight: 600,
@@ -855,7 +855,7 @@ const DesktopCalendarWidget: React.FC = () => {
             transition: 'opacity 0.15s ease'
           }}
           >
-            ⋮⋮�?
+            ⋮⋮⋮
           </span>
         </div>
       )}
@@ -890,7 +890,7 @@ const DesktopCalendarWidget: React.FC = () => {
         <div style={{ flex: 1, overflow: 'hidden' }}>
           <MemoizedTimeCalendar
             onStartTimer={useCallback((taskTitle: string) => { 
-              widgetLogger.log('📝 Timer started:', taskTitle); 
+              widgetLogger.log('📝 Timer started:', taskTitle);
             }, [])}
             microsoftService={microsoftService}
             lastSyncTime={lastSyncTime}
@@ -912,13 +912,13 @@ const DesktopCalendarWidget: React.FC = () => {
           />
         </div>
 
-        {/* 📊 Widget 专属状态栏 - 正常布局，底部固�?*/}
+        {/* 📊 Widget 专属状态栏 - 正常布局，底部固定 */}
         <div 
           style={{
             flexShrink: 0,
-            margin: '4px 8px 4px 8px', // 🎯 统一间距：上�?4px，左�?8px
-            background: `rgba(${parseInt(bgColor.slice(1,3), 16)}, ${parseInt(bgColor.slice(3,5), 16)}, ${parseInt(bgColor.slice(5,7), 16)}, ${bgOpacity * 0.8})`, // 🎯 �?controller 一致：bgOpacity * 0.8
-            backdropFilter: 'blur(3px)', // 🎯 �?controller 一致：blur(3px)
+            margin: '4px 8px 4px 8px', // 🎯 统一间距：上下 4px，左右 8px
+            background: `rgba(${parseInt(bgColor.slice(1,3), 16)}, ${parseInt(bgColor.slice(3,5), 16)}, ${parseInt(bgColor.slice(5,7), 16)}, ${bgOpacity * 0.8})`, // 🎯 与 controller 一致：bgOpacity * 0.8
+            backdropFilter: 'blur(3px)', // 🎯 与 controller 一致：blur(3px)
             borderRadius: '20px', // 🎨 四个角都有圆角，独立卡片设计
             border: 'none',
             padding: '8px 12px',
@@ -932,7 +932,7 @@ const DesktopCalendarWidget: React.FC = () => {
             WebkitAppRegion: 'no-drag',
             // @ts-ignore - Electron specific property  
             appRegion: 'no-drag',
-            pointerEvents: 'auto' // �?正常接收鼠标事件，resize handles 通过�?z-index 覆盖
+            pointerEvents: 'auto' // ✅ 正常接收鼠标事件，resize handles 通过高 z-index 覆盖
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -968,7 +968,7 @@ const DesktopCalendarWidget: React.FC = () => {
                     if (syncStats.syncSuccess > 0) {
                       logs.push(`${syncStats.syncSuccess}个事项成功同步至日历✅`);
                     }
-                    return logs.length > 0 ? <> {logs.join('�?)}</> : null;
+                    return logs.length > 0 ? <> {logs.join('，')}</> : null;
                   })()}
                 </>
               ) : '正在同步...'}
@@ -991,7 +991,7 @@ const DesktopCalendarWidget: React.FC = () => {
                   : '0 0 8px rgba(239, 68, 68, 0.6)',
                 transition: 'all 0.3s ease'
               }}
-              title={isAuthenticated ? '已连�? : '未连�?}
+              title={isAuthenticated ? '已连接' : '未连接'}
             />
           </div>
         </div>

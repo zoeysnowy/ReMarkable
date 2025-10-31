@@ -16,7 +16,8 @@ const formatTimeForStorage = (date: Date | string): string => {
     dateObj = new Date();
   }
   
-  // 验证日期有效�?  if (isNaN(dateObj.getTime())) {
+  // 验证日期有效性
+  if (isNaN(dateObj.getTime())) {
     dateObj = new Date();
   }
   
@@ -42,7 +43,9 @@ interface SyncAction {
   synchronized: boolean;
   synchronizedAt?: Date;
   retryCount: number;
-  lastError?: string; // 🔧 [NEW] 最后一次错误信�?  lastAttemptTime?: Date; // 🔧 [NEW] 最后一次尝试时�?  userNotified?: boolean; // 🔧 [NEW] 是否已通知用户
+  lastError?: string; // 🔧 [NEW] 最后一次错误信息
+  lastAttemptTime?: Date; // 🔧 [NEW] 最后一次尝试时间
+  userNotified?: boolean; // 🔧 [NEW] 是否已通知用户
 }
 
 interface SyncConflict {
@@ -59,23 +62,36 @@ export class ActionBasedSyncManager {
   private actionQueue: SyncAction[] = [];
   private conflictQueue: SyncConflict[] = [];
   private syncInProgress = false;
-  private needsFullSync = false; // 标记是否需要全量同�?  private lastSyncSettings: any = null; // 上次同步时的设置
+  private needsFullSync = false; // 标记是否需要全量同步
+  private lastSyncSettings: any = null; // 上次同步时的设置
   private deletedEventIds: Set<string> = new Set(); // 🆕 跟踪已删除的事件ID
-  private editLocks: Map<string, number> = new Map(); // 🆕 编辑锁定机制 - 存储事件ID和锁定过期时�?  private recentlyUpdatedEvents: Map<string, number> = new Map(); // 🔧 [NEW] 记录最近更新的事件，防止误�?  private eventIndexMap: Map<string, any> = new Map(); // 🚀 [NEW] Event ID hash map for O(1) lookups
+  private editLocks: Map<string, number> = new Map(); // 🆕 编辑锁定机制 - 存储事件ID和锁定过期时间
+  private recentlyUpdatedEvents: Map<string, number> = new Map(); // 🔧 [NEW] 记录最近更新的事件，防止误删
+  private eventIndexMap: Map<string, any> = new Map(); // 🚀 [NEW] Event ID hash map for O(1) lookups
   private indexIntegrityCheckInterval: NodeJS.Timeout | null = null; // 🔧 [NEW] 完整性检查定时器
-  private lastIntegrityCheck = 0; // 🔧 [NEW] 上次完整性检查时�?  private incrementalUpdateCount = 0; // 🔧 [NEW] 增量更新计数�?  private fullCheckCompleted = false; // 🔧 [NEW] 是否完成过完整检�?  private isWindowFocused = true; // 🔧 [NEW] 窗口是否被激�?  private lastQueueModification = Date.now(); // 🔧 [FIX] 上次 action queue 修改时间
+  private lastIntegrityCheck = 0; // 🔧 [NEW] 上次完整性检查时间
+  private incrementalUpdateCount = 0; // 🔧 [NEW] 增量更新计数器
+  private fullCheckCompleted = false; // 🔧 [NEW] 是否完成过完整检查
+  private isWindowFocused = true; // 🔧 [NEW] 窗口是否被激活
+  private lastQueueModification = Date.now(); // 🔧 [FIX] 上次 action queue 修改时间
   
-  // 🔧 [NEW] 删除候选追踪机�?- 两轮确认才删�?  private deletionCandidates: Map<string, {
+  // 🔧 [NEW] 删除候选追踪机制 - 两轮确认才删除
+  private deletionCandidates: Map<string, {
     externalId: string;
     title: string;
-    firstMissingRound: number; // 第一次未找到的轮�?    firstMissingTime: number;  // 第一次未找到的时�?    lastCheckRound: number;     // 最后检查的轮次
+    firstMissingRound: number; // 第一次未找到的轮次
+    firstMissingTime: number;  // 第一次未找到的时间
+    lastCheckRound: number;     // 最后检查的轮次
     lastCheckTime: number;      // 最后检查的时间
   }> = new Map();
-  private syncRoundCounter = 0; // 同步轮次计数�?  
+  private syncRoundCounter = 0; // 同步轮次计数器
+  
   // 📊 [NEW] 同步统计信息
   private syncStats = {
-    syncFailed: 0,        // 同步至日历失�?    calendarCreated: 0,   // 新增日历事项
-    syncSuccess: 0        // 成功同步至日�?  };
+    syncFailed: 0,        // 同步至日历失败
+    calendarCreated: 0,   // 新增日历事项
+    syncSuccess: 0        // 成功同步至日历
+  };
 
   constructor(microsoftService: any) {
     this.microsoftService = microsoftService;
@@ -86,15 +102,17 @@ export class ActionBasedSyncManager {
     // 🔧 [MIGRATION] 一次性清理重复的 outlook- 前缀
     this.migrateOutlookPrefixes();
     
-    // 🔧 [NEW] 修复历史 pending 事件（补充到同步队列�?    this.fixOrphanedPendingEvents();
+    // 🔧 [NEW] 修复历史 pending 事件（补充到同步队列）
+    this.fixOrphanedPendingEvents();
     
-    // 🔧 [NEW] 设置网络状态监�?    this.setupNetworkListeners();
+    // 🔧 [NEW] 设置网络状态监听
+    this.setupNetworkListeners();
     
     // 🔧 [NEW] 监听窗口焦点状态（用于检测用户是否正在使用应用）
     if (typeof window !== 'undefined') {
       window.addEventListener('focus', () => {
         this.isWindowFocused = true;
-        syncLogger.log('�?[Integrity] Window focused - integrity check paused');
+        syncLogger.log('✅ [Integrity] Window focused - integrity check paused');
       }, { passive: true });
       
       window.addEventListener('blur', () => {
@@ -102,10 +120,10 @@ export class ActionBasedSyncManager {
         syncLogger.log('⏸️ [Integrity] Window blurred - integrity check can resume');
       }, { passive: true });
       
-      syncLogger.log('�?[Integrity] Window focus tracking enabled');
+      syncLogger.log('✅ [Integrity] Window focus tracking enabled');
     }
     
-    // ��?[DEBUG] 暴露调试函数到全局
+    // �🔍 [DEBUG] 暴露调试函数到全局
     if (typeof window !== 'undefined') {
       (window as any).debugSyncManager = {
         getActionQueue: () => this.actionQueue,
@@ -123,21 +141,23 @@ export class ActionBasedSyncManager {
     }
   }
 
-  // 🔧 [NEW] 设置网络状态监�?  private setupNetworkListeners() {
+  // 🔧 [NEW] 设置网络状态监听
+  private setupNetworkListeners() {
     if (typeof window === 'undefined') return;
     
     syncLogger.log('🌐 [Network] Setting up network status listeners...');
     
     // 监听网络恢复
     window.addEventListener('online', () => {
-      syncLogger.log('🌐 [Network] �?Network is back ONLINE');
+      syncLogger.log('🌐 [Network] ✅ Network is back ONLINE');
       syncLogger.log('🔄 [Network] Will trigger sync after 1 second to allow network stabilization...');
       
-      // 等待1秒让网络稳定，然后触发同�?      setTimeout(() => {
+      // 等待1秒让网络稳定，然后触发同步
+      setTimeout(() => {
         if (this.isRunning && !this.syncInProgress) {
           syncLogger.log('🚀 [Network] Executing sync after network recovery');
           this.performSync().catch(error => {
-            syncLogger.error('�?[Network] Sync after network recovery failed:', error);
+            syncLogger.error('❌ [Network] Sync after network recovery failed:', error);
           });
         } else {
           syncLogger.log('⚠️ [Network] Cannot sync: isRunning=' + this.isRunning + ', syncInProgress=' + this.syncInProgress);
@@ -154,8 +174,9 @@ export class ActionBasedSyncManager {
       this.showNetworkNotification('offline');
     });
     
-    // 初始化时检查网络状�?    const isOnline = navigator.onLine;
-    syncLogger.log(`🌐 [Network] Initial network status: ${isOnline ? 'ONLINE �? : 'OFFLINE 📴'}`);
+    // 初始化时检查网络状态
+    const isOnline = navigator.onLine;
+    syncLogger.log(`🌐 [Network] Initial network status: ${isOnline ? 'ONLINE ✅' : 'OFFLINE 📴'}`);
     
     if (!isOnline) {
       this.showNetworkNotification('offline');
@@ -172,7 +193,7 @@ export class ActionBasedSyncManager {
         status,
         message: status === 'offline' 
           ? '⚠️ 网络已断开，本地操作将在联网后自动同步' 
-          : '�?网络已恢复，正在同步数据...'
+          : '✅ 网络已恢复，正在同步数据...'
       }
     }));
   }
@@ -206,7 +227,8 @@ export class ActionBasedSyncManager {
     return this.lastHealthScore;
   }
 
-  // 🔍 [NEW] 获取标签的日历映�?  private getCalendarIdForTag(tagId: string): string | null {
+  // 🔍 [NEW] 获取标签的日历映射
+  private getCalendarIdForTag(tagId: string): string | null {
     // Getting calendar ID for tag
     
     if (!tagId) {
@@ -234,7 +256,8 @@ export class ActionBasedSyncManager {
           return null;
         }
         
-        // 递归搜索标签和它的日历映�?        const findTagMapping = (tags: any[], targetTagId: string): string | null => {
+        // 递归搜索标签和它的日历映射
+        const findTagMapping = (tags: any[], targetTagId: string): string | null => {
           for (const tag of tags) {
             if (tag.id === targetTagId) {
               const calendarId = tag.calendarMapping?.calendarId;
@@ -257,7 +280,7 @@ export class ActionBasedSyncManager {
       }
       
     } catch (error) {
-      syncLogger.error('�?[TAG-CALENDAR] Error getting calendar mapping:', error);
+      syncLogger.error('❌ [TAG-CALENDAR] Error getting calendar mapping:', error);
       return null;
     }
   }
@@ -277,7 +300,8 @@ export class ActionBasedSyncManager {
           }
         });
       } else {
-        // 备用方案：从持久化存储读�?        const savedTags = PersistentStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS, PERSISTENT_OPTIONS.TAGS);
+        // 备用方案：从持久化存储读取
+        const savedTags = PersistentStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS, PERSISTENT_OPTIONS.TAGS);
         if (savedTags) {
           const collectMappings = (tags: any[]) => {
             tags.forEach(tag => {
@@ -299,17 +323,20 @@ export class ActionBasedSyncManager {
         return [];
       }
       
-      // 获取每个映射日历的事�?      const allEvents: any[] = [];
+      // 获取每个映射日历的事件
+      const allEvents: any[] = [];
       
       for (const calendarId of Array.from(mappedCalendars)) {
         try {
           // Fetching events from calendar with time range
           const events = await this.microsoftService.getEventsFromCalendar(calendarId, startDate, endDate);
           
-          // 为这些事件设置正确的 calendarId 和标签信�?          const enhancedEvents = events.map((event: any) => ({
+          // 为这些事件设置正确的 calendarId 和标签信息
+          const enhancedEvents = events.map((event: any) => ({
             ...event,
             calendarId: calendarId,
-            // 尝试找到对应的标�?            tagId: this.findTagIdForCalendar(calendarId)
+            // 尝试找到对应的标签
+            tagId: this.findTagIdForCalendar(calendarId)
           }));
           
           allEvents.push(...enhancedEvents);
@@ -323,12 +350,13 @@ export class ActionBasedSyncManager {
       return allEvents;
       
     } catch (error) {
-      syncLogger.error('�?[getMappedCalendarEvents] Error getting mapped calendar events:', error);
+      syncLogger.error('❌ [getMappedCalendarEvents] Error getting mapped calendar events:', error);
       return [];
     }
   }
 
-  // 🔧 [NEW] 获取所有日历的事件（保证每个事件携带正确的 calendarId�?  private async getAllCalendarsEvents(startDate?: Date, endDate?: Date): Promise<any[] | null> {
+  // 🔧 [NEW] 获取所有日历的事件（保证每个事件携带正确的 calendarId）
+  private async getAllCalendarsEvents(startDate?: Date, endDate?: Date): Promise<any[] | null> {
     try {
       const allEvents: any[] = [];
 
@@ -344,7 +372,7 @@ export class ActionBasedSyncManager {
       }
 
       if (!calendars || calendars.length === 0) {
-        // 如果缓存为空，直接返回空数组，避免误�?/me/events 丢失 calendarId
+        // 如果缓存为空，直接返回空数组，避免误用 /me/events 丢失 calendarId
         syncLogger.warn('⚠️ [getAllCalendarsEvents] No calendars in cache; skip global fetch to preserve calendarId fidelity');
         return [];
       }
@@ -358,7 +386,8 @@ export class ActionBasedSyncManager {
           const enhanced = events.map((ev: any) => ({
             ...ev,
             calendarId,
-            // 为每个事件附带对应标签（若有映射�?            tagId: this.findTagIdForCalendar(calendarId)
+            // 为每个事件附带对应标签（若有映射）
+            tagId: this.findTagIdForCalendar(calendarId)
           }));
           allEvents.push(...enhanced);
         } catch (err) {
@@ -366,11 +395,12 @@ export class ActionBasedSyncManager {
         }
       }
 
-      syncLogger.log(`�?[getAllCalendarsEvents] Fetched total ${allEvents.length} events from ${calendars.length} calendars`);
+      syncLogger.log(`✅ [getAllCalendarsEvents] Fetched total ${allEvents.length} events from ${calendars.length} calendars`);
       return allEvents;
     } catch (error) {
-      syncLogger.error('�?[getAllCalendarsEvents] Error:', error);
-      return null; // 🔧 返回 null 表示获取失败（而不�?确实没有事件"�?    }
+      syncLogger.error('❌ [getAllCalendarsEvents] Error:', error);
+      return null; // 🔧 返回 null 表示获取失败（而不是"确实没有事件"）
+    }
   }
 
   // 🔧 [NEW] 找到映射到指定日历的标签ID
@@ -381,7 +411,8 @@ export class ActionBasedSyncManager {
         const foundTag = flatTags.find((tag: any) => tag.calendarMapping?.calendarId === calendarId);
         return foundTag?.id || null;
       } else {
-        // 备用方案：从持久化存储读�?        const savedTags = PersistentStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS, PERSISTENT_OPTIONS.TAGS);
+        // 备用方案：从持久化存储读取
+        const savedTags = PersistentStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS, PERSISTENT_OPTIONS.TAGS);
         if (savedTags) {
           const findTag = (tags: any[]): string | null => {
             for (const tag of tags) {
@@ -400,7 +431,7 @@ export class ActionBasedSyncManager {
       }
       return null;
     } catch (error) {
-      syncLogger.error('�?[findTagIdForCalendar] Error:', error);
+      syncLogger.error('❌ [findTagIdForCalendar] Error:', error);
       return null;
     }
   }
@@ -485,20 +516,22 @@ export class ActionBasedSyncManager {
     }
   }
 
-  // 🆕 清理过期的已删除事件ID（避免Set无限增长�?  private cleanupDeletedEventIds() {
-    // 保留最�?000个删除记录，超过的清理掉
+  // 🆕 清理过期的已删除事件ID（避免Set无限增长）
+  private cleanupDeletedEventIds() {
+    // 保留最近1000个删除记录，超过的清理掉
     const maxSize = 1000;
     if (this.deletedEventIds.size > maxSize) {
       const array = Array.from(this.deletedEventIds);
       this.deletedEventIds = new Set(array.slice(-maxSize));
       this.saveDeletedEventIds();
-      syncLogger.log(`🧹 Cleaned up deleted event IDs: ${array.length} �?${this.deletedEventIds.size}`);
+      syncLogger.log(`🧹 Cleaned up deleted event IDs: ${array.length} → ${this.deletedEventIds.size}`);
     }
   }
 
   /**
-   * 🔍 去重：检测并删除重复的事�?   * 重复定义：相同的 externalId（来�?Outlook）但不同的本�?ID
-   * 策略：保�?lastSyncTime 最新的事件
+   * 🔍 去重：检测并删除重复的事件
+   * 重复定义：相同的 externalId（来自 Outlook）但不同的本地 ID
+   * 策略：保留 lastSyncTime 最新的事件
    */
   private deduplicateEvents() {
     try {
@@ -508,7 +541,7 @@ export class ActionBasedSyncManager {
       const events = JSON.parse(savedEvents);
       const externalIdMap = new Map<string, any[]>();
       
-      // �?externalId 分组
+      // 按 externalId 分组
       events.forEach((event: any) => {
         if (event.externalId) {
           const existing = externalIdMap.get(event.externalId) || [];
@@ -517,7 +550,8 @@ export class ActionBasedSyncManager {
         }
       });
 
-      // 检查重�?      let duplicateCount = 0;
+      // 检查重复
+      let duplicateCount = 0;
       const duplicateGroups: string[] = [];
       
       externalIdMap.forEach((group, externalId) => {
@@ -528,7 +562,8 @@ export class ActionBasedSyncManager {
       });
 
       if (duplicateCount === 0) {
-        return; // 没有重复，直接返�?      }
+        return; // 没有重复，直接返回
+      }
 
       syncLogger.warn(`⚠️ [deduplicateEvents] Found ${duplicateCount} duplicate events in ${duplicateGroups.length} groups`);
 
@@ -538,26 +573,29 @@ export class ActionBasedSyncManager {
       
       events.forEach((event: any) => {
         if (!event.externalId) {
-          // 没有 externalId 的事件（本地新建）直接保�?          uniqueEvents.push(event);
+          // 没有 externalId 的事件（本地新建）直接保留
+          uniqueEvents.push(event);
           return;
         }
 
         if (seenExternalIds.has(event.externalId)) {
-          // 已经处理过这�?externalId，需要比�?          const existingIndex = uniqueEvents.findIndex(e => e.externalId === event.externalId);
+          // 已经处理过这个 externalId，需要比较
+          const existingIndex = uniqueEvents.findIndex(e => e.externalId === event.externalId);
           if (existingIndex !== -1) {
             const existing = uniqueEvents[existingIndex];
             const existingTime = existing.lastSyncTime ? new Date(existing.lastSyncTime).getTime() : 0;
             const currentTime = event.lastSyncTime ? new Date(event.lastSyncTime).getTime() : 0;
             
             if (currentTime > existingTime) {
-              // 当前事件更新，替�?              syncLogger.log(`🔄 [deduplicateEvents] Replacing older event`, {
+              // 当前事件更新，替换
+              console.log(`🔄 [deduplicateEvents] Replacing older event`, {
                 removed: existing.id,
                 kept: event.id,
                 externalId: event.externalId
               });
               uniqueEvents[existingIndex] = event;
             } else {
-              syncLogger.log(`🗑�?[deduplicateEvents] Removing older duplicate`, {
+              console.log(`🗑️ [deduplicateEvents] Removing older duplicate`, {
                 removed: event.id,
                 kept: existing.id,
                 externalId: event.externalId
@@ -565,13 +603,14 @@ export class ActionBasedSyncManager {
             }
           }
         } else {
-          // 第一次见到这�?externalId
+          // 第一次见到这个 externalId
           seenExternalIds.add(event.externalId);
           uniqueEvents.push(event);
         }
       });
 
-      // 🔧 [IndexMap 优化] 删除重复事件时更新索�?      events.forEach((event: any) => {
+      // 🔧 [IndexMap 优化] 删除重复事件时更新索引
+      events.forEach((event: any) => {
         if (event.externalId && seenExternalIds.has(event.externalId)) {
           const existingIndex = uniqueEvents.findIndex(e => e.externalId === event.externalId);
           if (existingIndex !== -1 && uniqueEvents[existingIndex].id !== event.id) {
@@ -581,15 +620,16 @@ export class ActionBasedSyncManager {
         }
       });
 
-      // 保存去重后的事件 - 因为去重可能涉及很多事件，使用完全重�?      this.saveLocalEvents(uniqueEvents, true); // rebuildIndex=true
+      // 保存去重后的事件 - 因为去重可能涉及很多事件，使用完全重建
+      this.saveLocalEvents(uniqueEvents, true); // rebuildIndex=true
       
-      syncLogger.log(`�?[deduplicateEvents] Removed ${events.length - uniqueEvents.length} duplicate events (${events.length} �?${uniqueEvents.length})`);
+      syncLogger.log(`✅ [deduplicateEvents] Removed ${events.length - uniqueEvents.length} duplicate events (${events.length} → ${uniqueEvents.length})`);
       
       // 触发事件更新通知
       window.dispatchEvent(new Event('local-events-changed'));
       
     } catch (error) {
-      syncLogger.error('�?[deduplicateEvents] Failed:', error);
+      syncLogger.error('❌ [deduplicateEvents] Failed:', error);
     }
   }
 
@@ -600,33 +640,35 @@ export class ActionBasedSyncManager {
     const sourceDisplay = source === 'outlook' ? '📧 Outlook' : '🔮 ReMarkable';
     
     if (action === 'create') {
-      return `\n\n---\n�?${sourceDisplay} 创建`;
+      return `\n\n---\n由 ${sourceDisplay} 创建`;
     } else {
-      return `\n\n---\n�?${sourceDisplay} 最新修改于 ${timestamp}`;
+      return `\n\n---\n由 ${sourceDisplay} 最新修改于 ${timestamp}`;
     }
   }
 
   // 🔧 检查文本中是否包含创建备注
   private hasCreateNote(text: string): boolean {
-    const createNotePattern = /�?(?:📧 |🔮 )?(?:Outlook|ReMarkable) 创建/;
+    const createNotePattern = /由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) 创建/;
     return createNotePattern.test(text);
   }
 
   // 🔧 检查文本中是否包含编辑备注
   private hasEditNote(text: string): boolean {
-    const editNotePattern = /�?(?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于)/;
+    const editNotePattern = /由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于)/;
     return editNotePattern.test(text);
   }
 
-  // 🔧 移除所有编辑备注，但保留创建备注，智能处理分隔�?  private removeEditNotesOnly(text: string): string {
+  // 🔧 移除所有编辑备注，但保留创建备注，智能处理分隔线
+  private removeEditNotesOnly(text: string): string {
     if (!text) return '';
     
     let result = text;
     
     // 1. 移除所有编辑备注（多行连续的）
-    result = result.replace(/(\n�?(?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于) [^\n]*)+$/g, '');
+    result = result.replace(/(\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于) [^\n]*)+$/g, '');
     
-    // 2. 移除单独的编辑备�?    result = result.replace(/\n�?(?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于) [^\n]*$/g, '');
+    // 2. 移除单独的编辑备注
+    result = result.replace(/\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于) [^\n]*$/g, '');
     
     // 3. 清理多个连续的分隔线，合并为单个
     result = result.replace(/(\n---\s*){2,}/g, '\n---\n');
@@ -654,10 +696,10 @@ export class ActionBasedSyncManager {
     // 检查是否需要添加分隔线
     if (baseText && (baseText.trim().endsWith('---') || baseText.includes('\n---\n'))) {
       // 如果已经有分隔线，只添加创建备注
-      return `\n�?${sourceIcon} 创建�?${timeStr}`;
+      return `\n由 ${sourceIcon} 创建于 ${timeStr}`;
     } else {
       // 添加分隔线和创建备注
-      return `\n\n---\n�?${sourceIcon} 创建�?${timeStr}`;
+      return `\n\n---\n由 ${sourceIcon} 创建于 ${timeStr}`;
     }
   }
 
@@ -670,20 +712,24 @@ export class ActionBasedSyncManager {
     // 检查基础文本是否已经以分隔线结尾
     if (baseText && this.endsWithSeparator(baseText)) {
       // 如果已经有分隔线，只添加编辑备注
-      return `\n�?${sourceIcon} 最后编辑于 ${timeStr}`;
+      return `\n由 ${sourceIcon} 最后编辑于 ${timeStr}`;
     } else {
       // 如果没有分隔线，添加分隔线和编辑备注
-      return `\n\n---\n�?${sourceIcon} 最后编辑于 ${timeStr}`;
+      return `\n\n---\n由 ${sourceIcon} 最后编辑于 ${timeStr}`;
     }
   }
 
-  // 🔧 统一的描述处理方�?- 简化版�?  private processEventDescription(htmlContent: string, source: 'outlook' | 'remarkable', action: 'create' | 'update' | 'sync', eventData?: any): string {
+  // 🔧 统一的描述处理方法 - 简化版本
+  private processEventDescription(htmlContent: string, source: 'outlook' | 'remarkable', action: 'create' | 'update' | 'sync', eventData?: any): string {
     // 1. 清理HTML内容，得到纯文本
     const cleanText = this.cleanHtmlContent(htmlContent);
     
-    // 2. 移除多余的分隔符和处理原始内�?    
-    // 3. 根据不同操作和情况处�?    if (source === 'outlook' && action === 'sync') {
-      // 从Outlook同步到本�?      let result = this.extractOriginalDescription(cleanText);
+    // 2. 移除多余的分隔符和处理原始内容
+    
+    // 3. 根据不同操作和情况处理
+    if (source === 'outlook' && action === 'sync') {
+      // 从Outlook同步到本地
+      let result = this.extractOriginalDescription(cleanText);
       
       // 如果没有创建备注，添加Outlook创建备注，使用事件的真实创建时间
       if (!this.hasCreateNote(result)) {
@@ -694,7 +740,8 @@ export class ActionBasedSyncManager {
       return result;
     }
     
-    // 4. 对于本地操作（create/update�?    let result = cleanText;
+    // 4. 对于本地操作（create/update）
+    let result = cleanText;
     
     if (action === 'create') {
       // 创建操作：只有在没有创建备注时才添加
@@ -715,7 +762,8 @@ export class ActionBasedSyncManager {
         // Skipping create note - already exists
       }
     } else if (action === 'update') {
-      // 更新操作：移除编辑备注，保留创建备注，添加新的编辑备�?      result = this.removeEditNotesOnly(cleanText);
+      // 更新操作：移除编辑备注，保留创建备注，添加新的编辑备注
+      result = this.removeEditNotesOnly(cleanText);
       result += this.generateEditNote('remarkable', result);
       // Removed old edit notes and added new edit note
     }
@@ -725,15 +773,17 @@ export class ActionBasedSyncManager {
     return result;
   }
 
-  // 🔧 改进的提取原始内容方�?- 智能处理分隔�?  private extractOriginalDescription(description: string): string {
+  // 🔧 改进的提取原始内容方法 - 智能处理分隔线
+  private extractOriginalDescription(description: string): string {
     if (!description) return '';
     
     let cleaned = description;
     
     // 1. 移除所有编辑备注（多行连续的）
-    cleaned = cleaned.replace(/(\n�?(?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于) [^\n]*)+$/g, '');
+    cleaned = cleaned.replace(/(\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于) [^\n]*)+$/g, '');
     
-    // 2. 移除单独的编辑备�?    cleaned = cleaned.replace(/\n�?(?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于) [^\n]*$/g, '');
+    // 2. 移除单独的编辑备注
+    cleaned = cleaned.replace(/\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:最后编辑于|最新修改于) [^\n]*$/g, '');
     
     // 3. 清理多个连续的分隔线，合并为单个
     cleaned = cleaned.replace(/(\n---\s*){2,}/g, '\n---\n');
@@ -747,14 +797,15 @@ export class ActionBasedSyncManager {
     return cleaned;
   }
 
-  // 🔍 [NEW] 提取原始创建时间 - 用于保持事件的真实创建时间记�?  private extractOriginalCreateTime(description: string): Date | null {
+  // 🔍 [NEW] 提取原始创建时间 - 用于保持事件的真实创建时间记录
+  private extractOriginalCreateTime(description: string): Date | null {
     if (!description) return null;
     
     try {
       // 匹配创建时间的正则表达式
-      // 格式：由 🔮 ReMarkable 创建�?2025-10-12 02:37:15
-      // 或：  �?📧 Outlook 创建�?2025-10-12 02:37:15
-      const createTimeMatch = description.match(/�?(?:🔮 ReMarkable|📧 Outlook) 创建�?(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
+      // 格式：由 🔮 ReMarkable 创建于 2025-10-12 02:37:15
+      // 或：  由 📧 Outlook 创建于 2025-10-12 02:37:15
+      const createTimeMatch = description.match(/由 (?:🔮 ReMarkable|📧 Outlook) 创建于 (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
       
       if (createTimeMatch && createTimeMatch[1]) {
         const timeString = createTimeMatch[1];
@@ -774,9 +825,10 @@ export class ActionBasedSyncManager {
     }
   }
 
-  // 获取远程事件的描述内�?- 修复版本
+  // 获取远程事件的描述内容 - 修复版本
   private getEventDescription(event: any): string {
-    // 尝试多个可能的描述字�?    const htmlContent = event.body?.content || 
+    // 尝试多个可能的描述字段
+    const htmlContent = event.body?.content || 
                        event.description || 
                        event.bodyPreview || 
                        '';
@@ -784,8 +836,10 @@ export class ActionBasedSyncManager {
     return this.processEventDescription(htmlContent, 'outlook', 'sync', event);
   }
 
-  // 🆕 编辑锁定机制 - 防止远程同步覆盖本地正在编辑的事�?  private setEditLock(entityId: string, durationMs: number = 10000) {
-    // 设置10秒的编辑锁定�?    const expiryTime = Date.now() + durationMs;
+  // 🆕 编辑锁定机制 - 防止远程同步覆盖本地正在编辑的事件
+  private setEditLock(entityId: string, durationMs: number = 10000) {
+    // 设置10秒的编辑锁定期
+    const expiryTime = Date.now() + durationMs;
     this.editLocks.set(entityId, expiryTime);
     // Locked event
   }
@@ -813,7 +867,7 @@ export class ActionBasedSyncManager {
   }
 
   public recordLocalAction(type: 'create' | 'update' | 'delete', entityType: 'event' | 'task', entityId: string, data?: any, oldData?: any) {
-    syncLogger.log('🔍 [RECORD LOCAL ACTION] Called with:', {
+    console.log('🔍 [RECORD LOCAL ACTION] Called with:', {
       type,
       entityType,
       entityId,
@@ -829,7 +883,8 @@ export class ActionBasedSyncManager {
       syncLogger.log(`📝 [RECORD] Marked event ${entityId} as recently updated`);
     }
     
-    // 🔧 注释：编辑锁定现在在实际同步时处理，而不是在记录时设�?    // if (type === 'update' && entityType === 'event') {
+    // 🔧 注释：编辑锁定现在在实际同步时处理，而不是在记录时设置
+    // if (type === 'update' && entityType === 'event') {
     //   this.setEditLock(entityId);
     // }
 
@@ -847,7 +902,7 @@ export class ActionBasedSyncManager {
       retryCount: 0
     };
 
-    syncLogger.log('🔍 [RECORD LOCAL ACTION] Created action:', {
+    console.log('🔍 [RECORD LOCAL ACTION] Created action:', {
       actionId: action.id,
       type: action.type,
       entityId: action.entityId,
@@ -857,10 +912,11 @@ export class ActionBasedSyncManager {
     this.actionQueue.push(action);
     this.saveActionQueue();
     
-    // 🔧 [NEW] 检查网络状�?    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    // 🔧 [NEW] 检查网络状态
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
     
     syncLogger.log('🔍 [RECORD LOCAL ACTION] Action queue length after push:', this.actionQueue.length);
-    syncLogger.log('🔍 [RECORD LOCAL ACTION] Sync conditions:', {
+    console.log('🔍 [RECORD LOCAL ACTION] Sync conditions:', {
       isRunning: this.isRunning,
       isSignedIn: this.microsoftService?.isSignedIn(),
       isOnline, // 🔧 [NEW]
@@ -869,7 +925,7 @@ export class ActionBasedSyncManager {
     
     if (this.isRunning && this.microsoftService.isSignedIn() && isOnline) {
       syncLogger.log('🔍 [RECORD LOCAL ACTION] Scheduling async syncSingleAction...');
-      // 🔧 [FIX] 使用 setTimeout 0 让同步在下一个事件循环执行，不阻�?UI
+      // 🔧 [FIX] 使用 setTimeout 0 让同步在下一个事件循环执行，不阻塞 UI
       setTimeout(() => {
         this.syncSingleAction(action);
       }, 0);
@@ -882,9 +938,11 @@ export class ActionBasedSyncManager {
     }
   }
 
-  // 检查是否需要全量同�?  private checkIfFullSyncNeeded() {
+  // 检查是否需要全量同步
+  private checkIfFullSyncNeeded() {
     // 移除了ongoingDays的检查，因为现在默认同步1年的数据
-    // 只在首次启动时需要全量同�?    if (!this.lastSyncSettings) {
+    // 只在首次启动时需要全量同步
+    if (!this.lastSyncSettings) {
       syncLogger.log('🔄 [Sync] First time sync, marking for full sync');
       this.needsFullSync = true;
       this.lastSyncSettings = { initialized: true };
@@ -900,10 +958,11 @@ export class ActionBasedSyncManager {
     this.isRunning = true;
     syncLogger.log('🚀 [ActionBasedSyncManager] Starting sync manager...');
     
-    // 检查是否需要全量同�?    this.checkIfFullSyncNeeded();
+    // 检查是否需要全量同步
+    this.checkIfFullSyncNeeded();
     
     // 🔧 延迟首次同步 5 秒，避免阻塞 UI 渲染
-    syncLogger.log('�?[Sync] Scheduling first sync in 5 seconds...');
+    syncLogger.log('⏰ [Sync] Scheduling first sync in 5 seconds...');
     setTimeout(() => {
       if (this.isRunning && !this.syncInProgress) {
         syncLogger.log('🔄 [Sync] Executing delayed initial sync');
@@ -911,7 +970,8 @@ export class ActionBasedSyncManager {
       }
     }, 5000);
     
-    // 设置定期增量同步�?0秒一次，只同�?3 个月窗口�?    this.syncInterval = setInterval(() => {
+    // 设置定期增量同步（20秒一次，只同步 3 个月窗口）
+    this.syncInterval = setInterval(() => {
       // 🔧 [NEW] 窗口激活时不进行定时同步，避免打断用户操作
       if (this.isWindowFocused) {
         syncLogger.log('⏸️ [Sync] Skipping scheduled sync: Window is focused (user is active)');
@@ -921,8 +981,10 @@ export class ActionBasedSyncManager {
       if (!this.syncInProgress) {
         this.performSync();
       }
-    }, 20000); // 改为 20 �?    
-    // 🔧 [NEW] 立即启动高频完整性检查（�?5 秒检查一次，每次 < 10ms�?    this.startIntegrityCheckScheduler();
+    }, 20000); // 改为 20 秒
+    
+    // 🔧 [NEW] 立即启动高频完整性检查（每 5 秒检查一次，每次 < 10ms）
+    this.startIntegrityCheckScheduler();
   }
 
   public stop() {
@@ -931,7 +993,8 @@ export class ActionBasedSyncManager {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
     }
-    // 🔧 [NEW] 停止完整性检�?    if (this.indexIntegrityCheckInterval) {
+    // 🔧 [NEW] 停止完整性检查
+    if (this.indexIntegrityCheckInterval) {
       clearInterval(this.indexIntegrityCheckInterval);
       this.indexIntegrityCheckInterval = null;
     }
@@ -943,7 +1006,8 @@ export class ActionBasedSyncManager {
     this.needsFullSync = true;
     this.checkIfFullSyncNeeded();
     
-    // 如果正在运行，立即执行同�?    if (this.isRunning && !this.syncInProgress) {
+    // 如果正在运行，立即执行同步
+    if (this.isRunning && !this.syncInProgress) {
       this.performSync();
     }
   }
@@ -959,7 +1023,7 @@ export class ActionBasedSyncManager {
       return;
     }
 
-    // 🔧 防止短时间内重复同步（最小间�?5 秒）
+    // 🔧 防止短时间内重复同步（最小间隔 5 秒）
     const now = Date.now();
     const timeSinceLastSync = this.lastSyncTime ? (now - this.lastSyncTime.getTime()) : Infinity;
     if (timeSinceLastSync < 5000) {
@@ -985,7 +1049,8 @@ export class ActionBasedSyncManager {
       // 🆕 清理过期的已删除事件ID
       this.cleanupDeletedEventIds();
       
-      // 🔧 [FIX] 清理过期的最近更新事件记录（超过60秒的�?      const expireTime = Date.now() - 60000;
+      // 🔧 [FIX] 清理过期的最近更新事件记录（超过60秒的）
+      const expireTime = Date.now() - 60000;
       let cleanedCount = 0;
       this.recentlyUpdatedEvents.forEach((timestamp, eventId) => {
         if (timestamp < expireTime) {
@@ -1009,7 +1074,8 @@ export class ActionBasedSyncManager {
       await this.resolveConflicts();
       this.cleanupSynchronizedActions();
       
-      // 🔍 去重检查：防止迁移等操作产生重复事�?      this.deduplicateEvents();
+      // 🔍 去重检查：防止迁移等操作产生重复事件
+      this.deduplicateEvents();
       
       this.lastSyncTime = new Date();
       
@@ -1031,13 +1097,14 @@ export class ActionBasedSyncManager {
         }
       }));
       
-      syncLogger.log(`�?[performSync] Sync cycle completed in ${syncDuration.toFixed(0)}ms`);
+      syncLogger.log(`✅ [performSync] Sync cycle completed in ${syncDuration.toFixed(0)}ms`);
       
-      // ⚠️ 如果同步时间过长，给出警�?      if (syncDuration > 3000) {
+      // ⚠️ 如果同步时间过长，给出警告
+      if (syncDuration > 3000) {
         syncLogger.warn(`⚠️ [performSync] Sync took too long: ${syncDuration.toFixed(0)}ms (threshold: 3000ms)`);
       }
     } catch (error) {
-      syncLogger.error('�?Sync failed:', error);
+      syncLogger.error('❌ Sync failed:', error);
     } finally {
       this.syncInProgress = false;
     }
@@ -1051,16 +1118,18 @@ export class ActionBasedSyncManager {
 
       const isFullSync = this.needsFullSync;
       
-      // �?发送同步开始事�?      window.dispatchEvent(new CustomEvent('action-sync-started', { 
+      // ✅ 发送同步开始事件
+      window.dispatchEvent(new CustomEvent('action-sync-started', { 
         detail: { isFullSync } 
       }));
 
-      // 🔧 智能时间范围：根据同步类型决定范�?      const now = new Date();
+      // 🔧 智能时间范围：根据同步类型决定范围
+      const now = new Date();
       let startDate: Date;
       let endDate: Date;
       
       if (isFullSync) {
-        // 全量同步：上次同步时�?�?现在 + 未来 3 个月
+        // 全量同步：上次同步时间 → 现在 + 未来 3 个月
         startDate = this.lastSyncTime || new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
         startDate.setHours(0, 0, 0, 0);
         
@@ -1068,7 +1137,7 @@ export class ActionBasedSyncManager {
         endDate.setMonth(now.getMonth() + 3); // 未来 3 个月
         endDate.setHours(23, 59, 59, 999);
         
-        syncLogger.log('📅 [Sync] FULL sync from last sync time to now + 3 months:', {
+        console.log('📅 [Sync] FULL sync from last sync time to now + 3 months:', {
           startDate: formatTimeForStorage(startDate).split('T')[0],
           endDate: formatTimeForStorage(endDate).split('T')[0],
           lastSyncTime: this.lastSyncTime ? formatTimeForStorage(this.lastSyncTime).split('T')[0] : 'never'
@@ -1076,7 +1145,8 @@ export class ActionBasedSyncManager {
         
         this.needsFullSync = false; // 重置标记
       } else {
-        // 增量同步：只检查最�?3 个月的事件（前后�?1.5 个月�?        startDate = new Date(now);
+        // 增量同步：只检查最近 3 个月的事件（前后各 1.5 个月）
+        startDate = new Date(now);
         startDate.setMonth(now.getMonth() - 1.5);
         startDate.setHours(0, 0, 0, 0);
         
@@ -1084,7 +1154,7 @@ export class ActionBasedSyncManager {
         endDate.setMonth(now.getMonth() + 1.5);
         endDate.setHours(23, 59, 59, 999);
         
-        syncLogger.log('📅 [Sync] INCREMENTAL sync (3 months window):', {
+        console.log('📅 [Sync] INCREMENTAL sync (3 months window):', {
           startDate: formatTimeForStorage(startDate).split('T')[0],
           endDate: formatTimeForStorage(endDate).split('T')[0],
           windowMonths: 3
@@ -1096,21 +1166,24 @@ export class ActionBasedSyncManager {
       // 🚀 Index map is built in getLocalEvents(), ready for O(1) lookups
       syncLogger.log(`🚀 [Sync] Using index map with ${this.eventIndexMap.size} entries`);
 
-      // 改为逐日历拉取，确保每个事件带有准确�?calendarId
+      // 改为逐日历拉取，确保每个事件带有准确的 calendarId
       const allRemoteEvents = await this.getAllCalendarsEvents(startDate, endDate);
       
-      // 🔧 [CRITICAL FIX] 如果获取失败（返�?null），中止同步以保护本地数�?      if (allRemoteEvents === null) {
-        syncLogger.error('�?[Sync] Failed to fetch remote events (possibly logged out), aborting sync to protect local data');
+      // 🔧 [CRITICAL FIX] 如果获取失败（返回 null），中止同步以保护本地数据
+      if (allRemoteEvents === null) {
+        syncLogger.error('❌ [Sync] Failed to fetch remote events (possibly logged out), aborting sync to protect local data');
         return;
       }
       
       syncLogger.log('📊 [Sync] Remote events (per-calendar):', allRemoteEvents.length);
       
-      // 🔧 [CRITICAL FIX] 如果远程事件为空，可能是网络错误或登出，停止同步以保护本地数�?      if (allRemoteEvents.length === 0) {
+      // 🔧 [CRITICAL FIX] 如果远程事件为空，可能是网络错误或登出，停止同步以保护本地数据
+      if (allRemoteEvents.length === 0) {
         const hasLocalEventsWithExternalId = localEvents.some((e: any) => e.externalId);
         if (hasLocalEventsWithExternalId) {
           syncLogger.warn('⚠️ [Sync] Remote returned 0 events but local has synced events - possible auth issue, aborting sync to protect local data');
-          return; // �?中止同步，避免误�?        }
+          return; // ❌ 中止同步，避免误删
+        }
       }
       
       const uniqueEvents = new Map();
@@ -1167,7 +1240,7 @@ export class ActionBasedSyncManager {
       if (combinedEvents.length > remarkableEvents.length) {
         const filteredOut = combinedEvents.filter(e => !remarkableEvents.includes(e))[0];
         if (filteredOut) {
-          syncLogger.log('🔍 [Sync] Sample filtered out event:', {
+          console.log('🔍 [Sync] Sample filtered out event:', {
             subject: filteredOut.subject,
             start: filteredOut.start || filteredOut.startTime,
             calendarId: filteredOut.calendarId,
@@ -1183,7 +1256,8 @@ export class ActionBasedSyncManager {
       remarkableEvents.forEach((event: any) => {
         // Processing event
 
-        // 🆕 检查是否是已删除的事件，如果是则跳�?        const cleanEventId = event.id.startsWith('outlook-') ? event.id.replace('outlook-', '') : event.id;
+        // 🆕 检查是否是已删除的事件，如果是则跳过
+        const cleanEventId = event.id.startsWith('outlook-') ? event.id.replace('outlook-', '') : event.id;
         const isDeleted = this.deletedEventIds.has(cleanEventId) || this.deletedEventIds.has(event.id);
         
         if (isDeleted) {
@@ -1192,21 +1266,24 @@ export class ActionBasedSyncManager {
         }
 
         // 🚀 [SIMPLIFIED] 直接用纯 Outlook ID 查找 externalId
-        // Outlook 返回�?event.id �?'outlook-AAMkAD...'
+        // Outlook 返回的 event.id 是 'outlook-AAMkAD...'
         // 去掉前缀后得到纯 Outlook ID，这就是 externalId
         const pureOutlookId = event.id.replace(/^outlook-/, '');
         const existingLocal = this.eventIndexMap.get(pureOutlookId);
 
         if (!existingLocal) {
           // Creating new local event from remote
-          // 🔧 [FIX] event.id 已经带有 'outlook-' 前缀（来�?MicrosoftCalendarService�?          // 不要重复添加前缀�?          this.recordRemoteAction('create', 'event', event.id, event);
+          // 🔧 [FIX] event.id 已经带有 'outlook-' 前缀（来自 MicrosoftCalendarService）
+          // 不要重复添加前缀！
+          this.recordRemoteAction('create', 'event', event.id, event);
           createActionCount++;
         } else {
-          // 🔧 检查是否需要更�?- 更智能的比较逻辑
+          // 🔧 检查是否需要更新 - 更智能的比较逻辑
           const remoteModified = new Date(event.lastModifiedDateTime || event.createdDateTime || new Date());
           const localModified = new Date(existingLocal.updatedAt || existingLocal.createdAt || new Date());
           
-          // 🔧 验证日期有效性，使用安全的时间比�?          const isRemoteDateValid = !isNaN(remoteModified.getTime());
+          // 🔧 验证日期有效性，使用安全的时间比较
+          const isRemoteDateValid = !isNaN(remoteModified.getTime());
           const isLocalDateValid = !isNaN(localModified.getTime());
           
           let timeDiffMinutes = 0;
@@ -1221,7 +1298,8 @@ export class ActionBasedSyncManager {
           // 详细比较各个字段
           const titleChanged = event.subject !== existingLocal.title;
           
-          // 🔧 智能描述比较：比较纯净的核心内容，忽略格式和备注差�?          const remoteRawDescription = this.getEventDescription(event);
+          // 🔧 智能描述比较：比较纯净的核心内容，忽略格式和备注差异
+          const remoteRawDescription = this.getEventDescription(event);
           const localRawDescription = existingLocal.description || '';
           
           // 提取核心内容进行比较
@@ -1236,7 +1314,7 @@ export class ActionBasedSyncManager {
             
             // 🔍 调试：打印前 3 个更新的详细信息
             if (updateActionCount < 3) {
-              // syncLogger.log(`🔍 [Sync] Update reason for "${event.subject}":`, {
+              // console.log(`🔍 [Sync] Update reason for "${event.subject}":`, {
               //   reason,
               //   titleChanged,
               //   descriptionChanged,
@@ -1244,8 +1322,9 @@ export class ActionBasedSyncManager {
               //   timeDiffMinutes: timeDiffMinutes?.toFixed(2)
               // });
               
-              // 如果是描述更改，输出详细的内容对�?              if (descriptionChanged) {
-                syncLogger.log(`🔍 [Sync] Description comparison:`, {
+              // 如果是描述更改，输出详细的内容对比
+              if (descriptionChanged) {
+                console.log(`🔍 [Sync] Description comparison:`, {
                   remoteCoreLength: remoteCoreContent.length,
                   localCoreLength: localCoreContent.length,
                   remoteCorePreview: remoteCoreContent.substring(0, 100),
@@ -1269,10 +1348,12 @@ export class ActionBasedSyncManager {
       syncLogger.log('📊 [Sync] Total actions in queue:', this.actionQueue.length);
 
       // 🔧 检测远程删除的事件
-      // ⚠️ 重要：只在获取了完整事件列表时才检查删�?      // 如果使用时间窗口过滤的事件列表，会误判所有窗口外的事件为"已删�?
+      // ⚠️ 重要：只在获取了完整事件列表时才检查删除
+      // 如果使用时间窗口过滤的事件列表，会误判所有窗口外的事件为"已删除"
       
-      // 🔧 从远程事件中提取原始的Outlook ID（去掉outlook-前缀�?      const remoteEventIds = new Set(combinedEvents.map((event: any) => {
-        // MicrosoftCalendarService返回的ID格式�?"outlook-{原始ID}"
+      // 🔧 从远程事件中提取原始的Outlook ID（去掉outlook-前缀）
+      const remoteEventIds = new Set(combinedEvents.map((event: any) => {
+        // MicrosoftCalendarService返回的ID格式是 "outlook-{原始ID}"
         const rawId = event.id.startsWith('outlook-') ? event.id.replace('outlook-', '') : event.id;
         return rawId;
       }));
@@ -1292,7 +1373,7 @@ export class ActionBasedSyncManager {
       
       syncLogger.log(`🔍 [Sync] Local has ${localEventsWithExternalId.length} events with externalId`);
 
-      // 🔍 [DEBUG] 检查是否有重复�?externalId
+      // 🔍 [DEBUG] 检查是否有重复的 externalId
       const externalIdCounts = new Map<string, number>();
       localEventsWithExternalId.forEach((event: any) => {
         const cleanId = event.externalId.startsWith('outlook-') 
@@ -1306,16 +1387,19 @@ export class ActionBasedSyncManager {
         syncLogger.warn(`⚠️ [Sync] Found ${duplicates.length} duplicate externalIds in localStorage`);
       }
       
-      // 🔍 [DEBUG] 专门检�?🧨刷小红书"事件
+      // 🔍 [DEBUG] 专门检查"🧨刷小红书"事件
       const targetEvents = localEvents.filter((e: any) => e.title && e.title.includes('🧨刷小红书'));
       syncLogger.log(`🔍 [Sync] Local has ${targetEvents.length} "🧨刷小红书" events`);
 
-      // �?[NEW] 增加同步轮次
+      // � [NEW] 增加同步轮次
       this.syncRoundCounter++;
       syncLogger.log(`🔄 [Sync] Round #${this.syncRoundCounter}`);
 
-      // ⚠️ 删除检查逻辑（两轮确认机制）�?      // 性能优化：只检查在同步窗口内的事件（通常 < 100个）
-      // 1. 第一轮：未找到的事件加入候选列表（pending�?      // 2. 第二轮：候选列表中依然未找到的事件才真正删�?      // 3. 找到的事件从候选列表中移除
+      // ⚠️ 删除检查逻辑（两轮确认机制）：
+      // 性能优化：只检查在同步窗口内的事件（通常 < 100个）
+      // 1. 第一轮：未找到的事件加入候选列表（pending）
+      // 2. 第二轮：候选列表中依然未找到的事件才真正删除
+      // 3. 找到的事件从候选列表中移除
 
       const deletionCheckStartTime = performance.now();
       let deletionCheckCount = 0;
@@ -1342,18 +1426,20 @@ export class ActionBasedSyncManager {
           const isFoundInRemote = remoteEventIds.has(cleanExternalId);
           
           if (isFoundInRemote) {
-            // �?找到了，从候选列表中移除
+            // ✅ 找到了，从候选列表中移除
             if (this.deletionCandidates.has(localEvent.id)) {
               this.deletionCandidates.delete(localEvent.id);
             }
           } else {
-            // �?未找到，进入删除确认流程
+            // ❌ 未找到，进入删除确认流程
             
-            // 🔧 [FIX] 增加额外保护：检查事件是否最近刚更新�?            const recentlyUpdated = this.recentlyUpdatedEvents.has(localEvent.id);
+            // 🔧 [FIX] 增加额外保护：检查事件是否最近刚更新过
+            const recentlyUpdated = this.recentlyUpdatedEvents.has(localEvent.id);
             const lastUpdateTime = this.recentlyUpdatedEvents.get(localEvent.id) || 0;
             const timeSinceUpdate = Date.now() - lastUpdateTime;
             
-            // 如果事件在最�?0秒内被更新过，不视为删除（可能是同步延迟�?            if (recentlyUpdated && timeSinceUpdate < 30000) {
+            // 如果事件在最近30秒内被更新过，不视为删除（可能是同步延迟）
+            if (recentlyUpdated && timeSinceUpdate < 30000) {
               deletionCheckCount++;
               return;
             }
@@ -1368,7 +1454,8 @@ export class ActionBasedSyncManager {
             const now = Date.now();
             
             if (!existingCandidate) {
-              // 🆕 第一次未找到，加入候选列�?              this.deletionCandidates.set(localEvent.id, {
+              // 🆕 第一次未找到，加入候选列表
+              this.deletionCandidates.set(localEvent.id, {
                 externalId: cleanExternalId,
                 title: localEvent.title,
                 firstMissingRound: this.syncRoundCounter,
@@ -1379,25 +1466,28 @@ export class ActionBasedSyncManager {
               deletionCandidateCount++;
               
               if (deletionCandidateCount <= 3) {
-                syncLogger.log(`�?[Sync] Deletion candidate (1st miss): "${localEvent.title}"`);
+                syncLogger.log(`⏳ [Sync] Deletion candidate (1st miss): "${localEvent.title}"`);
               }
             } else {
-              // 🔄 已在候选列表，检查是否满足删除条�?              existingCandidate.lastCheckRound = this.syncRoundCounter;
+              // 🔄 已在候选列表，检查是否满足删除条件
+              existingCandidate.lastCheckRound = this.syncRoundCounter;
               existingCandidate.lastCheckTime = now;
               
               const roundsSinceMissing = this.syncRoundCounter - existingCandidate.firstMissingRound;
               const timeSinceMissing = now - existingCandidate.firstMissingTime;
               
-              // 🔧 删除条件：至�?轮查询都未找到，且间隔至�?0�?              if (roundsSinceMissing >= 1 && timeSinceMissing >= 30000) {
-                // �?确认删除
+              // 🔧 删除条件：至少2轮查询都未找到，且间隔至少30秒
+              if (roundsSinceMissing >= 1 && timeSinceMissing >= 30000) {
+                // ✅ 确认删除
                 if (deletionConfirmedCount < 3) {
-                  syncLogger.warn(`🗑�?[Sync] Confirmed deletion after ${roundsSinceMissing + 1} rounds: "${localEvent.title}"`);
+                  syncLogger.warn(`🗑️ [Sync] Confirmed deletion after ${roundsSinceMissing + 1} rounds: "${localEvent.title}"`);
                 }
                 this.recordRemoteAction('delete', 'event', localEvent.id, null, localEvent);
                 this.deletionCandidates.delete(localEvent.id);
                 deletionConfirmedCount++;
               } else {
-                // �?还在候选期，等待下一�?                deletionCandidateCount++;
+                // ⏳ 还在候选期，等待下一轮
+                deletionCandidateCount++;
               }
             }
           }
@@ -1425,25 +1515,26 @@ export class ActionBasedSyncManager {
       });
       expiredCandidates.forEach(id => {
         const candidate = this.deletionCandidates.get(id);
-        syncLogger.log(`�?[Sync] Removing expired deletion candidate: "${candidate?.title}"`);
+        syncLogger.log(`⏰ [Sync] Removing expired deletion candidate: "${candidate?.title}"`);
         this.deletionCandidates.delete(id);
       });
 
       // 🔧 只在全量同步时重置标记并输出特殊日志
       if (isFullSync) {
-        // 全量同步完成，重置标�?        this.needsFullSync = false;
-        syncLogger.log('�?[FullSync] Full synchronization completed');
+        // 全量同步完成，重置标记
+        this.needsFullSync = false;
+        syncLogger.log('✅ [FullSync] Full synchronization completed');
       } else {
-        syncLogger.log('�?[IncrementalSync] Incremental synchronization completed');
+        syncLogger.log('✅ [IncrementalSync] Incremental synchronization completed');
       }
 
       // ...existing code...
     } catch (error) {
-      syncLogger.error('�?Failed to fetch remote changes:', error);
+      syncLogger.error('❌ Failed to fetch remote changes:', error);
     }
   }
 
-// 🔧 获取用户设置的方法（已废弃ongoingDays参数，现在默认同�?年数据）
+// 🔧 获取用户设置的方法（已废弃ongoingDays参数，现在默认同步1年数据）
 private getUserSettings(): any {
   try {
     const settings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
@@ -1491,7 +1582,7 @@ private getUserSettings(): any {
     }, {} as Record<number, number>);
     
     if (pendingLocalActions.length > 0) {
-      syncLogger.log('📊 [Sync] Pending local actions:', {
+      console.log('📊 [Sync] Pending local actions:', {
         total: pendingLocalActions.length,
         byRetryCount: stats
       });
@@ -1535,17 +1626,19 @@ private getUserSettings(): any {
         successCount++;
         
       } catch (error) {
-        syncLogger.error(`�?[SyncRemote] Failed to apply remote action [${i+1}]:`, error);
+        syncLogger.error(`❌ [SyncRemote] Failed to apply remote action [${i+1}]:`, error);
         action.retryCount = (action.retryCount || 0) + 1;
         failCount++;
       }
     }
     
-    // 🚀 批量保存：所有操作完成后统一保存一�?    if (successCount > 0) {
+    // 🚀 批量保存：所有操作完成后统一保存一次
+    if (successCount > 0) {
       syncLogger.log(`💾 [SyncRemote] Saving ${successCount} changes to localStorage...`);
       // 🔧 [IndexMap 优化] 批量同步时已经在循环中增量更新了 IndexMap
       // 不需要重建！只保存到 localStorage
-      this.saveLocalEvents(localEvents, false); // rebuildIndex=false，使用增量更�?      syncLogger.log('�?[SyncRemote] Batch save completed');
+      this.saveLocalEvents(localEvents, false); // rebuildIndex=false，使用增量更新
+      syncLogger.log('✅ [SyncRemote] Batch save completed');
     }
     
     syncLogger.log('📊 [SyncRemote] Results:', { successCount, failCount });
@@ -1566,7 +1659,7 @@ private getUserSettings(): any {
   }
 
   private async syncSingleAction(action: SyncAction) {
-    syncLogger.log('🔍 [SYNC SINGLE ACTION] Called with:', {
+    console.log('🔍 [SYNC SINGLE ACTION] Called with:', {
       actionId: action.id,
       type: action.type,
       entityId: action.entityId,
@@ -1576,9 +1669,11 @@ private getUserSettings(): any {
       lastError: action.lastError
     });
     
-    // 🔧 [NEW] 跳过 syncStatus �?'local-only' 的事件（例如：运行中�?Timer�?    if (action.data && action.data.syncStatus === 'local-only') {
+    // 🔧 [NEW] 跳过 syncStatus 为 'local-only' 的事件（例如：运行中的 Timer）
+    if (action.data && action.data.syncStatus === 'local-only') {
       syncLogger.log('⏭️ [SYNC SINGLE ACTION] Skipping local-only event (Timer in progress):', action.entityId);
-      action.synchronized = true; // 标记为已处理，防止重�?      this.saveActionQueue();
+      action.synchronized = true; // 标记为已处理，防止重试
+      this.saveActionQueue();
       return;
     }
     
@@ -1604,9 +1699,10 @@ private getUserSettings(): any {
       action.synchronized = true;
       action.synchronizedAt = new Date();
       action.lastError = undefined; // 🔧 [NEW] 清除错误信息
-      action.userNotified = false; // 🔧 [NEW] 重置通知状�?      
+      action.userNotified = false; // 🔧 [NEW] 重置通知状态
+      
       // 📊 更新统计信息
-      syncLogger.log('📊 [Stats] Checking action for stats update:', { 
+      console.log('📊 [Stats] Checking action for stats update:', { 
         source: action.source, 
         type: action.type,
         entityId: action.entityId 
@@ -1625,12 +1721,12 @@ private getUserSettings(): any {
       }
       
       this.saveActionQueue();
-      syncLogger.log('�?[SYNC SINGLE ACTION] Action completed successfully:', action.id);
+      syncLogger.log('✅ [SYNC SINGLE ACTION] Action completed successfully:', action.id);
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       
-      syncLogger.error('�?[SYNC SINGLE ACTION] Failed to sync action:', {
+      console.error('❌ [SYNC SINGLE ACTION] Failed to sync action:', {
         actionId: action.id,
         type: action.type,
         error: error,
@@ -1641,12 +1737,14 @@ private getUserSettings(): any {
       action.lastError = errorMessage;
       action.retryCount = (action.retryCount || 0) + 1;
       
-      // �?更新失败统计（仅针对本地到远程的同步�?      if (action.source === 'local') {
+      // � 更新失败统计（仅针对本地到远程的同步）
+      if (action.source === 'local') {
         this.syncStats.syncFailed++;
         syncLogger.log('📊 [Stats] Sync failed count:', this.syncStats.syncFailed);
       }
       
-      // ��?[NEW] 每失�?次通知用户一次（3, 6, 9...�?      const shouldNotify = action.retryCount % 3 === 0 && !action.userNotified;
+      // �🔧 [NEW] 每失败3次通知用户一次（3, 6, 9...）
+      const shouldNotify = action.retryCount % 3 === 0 && !action.userNotified;
       
       if (shouldNotify) {
         this.showSyncFailureNotification(action, errorMessage);
@@ -1660,9 +1758,10 @@ private getUserSettings(): any {
   }
 
   private async applyLocalActionToRemote(action: SyncAction): Promise<boolean> {
-    let syncTargetCalendarId: string | undefined; // 🔧 重命名变量避免潜在冲�?    
+    let syncTargetCalendarId: string | undefined; // 🔧 重命名变量避免潜在冲突
+    
     try {
-      syncLogger.log('🔍 [SYNC] applyLocalActionToRemote called:', {
+      console.log('🔍 [SYNC] applyLocalActionToRemote called:', {
         actionType: action.type,
         entityId: action.entityId,
         hasSource: action.source,
@@ -1672,23 +1771,23 @@ private getUserSettings(): any {
       });
       
       if (action.source !== 'local') {
-        syncLogger.log('�?[SYNC] Action source is not local:', action.source);
+        syncLogger.log('❌ [SYNC] Action source is not local:', action.source);
         return false;
       }
       
       if (!this.microsoftService) {
-        syncLogger.log('�?[SYNC] Microsoft service not available');
+        syncLogger.log('❌ [SYNC] Microsoft service not available');
         return false;
       }
       
       if (!this.microsoftService.isSignedIn()) {
-        syncLogger.log('�?[SYNC] Microsoft service not signed in');
+        syncLogger.log('❌ [SYNC] Microsoft service not signed in');
         return false;
       }
 
       switch (action.type) {
         case 'create':
-          syncLogger.log('🔍 [SYNC CREATE] Processing create action:', {
+          console.log('🔍 [SYNC CREATE] Processing create action:', {
             entityId: action.entityId,
             title: action.data.title,
             tagId: action.data.tagId,
@@ -1698,7 +1797,8 @@ private getUserSettings(): any {
             fullActionData: action.data
           });
           
-          // 检查事件是否已经同步过（有externalId）或者是从Outlook同步回来�?          if (action.data.externalId || action.data.remarkableSource === false) {
+          // 检查事件是否已经同步过（有externalId）或者是从Outlook同步回来的
+          if (action.data.externalId || action.data.remarkableSource === false) {
             syncLogger.log('🔄 Skipping sync - event already has externalId or is from Outlook:', action.entityId);
             return true; // 标记为成功，避免重试
           }
@@ -1730,7 +1830,8 @@ private getUserSettings(): any {
             isAllDay: action.data.isAllDay || false
           };
           
-          // 🔍 [FIXED] 获取目标日历ID - 按需求定义处�?          syncTargetCalendarId = action.data.calendarId;
+          // 🔍 [FIXED] 获取目标日历ID - 按需求定义处理
+          syncTargetCalendarId = action.data.calendarId;
           
           if (action.data.tagId) {
             // 如果有标签，通过标签映射获取日历ID
@@ -1753,7 +1854,7 @@ private getUserSettings(): any {
             syncTargetCalendarId = this.microsoftService.getSelectedCalendarId();
           }
           
-          syncLogger.log('🎯 [EVENT SYNC] Final calendar assignment:', {
+          console.log('🎯 [EVENT SYNC] Final calendar assignment:', {
             eventTitle: action.data.title,
             eventId: action.entityId,
             originalCalendarId: action.data.calendarId,
@@ -1772,9 +1873,9 @@ private getUserSettings(): any {
           break;
 
         case 'update':
-          // 🚨 [REBUILT] 重构�?UPDATE 逻辑 - 按用户要求的5级优先级结构
-          syncLogger.log('🎯 [UPDATE] === UPDATE 决策流程开�?===');
-          syncLogger.log('🔍 [UPDATE] Processing update action:', {
+          // 🚨 [REBUILT] 重构的 UPDATE 逻辑 - 按用户要求的5级优先级结构
+          syncLogger.log('🎯 [UPDATE] === UPDATE 决策流程开始 ===');
+          console.log('🔍 [UPDATE] Processing update action:', {
             entityId: action.entityId,
             title: action.data.title,
             tagId: action.data.tagId,
@@ -1783,7 +1884,8 @@ private getUserSettings(): any {
             hasOriginalExternalId: !!action.originalData?.externalId
           });
 
-          // 📊 [PRIORITY 0] 最高优先级：用户数据保�?- 保存操作到本地永久存�?          try {
+          // 📊 [PRIORITY 0] 最高优先级：用户数据保护 - 保存操作到本地永久存储
+          try {
             syncLogger.log('💾 [PRIORITY 0] Saving user operation to persistent local storage...');
             
             // 1. 获取当前本地事件数据
@@ -1791,13 +1893,15 @@ private getUserSettings(): any {
             const eventIndex = priorityLocalEvents.findIndex((e: any) => e.id === action.entityId);
             
             if (eventIndex !== -1) {
-              // 2. 创建备份并更新本地数�?              const backupEvent = {
+              // 2. 创建备份并更新本地数据
+              const backupEvent = {
                 ...priorityLocalEvents[eventIndex],
                 lastBackupAt: new Date(),
                 backupReason: 'update-operation'
               };
               
-              // 3. 确保用户修改立即保存到本�?              const oldEvent = { ...priorityLocalEvents[eventIndex] };
+              // 3. 确保用户修改立即保存到本地
+              const oldEvent = { ...priorityLocalEvents[eventIndex] };
               const updatedEvent = {
                 ...priorityLocalEvents[eventIndex],
                 ...action.data,
@@ -1812,22 +1916,25 @@ private getUserSettings(): any {
               this.updateEventInIndex(updatedEvent, oldEvent);
               this.saveLocalEvents(priorityLocalEvents, false); // rebuildIndex=false
               
-              syncLogger.log('�?[PRIORITY 0] User data protected and saved locally with incremental index update');
+              syncLogger.log('✅ [PRIORITY 0] User data protected and saved locally with incremental index update');
             }
           } catch (storageError) {
-            syncLogger.error('�?[PRIORITY 0] Failed to save user data locally:', storageError);
-            // 即使本地保存失败，也要继续同步，但添加冲突标�?            if (!action.data.title.includes('⚠️同步冲突')) {
+            syncLogger.error('❌ [PRIORITY 0] Failed to save user data locally:', storageError);
+            // 即使本地保存失败，也要继续同步，但添加冲突标记
+            if (!action.data.title.includes('⚠️同步冲突')) {
               action.data.title = '⚠️同步冲突 - ' + action.data.title;
               syncLogger.log('🚨 [PRIORITY 0] Added conflict marker to title');
             }
           }
 
-          // 🔍 [PRIORITY 1] 最高优先级：检查事件基础状�?          syncLogger.log('🔍 [PRIORITY 1] === 事件基础状态检�?===');
+          // 🔍 [PRIORITY 1] 最高优先级：检查事件基础状态
+          syncLogger.log('🔍 [PRIORITY 1] === 事件基础状态检查 ===');
           syncLogger.log('🆕 [DEBUG] NEW UPDATE LOCK LOGIC LOADED - Version 2.0');
           
-          // 1️⃣ 编辑锁定检�?- 对于UPDATE操作，清除之前的锁定以允许远程同�?          const lockStatus = this.editLocks.get(action.entityId);
+          // 1️⃣ 编辑锁定检查 - 对于UPDATE操作，清除之前的锁定以允许远程同步
+          const lockStatus = this.editLocks.get(action.entityId);
           const currentTime = Date.now();
-          syncLogger.log('🔍 [LOCK DEBUG] Edit lock status:', {
+          console.log('🔍 [LOCK DEBUG] Edit lock status:', {
             entityId: action.entityId.substring(0, 20) + '...',
             hasLock: !!lockStatus,
             lockExpiry: lockStatus,
@@ -1837,16 +1944,17 @@ private getUserSettings(): any {
           });
           
           if (this.isEditLocked(action.entityId)) {
-            syncLogger.log('🔒 [PRIORITY 1] �?NEW LOGIC: Event was edit-locked, clearing lock for UPDATE sync');
+            syncLogger.log('🔒 [PRIORITY 1] ✨ NEW LOGIC: Event was edit-locked, clearing lock for UPDATE sync');
             this.clearEditLock(action.entityId);
           } else {
-            syncLogger.log('🔓 [PRIORITY 1] �?NEW LOGIC: No edit lock found, proceeding with sync');
+            syncLogger.log('🔓 [PRIORITY 1] ✨ NEW LOGIC: No edit lock found, proceeding with sync');
           }
           
-          // 为当前更新操作设置编辑锁�?          this.setEditLock(action.entityId, 15000); // 15秒锁定期
+          // 为当前更新操作设置编辑锁定
+          this.setEditLock(action.entityId, 15000); // 15秒锁定期
           syncLogger.log('🔒 [LOCK DEBUG] Set new edit lock for 15 seconds');
 
-          // 2️⃣ ExternalId 检�?- 决定�?UPDATE 还是 CREATE
+          // 2️⃣ ExternalId 检查 - 决定是 UPDATE 还是 CREATE
           // 🔧 关键修复：从本地存储的事件中获取externalId，因为前端data通常不包含externalId
           const updateLocalEvents = this.getLocalEvents();
           const currentLocalEvent = updateLocalEvents.find((e: any) => e.id === action.entityId);
@@ -1859,7 +1967,7 @@ private getUserSettings(): any {
             cleanExternalId = cleanExternalId.replace('outlook-', '');
           }
           
-          syncLogger.log('🔍 [PRIORITY 1] ExternalId analysis:', {
+          console.log('🔍 [PRIORITY 1] ExternalId analysis:', {
             dataExternalId: action.data.externalId,
             originalExternalId: action.originalData?.externalId,
             currentLocalEventExternalId: currentLocalEvent?.externalId, // 🔧 新增日志
@@ -1867,29 +1975,32 @@ private getUserSettings(): any {
             decision: cleanExternalId ? 'PROCEED_WITH_UPDATE' : 'CONVERT_TO_CREATE'
           });
           
-          // 🔄 如果没有 externalId，转�?CREATE 操作（首次同步）
+          // 🔄 如果没有 externalId，转为 CREATE 操作（首次同步）
           if (!cleanExternalId) {
-            syncLogger.log('🔄 [PRIORITY 1] No externalId found - Converting UPDATE �?CREATE (first-time sync)');
+            syncLogger.log('🔄 [PRIORITY 1] No externalId found - Converting UPDATE → CREATE (first-time sync)');
             
-            // 执行 CREATE 逻辑（复用现有的 create 分支逻辑�?            
-            // 🔍 [NEW] 检查是否有旧的 externalId 需要清理（可能在其他日历中存在�?            // 这种情况可能发生在标签映射更改导致事件需要迁移到新日历时
+            // 执行 CREATE 逻辑（复用现有的 create 分支逻辑）
+            
+            // 🔍 [NEW] 检查是否有旧的 externalId 需要清理（可能在其他日历中存在）
+            // 这种情况可能发生在标签映射更改导致事件需要迁移到新日历时
             if (action.originalData?.externalId) {
               let oldExternalId = action.originalData.externalId;
               if (oldExternalId.startsWith('outlook-')) {
                 oldExternalId = oldExternalId.replace('outlook-', '');
               }
               
-              syncLogger.log('🗑�?[SYNC UPDATE �?CREATE] Found old externalId, cleaning up before create:', oldExternalId);
+              syncLogger.log('🗑️ [SYNC UPDATE → CREATE] Found old externalId, cleaning up before create:', oldExternalId);
               try {
                 await this.microsoftService.deleteEvent(oldExternalId);
-                syncLogger.log('�?[SYNC UPDATE �?CREATE] Successfully deleted old event from Outlook');
+                syncLogger.log('✅ [SYNC UPDATE → CREATE] Successfully deleted old event from Outlook');
               } catch (error) {
-                syncLogger.warn('⚠️ [SYNC UPDATE �?CREATE] Failed to delete old event (may not exist):', error);
+                syncLogger.warn('⚠️ [SYNC UPDATE → CREATE] Failed to delete old event (may not exist):', error);
                 // 继续执行，不影响新事件的创建
               }
             }
             
-            // 🔍 [FIXED] 获取目标日历ID - 按需求定义处理（UPDATE �?CREATE转换�?            syncTargetCalendarId = action.data.calendarId;
+            // 🔍 [FIXED] 获取目标日历ID - 按需求定义处理（UPDATE → CREATE转换）
+            syncTargetCalendarId = action.data.calendarId;
             
             if (action.data.tagId) {
               // 如果有标签，通过标签映射获取日历ID
@@ -1906,12 +2017,13 @@ private getUserSettings(): any {
               syncLogger.log('🔍 [SYNC CREATE] Event has no tagId, keeping original calendarId to prevent unwanted migration');
             }
             
-            // 🚨 只有在真的没有任何日历信息时才使用默认日�?            if (!syncTargetCalendarId) {
+            // 🚨 只有在真的没有任何日历信息时才使用默认日历
+            if (!syncTargetCalendarId) {
               syncLogger.log('🔍 [SYNC CREATE] No calendar ID at all, using default calendar');
               syncTargetCalendarId = this.microsoftService.getSelectedCalendarId();
             }
             
-            syncLogger.log('🎯 [EVENT SYNC] Final calendar assignment for create:', {
+            console.log('🎯 [EVENT SYNC] Final calendar assignment for create:', {
               eventTitle: action.data.title,
               eventId: action.entityId,
               originalCalendarId: action.data.calendarId,
@@ -1960,40 +2072,42 @@ private getUserSettings(): any {
                 this.updateLocalEventCalendarId(action.entityId, syncTargetCalendarId);
               }
               this.clearEditLock(action.entityId);
-              syncLogger.log('�?[PRIORITY 1] UPDATE �?CREATE completed successfully');
+              syncLogger.log('✅ [PRIORITY 1] UPDATE → CREATE completed successfully');
               
               // 📝 状态栏反馈
               window.dispatchEvent(new CustomEvent('sync-status-update', {
-                detail: { message: `�?已创�?个事件到Outlook: ${syncTargetCalendarId}` }
+                detail: { message: `✅ 已创建1个事件到Outlook: ${syncTargetCalendarId}` }
               }));
               return true;
             } else {
               this.clearEditLock(action.entityId);
-              syncLogger.error('�?[PRIORITY 1] UPDATE �?CREATE failed');
+              syncLogger.error('❌ [PRIORITY 1] UPDATE → CREATE failed');
               return false;
             }
           }
           
-          // 🏷�?[PRIORITY 2] 高优先级：标签日历映射检查（智能迁移�?          syncLogger.log('🏷�?[PRIORITY 2] === 标签日历映射检�?===');
+          // 🏷️ [PRIORITY 2] 高优先级：标签日历映射检查（智能迁移）
+          syncLogger.log('🏷️ [PRIORITY 2] === 标签日历映射检查 ===');
           
           const currentCalendarId = action.data.calendarId;
           let needsCalendarMigration = false;
           syncTargetCalendarId = currentCalendarId;
           
-          // 🎯 确定要检查的标签ID（优先使�?tags 数组的第一个标签）
+          // 🎯 确定要检查的标签ID（优先使用 tags 数组的第一个标签）
           let tagToCheck = action.data.tagId;
           if (action.data.tags && action.data.tags.length > 0) {
             tagToCheck = action.data.tags[0];
-            syncLogger.log('🏷�?[PRIORITY 2] Using first tag from tags array:', tagToCheck);
+            syncLogger.log('🏷️ [PRIORITY 2] Using first tag from tags array:', tagToCheck);
           }
           
-          // 🔍 获取原始事件的标签（用于比较�?          let originalTagToCheck = action.originalData?.tagId;
+          // 🔍 获取原始事件的标签（用于比较）
+          let originalTagToCheck = action.originalData?.tagId;
           if (action.originalData?.tags && action.originalData.tags.length > 0) {
             originalTagToCheck = action.originalData.tags[0];
           }
           
           if (tagToCheck) {
-            syncLogger.log('🔍 [PRIORITY 2] Checking tag mapping:', {
+            console.log('🔍 [PRIORITY 2] Checking tag mapping:', {
               currentTag: tagToCheck,
               originalTag: originalTagToCheck,
               tagsChanged: tagToCheck !== originalTagToCheck
@@ -2007,19 +2121,19 @@ private getUserSettings(): any {
               originalMappedCalendarId = this.getCalendarIdForTag(originalTagToCheck) || currentCalendarId;
             }
             
-            syncLogger.log('🔍 [PRIORITY 2] Calendar mapping comparison:', {
+            console.log('🔍 [PRIORITY 2] Calendar mapping comparison:', {
               currentCalendar: currentCalendarId || 'None',
               originalMappedCalendar: originalMappedCalendarId || 'None',
               newMappedCalendar: mappedCalendarId || 'None',
               actuallyNeedsMigration: !!(mappedCalendarId && mappedCalendarId !== originalMappedCalendarId)
             });
             
-            // �?智能迁移检测：只有当新旧映射的日历真的不同时才迁移
+            // ✅ 智能迁移检测：只有当新旧映射的日历真的不同时才迁移
             if (mappedCalendarId && mappedCalendarId !== originalMappedCalendarId) {
               needsCalendarMigration = true;
               syncTargetCalendarId = mappedCalendarId;
               
-              syncLogger.log('🔄 [PRIORITY 2] Smart migration required (calendar actually changed):', {
+              console.log('🔄 [PRIORITY 2] Smart migration required (calendar actually changed):', {
                 from: originalMappedCalendarId || 'Default',
                 to: mappedCalendarId,
                 eventTitle: action.data.title,
@@ -2029,12 +2143,14 @@ private getUserSettings(): any {
               });
               
               try {
-                // 删除原日历中的事�?                syncLogger.log('🗑�?[PRIORITY 2] Deleting from original calendar...');
+                // 删除原日历中的事件
+                syncLogger.log('🗑️ [PRIORITY 2] Deleting from original calendar...');
                 await this.microsoftService.deleteEvent(cleanExternalId);
-                syncLogger.log('�?[PRIORITY 2] Successfully deleted from original calendar');
+                syncLogger.log('✅ [PRIORITY 2] Successfully deleted from original calendar');
               } catch (deleteError) {
-                syncLogger.error('�?[PRIORITY 2] Calendar migration failed:', deleteError);
-                // 迁移失败，继续执行普通更�?                needsCalendarMigration = false;
+                syncLogger.error('❌ [PRIORITY 2] Calendar migration failed:', deleteError);
+                // 迁移失败，继续执行普通更新
+                needsCalendarMigration = false;
               }
               
               try {
@@ -2064,7 +2180,7 @@ private getUserSettings(): any {
                   isAllDay: action.data.isAllDay || false
                 };
                 
-                syncLogger.log('�?[PRIORITY 2] Creating in new calendar:', syncTargetCalendarId);
+                syncLogger.log('✨ [PRIORITY 2] Creating in new calendar:', syncTargetCalendarId);
                 const newEventId = await this.microsoftService.syncEventToCalendar(migrateEventData, syncTargetCalendarId);
                 
                 if (newEventId) {
@@ -2073,7 +2189,7 @@ private getUserSettings(): any {
                   this.updateLocalEventExternalId(action.entityId, formattedExternalId, migrateDescription);
                   this.updateLocalEventCalendarId(action.entityId, syncTargetCalendarId);
                   this.clearEditLock(action.entityId);
-                  syncLogger.log('�?[PRIORITY 2] Calendar migration completed successfully:', {
+                  console.log('✅ [PRIORITY 2] Calendar migration completed successfully:', {
                     eventId: action.entityId,
                     newExternalId: formattedExternalId,
                     targetCalendarId: syncTargetCalendarId
@@ -2081,16 +2197,18 @@ private getUserSettings(): any {
                   
                   // 📝 状态栏反馈
                   window.dispatchEvent(new CustomEvent('sync-status-update', {
-                    detail: { message: `🔄 已迁�?个事件到日历: ${syncTargetCalendarId}` }
+                    detail: { message: `🔄 已迁移1个事件到日历: ${syncTargetCalendarId}` }
                   }));
                   return true;
                 }
               } catch (migrationError) {
-                syncLogger.error('�?[PRIORITY 2] Calendar migration failed:', migrationError);
-                // 迁移失败，继续执行普通更�?                needsCalendarMigration = false;
+                syncLogger.error('❌ [PRIORITY 2] Calendar migration failed:', migrationError);
+                // 迁移失败，继续执行普通更新
+                needsCalendarMigration = false;
               }
             } else if (mappedCalendarId && mappedCalendarId === originalMappedCalendarId) {
-              // �?标签变了，但映射的日历没变，不需要迁�?              syncLogger.log('�?[PRIORITY 2] No migration needed (calendar mapping unchanged):', {
+              // ✅ 标签变了，但映射的日历没变，不需要迁移
+              console.log('✅ [PRIORITY 2] No migration needed (calendar mapping unchanged):', {
                 originalTag: originalTagToCheck,
                 newTag: tagToCheck,
                 sameCalendar: mappedCalendarId,
@@ -2100,25 +2218,26 @@ private getUserSettings(): any {
               syncTargetCalendarId = mappedCalendarId;
             } else if (mappedCalendarId && !cleanExternalId) {
               syncLogger.log('🔄 [TAG-CALENDAR-UPDATE] Event not synced yet, updating calendarId for future sync');
-              // 如果事件还没有同步到 Outlook，只更新本地�?calendarId
+              // 如果事件还没有同步到 Outlook，只更新本地的 calendarId
               this.updateLocalEventCalendarId(action.entityId, mappedCalendarId);
             }
           }
           
-          // �?[PRIORITY 3] 中等优先级：字段更新处理
+          // � [PRIORITY 3] 中等优先级：字段更新处理
           syncLogger.log('📝 [PRIORITY 3] === 字段更新处理 ===');
           
           // 3️⃣ 构建更新数据
           const updateData: any = {};
           
-          // �?文本字段处理
+          // � 文本字段处理
           syncLogger.log('📝 [PRIORITY 3] Processing text fields...');
           if (action.data.title) {
             updateData.subject = action.data.title;
             syncLogger.log('📝 Title updated:', action.data.title);
           }
           
-          // 描述处理：添加同步备注管�?          if (action.data.description !== undefined) {
+          // 描述处理：添加同步备注管理
+          if (action.data.description !== undefined) {
             const updateDescription = this.processEventDescription(
               action.data.description || '',
               'remarkable',
@@ -2140,8 +2259,8 @@ private getUserSettings(): any {
           }
           
           
-          // �?时间字段处理
-          syncLogger.log('�?[PRIORITY 3] Processing time fields...');
+          // ⏰ 时间字段处理
+          syncLogger.log('⏰ [PRIORITY 3] Processing time fields...');
           if (action.data.startTime && action.data.endTime) {
             try {
               const startDateTime = this.safeFormatDateTime(action.data.startTime);
@@ -2162,28 +2281,29 @@ private getUserSettings(): any {
               updateData.start = { dateTime: startDateTime, timeZone: 'Asia/Shanghai' };
               updateData.end = { dateTime: endDateTime, timeZone: 'Asia/Shanghai' };
               
-              syncLogger.log('�?Time fields validated and updated:', {
+              console.log('⏰ Time fields validated and updated:', {
                 start: startDateTime,
                 end: endDateTime
               });
               
-              syncLogger.log('�?[Update] Time fields successfully added to update data');
+              syncLogger.log('✅ [Update] Time fields successfully added to update data');
               
             } catch (timeError) {
-              syncLogger.error('�?[PRIORITY 3] Time validation failed:', timeError);
+              syncLogger.error('❌ [PRIORITY 3] Time validation failed:', timeError);
               this.clearEditLock(action.entityId);
               throw new Error(`Time update failed: ${timeError instanceof Error ? timeError.message : 'Invalid time data'}`);
             }
           }
           
-          // 🏷�?元数据字段处�?          if (typeof action.data.isAllDay === 'boolean') {
+          // 🏷️ 元数据字段处理
+          if (typeof action.data.isAllDay === 'boolean') {
             updateData.isAllDay = action.data.isAllDay;
-            syncLogger.log('🏷�?All-day flag updated:', action.data.isAllDay);
+            syncLogger.log('🏷️ All-day flag updated:', action.data.isAllDay);
           }
           
           // 🎯 [PRIORITY 4] 标准优先级：执行更新操作
           syncLogger.log('🎯 [PRIORITY 4] === 执行更新操作 ===');
-          syncLogger.log('🎯 Sending update to Outlook:', {
+          console.log('🎯 Sending update to Outlook:', {
             externalId: cleanExternalId,
             fieldsToUpdate: Object.keys(updateData),
             updateData: JSON.stringify(updateData, null, 2)
@@ -2194,23 +2314,24 @@ private getUserSettings(): any {
             
             if (updateResult) {
               this.clearEditLock(action.entityId);
-              syncLogger.log('�?[PRIORITY 4] Update operation completed successfully');
+              syncLogger.log('✅ [PRIORITY 4] Update operation completed successfully');
               
               // 📝 状态栏反馈
               window.dispatchEvent(new CustomEvent('sync-status-update', {
-                detail: { message: `�?已更�?个事件到Outlook: ${syncTargetCalendarId || 'Default'}` }
+                detail: { message: `✅ 已更新1个事件到Outlook: ${syncTargetCalendarId || 'Default'}` }
               }));
               return true;
             }
           } catch (updateError) {
-            syncLogger.error('�?[PRIORITY 4] Update operation failed:', updateError);
+            syncLogger.error('❌ [PRIORITY 4] Update operation failed:', updateError);
             
-            // 🔧 错误处理：事件不存在时转�?CREATE
+            // 🔧 错误处理：事件不存在时转为 CREATE
             if (updateError instanceof Error && updateError.message.includes('Event not found')) {
               syncLogger.log('🔄 [PRIORITY 4] Event not found - Converting to CREATE operation');
               
               try {
-                  // 🔍 [FIXED] 获取重建事件的日历ID - 按需求定义处�?                let createCalendarId = syncTargetCalendarId;
+                  // 🔍 [FIXED] 获取重建事件的日历ID - 按需求定义处理
+                let createCalendarId = syncTargetCalendarId;
                 
                 if (action.data.tagId) {
                   // 如果有标签，通过标签映射获取日历ID
@@ -2227,7 +2348,8 @@ private getUserSettings(): any {
                   syncLogger.log('🔍 [RECREATE] Event has no tagId, keeping original calendarId to prevent unwanted migration');
                 }
                 
-                // 🚨 只有在真的没有任何日历信息时才使用默认日�?                if (!createCalendarId) {
+                // 🚨 只有在真的没有任何日历信息时才使用默认日历
+                if (!createCalendarId) {
                   syncLogger.log('🔍 [RECREATE] No calendar ID at all, using default calendar');
                   createCalendarId = this.microsoftService.getSelectedCalendarId();
                 }
@@ -2266,27 +2388,28 @@ private getUserSettings(): any {
                     this.updateLocalEventCalendarId(action.entityId, createCalendarId);
                   }
                   this.clearEditLock(action.entityId);
-                  syncLogger.log('�?[PRIORITY 4] Successfully recreated event after not found error');
+                  syncLogger.log('✅ [PRIORITY 4] Successfully recreated event after not found error');
                   
                   // 📝 状态栏反馈
                   window.dispatchEvent(new CustomEvent('sync-status-update', {
-                    detail: { message: `🔄 已重新创�?个事�? ${createCalendarId || 'Default'}` }
+                    detail: { message: `🔄 已重新创建1个事件: ${createCalendarId || 'Default'}` }
                   }));
                   return true;
                 }
               } catch (recreateError) {
-                syncLogger.error('�?[PRIORITY 4] Failed to recreate event:', recreateError);
+                syncLogger.error('❌ [PRIORITY 4] Failed to recreate event:', recreateError);
               }
             }
             
             
-            // 🔧 尝试最小更新（仅标题和描述�?            syncLogger.log('🔧 [PRIORITY 4] Attempting minimal update (title + description only)...');
+            // 🔧 尝试最小更新（仅标题和描述）
+            syncLogger.log('🔧 [PRIORITY 4] Attempting minimal update (title + description only)...');
             try {
               const minimalUpdate = {
                 subject: action.data.title,
                 body: { 
                   contentType: 'text', 
-                  content: action.data.description || '📱 �?ReMarkable 更新'
+                  content: action.data.description || '📱 由 ReMarkable 更新'
                 }
               };
               
@@ -2294,22 +2417,24 @@ private getUserSettings(): any {
               
               if (minimalResult) {
                 this.clearEditLock(action.entityId);
-                syncLogger.log('�?[PRIORITY 4] Minimal update succeeded');
+                syncLogger.log('✅ [PRIORITY 4] Minimal update succeeded');
                 
                 // 📝 状态栏反馈
                 window.dispatchEvent(new CustomEvent('sync-status-update', {
-                  detail: { message: `⚠️ 已部分更�?个事�?(仅标题和描述)` }
+                  detail: { message: `⚠️ 已部分更新1个事件 (仅标题和描述)` }
                 }));
                 return true;
               }
             } catch (minimalError) {
-              syncLogger.error('�?[PRIORITY 4] Even minimal update failed:', minimalError);
+              syncLogger.error('❌ [PRIORITY 4] Even minimal update failed:', minimalError);
             }
             
-            // 🚨 最终错误处理：保持本地数据，标记同步冲�?            this.clearEditLock(action.entityId);
+            // 🚨 最终错误处理：保持本地数据，标记同步冲突
+            this.clearEditLock(action.entityId);
             syncLogger.error('🚨 [PRIORITY 4] All update attempts failed, marking as sync conflict');
             
-            // 更新本地事件，添加同步冲突标�?            const conflictLocalEvents = this.getLocalEvents();
+            // 更新本地事件，添加同步冲突标记
+            const conflictLocalEvents = this.getLocalEvents();
             const conflictEventIndex = conflictLocalEvents.findIndex((e: any) => e.id === action.entityId);
             if (conflictEventIndex !== -1) {
               if (!conflictLocalEvents[conflictEventIndex].title.includes('⚠️同步冲突')) {
@@ -2333,11 +2458,12 @@ private getUserSettings(): any {
             throw updateError;
           }
 
-          // 📊 [PRIORITY 5] 低优先级：后续处理（已在上面的成功分支中处理�?          syncLogger.log('📊 [PRIORITY 5] Update process completed');
+          // 📊 [PRIORITY 5] 低优先级：后续处理（已在上面的成功分支中处理）
+          syncLogger.log('📊 [PRIORITY 5] Update process completed');
           break;
 
         case 'delete':
-          syncLogger.log('🗑�?[DELETE] Processing delete action:', {
+          console.log('🗑️ [DELETE] Processing delete action:', {
             entityId: action.entityId,
             hasOriginalData: !!action.originalData,
             originalDataExternalId: action.originalData?.externalId,
@@ -2345,14 +2471,15 @@ private getUserSettings(): any {
             fullAction: action
           });
           
-          // 🔍 首先检查本地存储中的externalId（类似UPDATE的逻辑�?          const deleteLocalEvents = this.getLocalEvents();
+          // 🔍 首先检查本地存储中的externalId（类似UPDATE的逻辑）
+          const deleteLocalEvents = this.getLocalEvents();
           const deleteTargetEvent = deleteLocalEvents.find((e: any) => e.id === action.entityId);
           
           let externalIdToDelete = action.originalData?.externalId || 
                                   action.data?.externalId || 
                                   deleteTargetEvent?.externalId;
           
-          syncLogger.log('🔍 [DELETE] ExternalId resolution:', {
+          console.log('🔍 [DELETE] ExternalId resolution:', {
             fromOriginalData: action.originalData?.externalId,
             fromActionData: action.data?.externalId,
             fromLocalEvent: deleteTargetEvent?.externalId,
@@ -2366,7 +2493,7 @@ private getUserSettings(): any {
               cleanExternalId = cleanExternalId.replace('outlook-', '');
             }
             
-            syncLogger.log('🗑�?[DELETE] Attempting to delete from Outlook:', {
+            console.log('🗑️ [DELETE] Attempting to delete from Outlook:', {
               originalId: externalIdToDelete,
               cleanId: cleanExternalId,
               eventTitle: deleteTargetEvent?.title || 'Unknown'
@@ -2374,21 +2501,22 @@ private getUserSettings(): any {
             
             try {
               await this.microsoftService.deleteEvent(cleanExternalId);
-              syncLogger.log('�?[DELETE] Successfully deleted event from Outlook:', cleanExternalId);
+              syncLogger.log('✅ [DELETE] Successfully deleted event from Outlook:', cleanExternalId);
               
               // 🆕 添加到已删除事件ID跟踪
               this.deletedEventIds.add(cleanExternalId);
-              this.deletedEventIds.add(externalIdToDelete); // 也添加原始格�?              this.saveDeletedEventIds();
+              this.deletedEventIds.add(externalIdToDelete); // 也添加原始格式
+              this.saveDeletedEventIds();
               syncLogger.log('📝 [DELETE] Added to deleted events tracking:', cleanExternalId);
               
               // 📝 状态栏反馈
               window.dispatchEvent(new CustomEvent('sync-status-update', {
-                detail: { message: `�?已从Outlook删除事件: ${deleteTargetEvent?.title || 'Unknown'}` }
+                detail: { message: `✅ 已从Outlook删除事件: ${deleteTargetEvent?.title || 'Unknown'}` }
               }));
               
               return true;
             } catch (error) {
-              syncLogger.error('�?[DELETE] Failed to delete event from Outlook:', {
+              console.error('❌ [DELETE] Failed to delete event from Outlook:', {
                 error: error,
                 errorMessage: error instanceof Error ? error.message : 'Unknown error',
                 externalId: cleanExternalId
@@ -2396,7 +2524,7 @@ private getUserSettings(): any {
               
               // 📝 状态栏反馈
               window.dispatchEvent(new CustomEvent('sync-status-update', {
-                detail: { message: `�?删除失败: ${error instanceof Error ? error.message : '未知错误'}` }
+                detail: { message: `❌ 删除失败: ${error instanceof Error ? error.message : '未知错误'}` }
               }));
               
               return false;
@@ -2406,7 +2534,7 @@ private getUserSettings(): any {
             
             // 📝 状态栏反馈
             window.dispatchEvent(new CustomEvent('sync-status-update', {
-              detail: { message: `⚠️ 仅本地删�?(事件未同步到Outlook)` }
+              detail: { message: `⚠️ 仅本地删除 (事件未同步到Outlook)` }
             }));
             
             return true; // 本地删除成功，即使没有远程ID
@@ -2415,16 +2543,17 @@ private getUserSettings(): any {
       
       return false; // 默认返回值，如果没有匹配的action type
     } catch (error) {
-      syncLogger.error('�?Failed to apply local action to remote:', error);
+      syncLogger.error('❌ Failed to apply local action to remote:', error);
       return false;
     }
   }
 
-  // 🔧 改进时间格式化方法，支持 Graph API 要求的格�?- 修复时区问题
+  // 🔧 改进时间格式化方法，支持 Graph API 要求的格式 - 修复时区问题
   private safeFormatDateTime(dateInput: any): string {
     try {
       if (!dateInput) {
-        return formatTimeForStorage(new Date()); // 🔧 使用本地时间格式�?      }
+        return formatTimeForStorage(new Date()); // 🔧 使用本地时间格式化
+      }
       
       // 如果已经是正确格式，直接返回
       if (typeof dateInput === 'string' && dateInput.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/)) {
@@ -2435,8 +2564,9 @@ private getUserSettings(): any {
       return formatTimeForStorage(dateInput);
       
     } catch (error) {
-      syncLogger.error('�?safeFormatDateTime error:', error);
-      return formatTimeForStorage(new Date()); // 🔧 使用本地时间格式�?    }
+      syncLogger.error('❌ safeFormatDateTime error:', error);
+      return formatTimeForStorage(new Date()); // 🔧 使用本地时间格式化
+    }
   }
 
   private async applyRemoteActionToLocal(
@@ -2454,23 +2584,27 @@ private getUserSettings(): any {
       case 'create':
         const newEvent = this.convertRemoteEventToLocal(action.data);
         
-        // �?[SIMPLIFIED] 直接�?externalId 查找现有事件
-        // newEvent.externalId 是纯 Outlook ID（没�?outlook- 前缀�?        const existingEvent = this.eventIndexMap.get(newEvent.externalId);
+        // � [SIMPLIFIED] 直接用 externalId 查找现有事件
+        // newEvent.externalId 是纯 Outlook ID（没有 outlook- 前缀）
+        const existingEvent = this.eventIndexMap.get(newEvent.externalId);
         
         if (!existingEvent) {
           // 🆕 真正的新事件，添加到列表
           events.push(newEvent);
           
-          // 🔧 [IndexMap 优化] 使用统一的增量更新方�?          this.updateEventInIndex(newEvent);
+          // 🔧 [IndexMap 优化] 使用统一的增量更新方法
+          this.updateEventInIndex(newEvent);
           
-          // 🚀 只在非批量模式下立即保存，使用增量更�?          if (!isBatchMode) {
+          // 🚀 只在非批量模式下立即保存，使用增量更新
+          if (!isBatchMode) {
             this.saveLocalEvents(events, false); // rebuildIndex=false
           }
           if (triggerUI) {
             this.triggerUIUpdate('create', newEvent);
           }
         } else {
-          // �?找到现有事件（如 Timer 事件），更新而不是创�?          syncLogger.log('🎯 [RemoteToLocal CREATE] Found existing event, updating instead of creating:', {
+          // ✅ 找到现有事件（如 Timer 事件），更新而不是创建
+          console.log('🎯 [RemoteToLocal CREATE] Found existing event, updating instead of creating:', {
             existingId: existingEvent.id,
             newEventId: newEvent.id,
             externalId: newEvent.externalId,
@@ -2479,7 +2613,7 @@ private getUserSettings(): any {
           });
           
           const eventIndex = events.findIndex((e: any) => e.id === existingEvent.id);
-          syncLogger.log('🔍 [RemoteToLocal CREATE] Event index search:', {
+          console.log('🔍 [RemoteToLocal CREATE] Event index search:', {
             searchingFor: existingEvent.id,
             foundIndex: eventIndex,
             totalEvents: events.length
@@ -2488,10 +2622,11 @@ private getUserSettings(): any {
           if (eventIndex !== -1) {
             const oldEvent = { ...events[eventIndex] };
             
-            // 🔧 保留本地事件�?ID 和关键字段，只更�?Outlook 数据
+            // 🔧 保留本地事件的 ID 和关键字段，只更新 Outlook 数据
             events[eventIndex] = {
               ...newEvent,
-              id: existingEvent.id,  // 保留本地 ID（如 timer-tag-...�?              tagId: existingEvent.tagId || newEvent.tagId,  // 保留 tagId
+              id: existingEvent.id,  // 保留本地 ID（如 timer-tag-...）
+              tagId: existingEvent.tagId || newEvent.tagId,  // 保留 tagId
               syncStatus: 'synced',  // 标记为已同步
             };
             
@@ -2512,7 +2647,9 @@ private getUserSettings(): any {
       case 'update':
         // Processing update action for event
         
-        // 🔧 对于本地发起的远程更新回写，不检查编辑锁�?        // 只有真正的远程冲突更新才需要锁定保�?        if (action.source === 'outlook' && this.isEditLocked(action.entityId)) {
+        // 🔧 对于本地发起的远程更新回写，不检查编辑锁定
+        // 只有真正的远程冲突更新才需要锁定保护
+        if (action.source === 'outlook' && this.isEditLocked(action.entityId)) {
           syncLogger.log('🔒 [RemoteToLocal] Event is edit-locked, skipping remote conflict update:', action.entityId);
           return events; // 跳过此次更新
         }
@@ -2521,7 +2658,8 @@ private getUserSettings(): any {
         if (eventIndex !== -1) {
           const oldEvent = { ...events[eventIndex] };
           
-          // 尝试多个可能的描述字�?          const htmlContent = action.data.body?.content || 
+          // 尝试多个可能的描述字段
+          const htmlContent = action.data.body?.content || 
                              action.data.description || 
                              action.data.bodyPreview || 
                              '';
@@ -2533,7 +2671,8 @@ private getUserSettings(): any {
           // Description processing completed
           
           const updatedEvent = {
-            ...events[eventIndex], // 🔧 保留所有原有字段（包括source和calendarId�?            title: action.data.subject || '',
+            ...events[eventIndex], // 🔧 保留所有原有字段（包括source和calendarId）
+            title: action.data.subject || '',
             description: cleanDescription, // 直接使用清理后的内容，不添加同步备注
             startTime: this.safeFormatDateTime(action.data.start?.dateTime || action.data.start),
             endTime: this.safeFormatDateTime(action.data.end?.dateTime || action.data.end),
@@ -2542,14 +2681,16 @@ private getUserSettings(): any {
             updatedAt: new Date(),
             lastSyncTime: new Date(),
             syncStatus: 'synced'
-            // 🔧 不覆�?source, calendarId, externalId 等字�?          };
+            // 🔧 不覆盖 source, calendarId, externalId 等字段
+          };
           
           events[eventIndex] = updatedEvent;
           
-          // �?[IndexMap 优化] 更新事件索引
+          // � [IndexMap 优化] 更新事件索引
           this.updateEventInIndex(updatedEvent, oldEvent);
           
-          // �🚀 只在非批量模式下立即保存，使用增量更�?          if (!isBatchMode) {
+          // �🚀 只在非批量模式下立即保存，使用增量更新
+          if (!isBatchMode) {
             this.saveLocalEvents(events, false); // rebuildIndex=false
           }
           
@@ -2564,30 +2705,32 @@ private getUserSettings(): any {
         break;
 
       case 'delete':
-        syncLogger.log('🗑�?[RemoteToLocal] Processing delete action for event:', action.entityId);
+        syncLogger.log('🗑️ [RemoteToLocal] Processing delete action for event:', action.entityId);
         const eventToDeleteIndex = events.findIndex((e: any) => e.id === action.entityId);
         if (eventToDeleteIndex !== -1) {
           const eventToDelete = events[eventToDeleteIndex];
-          syncLogger.log('🗑�?[RemoteToLocal] Found event to delete:', {
+          console.log('🗑️ [RemoteToLocal] Found event to delete:', {
             index: eventToDeleteIndex,
             title: eventToDelete.title,
             id: eventToDelete.id
           });
           
-          // 🔧 [IndexMap 优化] 删除前从索引中移�?          this.removeEventFromIndex(eventToDelete);
+          // 🔧 [IndexMap 优化] 删除前从索引中移除
+          this.removeEventFromIndex(eventToDelete);
           
           events.splice(eventToDeleteIndex, 1);
           
-          // 🚀 只在非批量模式下立即保存，使用增量更�?          if (!isBatchMode) {
+          // 🚀 只在非批量模式下立即保存，使用增量更新
+          if (!isBatchMode) {
             this.saveLocalEvents(events, false); // rebuildIndex=false
-            syncLogger.log('�?[RemoteToLocal] Event deleted from local storage with incremental index update, remaining events:', events.length);
+            syncLogger.log('✅ [RemoteToLocal] Event deleted from local storage with incremental index update, remaining events:', events.length);
           }
           
           if (triggerUI) {
             this.triggerUIUpdate('delete', { id: action.entityId, title: eventToDelete.title });
           }
           if (!isBatchMode) {
-            syncLogger.log('�?[RemoteToLocal] UI update triggered for deletion');
+            syncLogger.log('✅ [RemoteToLocal] UI update triggered for deletion');
           }
         } else {
           syncLogger.log('⚠️ [RemoteToLocal] Event not found for deletion:', action.entityId);
@@ -2602,17 +2745,17 @@ private getUserSettings(): any {
   private triggerUIUpdate(actionType: string, eventData: any) {
     // Triggering UI update
     
-    // �?移除：不应该在每个操作时触发同步完成事件
+    // ❌ 移除：不应该在每个操作时触发同步完成事件
     // window.dispatchEvent(new CustomEvent('outlook-sync-completed', {
     //   detail: { action: actionType, event: eventData, timestamp: new Date() }
     // }));
     
-    // �?移除：不应该在每个操作时触发同步完成事件
+    // ❌ 移除：不应该在每个操作时触发同步完成事件
     // window.dispatchEvent(new CustomEvent('action-sync-completed', {
     //   detail: { action: actionType, event: eventData, timestamp: new Date() }
     // }));
     
-    // �?只触发本地事件变更通知
+    // ✅ 只触发本地事件变更通知
     window.dispatchEvent(new CustomEvent('local-events-changed', {
       detail: { action: actionType, event: eventData, timestamp: new Date() }
     }));
@@ -2702,11 +2845,12 @@ private getUserSettings(): any {
       const stored = localStorage.getItem(STORAGE_KEYS.EVENTS);
       const events = stored ? JSON.parse(stored) : [];
       
-      // �?[FIX] 只在 IndexMap 为空时才重建（避免每次都重建�?      // 正常情况下使用增量更�?updateEventInIndex()
+      // � [FIX] 只在 IndexMap 为空时才重建（避免每次都重建）
+      // 正常情况下使用增量更新 updateEventInIndex()
       if (this.eventIndexMap.size === 0 && events.length > 0) {
         syncLogger.log('🔧 [IndexMap] Initial build on first load - using async rebuild');
         this.rebuildEventIndexMapAsync(events).catch(err => {
-          syncLogger.error('�?[IndexMap] Async rebuild failed:', err);
+          syncLogger.error('❌ [IndexMap] Async rebuild failed:', err);
         });
       }
       
@@ -2717,15 +2861,18 @@ private getUserSettings(): any {
   }
 
   // 🚀 Rebuild the event index map from events array
-  // 🔧 [FIX] 优化：使用临�?Map，避免清空现�?Map 导致查询失败
+  // 🔧 [FIX] 优化：使用临时 Map，避免清空现有 Map 导致查询失败
   // 🚀 异步分批重建 IndexMap，避免阻塞主线程
   private async rebuildEventIndexMapAsync(events: any[], visibleEventIds?: string[]) {
     const startTime = performance.now();
-    let BATCH_SIZE = 200; // 初始批大小：200 个事�?    const MAX_BATCH_TIME = 10; // 每批最�?10ms
-    const TARGET_FIRST_BATCH_TIME = 5; // 首批目标时间�?ms（留余量�?    
+    let BATCH_SIZE = 200; // 初始批大小：200 个事件
+    const MAX_BATCH_TIME = 10; // 每批最多 10ms
+    const TARGET_FIRST_BATCH_TIME = 5; // 首批目标时间：5ms（留余量）
+    
     syncLogger.log(`🔧 [IndexMap] Starting async rebuild for ${events.length} events`);
     
-    // 🎯 优先处理可视区域的事�?    let priorityEvents: any[] = [];
+    // 🎯 优先处理可视区域的事件
+    let priorityEvents: any[] = [];
     let remainingEvents: any[] = [];
     
     if (visibleEventIds && visibleEventIds.length > 0) {
@@ -2742,7 +2889,8 @@ private getUserSettings(): any {
       remainingEvents = events;
     }
     
-    // 🔧 分批处理函数（带性能监控�?    const processBatch = (batchEvents: any[], batchIndex: number): number => {
+    // 🔧 分批处理函数（带性能监控）
+    const processBatch = (batchEvents: any[], batchIndex: number): number => {
       const batchStart = performance.now();
       
       batchEvents.forEach(event => {
@@ -2750,7 +2898,7 @@ private getUserSettings(): any {
           this.eventIndexMap.set(event.id, event);
         }
         if (event.externalId) {
-          // 优先保留 Timer 事件�?externalId 索引
+          // 优先保留 Timer 事件的 externalId 索引
           const existing = this.eventIndexMap.get(event.externalId);
           if (!existing || event.id.startsWith('timer-')) {
             this.eventIndexMap.set(event.externalId, event);
@@ -2772,16 +2920,19 @@ private getUserSettings(): any {
       if (priorityEvents.length > BATCH_SIZE) {
         syncLogger.log(`⚠️ [IndexMap] Priority events (${priorityEvents.length}) exceed batch size, splitting...`);
         
-        // 第一小批：尽快完�?        const firstBatch = priorityEvents.slice(0, BATCH_SIZE);
+        // 第一小批：尽快完成
+        const firstBatch = priorityEvents.slice(0, BATCH_SIZE);
         const firstBatchTime = processBatch(firstBatch, 0);
         
-        // 🔧 根据第一批的性能调整批大�?        if (firstBatchTime > TARGET_FIRST_BATCH_TIME) {
+        // 🔧 根据第一批的性能调整批大小
+        if (firstBatchTime > TARGET_FIRST_BATCH_TIME) {
           // 如果超时，减小批大小
           BATCH_SIZE = Math.max(50, Math.floor(BATCH_SIZE * TARGET_FIRST_BATCH_TIME / firstBatchTime));
           syncLogger.log(`🔧 [IndexMap] Adjusting batch size to ${BATCH_SIZE} based on performance`);
         }
         
-        // 处理剩余的优先事�?        for (let i = BATCH_SIZE; i < priorityEvents.length; i += BATCH_SIZE) {
+        // 处理剩余的优先事件
+        for (let i = BATCH_SIZE; i < priorityEvents.length; i += BATCH_SIZE) {
           const batch = priorityEvents.slice(i, i + BATCH_SIZE);
           await new Promise(resolve => requestAnimationFrame(() => resolve(null)));
           processBatch(batch, Math.floor(i / BATCH_SIZE));
@@ -2790,7 +2941,7 @@ private getUserSettings(): any {
         // 可视事件不多，一次处理完
         processBatch(priorityEvents, 0);
       }
-      syncLogger.log(`�?[IndexMap] Priority events indexed: ${priorityEvents.length}`);
+      syncLogger.log(`✅ [IndexMap] Priority events indexed: ${priorityEvents.length}`);
     }
     
     // 🔄 分批处理剩余事件（在窗口失焦时处理）
@@ -2798,11 +2949,14 @@ private getUserSettings(): any {
       const batch = remainingEvents.slice(i, i + BATCH_SIZE);
       const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
       
-      // 等待窗口失焦或下一�?      await new Promise(resolve => {
+      // 等待窗口失焦或下一帧
+      await new Promise(resolve => {
         if (document.hidden) {
-          // 窗口失焦，立即处�?          resolve(null);
+          // 窗口失焦，立即处理
+          resolve(null);
         } else {
-          // 窗口激活，等待下一帧（�?16ms�?          requestAnimationFrame(() => resolve(null));
+          // 窗口激活，等待下一帧（约 16ms）
+          requestAnimationFrame(() => resolve(null));
         }
       });
       
@@ -2810,10 +2964,11 @@ private getUserSettings(): any {
     }
     
     const totalDuration = performance.now() - startTime;
-    syncLogger.log(`�?[IndexMap] Async rebuild completed: ${this.eventIndexMap.size} entries in ${totalDuration.toFixed(0)}ms`);
+    syncLogger.log(`✅ [IndexMap] Async rebuild completed: ${this.eventIndexMap.size} entries in ${totalDuration.toFixed(0)}ms`);
   }
   
-  // 🔧 同步版本（仅用于关键路径�?  private rebuildEventIndexMap(events: any[]) {
+  // 🔧 同步版本（仅用于关键路径）
+  private rebuildEventIndexMap(events: any[]) {
     events.forEach(event => {
       if (event.id) {
         this.eventIndexMap.set(event.id, event);
@@ -2829,8 +2984,10 @@ private getUserSettings(): any {
     syncLogger.log(`🚀 [IndexMap] Rebuilt index with ${this.eventIndexMap.size} entries for ${events.length} events`);
   }
 
-  // 🚀 [NEW] 增量更新单个事件的索引（性能优化�?  private updateEventInIndex(event: any, oldEvent?: any) {
-    // 移除旧索�?    if (oldEvent) {
+  // 🚀 [NEW] 增量更新单个事件的索引（性能优化）
+  private updateEventInIndex(event: any, oldEvent?: any) {
+    // 移除旧索引
+    if (oldEvent) {
       if (oldEvent.id) {
         this.eventIndexMap.delete(oldEvent.id);
       }
@@ -2839,7 +2996,8 @@ private getUserSettings(): any {
       }
     }
     
-    // 添加新索�?    if (event) {
+    // 添加新索引
+    if (event) {
       if (event.id) {
         this.eventIndexMap.set(event.id, event);
       }
@@ -2862,12 +3020,12 @@ private getUserSettings(): any {
   private saveLocalEvents(events: any[], rebuildIndex: boolean = true) {
     localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
     
-    // 🚀 只在需要时重建索引（批量操作时应该�?false，使用增量更新）
+    // 🚀 只在需要时重建索引（批量操作时应该传 false，使用增量更新）
     if (rebuildIndex) {
       syncLogger.log('🔧 [saveLocalEvents] Triggering async index rebuild');
       // 🔧 使用异步重建，不阻塞保存操作
       this.rebuildEventIndexMapAsync(events).catch(err => {
-        syncLogger.error('�?[IndexMap] Async rebuild failed during save:', err);
+        syncLogger.error('❌ [IndexMap] Async rebuild failed during save:', err);
       });
       // 🔧 重建索引视为重启，重置计数器
       this.incrementalUpdateCount = 0;
@@ -2876,14 +3034,16 @@ private getUserSettings(): any {
       // 🔧 增量更新计数
       this.incrementalUpdateCount++;
       
-      // 🔧 [NEW] 如果增量更新超过 30 次，标记需要全量检�?      if (this.incrementalUpdateCount > 30 && this.fullCheckCompleted) {
+      // 🔧 [NEW] 如果增量更新超过 30 次，标记需要全量检查
+      if (this.incrementalUpdateCount > 30 && this.fullCheckCompleted) {
         syncLogger.log(`⚠️ [Integrity] ${this.incrementalUpdateCount} incremental updates, full check recommended`);
-        this.fullCheckCompleted = false; // 触发下次完整检�?      }
+        this.fullCheckCompleted = false; // 触发下次完整检查
+      }
     }
   }
 
   private updateLocalEventExternalId(localEventId: string, externalId: string, description?: string) {
-    syncLogger.log('🔧 [updateLocalEventExternalId] Called with:', {
+    console.log('🔧 [updateLocalEventExternalId] Called with:', {
       localEventId,
       externalId,
       hasDescription: !!description
@@ -2895,14 +3055,14 @@ private getUserSettings(): any {
         const events = JSON.parse(savedEvents);
         const eventIndex = events.findIndex((event: any) => event.id === localEventId);
         
-        syncLogger.log('🔍 [updateLocalEventExternalId] Event search result:', {
+        console.log('🔍 [updateLocalEventExternalId] Event search result:', {
           eventIndex,
           totalEvents: events.length,
           searchingForId: localEventId
         });
         
         if (eventIndex !== -1) {
-          // 🔍 检查是否有其他事件已经使用了这�?externalId（可能是迁移导致的重复）
+          // 🔍 检查是否有其他事件已经使用了这个 externalId（可能是迁移导致的重复）
           const duplicateIndex = events.findIndex((event: any, idx: number) => 
             idx !== eventIndex && event.externalId === externalId
           );
@@ -2910,16 +3070,18 @@ private getUserSettings(): any {
           const oldEvent = { ...events[eventIndex] };
           
           if (duplicateIndex !== -1) {
-            syncLogger.warn('⚠️ [updateLocalEventExternalId] Found duplicate event with same externalId:', {
+            console.warn('⚠️ [updateLocalEventExternalId] Found duplicate event with same externalId:', {
               keepingEvent: localEventId,
               removingEvent: events[duplicateIndex].id,
               externalId: externalId
             });
             
-            // 🔧 [IndexMap 优化] 删除重复事件时更新索�?            const duplicateEvent = events[duplicateIndex];
+            // 🔧 [IndexMap 优化] 删除重复事件时更新索引
+            const duplicateEvent = events[duplicateIndex];
             this.removeEventFromIndex(duplicateEvent);
             
-            // 删除重复的事�?            events.splice(duplicateIndex, 1);
+            // 删除重复的事件
+            events.splice(duplicateIndex, 1);
             
             // 调整索引（如果删除的在前面）
             const adjustedIndex = duplicateIndex < eventIndex ? eventIndex - 1 : eventIndex;
@@ -2938,7 +3100,7 @@ private getUserSettings(): any {
             // 🔧 [IndexMap 优化] 更新事件索引
             this.updateEventInIndex(updatedEvent, oldEvent);
             
-            syncLogger.log('�?[updateLocalEventExternalId] Updated event (after removing duplicate) with incremental index update:', {
+            console.log('✅ [updateLocalEventExternalId] Updated event (after removing duplicate) with incremental index update:', {
               eventId: localEventId,
               externalId,
               eventTitle: events[adjustedIndex].title
@@ -2958,7 +3120,7 @@ private getUserSettings(): any {
             // 🔧 [IndexMap 优化] 更新事件索引
             this.updateEventInIndex(updatedEvent, oldEvent);
             
-            syncLogger.log('�?[updateLocalEventExternalId] Updated event with incremental index update:', {
+            console.log('✅ [updateLocalEventExternalId] Updated event with incremental index update:', {
               eventId: localEventId,
               externalId,
               eventTitle: events[eventIndex].title,
@@ -2975,7 +3137,7 @@ private getUserSettings(): any {
         }
       }
     } catch (error) {
-      syncLogger.error('�?Failed to update local event external ID:', error);
+      syncLogger.error('❌ Failed to update local event external ID:', error);
     }
   }
 
@@ -3004,7 +3166,7 @@ private getUserSettings(): any {
           // 🔧 [IndexMap 优化] 使用增量更新而非完全重建
           this.saveLocalEvents(events, false); // rebuildIndex=false
           
-          syncLogger.log('�?[updateLocalEventCalendarId] Updated event calendar ID with incremental index update:', {
+          console.log('✅ [updateLocalEventCalendarId] Updated event calendar ID with incremental index update:', {
             eventId: localEventId,
             eventTitle: events[eventIndex].title,
             newCalendarId: calendarId
@@ -3016,19 +3178,20 @@ private getUserSettings(): any {
         }
       }
     } catch (error) {
-      syncLogger.error('�?Failed to update local event calendar ID:', error);
+      syncLogger.error('❌ Failed to update local event calendar ID:', error);
     }
   }
 
   private convertRemoteEventToLocal(remoteEvent: any): any {
     const cleanTitle = remoteEvent.subject || '';
     
-    // 尝试多个可能的描述字�?    const htmlContent = remoteEvent.body?.content || 
+    // 尝试多个可能的描述字段
+    const htmlContent = remoteEvent.body?.content || 
                        remoteEvent.description || 
                        remoteEvent.bodyPreview || 
                        '';
     
-    syncLogger.log('🔧 [ConvertRemoteToLocal] Converting event:', {
+    console.log('🔧 [ConvertRemoteToLocal] Converting event:', {
       eventId: remoteEvent.id,
       title: cleanTitle,
       bodyContent: remoteEvent.body?.content || '[empty]',
@@ -3039,13 +3202,16 @@ private getUserSettings(): any {
     
     const cleanDescription = this.processEventDescription(htmlContent, 'outlook', 'sync', remoteEvent);
     
-    // 检查是否是ReMarkable创建的事件（通过描述中的标记判断�?    const isReMarkableCreated = this.hasCreateNote(cleanDescription) && 
-                               cleanDescription.includes('�?🔮 ReMarkable 创建');
+    // 检查是否是ReMarkable创建的事件（通过描述中的标记判断）
+    const isReMarkableCreated = this.hasCreateNote(cleanDescription) && 
+                               cleanDescription.includes('由 🔮 ReMarkable 创建');
     
-    // 🔧 [FIX] remoteEvent.id 已经带有 'outlook-' 前缀（来�?MicrosoftCalendarService�?    // 不要重复添加前缀！同�?externalId 应该是纯 Outlook ID（不带前缀�?    const pureOutlookId = remoteEvent.id.replace(/^outlook-/, '');
+    // 🔧 [FIX] remoteEvent.id 已经带有 'outlook-' 前缀（来自 MicrosoftCalendarService）
+    // 不要重复添加前缀！同时 externalId 应该是纯 Outlook ID（不带前缀）
+    const pureOutlookId = remoteEvent.id.replace(/^outlook-/, '');
     
     return {
-      id: remoteEvent.id, // 已经�?'outlook-AAMkAD...'
+      id: remoteEvent.id, // 已经是 'outlook-AAMkAD...'
       title: cleanTitle,
       description: cleanDescription,
       startTime: this.safeFormatDateTime(remoteEvent.start?.dateTime || remoteEvent.start),
@@ -3055,7 +3221,7 @@ private getUserSettings(): any {
       reminder: 0,
       createdAt: this.safeFormatDateTime(remoteEvent.createdDateTime || new Date()),
       updatedAt: this.safeFormatDateTime(remoteEvent.lastModifiedDateTime || new Date()),
-      externalId: pureOutlookId, // �?Outlook ID，不�?'outlook-' 前缀
+      externalId: pureOutlookId, // 纯 Outlook ID，不带 'outlook-' 前缀
       calendarId: remoteEvent.calendarId || 'microsoft', // 🔧 保留原来的calendarId
       source: 'outlook', // 🔧 设置source字段
       syncStatus: 'synced',
@@ -3085,7 +3251,8 @@ private getUserSettings(): any {
       }
     }
     
-    // 2. 处理 <br> 标签，将其转换为换行�?    cleaned = cleaned.replace(/<br\s*\/?>/gi, '\n');
+    // 2. 处理 <br> 标签，将其转换为换行符
+    cleaned = cleaned.replace(/<br\s*\/?>/gi, '\n');
     
     // 3. 移除所有剩余的HTML标签
     cleaned = cleaned.replace(/<[^>]*>/g, '');
@@ -3100,31 +3267,37 @@ private getUserSettings(): any {
       .replace(/&#39;/g, "'")
       .replace(/&apos;/g, "'");
     
-    // 5. 🔧 更智能的换行符清�?- 彻底清理多余换行
+    // 5. 🔧 更智能的换行符清理 - 彻底清理多余换行
     cleaned = cleaned
-      .replace(/\r\n/g, '\n')           // Windows换行符转�?      .replace(/\r/g, '\n')             // Mac换行符转�?      .replace(/[ \t]+\n/g, '\n')       // 移除行尾的空格和制表�?      .replace(/\n[ \t]+/g, '\n')       // 移除行首的空格和制表�?      .replace(/\n{2,}/g, '\n')         // 🔧 将所有多个连续换行符都减少为1�?      .replace(/^[\s\n]+/, '')          // 移除开头的所有空白和换行
+      .replace(/\r\n/g, '\n')           // Windows换行符转换
+      .replace(/\r/g, '\n')             // Mac换行符转换
+      .replace(/[ \t]+\n/g, '\n')       // 移除行尾的空格和制表符
+      .replace(/\n[ \t]+/g, '\n')       // 移除行首的空格和制表符
+      .replace(/\n{2,}/g, '\n')         // 🔧 将所有多个连续换行符都减少为1个
+      .replace(/^[\s\n]+/, '')          // 移除开头的所有空白和换行
       .replace(/[\s\n]+$/, '')          // 移除结尾的所有空白和换行
       .trim();
     
     return cleaned;
   }
 
-  // 🆕 提取纯净的核心内容用于比�?- 去除所有备注和格式差异
+  // 🆕 提取纯净的核心内容用于比较 - 去除所有备注和格式差异
   private extractCoreContent(description: string): string {
     if (!description) return '';
     
     let core = description;
     
     // 1. 移除所有同步备注（创建和编辑）
-    core = core.replace(/\n---\n�?(?:📧 |🔮 )?(?:Outlook|ReMarkable) 创建�?[^\n]*/g, '');
-    core = core.replace(/\n�?(?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:创建|最后编辑于|最新修改于) [^\n]*/g, '');
+    core = core.replace(/\n---\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) 创建于 [^\n]*/g, '');
+    core = core.replace(/\n由 (?:📧 |🔮 )?(?:Outlook|ReMarkable) (?:创建|最后编辑于|最新修改于) [^\n]*/g, '');
     
     // 2. 移除所有分隔线
     core = core.replace(/\n?---\n?/g, '');
     
-    // 3. 规范化空白字�?- 彻底统一格式
+    // 3. 规范化空白字符 - 彻底统一格式
     core = core
-      .replace(/\r\n/g, '\n')           // 统一换行�?      .replace(/\r/g, '\n')
+      .replace(/\r\n/g, '\n')           // 统一换行符
+      .replace(/\r/g, '\n')
       .replace(/[ \t]+/g, ' ')          // 多个空格/制表符压缩为单个空格
       .replace(/\n[ \t]+/g, '\n')       // 移除行首空格
       .replace(/[ \t]+\n/g, '\n')       // 移除行尾空格
@@ -3134,7 +3307,7 @@ private getUserSettings(): any {
     return core;
   }
 
-  // �?删除：重复的 startSync() 方法，使�?start() 即可
+  // ❌ 删除：重复的 startSync() 方法，使用 start() 即可
   // public async startSync() { ... }
 
   // 🔧 保留几个简化的调试方法
@@ -3142,7 +3315,7 @@ private getUserSettings(): any {
     syncLogger.log(`📋 Action queue: ${this.actionQueue.length} items`);
     const pending = this.actionQueue.filter(a => !a.synchronized);
     if (pending.length > 0) {
-      syncLogger.log(`�?Pending: ${pending.length} actions`);
+      syncLogger.log(`⏳ Pending: ${pending.length} actions`);
     }
   }
 
@@ -3176,12 +3349,14 @@ private getUserSettings(): any {
   }
 
   /**
-   * 处理标签映射变化，移动相关事件到新日�?   */
+   * 处理标签映射变化，移动相关事件到新日历
+   */
   public async handleTagMappingChange(tagId: string, mapping: { calendarId: string; calendarName: string } | null): Promise<void> {
     try {
       syncLogger.log(`🔄 [ActionBasedSyncManager] Handling tag mapping change for ${tagId}`);
       
-      // 获取所有本地事�?      const events = this.getLocalEvents();
+      // 获取所有本地事件
+      const events = this.getLocalEvents();
       const eventsToMove = events.filter((event: any) => event.tagId === tagId && event.id.startsWith('outlook-'));
       
       if (eventsToMove.length === 0) {
@@ -3202,14 +3377,15 @@ private getUserSettings(): any {
         }
       }
       
-      syncLogger.log(`�?[ActionBasedSyncManager] Completed tag mapping change for ${tagId}`);
+      syncLogger.log(`✅ [ActionBasedSyncManager] Completed tag mapping change for ${tagId}`);
     } catch (error) {
-      syncLogger.error(`�?[ActionBasedSyncManager] Failed to handle tag mapping change:`, error);
+      syncLogger.error(`❌ [ActionBasedSyncManager] Failed to handle tag mapping change:`, error);
     }
   }
 
   /**
-   * 移动事件到指定日�?   */
+   * 移动事件到指定日历
+   */
   private async moveEventToCalendar(event: any, targetCalendarId: string): Promise<void> {
     try {
       syncLogger.log(`🔄 [ActionBasedSyncManager] Moving event "${event.title}" to calendar ${targetCalendarId}`);
@@ -3217,10 +3393,12 @@ private getUserSettings(): any {
       // 提取原始Outlook事件ID
       const outlookEventId = event.id.replace('outlook-', '');
       
-      // 第一步：在目标日历创建事�?      const createResult = await this.createEventInOutlookCalendar(event, targetCalendarId);
+      // 第一步：在目标日历创建事件
+      const createResult = await this.createEventInOutlookCalendar(event, targetCalendarId);
       
       if (createResult && createResult.id) {
-        // 第二步：删除原事�?        await this.deleteEventFromOutlook(outlookEventId);
+        // 第二步：删除原事件
+        await this.deleteEventFromOutlook(outlookEventId);
         
         // 第三步：更新本地事件ID
         const updatedEvent = {
@@ -3232,12 +3410,12 @@ private getUserSettings(): any {
         // 更新本地存储
         this.updateLocalEvent(event.id, updatedEvent);
         
-        syncLogger.log(`�?[ActionBasedSyncManager] Successfully moved event "${event.title}" to new calendar`);
+        syncLogger.log(`✅ [ActionBasedSyncManager] Successfully moved event "${event.title}" to new calendar`);
       } else {
-        syncLogger.error(`�?[ActionBasedSyncManager] Failed to create event in target calendar`);
+        syncLogger.error(`❌ [ActionBasedSyncManager] Failed to create event in target calendar`);
       }
     } catch (error) {
-      syncLogger.error(`�?[ActionBasedSyncManager] Failed to move event:`, error);
+      syncLogger.error(`❌ [ActionBasedSyncManager] Failed to move event:`, error);
     }
   }
 
@@ -3316,21 +3494,26 @@ private getUserSettings(): any {
       if (eventIndex !== -1) {
         const oldEvent = { ...events[eventIndex] };
         
-        // 如果事件ID发生了变化，删除旧事件并添加新事�?        if (oldEventId !== updatedEvent.id) {
+        // 如果事件ID发生了变化，删除旧事件并添加新事件
+        if (oldEventId !== updatedEvent.id) {
           syncLogger.log(`🔄 [ActionBasedSyncManager] Event ID changed: ${oldEventId} -> ${updatedEvent.id}`);
           
-          // 🔧 [IndexMap 优化] 删除旧事件索�?          this.removeEventFromIndex(oldEvent);
+          // 🔧 [IndexMap 优化] 删除旧事件索引
+          this.removeEventFromIndex(oldEvent);
           
-          // 删除旧事�?          events.splice(eventIndex, 1);
+          // 删除旧事件
+          events.splice(eventIndex, 1);
           
           // 检查新ID是否已存在，避免重复
           const existingIndex = events.findIndex((e: any) => e.id === updatedEvent.id);
           if (existingIndex === -1) {
-            // 添加新事�?            events.push(updatedEvent);
+            // 添加新事件
+            events.push(updatedEvent);
             
-            // 🔧 [IndexMap 优化] 添加新事件索�?            this.updateEventInIndex(updatedEvent);
+            // 🔧 [IndexMap 优化] 添加新事件索引
+            this.updateEventInIndex(updatedEvent);
             
-            syncLogger.log(`�?[ActionBasedSyncManager] Replaced event with incremental index update: removed ${oldEventId}, added ${updatedEvent.id}`);
+            syncLogger.log(`✅ [ActionBasedSyncManager] Replaced event with incremental index update: removed ${oldEventId}, added ${updatedEvent.id}`);
           } else {
             // 如果新ID已存在，更新现有事件
             const oldExisting = { ...events[existingIndex] };
@@ -3346,7 +3529,8 @@ private getUserSettings(): any {
           this.deletedEventIds.add(oldEventId);
           this.saveDeletedEventIds();
         } else {
-          // ID没有变化，直接更�?          events[eventIndex] = updatedEvent;
+          // ID没有变化，直接更新
+          events[eventIndex] = updatedEvent;
           
           // 🔧 [IndexMap 优化] 更新事件索引
           this.updateEventInIndex(updatedEvent, oldEvent);
@@ -3367,28 +3551,33 @@ private getUserSettings(): any {
     }
   }
 
-  // ==================== 完整性检查方�?====================
+  // ==================== 完整性检查方法 ====================
 
   /**
    * 🔧 启动完整性检查调度器
-   * 🔧 [FIX] 降低检查频率：�?5 秒改�?30 秒，减少�?UI 的潜在影�?   */
+   * 🔧 [FIX] 降低检查频率：从 5 秒改为 30 秒，减少对 UI 的潜在影响
+   */
   private startIntegrityCheckScheduler() {
-    // 🔧 [FIX] �?30 秒尝试一次检查（低频但足够）
+    // 🔧 [FIX] 每 30 秒尝试一次检查（低频但足够）
     this.indexIntegrityCheckInterval = setInterval(() => {
       this.tryIncrementalIntegrityCheck();
-    }, 30000); // 30 秒间隔（原来�?5 秒）
+    }, 30000); // 30 秒间隔（原来是 5 秒）
 
-    syncLogger.log('�?[Integrity] Scheduler started (30-second interval, <10ms per check)');
+    syncLogger.log('✅ [Integrity] Scheduler started (30-second interval, <10ms per check)');
   }
 
   /**
-   * 🔧 检查是否处于空闲状�?   * 🔧 [FIX] 空闲标准：用�?15 秒无活动（原来是 5 秒）
+   * 🔧 检查是否处于空闲状态
+   * 🔧 [FIX] 空闲标准：用户 15 秒无活动（原来是 5 秒）
    */
   /**
-   * 🔧 尝试执行增量完整性检�?   * 🔧 [FIX] 增强条件检查，避免在不合适的时机运行
+   * 🔧 尝试执行增量完整性检查
+   * 🔧 [FIX] 增强条件检查，避免在不合适的时机运行
    */
   private tryIncrementalIntegrityCheck() {
-    // 🚨 [CRITICAL FIX] 条件 0: 检�?Microsoft 服务认证状�?    // 如果用户登出或掉线，绝对不能运行完整性检�?    if (this.microsoftService) {
+    // 🚨 [CRITICAL FIX] 条件 0: 检查 Microsoft 服务认证状态
+    // 如果用户登出或掉线，绝对不能运行完整性检查
+    if (this.microsoftService) {
       const isAuthenticated = this.microsoftService.isAuthenticated || 
                              (typeof this.microsoftService.getIsAuthenticated === 'function' && 
                               this.microsoftService.getIsAuthenticated());
@@ -3399,7 +3588,8 @@ private getUserSettings(): any {
       }
     }
     
-    // 🔧 [NEW] 条件 0.5: 检查窗口是否被激活（用户正在使用应用�?    if (this.isWindowFocused) {
+    // 🔧 [NEW] 条件 0.5: 检查窗口是否被激活（用户正在使用应用）
+    if (this.isWindowFocused) {
       return; // 窗口被激活时不运行检查，避免打断用户操作
     }
     
@@ -3414,27 +3604,37 @@ private getUserSettings(): any {
       }
     }
     
-    // 条件 1: 不在同步�?    if (this.syncInProgress) {
+    // 条件 1: 不在同步中
+    if (this.syncInProgress) {
       return;
     }
 
-    // 条件 2: 距离上次检查至�?30 �?    const now = Date.now();
+    // 条件 2: 距离上次检查至少 30 秒
+    const now = Date.now();
     if (now - this.lastIntegrityCheck < 30000) {
       return;
     }
     
-    // 🔧 [FIX] 条件 3: 确保没有正在进行的操作（如事件编辑、删除等�?    // 通过检�?action queue 是否稳定�? 秒内没有新操作）
+    // 🔧 [FIX] 条件 3: 确保没有正在进行的操作（如事件编辑、删除等）
+    // 通过检查 action queue 是否稳定（2 秒内没有新操作）
     const queueAge = now - this.lastQueueModification;
     if (queueAge < 2000) {
-      return; // action queue �?2 秒内有变化，延迟检�?    }
+      return; // action queue 在 2 秒内有变化，延迟检查
+    }
 
-    // 执行检�?    this.runIncrementalIntegrityCheck();
+    // 执行检查
+    this.runIncrementalIntegrityCheck();
   }
 
   /**
-   * 🔧 增量完整性检查（轻量级，< 10ms�?   * 策略�?   * - 首次启动：执行完整检查（分批，每�?< 10ms�?   * - 后续：只检�?TimeCalendar 可见范围（当前月份）
-   * - 超过 30 次增量更新后：再次执行完整检�?   */
-  private currentCheckIndex = 0; // 当前检查进�?
+   * 🔧 增量完整性检查（轻量级，< 10ms）
+   * 策略：
+   * - 首次启动：执行完整检查（分批，每批 < 10ms）
+   * - 后续：只检查 TimeCalendar 可见范围（当前月份）
+   * - 超过 30 次增量更新后：再次执行完整检查
+   */
+  private currentCheckIndex = 0; // 当前检查进度
+
   private runIncrementalIntegrityCheck() {
     const startTime = performance.now();
     this.lastIntegrityCheck = Date.now();
@@ -3447,25 +3647,28 @@ private getUserSettings(): any {
 
       const events = JSON.parse(stored);
       
-      // 🔧 [NEW] 决定检查策�?      const needsFullCheck = !this.fullCheckCompleted;
+      // 🔧 [NEW] 决定检查策略
+      const needsFullCheck = !this.fullCheckCompleted;
       
       if (needsFullCheck) {
-        // 首次启动或增量更新超�?30 次：执行完整检查（分批�?        this.runBatchedFullCheck(events, startTime);
+        // 首次启动或增量更新超过 30 次：执行完整检查（分批）
+        this.runBatchedFullCheck(events, startTime);
       } else {
-        // 正常情况：只检�?TimeCalendar 可见范围
+        // 正常情况：只检查 TimeCalendar 可见范围
         this.runQuickVisibilityCheck(events, startTime);
       }
 
     } catch (error) {
-      syncLogger.error('�?[Integrity] Check failed:', error);
+      syncLogger.error('❌ [Integrity] Check failed:', error);
     }
   }
 
   /**
-   * 🔧 分批完整检查（每次 < 10ms�?   */
+   * 🔧 分批完整检查（每次 < 10ms）
+   */
   private runBatchedFullCheck(events: any[], startTime: number) {
     const batchSize = 20; // 每批 20 个事件，确保 < 10ms
-    const maxDuration = 10; // 最�?10ms
+    const maxDuration = 10; // 最多 10ms
 
     const start = this.currentCheckIndex;
     const end = Math.min(start + batchSize, events.length);
@@ -3483,7 +3686,7 @@ private getUserSettings(): any {
         continue;
       }
 
-      // 检�?IndexMap
+      // 检查 IndexMap
       const indexedEvent = this.eventIndexMap.get(event.id);
       if (!indexedEvent) {
         this.updateEventInIndex(event); // 立即修复
@@ -3507,7 +3710,8 @@ private getUserSettings(): any {
 
     this.currentCheckIndex = end;
 
-    // 完成一轮完整检�?    if (this.currentCheckIndex >= events.length) {
+    // 完成一轮完整检查
+    if (this.currentCheckIndex >= events.length) {
       this.fullCheckCompleted = true;
       this.currentCheckIndex = 0;
       this.incrementalUpdateCount = 0;
@@ -3516,16 +3720,19 @@ private getUserSettings(): any {
       const healthScore = issues.length === 0 ? 100 : Math.max(0, 100 - issues.length * 5);
       this.lastHealthScore = healthScore;
       
-      syncLogger.log(`�?[Integrity] Full check completed: ${events.length} events, ${issues.length} issues, ${healthScore}/100 health (${duration.toFixed(1)}ms)`);
+      syncLogger.log(`✅ [Integrity] Full check completed: ${events.length} events, ${issues.length} issues, ${healthScore}/100 health (${duration.toFixed(1)}ms)`);
     }
   }
 
   /**
-   * 🔧 快速可见性检查（只检�?TimeCalendar 当前可见范围�?   * 🔧 [FIX] 完全避免触发 UI 刷新：只做索引修复，不触发任何事�?   */
+   * 🔧 快速可见性检查（只检查 TimeCalendar 当前可见范围）
+   * 🔧 [FIX] 完全避免触发 UI 刷新：只做索引修复，不触发任何事件
+   */
   private runQuickVisibilityCheck(events: any[], startTime: number) {
-    const maxDuration = 10; // 最�?10ms
+    const maxDuration = 10; // 最多 10ms
 
-    // 🔧 只检查当前月份的事件（TimeCalendar 可见范围�?    const now = new Date();
+    // 🔧 只检查当前月份的事件（TimeCalendar 可见范围）
+    const now = new Date();
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
@@ -3543,9 +3750,11 @@ private getUserSettings(): any {
     for (const event of visibleEvents) {
       if (!event.id) continue;
 
-      // 检�?IndexMap 一致�?      const indexedEvent = this.eventIndexMap.get(event.id);
+      // 检查 IndexMap 一致性
+      const indexedEvent = this.eventIndexMap.get(event.id);
       if (!indexedEvent) {
-        this.updateEventInIndex(event); // 立即修复（仅内存操作，不触发事件�?        checked++;
+        this.updateEventInIndex(event); // 立即修复（仅内存操作，不触发事件）
+        checked++;
       }
 
       // 时间控制
@@ -3557,7 +3766,7 @@ private getUserSettings(): any {
 
     const duration = performance.now() - startTime;
     if (duration < 10) {
-      // 如果还有时间，检�?IndexMap 大小
+      // 如果还有时间，检查 IndexMap 大小
       const indexSize = this.eventIndexMap.size;
       const expectedMax = events.length * 2;
       
@@ -3576,22 +3785,24 @@ private getUserSettings(): any {
 
     // 🔧 [FIX] 只在有实际问题且问题数量 > 0 时才打印日志
     if (checked > 0) {
-      syncLogger.log(`�?[Integrity] Quick check: ${checked} fixed silently (${duration.toFixed(1)}ms)`);
+      syncLogger.log(`✅ [Integrity] Quick check: ${checked} fixed silently (${duration.toFixed(1)}ms)`);
     }
   }
 
   /**
    * 🔧 [MIGRATION] 一次性清理重复的 outlook- 前缀
-   * 修复历史数据中的�?   * 1. id: 'outlook-outlook-AAMkAD...' �?'outlook-AAMkAD...'
-   * 2. externalId: 'outlook-AAMkAD...' �?'AAMkAD...'
+   * 修复历史数据中的：
+   * 1. id: 'outlook-outlook-AAMkAD...' → 'outlook-AAMkAD...'
+   * 2. externalId: 'outlook-AAMkAD...' → 'AAMkAD...'
    */
   
-  // 🔧 [NEW] 修复历史 pending 事件（补充到同步队列�?  private fixOrphanedPendingEvents() {
+  // 🔧 [NEW] 修复历史 pending 事件（补充到同步队列）
+  private fixOrphanedPendingEvents() {
     const MIGRATION_KEY = 'remarkable-pending-events-migration-v1';
     
     // 检查是否已经修复过
     if (localStorage.getItem(MIGRATION_KEY) === 'completed') {
-      syncLogger.log('�?[Fix Pending] Migration already completed, skipping');
+      syncLogger.log('✅ [Fix Pending] Migration already completed, skipping');
       return;
     }
     
@@ -3600,21 +3811,23 @@ private getUserSettings(): any {
     try {
       const events = JSON.parse(localStorage.getItem(STORAGE_KEYS.EVENTS) || '[]');
       
-      // 查找所�?syncStatus �?'pending' �?remarkableSource �?true 的事�?      const pendingEvents = events.filter((event: any) => 
+      // 查找所有 syncStatus 为 'pending' 且 remarkableSource 为 true 的事件
+      const pendingEvents = events.filter((event: any) => 
         event.syncStatus === 'pending' && 
         event.remarkableSource === true &&
         !event.externalId // 没有远程ID，说明从未同步过
       );
       
       if (pendingEvents.length === 0) {
-        syncLogger.log('�?[Fix Pending] No orphaned pending events found');
+        syncLogger.log('✅ [Fix Pending] No orphaned pending events found');
         localStorage.setItem(MIGRATION_KEY, 'completed');
         return;
       }
       
       syncLogger.log(`🔍 [Fix Pending] Found ${pendingEvents.length} orphaned pending events`);
       
-      // 检查这些事件是否已经在同步队列�?      const existingActionIds = new Set(
+      // 检查这些事件是否已经在同步队列中
+      const existingActionIds = new Set(
         this.actionQueue
           .filter(a => a.source === 'local' && !a.synchronized)
           .map(a => a.entityId)
@@ -3623,7 +3836,8 @@ private getUserSettings(): any {
       let addedCount = 0;
       
       for (const event of pendingEvents) {
-        // 如果事件不在同步队列中，添加�?        if (!existingActionIds.has(event.id)) {
+        // 如果事件不在同步队列中，添加它
+        if (!existingActionIds.has(event.id)) {
           const action: SyncAction = {
             id: `migration-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             type: 'create',
@@ -3639,23 +3853,23 @@ private getUserSettings(): any {
           this.actionQueue.push(action);
           addedCount++;
           
-          syncLogger.log(`�?[Fix Pending] Added to queue: ${event.title}`);
+          syncLogger.log(`➕ [Fix Pending] Added to queue: ${event.title}`);
         }
       }
       
       if (addedCount > 0) {
         this.saveActionQueue();
-        syncLogger.log(`�?[Fix Pending] Added ${addedCount} events to sync queue`);
+        syncLogger.log(`✅ [Fix Pending] Added ${addedCount} events to sync queue`);
       } else {
-        syncLogger.log('�?[Fix Pending] All pending events already in queue');
+        syncLogger.log('✅ [Fix Pending] All pending events already in queue');
       }
       
       // 标记修复完成
       localStorage.setItem(MIGRATION_KEY, 'completed');
-      syncLogger.log('�?[Fix Pending] Migration completed');
+      syncLogger.log('✅ [Fix Pending] Migration completed');
       
     } catch (error) {
-      syncLogger.error('�?[Fix Pending] Failed to fix orphaned pending events:', error);
+      syncLogger.error('❌ [Fix Pending] Failed to fix orphaned pending events:', error);
     }
   }
 
@@ -3664,7 +3878,7 @@ private getUserSettings(): any {
     
     // 检查是否已经迁移过
     if (localStorage.getItem(MIGRATION_KEY) === 'completed') {
-      syncLogger.log('�?[Migration] Outlook prefix migration already completed, skipping');
+      syncLogger.log('✅ [Migration] Outlook prefix migration already completed, skipping');
       return;
     }
     
@@ -3678,13 +3892,13 @@ private getUserSettings(): any {
         let needsMigration = false;
         const newEvent = { ...event };
         
-        // 1. 修复 id 的重复前缀：outlook-outlook- �?outlook-
+        // 1. 修复 id 的重复前缀：outlook-outlook- → outlook-
         if (newEvent.id?.startsWith('outlook-outlook-')) {
           newEvent.id = newEvent.id.replace(/^outlook-outlook-/, 'outlook-');
           needsMigration = true;
         }
         
-        // 2. 修复 externalId 的错误前缀：outlook-AAMkAD... �?AAMkAD...
+        // 2. 修复 externalId 的错误前缀：outlook-AAMkAD... → AAMkAD...
         if (newEvent.externalId?.startsWith('outlook-')) {
           newEvent.externalId = newEvent.externalId.replace(/^outlook-/, '');
           needsMigration = true;
@@ -3699,26 +3913,27 @@ private getUserSettings(): any {
       
       if (migratedCount > 0) {
         localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(migratedEvents));
-        syncLogger.log(`�?[Migration] Migrated ${migratedCount}/${events.length} events`);
+        syncLogger.log(`✅ [Migration] Migrated ${migratedCount}/${events.length} events`);
         
-        // 重建 IndexMap 以使用新�?ID
+        // 重建 IndexMap 以使用新的 ID
         this.rebuildEventIndexMap(migratedEvents);
-        syncLogger.log('�?[Migration] IndexMap rebuilt with clean IDs');
+        syncLogger.log('✅ [Migration] IndexMap rebuilt with clean IDs');
       } else {
-        syncLogger.log('�?[Migration] No events needed migration');
+        syncLogger.log('✅ [Migration] No events needed migration');
       }
       
       // 标记迁移完成
       localStorage.setItem(MIGRATION_KEY, 'completed');
-      syncLogger.log('�?[Migration] Outlook prefix cleanup completed');
+      syncLogger.log('✅ [Migration] Outlook prefix cleanup completed');
       
     } catch (error) {
-      syncLogger.error('�?[Migration] Failed to migrate Outlook prefixes:', error);
+      syncLogger.error('❌ [Migration] Failed to migrate Outlook prefixes:', error);
     }
   }
 
   /**
-   * 🔧 计算数据健康评分�?-100�?   */
+   * 🔧 计算数据健康评分（0-100）
+   */
   private calculateHealthScore(totalEvents: number, issues: any[]): number {
     if (totalEvents === 0) return 100;
     if (issues.length === 0) return 100;
@@ -3728,7 +3943,10 @@ private getUserSettings(): any {
     const info = issues.filter(i => i.severity === 'info').length;
 
     // 扣分规则
-    const criticalPenalty = critical * 10; // 每个严重问题�?10 �?    const warningPenalty = warnings * 2;   // 每个警告�?2 �?    const infoPenalty = info * 0.5;        // 每个信息�?0.5 �?
+    const criticalPenalty = critical * 10; // 每个严重问题扣 10 分
+    const warningPenalty = warnings * 2;   // 每个警告扣 2 分
+    const infoPenalty = info * 0.5;        // 每个信息扣 0.5 分
+
     const totalPenalty = criticalPenalty + warningPenalty + infoPenalty;
     const score = Math.max(0, 100 - totalPenalty);
 
