@@ -1874,7 +1874,7 @@ const TagManager: React.FC<TagManagerProps> = ({
         </div>
 
         {/* 标签列表 - 添加上边距为搜索框留出空间 */}
-        <div className="tag-list-scroll-container" style={{ paddingTop: '60px', flex: 1 }}>
+        <div className="tag-list-scroll-container" style={{ paddingTop: '50px', flex: 1 }}>
           {tags
             .sort((a, b) => (a.position || 0) - (b.position || 0))
             .map((tag, index) => {
@@ -2231,18 +2231,21 @@ const TagManager: React.FC<TagManagerProps> = ({
             </div>
           );
           })}
+        </div>
 
-          {/* 新标签创建区域 */}
-          <div 
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              marginBottom: '4px',
-              height: '24px',
-              fontSize: '16px',
-              fontFamily: "'Microsoft YaHei', Arial, sans-serif",
-              position: 'relative'
-            }}
+        {/* 新标签创建区域 - 移出滚动容器，固定在底部 */}
+        <div 
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            marginBottom: '4px',
+            marginTop: '12px',
+            height: '24px',
+            fontSize: '16px',
+            fontFamily: "'Microsoft YaHei', Arial, sans-serif",
+            position: 'relative',
+            flexShrink: 0
+          }}
           >
             {/* 标签内容 - 左侧 */}
             <div 
@@ -2452,6 +2455,7 @@ const TagManager: React.FC<TagManagerProps> = ({
               </span>
             </div>
           </div>
+          </div>
         </div>
 
       {/* 选择器组件 */}
@@ -2546,8 +2550,6 @@ const TagManager: React.FC<TagManagerProps> = ({
           }}
         />
       )}
-      </div>
-      </div>
     </div>
   );
 };
