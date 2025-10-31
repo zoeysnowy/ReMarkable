@@ -1810,6 +1810,17 @@ const TagManager: React.FC<TagManagerProps> = ({
           border-radius: 4px;
           box-shadow: 0 1px 0 rgba(0, 0, 0, 0.1);
         }
+        
+        .tag-list-scroll-container {
+          max-height: 500px;
+          overflow-y: auto;
+          scrollbar-width: none; /* Firefox */
+          -ms-overflow-style: none; /* IE/Edge */
+        }
+        
+        .tag-list-scroll-container::-webkit-scrollbar {
+          display: none; /* Chrome/Safari/Opera */
+        }
       `}</style>
       
       {/* 调试组件 - 已禁用以减少日志输出 
@@ -1862,7 +1873,7 @@ const TagManager: React.FC<TagManagerProps> = ({
         </div>
 
         {/* 标签列表 - 添加上边距为搜索框留出空间 */}
-        <div style={{ marginTop: '60px' }}>
+        <div className="tag-list-scroll-container" style={{ marginTop: '60px' }}>
           {tags
             .sort((a, b) => (a.position || 0) - (b.position || 0))
             .map((tag, index) => {
