@@ -23,20 +23,23 @@ import SettingsModal from './components/SettingsModal';
 import { SyncNotification } from './components/SyncNotification';
 import './App.css';
 
-// � 暂时禁用懒加载，测试性能
+// 🔧 暂时禁用懒加载，测试性能
 import TagManager from './components/TagManager';
 import TimeCalendar from './components/TimeCalendar';
 import PlanManager, { PlanItem } from './components/PlanManager';
 
-// 🚀 性能优化：生产环境禁用 console.log
+import { logger } from 'utils/logger';
+
+const AppLogger = logger.module('App');
+// 🚀 性能优化：生产环境禁用 AppLogger.log
 if (process.env.NODE_ENV === 'production') {
   const noop = () => {};
-  console.log = noop;
-  console.debug = noop;
+  AppLogger.log = noop;
+  AppLogger.debug = noop;
   // 保留 warn 和 error
 }
 
-// 暴露时间工具函数到全局，供控制台调试使用
+// 暴露时间:工具函数到全局，供控制台调试使用
 if (typeof window !== 'undefined') {
   (window as any).formatTimeForStorage = formatTimeForStorage;
 }
@@ -69,13 +72,13 @@ function App() {
       if (typeof window !== 'undefined') {
         (window as any).ReMarkableCache = {
           clear: () => {
-            console.warn('⚠️ 使用 ReMarkableCache.clearOnlyRuntime() 清除运行时缓存，或 ReMarkableCache.clearAll() 清除所有数据');
+            AppLogger.warn('⚠️ 使用 ReMarkableCache.clearOnlyRuntime() 清除运行时缓存，或 ReMarkableCache.clearAll() 清除所有数据');
           },
           clearOnlyRuntime: CacheManager.clearAllCache,
           clearAll: () => {
             CacheManager.clearAllCache();
             PersistentStorage.clear(PERSISTENT_OPTIONS.TAGS);
-            console.log('🧹 所有数据已清除，包括持久化存储');
+            AppLogger.log('🧹 所有数据已清除，包括持久化存储');
           },
           info: CacheManager.getCacheInfo,
           version: () => localStorage.getItem('remarkable-storage-version'),
@@ -148,8 +151,8 @@ function App() {
     tagName: string;
     tagEmoji?: string; // 标签emoji
     tagColor?: string; // 标签颜色
-    startTime: number; // 当前计时周期的开始时间（用于计算当前运行时长）
-    originalStartTime: number; // 真正的开始时间（用户设置或初始开始时间）
+    startTime: number; // 当前计时周期的开始时间:（用于计算当前运行时长）
+    originalStartTime: number; // 真正的开始时间:（用户设置或初始开始时间:）
     elapsedTime: number;
     isPaused: boolean;
     eventEmoji?: string; // 用户自定义事件emoji
@@ -161,7 +164,7 @@ function App() {
 
   // 处理标签变化的回调函数
   const handleTagsChange = useCallback((newTags: any[]) => {
-    console.log('🏷️ [App] Received tags update from FigmaTagManager:', newTags.length);
+    AppLogger.log('🏷️ [App] Received tags update from FigmaTagManager:', newTags.length);
     setAppTags(newTags);
     
     // 同步更新TagService
@@ -179,9 +182,9 @@ function App() {
         }));
         
         TagService.updateTags(hierarchicalTags);
-        console.log('✅ [App] Successfully synced tags to TagService');
+        AppLogger.log('✅ [App] Successfully synced tags to TagService');
       } catch (error) {
-        console.error('❌ [App] Failed to sync tags to TagService:', error);
+        AppLogger.error('❌ [App] Failed to sync tags to TagService:', error);
       }
     }
   }, []);
@@ -197,10 +200,10 @@ function App() {
         if (saved) {
           const events = JSON.parse(saved);
           setAllEvents(events);
-          console.log('📊 [App] Loaded events for stats:', events.length);
+          AppLogger.log('📊 [App] Loaded events for stats:', events.length);
         }
       } catch (error) {
-        console.error('❌ [App] Failed to load events:', error);
+        AppLogger.error('🔧 [App] Failed to load events:', error);
       }
     };
 
@@ -217,7 +220,7 @@ function App() {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // 计时器编辑模态框状态
+  // 计时器编辑模态框状✅
   const [timerEditModal, setTimerEditModal] = useState<{
     isOpen: boolean;
     event: Event | null;
@@ -226,7 +229,7 @@ function App() {
     event: null
   });
 
-  // 应用设置状态
+  // 应用设置状✅
   const [appSettings, setAppSettings] = useState({
     selectedCalendarId: '',
     calendarGroups: [] as any[],
@@ -236,7 +239,7 @@ function App() {
     theme: 'light'
   });
 
-  // Click Tracker 调试状态
+  // Click Tracker 调试状✅
   const [clickTrackerEnabled, setClickTrackerEnabled] = useState(false);
 
   // Click Tracker 切换函数
@@ -246,16 +249,16 @@ function App() {
 
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
-  // 页面状态管理
+  // 页面状态管✅
   const [currentPage, setCurrentPage] = useState<PageType>('home');
 
-  // PlanItem 状态管理
+  // PlanItem 状态管✅
   const [planItems, setPlanItems] = useState<PlanItem[]>([]);
   
   // 🔧 优化：移除不必要的依赖，避免频繁重新创建函数
   const handlePageChange = useCallback((page: PageType) => {
     const startTime = performance.now();
-    console.log(`📄 [App] Page change requested: ${currentPage} -> ${page}`);
+    AppLogger.log(`📄 [App] Page change requested: ${currentPage} -> ${page}`);
     
     // Electron环境下的额外调试
     if (window.electronAPI?.debugLog) {
@@ -271,18 +274,18 @@ function App() {
     // 性能监控
     requestAnimationFrame(() => {
       const duration = performance.now() - startTime;
-      console.log(`📄 [App] Page state updated to: ${page} (${duration.toFixed(2)}ms)`);
+      AppLogger.log(`📄 [App] Page state updated to: ${page} (${duration.toFixed(2)}ms)`);
       
       if (duration > 100) {
-        console.warn(`⚠️ [App] 页面切换耗时过长: ${duration.toFixed(2)}ms`);
+        AppLogger.warn(`⚠️ [App] 页面切换耗时过长: ${duration.toFixed(2)}ms`);
       }
     });
   }, []); // 🔧 移除 currentPage 依赖
 
-  // 设置模态框状态
+  // 设置模态框状✅
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
-  // UnifiedTimeline引用 (暂时移除，等待后续实现)
+  // UnifiedTimeline引用 (暂时移除，等待后续实✅
   // const unifiedTimelineRef = useRef<UnifiedTimelineRef>(null);
 
   // 设置管理函数
@@ -294,7 +297,7 @@ function App() {
         setAppSettings(prev => ({ ...prev, ...parsed }));
       }
     } catch (error) {
-      console.warn('设置加载失败:', error);
+      AppLogger.warn('设置加载失败:', error);
     }
     setSettingsLoaded(true);
   };
@@ -305,21 +308,21 @@ function App() {
     localStorage.setItem('remarkable-settings', JSON.stringify(updated));
   };
 
-  // 加载可编辑标签列表
+  // 加载可编辑标签列✅
   const loadAvailableTagsForEdit = () => {
     const flatTags = TagService.getFlatTags();
     setAvailableTagsForEdit(flatTags);
   };
 
-  // 全局计时器管理函数
+  // 全局计时器管理函✅
   const handleTimerStart = (tagId: string) => {
     const tag = TagService.getFlatTags().find(t => t.id === tagId);
     if (!tag) {
-      console.error('标签未找到:', tagId);
+      AppLogger.error('标签未找到', tagId);
       return;
     }
 
-    console.log('🏷️ [Timer] 开始计时，标签信息:', {
+    AppLogger.log('🏷️ [Timer] 开始计时，标签信息:', {
       id: tag.id,
       name: tag.name,
       emoji: tag.emoji,
@@ -334,14 +337,14 @@ function App() {
         tagEmoji: tag.emoji, // 传递标签emoji
         tagColor: tag.color, // 传递标签颜色
         startTime: startTime,
-        originalStartTime: startTime, // 保存真正的开始时间
+        originalStartTime: startTime, // 保存真正的开始时间:
         elapsedTime: 0,
         isPaused: false
       };
       setGlobalTimer(timerState);
       // 💾 持久化到 localStorage，供 Widget 读取
       localStorage.setItem('remarkable-global-timer', JSON.stringify(timerState));
-      console.log('⏰ 开始计时:', tag.name);
+      AppLogger.log('✅ 开始计时', tag.name);
   };
 
   const handleTimerPause = () => {
@@ -356,10 +359,10 @@ function App() {
       elapsedTime: currentElapsed
     };
     setGlobalTimer(timerState);
-    // 💾 持久化暂停状态
+    // 💾 持久化暂停状✅
     localStorage.setItem('remarkable-global-timer', JSON.stringify(timerState));
 
-    console.log('⏸️ 暂停计时');
+    AppLogger.log('⏸️ 暂停计时');
   };
 
   const handleTimerResume = () => {
@@ -372,17 +375,17 @@ function App() {
       startTime: Date.now()
     };
     setGlobalTimer(timerState);
-    // 💾 持久化恢复状态
+    // 💾 持久化恢复状✅
     localStorage.setItem('remarkable-global-timer', JSON.stringify(timerState));
 
-    console.log('▶️ 继续计时');
+    AppLogger.log('▶️ 继续计时');
   };
 
   const handleTimerCancel = () => {
     if (!globalTimer) return;
     
-    if (window.confirm('确定要取消计时吗？当前计时将不会被保存。')) {
-      console.log('❌ 取消计时');
+    if (window.confirm('确定要取消计时吗？当前计时将不会被保存在')) {
+      AppLogger.log('❌ 取消计时');
       
       // 🔧 使用 EventService 删除 Timer 事件
       try {
@@ -392,17 +395,17 @@ function App() {
         // 使用 EventService 删除事件（skipSync=true 因为这是取消操作，不需要同步删除）
         EventService.deleteEvent(timerEventId, true).then(result => {
           if (result.success) {
-            console.log('✅ [Timer Cancel] Event deleted via EventService:', timerEventId);
+            AppLogger.log('❌ [Timer Cancel] Event deleted via EventService:', timerEventId);
           } else {
-            console.error('❌ [Timer Cancel] EventService deletion failed:', result.error);
+            AppLogger.error('❌ [Timer Cancel] EventService deletion failed:', result.error);
           }
         });
       } catch (error) {
-        console.error('❌ [Timer Cancel] Failed to delete event:', error);
+        AppLogger.error('❌ [Timer Cancel] Failed to delete event:', error);
       }
       
       setGlobalTimer(null);
-      // 💾 清除 localStorage 中的 timer 状态
+      // 💾 清除 localStorage 中的 timer 状✅
       localStorage.removeItem('remarkable-global-timer');
     }
   };
@@ -410,23 +413,23 @@ function App() {
   const handleStartTimeChange = (newStartTime: number) => {
     if (!globalTimer) return;
     
-    // 验证时间戳有效性
+    // 验证时间:戳有效✅
     if (!newStartTime || isNaN(newStartTime) || newStartTime <= 0) {
-      console.error('❌ [App] 无效的开始时间戳:', newStartTime);
+      AppLogger.error('🔧 [App] 无效的开始时间:戳:', newStartTime);
       return;
     }
     
     const now = Date.now();
     
-    // 🔧 关键修复：使用 originalStartTime 而不是 startTime
+    // 🔧 关键修复：使✅originalStartTime 而不✅startTime
     const oldOriginalStartTime = globalTimer.originalStartTime || globalTimer.startTime;
     
-    // 计算用户想要的时间差
-    // 如果提前开始时间（newStartTime < oldOriginalStartTime），应该增加已计时时长
-    // 如果推迟开始时间（newStartTime > oldOriginalStartTime），应该减少已计时时长
+    // 计算用户想要的时间:差
+    // 如果提前开始时间:（newStartTime < oldOriginalStartTime），应该增加已计时时✅
+    // 如果推迟开始时间:（newStartTime > oldOriginalStartTime），应该减少已计时时✅
     const timeDiff = oldOriginalStartTime - newStartTime; // 正数=提前开始（增加时长），负数=延后开始（减少时长）
     
-    console.log('⏰ [App] 修改开始时间:', {
+    AppLogger.log('🔧 [App] 修改开始时间:', {
       旧原始开始时间: new Date(oldOriginalStartTime).toLocaleString(),
       新开始时间: new Date(newStartTime).toLocaleString(),
       时间差毫秒: timeDiff,
@@ -438,37 +441,37 @@ function App() {
     
     if (globalTimer.isRunning) {
       // 计时中：需要考虑当前运行时长
-      const currentRunningTime = now - globalTimer.startTime; // 当前这轮运行的时长
-      const totalElapsed = globalTimer.elapsedTime + currentRunningTime; // 总已用时长
+      const currentRunningTime = now - globalTimer.startTime; // 当前这轮运行的时✅
+      const totalElapsed = globalTimer.elapsedTime + currentRunningTime; // 总已用时✅
       
-      // 调整后的总时长 = 原总时长 + 时间差
+      // 调整后的总时长= 原总时长+ 时间:✅
       const adjustedTotalElapsed = Math.max(0, totalElapsed + timeDiff);
       
-      // 重新设置计时器，更新 originalStartTime 和 elapsedTime
+      // 重新设置计时器，更新 originalStartTime ✅elapsedTime
       setGlobalTimer({
         ...globalTimer,
-        startTime: now, // 重置为当前时间（用于下次计算运行时长）
-        originalStartTime: newStartTime, // 更新真正的开始时间
+        startTime: now, // 重置为当前时间:（用于下次计算运行时长✅
+        originalStartTime: newStartTime, // 更新真正的开始时✅
         elapsedTime: adjustedTotalElapsed // 调整后的已用时长
       });
       
-      console.log('⏰ [App] 计时中修改结果:', {
+      AppLogger.log('🔧 [App] 计时中修改结果', {
         当前运行时长毫秒: currentRunningTime,
         原总时长毫秒: totalElapsed,
         调整后总时长毫秒: adjustedTotalElapsed,
         调整后总时长分钟: Math.round(adjustedTotalElapsed / 60000)
       });
     } else {
-      // 暂停中：直接调整 elapsedTime 和 originalStartTime
+      // 暂停中：直接调整 elapsedTime ✅originalStartTime
       const adjustedElapsedTime = Math.max(0, globalTimer.elapsedTime + timeDiff);
       
       setGlobalTimer({
         ...globalTimer,
-        originalStartTime: newStartTime, // 更新真正的开始时间
+        originalStartTime: newStartTime, // 更新真正的开始时✅
         elapsedTime: adjustedElapsedTime
       });
       
-      console.log('⏰ [App] 暂停中修改结果:', {
+      AppLogger.log('🔧 [App] 暂停中修改结果', {
         旧elapsedTime毫秒: globalTimer.elapsedTime,
         调整后elapsedTime毫秒: adjustedElapsedTime,
         旧elapsedTime分钟: Math.round(globalTimer.elapsedTime / 60000),
@@ -486,8 +489,8 @@ function App() {
     const endTime = new Date();
     const startTime = new Date(globalTimer.originalStartTime || globalTimer.startTime);
     
-    console.log('⏹️ 停止计时，总时长:', totalElapsed, 'ms');
-    console.log('⏹️ 计时器信息:', {
+    AppLogger.log('⏹️ 停止计时，总时长', totalElapsed, 'ms');
+    AppLogger.log('⏹️ 计时器信息', {
       tagId: globalTimer.tagId,
       tagName: globalTimer.tagName,
       startTime: startTime,
@@ -499,14 +502,14 @@ function App() {
     try {
       const tag = TagService.getFlatTags().find(t => t.id === globalTimer.tagId);
       if (!tag) {
-        console.error('❌ 标签未找到:', globalTimer.tagId);
+        AppLogger.error('✅标签未找到', globalTimer.tagId);
         return;
       }
 
       // 🔧 使用与实时保存相同的事件ID
       const timerEventId = `timer-${globalTimer.tagId}-${startTime.getTime()}`;
       
-      // 创建或更新事件，使用用户自定义的标题和emoji（如果有）
+      // 创建或更新事件，使用用户自定义的标题和emoji（如果有✅
       const eventTitle = globalTimer.eventTitle || (tag.emoji ? `${tag.emoji} ${tag.name}` : tag.name);
       const eventEmoji = globalTimer.eventEmoji || tag.emoji;
       
@@ -526,28 +529,28 @@ function App() {
         updatedAt: formatTimeForStorage(new Date())
       };
 
-      // 🔧 使用 EventService 统一管理事件创建和同步
-      console.log('� [Timer Stop] Using EventService to create/update event');
+      // 🔧 使用 EventService 统一管理事件创建和同✅
+      AppLogger.log('💾 [Timer Stop] Using EventService to create/update event');
       const result = await EventService.updateEvent(timerEventId, finalEvent);
       
       if (result.success) {
-        console.log('✅ [Timer Stop] Event saved via EventService:', timerEventId);
+        AppLogger.log('💾 [Timer Stop] Event saved via EventService:', timerEventId);
         
         // 更新本地状态以触发统计更新
         setAllEvents(EventService.getAllEvents());
       } else {
-        console.error('❌ [Timer Stop] EventService failed:', result.error);
+        AppLogger.error('💾 [Timer Stop] EventService failed:', result.error);
       }
 
-      // ⚡ 立即切换到时间页面
+      // ✅立即切换到时间:页✅
       setCurrentPage('time');
     } catch (error) {
-      console.error('❌ [Timer Stop] 保存事件失败:', error);
+      AppLogger.error('💾 [Timer Stop] 保存事件失败:', error);
     }
     
-    // 清除计时器状态
+    // 清除计时器状✅
     setGlobalTimer(null);
-    // 💾 清除 localStorage 中的 timer 状态
+    // 💾 清除 localStorage 中的 timer 状✅
     localStorage.removeItem('remarkable-global-timer');
   };
 
@@ -580,7 +583,7 @@ function App() {
     // 如果有计时器，使用当前计时器信息
     const tag = TagService.getFlatTags().find(t => t.id === globalTimer.tagId);
 
-    // 创建临时事件对象供编辑
+    // 创建临时事件对象供编✅
     const totalElapsed = globalTimer.elapsedTime + 
       (globalTimer.isRunning ? (Date.now() - globalTimer.startTime) : 0);
     const endTime = new Date();
@@ -607,15 +610,15 @@ function App() {
     });
   };
 
-  // 保存计时器事件编辑
+  // 保存计时器事件编✅
   const handleTimerEditSave = async (updatedEvent: Event) => {
     // 提取emoji（使用Array.from正确处理多字节字符）
     const titleChars = Array.from(updatedEvent.title);
     const firstChar = titleChars.length > 0 ? titleChars[0] : '';
     
-    // 🔧 如果没有计时器，创建新的计时器
+    // 🔧 如果没有计时器，创建新的计时✅
     if (!globalTimer) {
-      // 必须选择至少一个标签
+      // 必须选择至少一个标✅
       if (!updatedEvent.tags || updatedEvent.tags.length === 0) {
         alert('请至少选择一个标签');
         return;
@@ -629,15 +632,15 @@ function App() {
         return;
       }
 
-      // 确定计时起始时间
+      // 确定计时起始时间:
       const eventStartTime = new Date(updatedEvent.startTime);
       const now = new Date();
       const timeDiff = Math.abs(now.getTime() - eventStartTime.getTime());
-      const useEventTime = timeDiff > 60000; // 超过1分钟认为用户修改了时间
+      const useEventTime = timeDiff > 60000; // 超过1分钟认为用户修改了时✅
       
       const timerStartTime = useEventTime ? eventStartTime.getTime() : Date.now();
 
-      console.log('⏰ [Timer Init] Determining start time:', {
+      AppLogger.log('🔧 [Timer Init] Determining start time:', {
         eventStartTime: eventStartTime.toISOString(),
         currentTime: now.toISOString(),
         timeDiff: `${(timeDiff / 1000).toFixed(1)}s`,
@@ -645,7 +648,7 @@ function App() {
         finalStartTime: new Date(timerStartTime).toISOString()
       });
 
-      // 🔧 [关键修复] 使用真实事件ID，与 useEffect 中的ID保持一致
+      // 🔧 [关键修复] 使用真实事件ID，与 useEffect 中的ID保持一✅
       const realTimerEventId = `timer-${tagId}-${eventStartTime.getTime()}`;
       
       // 🔧 使用 EventService 创建真实事件（使用真实ID），防止重复
@@ -654,7 +657,7 @@ function App() {
         id: realTimerEventId, // 使用真实ID
         title: eventTitle,
         startTime: formatTimeForStorage(eventStartTime),
-        endTime: formatTimeForStorage(now), // 初始结束时间为当前时间
+        endTime: formatTimeForStorage(now), // 初始结束时间:为当前时✅
         tags: [tagId],
         tagId: tagId,
         calendarId: (tag as any).calendarId || '',
@@ -671,12 +674,12 @@ function App() {
       // 使用 EventService 创建事件（skipSync=true，运行中不同步）
       const result = await EventService.createEvent(timerEvent, true);
       if (result.success) {
-        console.log('✅ [Timer Init] Event created via EventService:', realTimerEventId);
+        AppLogger.log('🔧 [Timer Init] Event created via EventService:', realTimerEventId);
       } else {
-        console.error('❌ [Timer Init] EventService failed:', result.error);
+        AppLogger.error('🔧 [Timer Init] EventService failed:', result.error);
       }
 
-      // 创建新的计时器
+      // 创建新的计时✅
       setGlobalTimer({
         isRunning: true,
         tagId: tagId,
@@ -684,7 +687,7 @@ function App() {
         tagEmoji: tag.emoji, // 添加标签emoji
         tagColor: tag.color, // 添加标签颜色
         startTime: timerStartTime,
-        originalStartTime: eventStartTime.getTime(), // 使用用户设置的事件开始时间
+        originalStartTime: eventStartTime.getTime(), // 使用用户设置的事件开始时✅
         elapsedTime: 0,
         isPaused: false,
         eventEmoji: firstChar,
@@ -696,7 +699,7 @@ function App() {
         event: null
       });
       
-      console.log('⏰ 开始新计时:', updatedEvent.title || tag.name);
+      AppLogger.log('✅开始新计时:', updatedEvent.title || tag.name);
       return;
     }
 
@@ -707,7 +710,7 @@ function App() {
       ...globalTimer,
       eventTitle: updatedEvent.title,
       eventEmoji: possibleEmoji,
-      // 如果标签改变了，也更新标签及其emoji和颜色
+      // 如果标签改变了，也更新标签及其emoji和颜✅
       ...(updatedEvent.tags && updatedEvent.tags.length > 0 && updatedEvent.tags[0] !== globalTimer.tagId ? (() => {
         const newTag = TagService.getFlatTags().find(t => t.id === updatedEvent.tags![0]);
         return {
@@ -725,19 +728,19 @@ function App() {
     });
   };
 
-  // 初始化效果
+  // 初始化效✅
   useEffect(() => {
     loadAppSettings();
     loadAvailableTagsForEdit();
   }, []);
 
-  // 🔧 [NEW] Timer 实时保存和显示更新
+  // 🔧 [NEW] Timer 实时保存和显示更✅
   useEffect(() => {
     if (!globalTimer || !globalTimer.isRunning || globalTimer.isPaused) {
       return;
     }
 
-    // 保存 Timer 事件到 localStorage 的函数
+    // 保存 Timer 事件✅localStorage 的函✅
     const saveTimerEvent = async () => {
       try {
         const tag = TagService.getFlatTags().find(t => t.id === globalTimer.tagId);
@@ -755,7 +758,7 @@ function App() {
         
         const timerEvent: Event = {
           id: timerEventId,
-          title: eventTitle, // 🔧 不添加"[专注中]"标记到localStorage，只在UI渲染时添加
+          title: eventTitle, // 🔧 不添✅[专注中]"标记到localStorage，只在UI渲染时添✅
           startTime: formatTimeForStorage(startTime),
           endTime: formatTimeForStorage(endTime),
           location: '',
@@ -770,32 +773,32 @@ function App() {
           remarkableSource: true
         };
 
-        // 🔧 使用 EventService，但跳过同步和事件通知（运行中静默保存）
+        // 🔧 使用 EventService，但跳过同步和事件通知（运行中静默保存✅
         const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
         const existingEvents: Event[] = saved ? JSON.parse(saved) : [];
         const eventIndex = existingEvents.findIndex((e: Event) => e.id === timerEventId);
         
         if (eventIndex === -1) {
           existingEvents.push(timerEvent);
-          console.log('➕ [Timer] Created timer event:', timerEventId);
+          AppLogger.log('💾 [Timer] Created timer event:', timerEventId);
         } else {
           existingEvents[eventIndex] = timerEvent;
-          console.log('🔄 [Timer] Updated timer event:', timerEventId);
+          AppLogger.log('🔄 [Timer] Updated timer event:', timerEventId);
         }
         
         localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
         
-        // 🔇 不触发 eventsUpdated（避免 TimeCalendar 和 EditModal 频繁重渲染）
-        // Timer 运行中的更新不需要立即刷新 UI，停止时会触发刷新
+        // 🔇 不触✅eventsUpdated（避✅TimeCalendar ✅EditModal 频繁重渲染）
+        // Timer 运行中的更新不需要立即刷✅UI，停止时会触发刷✅
       } catch (error) {
-        console.error('❌ [Timer] Failed to save timer event:', error);
+        AppLogger.error('💾 [Timer] Failed to save timer event:', error);
       }
     };
 
-    // 立即保存一次
+    // 立即保存一✅
     saveTimerEvent();
 
-    // 🔧 每30秒保存一次（降低频率，减少性能影响）
+    // 🔧 ✅0秒保存一次（降低频率，减少性能影响✅
     const saveInterval = setInterval(saveTimerEvent, 30000);
 
     // 清理函数
@@ -804,11 +807,11 @@ function App() {
     };
   }, [globalTimer]);
 
-  // 🔧 [NEW] 断点保护 - 页面关闭/刷新时保存 Timer
+  // 🔧 [NEW] 断点保护 - 页面关闭/刷新时保✅Timer
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (globalTimer && globalTimer.isRunning && !globalTimer.isPaused) {
-        // 保存最后一次状态
+        // 保存最后一次状✅
         try {
           const tag = TagService.getFlatTags().find(t => t.id === globalTimer.tagId);
           if (tag) {
@@ -822,7 +825,7 @@ function App() {
             
             const timerEvent: Event = {
               id: timerEventId,
-              title: eventTitle, // 保存时移除"[专注中]"标记
+              title: eventTitle, // 保存时移✅[专注中]"标记
               startTime: formatTimeForStorage(startTime),
               endTime: formatTimeForStorage(endTime),
               location: '',
@@ -848,10 +851,10 @@ function App() {
             }
             
             localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
-            console.log('💾 [Timer] Saved timer event before unload:', timerEventId);
+            AppLogger.log('💾 [Timer] Saved timer event before unload:', timerEventId);
           }
         } catch (error) {
-          console.error('❌ [Timer] Failed to save on unload:', error);
+          AppLogger.error('💾 [Timer] Failed to save on unload:', error);
         }
       }
     };
@@ -863,7 +866,7 @@ function App() {
     };
   }, [globalTimer]);
 
-  // 格式化时间显示
+  // 格式化时间:显✅
   const formatTime = (totalSeconds: number): string => {
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -875,7 +878,7 @@ function App() {
     return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // 计算今日总专注时间
+  // 计算今日总专注时✅
   const getTodayTotalTime = (): number => {
     const today = new Date().toDateString();
     return timerSessions
@@ -883,7 +886,7 @@ function App() {
       .reduce((total, session) => total + session.duration, 0);
   };
 
-  // 计时器控制函数
+  // 计时器控制函✅
   const startTimer = () => {
     if (!taskName.trim()) return;
     
@@ -915,10 +918,10 @@ function App() {
         if (saved) {
           const items = JSON.parse(saved);
           setPlanItems(items);
-          console.log('📋 [App] 加载计划项:', items.length);
+          AppLogger.log('📋 [App] 加载计划项', items.length);
         }
       } catch (error) {
-        console.error('❌ [App] 加载计划项失败:', error);
+        AppLogger.error('🔧 [App] 加载计划项失败', error);
       }
     };
 
@@ -933,9 +936,9 @@ function App() {
         ? prev.map(p => p.id === item.id ? item : p)
         : [...prev, item];
       
-      // 持久化
+      // 持久✅
       localStorage.setItem(STORAGE_KEYS.PLAN_ITEMS, JSON.stringify(updated));
-      console.log('💾 [App] 保存计划项:', item.title);
+      AppLogger.log('💾 [App] 保存计划项', item.title);
       
       return updated;
     });
@@ -946,7 +949,7 @@ function App() {
     setPlanItems(prev => {
       const updated = prev.filter(item => item.id !== id);
       localStorage.setItem(STORAGE_KEYS.PLAN_ITEMS, JSON.stringify(updated));
-      console.log('🗑️ [App] 删除计划项:', id);
+      AppLogger.log('🗑️ [App] 删除计划项', id);
       return updated;
     });
   }, []);
@@ -956,9 +959,9 @@ function App() {
     const result = await EventService.createEvent(event);
     if (result.success) {
       setAllEvents(EventService.getAllEvents());
-      console.log('✅ [App] Event created via EventService:', event.title);
+      AppLogger.log('🔧 [App] Event created via EventService:', event.title);
     } else {
-      console.error('❌ [App] EventService failed:', result.error);
+      AppLogger.error('🔧 [App] EventService failed:', result.error);
     }
   }, []);
 
@@ -967,9 +970,9 @@ function App() {
     const result = await EventService.updateEvent(eventId, updates);
     if (result.success) {
       setAllEvents(EventService.getAllEvents());
-      console.log('✅ [App] Event updated via EventService:', eventId);
+      AppLogger.log('🔧 [App] Event updated via EventService:', eventId);
     } else {
-      console.error('❌ [App] EventService failed:', result.error);
+      AppLogger.error('🔧 [App] EventService failed:', result.error);
     }
   }, []);
 
@@ -994,7 +997,7 @@ function App() {
       });
     }
     
-    // 重置状态
+    // 重置状✅
     setIsActive(false);
     setCurrentTask('');
     setSeconds(0);
@@ -1020,12 +1023,12 @@ function App() {
     };
   }, [isActive]);
 
-  // 全局计时器效果 - 强制UI更新以显示实时时间
+  // 全局计时器效✅- 强制UI更新以显示实时时✅
   useEffect(() => {
     let updateInterval: NodeJS.Timeout | null = null;
     
     if (globalTimer?.isRunning) {
-      // 每秒强制更新一次以显示实时时间
+      // 每秒强制更新一次以显示实时时间:
       updateInterval = setInterval(() => {
         // 触发重新渲染
         setGlobalTimer(prev => prev ? { ...prev } : null);
@@ -1047,7 +1050,7 @@ function App() {
         setTimerSessions(JSON.parse(sessions));
       }
     } catch (error) {
-      console.warn('历史会话加载失败:', error);
+      AppLogger.warn('历史会话加载失败:', error);
     }
   }, []);
 
@@ -1055,47 +1058,47 @@ function App() {
   useEffect(() => {
     const currentAuthState = microsoftService?.isSignedIn() || false;
     
-    // 💾 同步认证状态到 localStorage（供 Widget 读取）
+    // 💾 同步认证状态到 localStorage（供 Widget 读取✅
     try {
       localStorage.setItem('remarkable-outlook-authenticated', currentAuthState.toString());
-      console.log('💾 [AUTH] Saved auth status to localStorage:', currentAuthState);
+      AppLogger.log('💾 [AUTH] Saved auth status to localStorage:', currentAuthState);
     } catch (error) {
-      console.error('❌ [AUTH] Failed to save auth status:', error);
+      AppLogger.error('❌ [AUTH] Failed to save auth status:', error);
     }
     
     if (currentAuthState !== lastAuthState) {
       setLastAuthState(currentAuthState);
       
       if (currentAuthState) {
-        console.log('🚀 用户已登录，初始化同步管理器...');
+        AppLogger.log('🚀 用户已登录，初始化同步管理器...');
         
-        // 创建同步管理器实例
+        // 创建同步管理器实✅
         if (!syncManager) {
           try {
             const newSyncManager = new ActionBasedSyncManager(microsoftService);
             setSyncManager(newSyncManager);
             
-            // 🔧 初始化 EventService（注入同步管理器）
+            // 🔧 初始✅ EventService（注入同步管理器✅
             EventService.initialize(newSyncManager);
             
-            // 启动同步管理器（会延迟5秒后执行首次同步）
+            // 启动同步管理器（会延✅秒后执行首次同步✅
             newSyncManager.start();
-            console.log('✅ 同步管理器初始化成功（首次同步延迟5秒）');
-            console.log('✅ EventService 初始化成功');
+            AppLogger.log('✅ 同步管理器初始化成功（首次同步延迟秒）');
+            AppLogger.log('✅ EventService 初始化成功');
             
             // 暴露到全局用于调试
             if (typeof window !== 'undefined') {
               (window as any).syncManager = newSyncManager;
             }
           } catch (error) {
-            console.error('❌ 同步管理器初始化失败:', error);
+            AppLogger.error('✅ 同步管理器初始化失败:', error);
           }
         } else {
-          console.log('✅ 同步管理器已存在，无需重新启动');
-          // 不再重复调用 start()，避免重复同步
+          AppLogger.log('✅ 同步管理器已存在，无需重新启动');
+          // 不再重复调用 start()，避免重复同✅
         }
       } else {
-        console.log('⏸️ 用户已登出，停止同步管理器...');
+        AppLogger.log('⏸️ 用户已登出，停止同步管理器..');
         if (syncManager) {
           syncManager.stop();
         }
@@ -1114,14 +1117,14 @@ function App() {
           setLastSyncTime(time);
         }
       } catch (error) {
-        console.error('❌ [App] 获取同步时间失败:', error);
+        AppLogger.error('🔧 [App] 获取同步时间:失败:', error);
       }
     };
     
-    // 立即更新一次
+    // 立即更新一✅
     updateSyncTime();
     
-    // 每10秒更新一次
+    // ✅0秒更新一✅
     const syncTimeInterval = setInterval(updateSyncTime, 10000);
     
     return () => clearInterval(syncTimeInterval);
@@ -1133,7 +1136,7 @@ function App() {
     
     try {
       // 这里应该调用事件更新API
-      console.log('保存事件更改:', {
+      AppLogger.log('保存事件更改:', {
         id: editingEventId,
         title: editingEventTitle,
         description: editingEventDescription,
@@ -1142,16 +1145,16 @@ function App() {
       
       setShowEventEditModal(false);
     } catch (error) {
-      console.error('保存事件失败:', error);
+      AppLogger.error('保存事件失败:', error);
     }
   };
 
-  // 处理设置变化的回调
+  // 处理设置变化的回✅
   const handleSettingsChange = (settingKey: string, value: any) => {
     saveAppSettings({ [settingKey]: value });
   };
 
-  // 获取当前计时器显示的时间（秒）
+  // 获取当前计时器显示的时间:（秒✅
   const getCurrentTimerSeconds = (): number => {
     if (globalTimer) {
       const elapsed = globalTimer.elapsedTime + 
@@ -1161,15 +1164,15 @@ function App() {
     return seconds;
   };
 
-  // 获取层级标签的完整路径（例如：#Parent/#Child）
+  // 获取层级标签的完整路径（例如✅Parent/#Child✅
   const getHierarchicalTagPath = (tagId: string): string => {
     const flatTags = TagService.getFlatTags();
     const tag = flatTags.find(t => t.id === tagId);
     
     if (!tag) return '';
     
-    // 调试：输出标签信息
-    console.log('🏷️ [getHierarchicalTagPath] Tag info:', {
+    // 调试：输出标签信✅
+    AppLogger.log('🏷️[getHierarchicalTagPath] Tag info:', {
       tagId,
       tagName: tag.name,
       emoji: tag.emoji,
@@ -1193,7 +1196,7 @@ function App() {
         name: currentTag.name
       });
       
-      console.log('🔗 [getHierarchicalTagPath] Processing tag:', {
+      AppLogger.log('🔗 [getHierarchicalTagPath] Processing tag:', {
         id: currentTag.id,
         name: currentTag.name,
         emoji: currentTag.emoji,
@@ -1204,28 +1207,28 @@ function App() {
       if (currentTag.parentId) {
         const parentTag = flatTags.find(t => t.id === currentTag.parentId) as any;
         if (parentTag) {
-          console.log('✅ [getHierarchicalTagPath] Found parent:', {
+          AppLogger.log('🔗 [getHierarchicalTagPath] Found parent:', {
             parentId: parentTag.id,
             parentName: parentTag.name,
             parentEmoji: parentTag.emoji
           });
           currentTag = parentTag;
         } else {
-          console.warn('⚠️ [getHierarchicalTagPath] Parent not found:', currentTag.parentId);
+          AppLogger.warn('⚠️ [getHierarchicalTagPath] Parent not found:', currentTag.parentId);
           break;
         }
       } else {
-        console.log('🔚 [getHierarchicalTagPath] No parent, stopping');
+        AppLogger.log('🔚 [getHierarchicalTagPath] No parent, stopping');
         break;
       }
     }
     
     const result = pathParts.map(part => `#${part.emoji || ''}${part.name}`).join('/');
-    console.log('✅ [getHierarchicalTagPath] Final path:', result);
+    AppLogger.log('🔗 [getHierarchicalTagPath] Final path:', result);
     return result;
   };
   
-  // 获取最底层标签的颜色
+  // 获取最底层标签的颜✅
   const getBottomTagColor = (tagId: string): string => {
     const flatTags = TagService.getFlatTags();
     const tag = flatTags.find(t => t.id === tagId);
@@ -1234,7 +1237,7 @@ function App() {
 
   // 🔧 页面渲染函数 - 使用 useMemo 优化性能
   const renderCurrentPage = useMemo(() => {
-    console.log(`🎨 [App] Rendering page: ${currentPage}`);
+    AppLogger.log(`🎨 [App] Rendering page: ${currentPage}`);
     const renderStart = performance.now();
     
     let content;
@@ -1246,11 +1249,11 @@ function App() {
               display: 'grid',
               gridTemplateColumns: '280px 1fr',
               gap: '24px',
-              alignItems: 'stretch', /* 改为stretch，让两个卡片高度始终一致 */
-              padding: '12px', /* 增加padding以确保阴影完全显示 */
+              alignItems: 'stretch', /* 改为stretch，让两个卡片高度始终一致*/
+              padding: '12px', /* 增加padding以确保阴影完全示*/
               overflow: 'visible' /* 允许阴影溢出 */
             }}>
-              {/* 计时器卡片 - 左侧，固定宽度 */}
+              {/* 计时器卡片 - 左侧，固定宽度*/}
               <TimerCard
                 tagId={globalTimer?.tagId}
                 tagName={globalTimer?.tagName}
@@ -1286,7 +1289,7 @@ function App() {
 
       case 'time':
         content = (
-          <PageContainer title="时光" subtitle="时光日志与我的日程" className="time-calendar">
+          <PageContainer title="时光" subtitle="时光日志与我的日历" className="time-calendar">
             <TimeCalendar 
               onStartTimer={handleStartTimer}
               microsoftService={microsoftService}
@@ -1353,7 +1356,7 @@ function App() {
                 
                 <div className="focus-hint">
                   <p>点击表盘拖曳标签编辑</p>
-                  <p>在时光&gt;&gt;专注面板享用</p>
+                  <p>在时✅gt;&gt;专注面板享用</p>
                 </div>
 
                 <div className="focus-dials">
@@ -1378,7 +1381,7 @@ function App() {
 
       case 'plan':
         content = (
-          <PageContainer title="计划" subtitle="我的任务与日程管理">
+          <PageContainer title="计划" subtitle="我的任务与日程管✅>
             <PlanManager
               items={planItems}
               onSave={handleSavePlanItem}
@@ -1413,10 +1416,10 @@ function App() {
     
     // 性能监控
     const renderDuration = performance.now() - renderStart;
-    console.log(`✅ [App] Page "${currentPage}" rendered in ${renderDuration.toFixed(2)}ms`);
+    AppLogger.log(`🔧 [App] Page "${currentPage}" rendered in ${renderDuration.toFixed(2)}ms`);
     
     if (renderDuration > 100) {
-      console.warn(`⚠️ [App] Page "${currentPage}" took too long: ${renderDuration.toFixed(2)}ms`);
+      AppLogger.warn(`⚠️ [App] Page "${currentPage}" took too long: ${renderDuration.toFixed(2)}ms`);
     }
     
     return content;

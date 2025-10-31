@@ -1,4 +1,4 @@
-ï»¿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
 import ColorPicker from './ColorPicker';
@@ -8,12 +8,15 @@ import { PersistentStorage, PERSISTENT_OPTIONS } from '../utils/persistentStorag
 import { icons } from '../assets/icons';
 import './TagManager.css';
 
-// æ ‡ç­¾æ•°æ®æŒä¹…åŒ–å·¥å…·å‡½æ•°
+import { logger } from '../utils/logger';
+
+const TagManagerLogger = logger.module('TagManager');
+// ±êÇ©Êı¾İ³Ö¾Ã»¯¹¤¾ßº¯Êı
 const saveTagsToStorage = (tags: ExtendedHierarchicalTag[]) => {
   try {
     PersistentStorage.setItem(STORAGE_KEYS.HIERARCHICAL_TAGS, tags, PERSISTENT_OPTIONS.TAGS);
   } catch (error) {
-    console.error('âŒ [TagManager] Failed to save tags:', error);
+    TagManagerLogger.error('? [TagManager] Failed to save tags:', error);
   }
 };
 
@@ -22,7 +25,7 @@ const loadTagsFromStorage = (): ExtendedHierarchicalTag[] => {
     const saved = PersistentStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS, PERSISTENT_OPTIONS.TAGS);
     return saved ? saved : [];
   } catch (error) {
-    console.error('Failed to load tags from localStorage:', error);
+    TagManagerLogger.error('Failed to load tags from localStorage:', error);
     return [];
   }
 };
@@ -31,7 +34,7 @@ const saveCheckinCountsToStorage = (counts: { [tagId: string]: number }) => {
   try {
     PersistentStorage.setItem(STORAGE_KEYS.CHECKIN_COUNTS, counts, PERSISTENT_OPTIONS.CHECKIN_COUNTS);
   } catch (error) {
-    console.error('Failed to save checkin counts to localStorage:', error);
+    TagManagerLogger.error('Failed to save checkin counts to localStorage:', error);
   }
 };
 
@@ -40,12 +43,12 @@ const loadCheckinCountsFromStorage = (): { [tagId: string]: number } => {
     const saved = PersistentStorage.getItem(STORAGE_KEYS.CHECKIN_COUNTS, PERSISTENT_OPTIONS.CHECKIN_COUNTS);
     return saved ? saved : {};
   } catch (error) {
-    console.error('Failed to load checkin counts from localStorage:', error);
+    TagManagerLogger.error('Failed to load checkin counts from localStorage:', error);
     return {};
   }
 };
 
-// æ‰©å±•æ ‡ç­¾æ¥å£
+// À©Õ¹±êÇ©½Ó¿Ú
 interface ExtendedHierarchicalTag {
   id: string;
   name: string;
@@ -53,7 +56,7 @@ interface ExtendedHierarchicalTag {
   emoji?: string;
   level?: number;
   parentId?: string;
-  position?: number; // æ ‡ç­¾åœ¨åˆ—è¡¨ä¸­çš„ä½ç½®é¡ºåº
+  position?: number; // ±êÇ©ÔÚÁĞ±íÖĞµÄÎ»ÖÃË³Ğò
   calendarMapping?: {
     calendarId: string;
     calendarName: string;
@@ -66,8 +69,8 @@ interface ExtendedHierarchicalTag {
 
 interface TagManagerProps {
   microsoftService?: any;
-  tagService?: any; // TagServiceå®ä¾‹
-  availableCalendars?: any[]; // å·²åŒæ­¥çš„æ—¥å†åˆ—è¡¨
+  tagService?: any; // TagServiceÊµÀı
+  availableCalendars?: any[]; // ÒÑÍ¬²½µÄÈÕÀúÁĞ±í
   globalTimer?: {
     tagId: string;
     isRunning: boolean;
@@ -78,7 +81,7 @@ interface TagManagerProps {
   onTimerPause?: () => void;
   onTimerResume?: () => void;
   onTimerStop?: () => void;
-  onTagsChange?: (tags: ExtendedHierarchicalTag[]) => void; // æ ‡ç­¾å˜åŒ–å›è°ƒ
+  onTagsChange?: (tags: ExtendedHierarchicalTag[]) => void; // ±êÇ©±ä»¯»Øµ÷
 }
 
 const TagManager: React.FC<TagManagerProps> = ({
@@ -95,12 +98,12 @@ const TagManager: React.FC<TagManagerProps> = ({
   const [tags, setTags] = useState<ExtendedHierarchicalTag[]>([]);
   const [checkinCounts, setCheckinCounts] = useState<{ [tagId: string]: number }>({});
   
-  // æ–°æ ‡ç­¾åˆ›å»ºçŠ¶æ€
+  // ĞÂ±êÇ©´´½¨×´Ì¬
   const [newTagId, setNewTagId] = useState<string | null>(null);
-  const [isCreatingNewTag, setIsCreatingNewTag] = useState<boolean>(false); // æ–°å¢ï¼šæ§åˆ¶æ˜¯å¦æ­£åœ¨åˆ›å»ºæ–°æ ‡ç­¾
-  const [userClickedGrayText, setUserClickedGrayText] = useState<boolean>(false); // æ–°å¢ï¼šè·Ÿè¸ªç”¨æˆ·æ˜¯å¦æ˜ç¡®ç‚¹å‡»äº†ç°è‰²æ–‡æœ¬
+  const [isCreatingNewTag, setIsCreatingNewTag] = useState<boolean>(false); // ĞÂÔö£º¿ØÖÆÊÇ·ñÕıÔÚ´´½¨ĞÂ±êÇ©
+  const [userClickedGrayText, setUserClickedGrayText] = useState<boolean>(false); // ĞÂÔö£º¸ú×ÙÓÃ»§ÊÇ·ñÃ÷È·µã»÷ÁË»ÒÉ«ÎÄ±¾
   
-  // é€‰æ‹©å™¨çŠ¶æ€
+  // Ñ¡ÔñÆ÷×´Ì¬
   const [showColorPicker, setShowColorPicker] = useState<{ 
     show: boolean; 
     tagId: string; 
@@ -121,11 +124,11 @@ const TagManager: React.FC<TagManagerProps> = ({
     position: { x: 0, y: 0 }
   });
   
-  // æ‹–æ‹½ç›¸å…³çŠ¶æ€
+  // ÍÏ×§Ïà¹Ø×´Ì¬
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   
-  // æ”¹è¿›çš„ä½ç½®è®¡ç®—å‡½æ•°
+  // ¸Ä½øµÄÎ»ÖÃ¼ÆËãº¯Êı
   const calculateOptimalPosition = (rect: DOMRect, pickerWidth = 352, pickerHeight = 435) => {
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
@@ -134,22 +137,22 @@ const TagManager: React.FC<TagManagerProps> = ({
     let x = rect.left;
     let y = rect.bottom + 5;
     
-    // å³è¾¹ç•Œæ£€æŸ¥
+    // ÓÒ±ß½ç¼ì²é
     if (x + pickerWidth > viewportWidth) {
       x = viewportWidth - pickerWidth - 10;
     }
     
-    // å·¦è¾¹ç•Œæ£€æŸ¥
+    // ×ó±ß½ç¼ì²é
     if (x < 10) {
       x = 10;
     }
     
-    // ä¸‹è¾¹ç•Œæ£€æŸ¥
+    // ÏÂ±ß½ç¼ì²é
     if (y + pickerHeight > viewportHeight + scrollY) {
-      y = rect.top - pickerHeight - 5; // åœ¨å…ƒç´ ä¸Šæ–¹æ˜¾ç¤º
+      y = rect.top - pickerHeight - 5; // ÔÚÔªËØÉÏ·½ÏÔÊ¾
     }
     
-    // ä¸Šè¾¹ç•Œæ£€æŸ¥
+    // ÉÏ±ß½ç¼ì²é
     if (y < scrollY + 10) {
       y = scrollY + 10;
     }
@@ -168,71 +171,71 @@ const TagManager: React.FC<TagManagerProps> = ({
     position: { x: 0, y: 0 }
   });
   
-  // æ·»åŠ hoverçŠ¶æ€ç®¡ç†
+  // Ìí¼Óhover×´Ì¬¹ÜÀí
   const [hoveredTagId, setHoveredTagId] = useState<string | null>(null);
   
-  // ğŸ”§ è¿½è¸ªé€‰ä¸­çš„æ ‡ç­¾IDåˆ—è¡¨
+  // ?? ×·×ÙÑ¡ÖĞµÄ±êÇ©IDÁĞ±í
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 
-  // åˆå§‹åŒ–æ•°æ®- ä»localStorageåŠ è½½æˆ–ä½¿ç”¨ç©ºæ•°æ®
+  // ³õÊ¼»¯Êı¾İ- ´ÓlocalStorage¼ÓÔØ»òÊ¹ÓÃ¿ÕÊı¾İ
   useEffect(() => {
     const startTime = performance.now();
-    console.log('ğŸš€ [TagManager] Component initializing...');
+    TagManagerLogger.log('?? [TagManager] Component initializing...');
     
     const savedTags = loadTagsFromStorage();
     const savedCounts = loadCheckinCountsFromStorage();
     
-    console.log(`ğŸ“¦ [TagManager] Loaded ${savedTags.length} tags from storage`);
+    TagManagerLogger.log(`?? [TagManager] Loaded ${savedTags.length} tags from storage`);
     
-    // âš¡ æ™ºèƒ½è¿ç§»ï¼šæ ¹æ®parentIdå…³ç³»è®¡ç®—levelå±‚çº§
+    // ? ÖÇÄÜÇ¨ÒÆ£º¸ù¾İparentId¹ØÏµ¼ÆËãlevel²ã¼¶
     const calculateTagLevel = (tag: ExtendedHierarchicalTag, allTags: ExtendedHierarchicalTag[], visited = new Set<string>()): number => {
-      // å¦‚æœå·²ç»æœ‰level,ç›´æ¥è¿”å›
+      // Èç¹ûÒÑ¾­ÓĞlevel,Ö±½Ó·µ»Ø
       if (tag.level !== undefined) {
         return tag.level;
       }
       
-      // å¦‚æœæ²¡æœ‰parentId,æ˜¯é¡¶çº§æ ‡ç­¾
+      // Èç¹ûÃ»ÓĞparentId,ÊÇ¶¥¼¶±êÇ©
       if (!tag.parentId) {
         return 0;
       }
       
-      // é˜²æ­¢å¾ªç¯å¼•ç”¨
+      // ·ÀÖ¹Ñ­»·ÒıÓÃ
       if (visited.has(tag.id)) {
-        console.warn('âš ï¸ æ£€æµ‹åˆ°å¾ªç¯å¼•ç”¨:', tag.id, tag.name);
+        TagManagerLogger.warn('?? ¼ì²âµ½Ñ­»·ÒıÓÃ:', tag.id, tag.name);
         return 0;
       }
       visited.add(tag.id);
       
-      // æ‰¾åˆ°çˆ¶æ ‡ç­¾
+      // ÕÒµ½¸¸±êÇ©
       const parent = allTags.find(t => t.id === tag.parentId);
       if (!parent) {
-        console.warn('âš ï¸ æ‰¾ä¸åˆ°çˆ¶æ ‡ç­¾:', tag.parentId, 'å¯¹äºæ ‡ç­¾:', tag.name);
+        TagManagerLogger.warn('?? ÕÒ²»µ½¸¸±êÇ©:', tag.parentId, '¶ÔÓÚ±êÇ©:', tag.name);
         return 0;
       }
       
-      // é€’å½’è®¡ç®—çˆ¶æ ‡ç­¾çš„level,ç„¶å+1
+      // µİ¹é¼ÆËã¸¸±êÇ©µÄlevel,È»ºó+1
       return calculateTagLevel(parent, allTags, visited) + 1;
     };
     
-    // ä¸ºæ‰€æœ‰æ ‡ç­¾è®¡ç®—level
+    // ÎªËùÓĞ±êÇ©¼ÆËãlevel
     const migratedTags = savedTags.map((tag, index) => ({
       ...tag,
       level: calculateTagLevel(tag, savedTags),
       parentId: tag.parentId || undefined,
-      position: tag.position !== undefined ? tag.position : index // ğŸ”§ å¦‚æœæ²¡æœ‰positionï¼Œä½¿ç”¨ç´¢å¼•
+      position: tag.position !== undefined ? tag.position : index // ?? Èç¹ûÃ»ÓĞposition£¬Ê¹ÓÃË÷Òı
     }));
     
-    // ğŸ” è¯Šæ–­ï¼šè¾“å‡ºæ‰€æœ‰æ ‡ç­¾çš„å±‚çº§ä¿¡æ¯
-    console.log('ğŸ” [TagManager] æ ‡ç­¾å±‚çº§ä¿¡æ¯:');
+    // ?? Õï¶Ï£ºÊä³öËùÓĞ±êÇ©µÄ²ã¼¶ĞÅÏ¢
+    TagManagerLogger.log('?? [TagManager] ±êÇ©²ã¼¶ĞÅÏ¢:');
     console.table(migratedTags.map(tag => ({
       name: tag.name,
       level: tag.level,
       position: tag.position,
-      parentId: tag.parentId || '(æ— )',
+      parentId: tag.parentId || '(ÎŞ)',
       hasLevel: tag.level !== undefined
     })));
     
-    // ğŸ”§ å¦‚æœæœ‰æ ‡ç­¾çš„levelè¢«è®¡ç®—å‡ºæ¥äº†ï¼Œæˆ–è€…positionè¢«åˆå§‹åŒ–äº†ï¼Œä¿å­˜å›å­˜å‚¨ï¼ˆä¸€æ¬¡æ€§è¿ç§»ï¼‰
+    // ?? Èç¹ûÓĞ±êÇ©µÄlevel±»¼ÆËã³öÀ´ÁË£¬»òÕßposition±»³õÊ¼»¯ÁË£¬±£´æ»Ø´æ´¢£¨Ò»´ÎĞÔÇ¨ÒÆ£©
     const hasLevelCalculated = migratedTags.some(tag => 
       tag.level !== undefined && tag.level > 0 && savedTags.find(t => t.id === tag.id && t.level === undefined)
     );
@@ -240,39 +243,39 @@ const TagManager: React.FC<TagManagerProps> = ({
       tag.position !== undefined && savedTags.find(t => t.id === tag.id && t.position === undefined)
     );
     if (hasLevelCalculated || hasPositionInitialized) {
-      console.log('ğŸ’¾ [TagManager] Saving calculated levels and positions to storage...');
+      TagManagerLogger.log('?? [TagManager] Saving calculated levels and positions to storage...');
       saveTagsToStorage(migratedTags);
     }
     
-    // å¦‚æœæœ‰ä¿å­˜çš„æ•°æ®ï¼Œä½¿ç”¨å®ƒä»¬ï¼Œå¦åˆ™åˆå§‹åŒ–ä¸ºç©º
+    // Èç¹ûÓĞ±£´æµÄÊı¾İ£¬Ê¹ÓÃËüÃÇ£¬·ñÔò³õÊ¼»¯Îª¿Õ
     setTags(migratedTags);
     setCheckinCounts(savedCounts);
     
     const duration = performance.now() - startTime;
-    console.log(`âœ… [TagManager] Initialized in ${duration.toFixed(2)}ms`);
+    TagManagerLogger.log(`? [TagManager] Initialized in ${duration.toFixed(2)}ms`);
   }, []);
 
-  // è‡ªåŠ¨ä¿å­˜æ ‡ç­¾æ•°æ®åˆ°localStorage
+  // ×Ô¶¯±£´æ±êÇ©Êı¾İµ½localStorage
   useEffect(() => {
     if (tags.length > 0) {
       saveTagsToStorage(tags);
     }
   }, [tags]);
 
-  // è‡ªåŠ¨ä¿å­˜æ‰“å¡è®¡æ•°åˆ°localStorage
+  // ×Ô¶¯±£´æ´ò¿¨¼ÆÊıµ½localStorage
   useEffect(() => {
     if (Object.keys(checkinCounts).length > 0) {
       saveCheckinCountsToStorage(checkinCounts);
     }
   }, [checkinCounts]);
 
-  // å¼ºåˆ¶æ›´æ–°ä»¥æ˜¾ç¤ºå®æ—¶è®¡æ—¶
+  // Ç¿ÖÆ¸üĞÂÒÔÏÔÊ¾ÊµÊ±¼ÆÊ±
   const [, forceUpdate] = useState(0);
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
     
     if (globalTimer?.isRunning) {
-      // æ¯ç§’å¼ºåˆ¶æ›´æ–°ä¸€æ¬¡
+      // Ã¿ÃëÇ¿ÖÆ¸üĞÂÒ»´Î
       interval = setInterval(() => {
         forceUpdate(prev => prev + 1);
       }, 1000);
@@ -285,58 +288,58 @@ const TagManager: React.FC<TagManagerProps> = ({
     };
   }, [globalTimer?.isRunning]);
 
-  // ç›‘å¬å…¨å±€ç„¦ç‚¹äº‹ä»¶çš„useEffect - ç®€åŒ–ç‰ˆæœ¬ï¼Œä»…ç”¨äºè°ƒè¯•
+  // ¼àÌıÈ«¾Ö½¹µãÊÂ¼şµÄuseEffect - ¼ò»¯°æ±¾£¬½öÓÃÓÚµ÷ÊÔ
   useEffect(() => {
     const handleGlobalFocus = (e: FocusEvent) => {
       const target = e.target as HTMLElement;
-      if (target && target.textContent?.includes('æ–°å¢æ ‡ç­¾')) {
-        console.log('ğŸ¯ GLOBAL FOCUS on gray text detected! (Should not happen in new implementation)');
-        console.log('ğŸ” Focus event details:', {
+      if (target && target.textContent?.includes('ĞÂÔö±êÇ©')) {
+        TagManagerLogger.log('?? GLOBAL FOCUS on gray text detected! (Should not happen in new implementation)');
+        TagManagerLogger.log('?? Focus event details:', {
           target: target,
           relatedTarget: e.relatedTarget,
           eventType: e.type,
           timeStamp: e.timeStamp,
           bubbles: e.bubbles
         });
-        console.log('ğŸ” Call stack:', new Error().stack);
+        TagManagerLogger.log('?? Call stack:', new Error().stack);
       }
     };
 
-    document.addEventListener('focus', handleGlobalFocus, true); // ä½¿ç”¨captureé˜¶æ®µ
+    document.addEventListener('focus', handleGlobalFocus, true); // Ê¹ÓÃcapture½×¶Î
     
     return () => {
       document.removeEventListener('focus', handleGlobalFocus, true);
     };
   }, []);
 
-  // é€šçŸ¥çˆ¶ç»„ä»¶æ ‡ç­¾å˜åŒ– - æ·»åŠ é˜²æŠ–é¿å…é‡å¤è°ƒç”¨
+  // Í¨Öª¸¸×é¼ş±êÇ©±ä»¯ - Ìí¼Ó·À¶¶±ÜÃâÖØ¸´µ÷ÓÃ
   useEffect(() => {
-    console.log('ğŸ·ï¸ [FigmaTagManager] Tags changed, current count:', tags.length);
+    TagManagerLogger.log('??? [FigmaTagManager] Tags changed, current count:', tags.length);
     
-    // ä½¿ç”¨ setTimeout é˜²æŠ–ï¼Œé¿å…é¢‘ç¹è§¦å‘
+    // Ê¹ÓÃ setTimeout ·À¶¶£¬±ÜÃâÆµ·±´¥·¢
     const timer = setTimeout(() => {
       if (onTagsChange && tags.length > 0) {
-        // ğŸ” æ·»åŠ å±‚çº§ä¿¡æ¯è¯Šæ–­
-        console.log('ğŸ·ï¸ [FigmaTagManager] Calling onTagsChange with tags:', tags.map(t => ({
+        // ?? Ìí¼Ó²ã¼¶ĞÅÏ¢Õï¶Ï
+        TagManagerLogger.log('??? [FigmaTagManager] Calling onTagsChange with tags:', tags.map(t => ({
           id: t.id, 
           name: t.name, 
-          level: t.level, // ğŸ” æ£€æŸ¥levelæ˜¯å¦å­˜åœ¨
+          level: t.level, // ?? ¼ì²élevelÊÇ·ñ´æÔÚ
           parentId: t.parentId
         })));
         onTagsChange(tags);
       } else if (onTagsChange && tags.length === 0) {
-        console.log('ğŸ·ï¸ [FigmaTagManager] Tags array is empty, not calling onTagsChange');
+        TagManagerLogger.log('??? [FigmaTagManager] Tags array is empty, not calling onTagsChange');
       } else if (!onTagsChange) {
-        console.warn('âš ï¸ [FigmaTagManager] onTagsChange callback not provided!');
+        TagManagerLogger.warn('?? [FigmaTagManager] onTagsChange callback not provided!');
       }
-    }, 100); // 100ms é˜²æŠ–
+    }, 100); // 100ms ·À¶¶
     
     return () => clearTimeout(timer);
   }, [tags, onTagsChange]);
 
   // Removed global keyboard handler to prevent duplicate events with component handlers
 
-  // å¤„ç†é¢œè‰²é€‰æ‹©
+  // ´¦ÀíÑÕÉ«Ñ¡Ôñ
   const handleColorClick = (tagId: string, event: React.MouseEvent) => {
     event.stopPropagation();
     const rect = event.currentTarget.getBoundingClientRect();
@@ -358,7 +361,7 @@ const TagManager: React.FC<TagManagerProps> = ({
     setShowColorPicker({ show: false, tagId: '', position: { x: 0, y: 0 } });
   };
 
-  // å¤„ç†emojié€‰æ‹©
+  // ´¦ÀíemojiÑ¡Ôñ
   const handleEmojiClick = (tagId: string, event: React.MouseEvent) => {
     event.stopPropagation();
     const rect = event.currentTarget.getBoundingClientRect();
@@ -381,9 +384,9 @@ const TagManager: React.FC<TagManagerProps> = ({
     setShowEmojiPicker({ show: false, tagId: '', position: { x: 0, y: 0 } });
   };
 
-  // æ‹–æ‹½å¤„ç†å‡½æ•°
+  // ÍÏ×§´¦Àíº¯Êı
   const handleMouseDown = React.useCallback((e: React.MouseEvent) => {
-    // æ’é™¤emojiæŒ‰é’®ã€æœç´¢æ¡†ç­‰äº¤äº’å…ƒç´ 
+    // ÅÅ³ıemoji°´Å¥¡¢ËÑË÷¿òµÈ½»»¥ÔªËØ
     const target = e.target as HTMLElement;
     const isInteractiveElement = target.tagName === 'BUTTON' || 
                                 target.tagName === 'INPUT' || 
@@ -418,7 +421,7 @@ const TagManager: React.FC<TagManagerProps> = ({
     setIsDragging(false);
   }, []);
 
-  // æ·»åŠ å…¨å±€é¼ æ ‡äº‹ä»¶ç›‘å¬
+  // Ìí¼ÓÈ«¾ÖÊó±êÊÂ¼ş¼àÌı
   React.useEffect(() => {
     if (isDragging) {
       document.addEventListener('mousemove', handleMouseMove);
@@ -430,21 +433,21 @@ const TagManager: React.FC<TagManagerProps> = ({
     }
   }, [isDragging, dragOffset, handleMouseMove, handleMouseUp]);
 
-  // ğŸ”§ å¤„ç†ç²˜è´´äº‹ä»¶ - æ‰¹é‡å¯¼å…¥æ ‡ç­¾
+  // ?? ´¦ÀíÕ³ÌùÊÂ¼ş - ÅúÁ¿µ¼Èë±êÇ©
   useEffect(() => {
-    // ğŸ”§ å¤„ç†å¤åˆ¶äº‹ä»¶ - åœ¨å‰ªè´´æ¿ä¸­æ·»åŠ å±‚çº§å’Œé¢œè‰²ä¿¡æ¯
+    // ?? ´¦Àí¸´ÖÆÊÂ¼ş - ÔÚ¼ôÌù°åÖĞÌí¼Ó²ã¼¶ºÍÑÕÉ«ĞÅÏ¢
     const handleCopy = (e: ClipboardEvent) => {
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) return;
       
-      // æ£€æŸ¥æ˜¯å¦é€‰ä¸­äº†æ ‡ç­¾
+      // ¼ì²éÊÇ·ñÑ¡ÖĞÁË±êÇ©
       const range = selection.getRangeAt(0);
       const container = range.commonAncestorContainer;
       const parentElement = container.nodeType === Node.TEXT_NODE 
         ? container.parentElement 
         : container as HTMLElement;
       
-      // æŸ¥æ‰¾æ‰€æœ‰é€‰ä¸­çš„æ ‡ç­¾
+      // ²éÕÒËùÓĞÑ¡ÖĞµÄ±êÇ©
       const selectedTags = tags.filter(tag => {
         const tagElement = document.querySelector(`[data-tag-id="${tag.id}"]`);
         if (!tagElement) return false;
@@ -453,22 +456,22 @@ const TagManager: React.FC<TagManagerProps> = ({
       
       if (selectedTags.length === 0) return;
       
-      console.log('ğŸ“‹ [Copy] Selected tags:', selectedTags.length);
+      TagManagerLogger.log('?? [Copy] Selected tags:', selectedTags.length);
       
-      // ç”Ÿæˆå¸¦ç¼©è¿›çš„æ–‡æœ¬æ ¼å¼
+      // Éú³É´øËõ½øµÄÎÄ±¾¸ñÊ½
       const textFormat = selectedTags
         .map(tag => {
-          const indent = ' '.repeat((tag.level || 0) * 2); // æ¯çº§2ä¸ªç©ºæ ¼
+          const indent = ' '.repeat((tag.level || 0) * 2); // Ã¿¼¶2¸ö¿Õ¸ñ
           const emoji = tag.emoji || '';
           return `${indent}#${emoji} ${tag.name}`;
         })
         .join('\n');
       
-      // ç”ŸæˆJSONæ ¼å¼ï¼ˆåŒ…å«å®Œæ•´ä¿¡æ¯ï¼Œæ ‡è®°ä¸ºå¤åˆ¶æ“ä½œï¼‰
+      // Éú³ÉJSON¸ñÊ½£¨°üº¬ÍêÕûĞÅÏ¢£¬±ê¼ÇÎª¸´ÖÆ²Ù×÷£©
       const jsonData = {
-        isCut: false, // æ ‡è®°ä¸ºå¤åˆ¶æ“ä½œ
+        isCut: false, // ±ê¼ÇÎª¸´ÖÆ²Ù×÷
         tags: selectedTags.map(tag => ({
-          id: tag.id, // ä¿ç•™IDç”¨äºåç»­å¤„ç†
+          id: tag.id, // ±£ÁôIDÓÃÓÚºóĞø´¦Àí
           name: tag.name,
           emoji: tag.emoji,
           color: tag.color,
@@ -479,34 +482,34 @@ const TagManager: React.FC<TagManagerProps> = ({
       
       const jsonFormat = JSON.stringify(jsonData);
       
-      // ğŸ”§ Electronç¯å¢ƒä¸‹ï¼Œè‡ªå®šä¹‰MIMEç±»å‹å¯èƒ½ä¸è¢«æ”¯æŒ
-      // ä½¿ç”¨ç‰¹æ®Šæ ‡è®° + Base64 ç¼–ç çš„æ–¹å¼å­˜å‚¨JSONæ•°æ®åœ¨æ–‡æœ¬ä¸­
+      // ?? Electron»·¾³ÏÂ£¬×Ô¶¨ÒåMIMEÀàĞÍ¿ÉÄÜ²»±»Ö§³Ö
+      // Ê¹ÓÃÌØÊâ±ê¼Ç + Base64 ±àÂëµÄ·½Ê½´æ´¢JSONÊı¾İÔÚÎÄ±¾ÖĞ
       const jsonBase64 = btoa(encodeURIComponent(jsonFormat));
       const textWithJson = `__REMARKABLE_TAGS_JSON__${jsonBase64}__\n${textFormat}`;
       
-      // åŒæ—¶å†™å…¥ä¸¤ç§æ ¼å¼åˆ°å‰ªè´´æ¿
+      // Í¬Ê±Ğ´ÈëÁ½ÖÖ¸ñÊ½µ½¼ôÌù°å
       try {
         e.clipboardData?.setData('text/plain', textWithJson);
-        e.clipboardData?.setData('application/json', jsonFormat); // å°è¯•è®¾ç½®JSONï¼ˆå¯èƒ½ä¸è¢«æ”¯æŒï¼‰
+        e.clipboardData?.setData('application/json', jsonFormat); // ³¢ÊÔÉèÖÃJSON£¨¿ÉÄÜ²»±»Ö§³Ö£©
         e.preventDefault();
         
-        console.log('ğŸ“‹ [Copy] Copied to clipboard:', {
+        TagManagerLogger.log('?? [Copy] Copied to clipboard:', {
           textFormat: textFormat,
           jsonData: jsonData,
           tagsCount: selectedTags.length,
           hasCustomFormat: true
         });
       } catch (error) {
-        console.error('ğŸ“‹ [Copy] Error setting clipboard data:', error);
+        TagManagerLogger.error('?? [Copy] Error setting clipboard data:', error);
       }
     };
 
-    // âœ‚ï¸ å¤„ç†å‰ªåˆ‡äº‹ä»¶ - æ ‡è®°ä¸ºç§»åŠ¨æ“ä½œ
+    // ?? ´¦Àí¼ôÇĞÊÂ¼ş - ±ê¼ÇÎªÒÆ¶¯²Ù×÷
     const handleCut = (e: ClipboardEvent) => {
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) return;
       
-      // æŸ¥æ‰¾æ‰€æœ‰é€‰ä¸­çš„æ ‡ç­¾
+      // ²éÕÒËùÓĞÑ¡ÖĞµÄ±êÇ©
       const selectedTags = tags.filter(tag => {
         const tagElement = document.querySelector(`[data-tag-id="${tag.id}"]`);
         if (!tagElement) return false;
@@ -515,9 +518,9 @@ const TagManager: React.FC<TagManagerProps> = ({
       
       if (selectedTags.length === 0) return;
       
-      console.log('âœ‚ï¸ [Cut] Selected tags:', selectedTags.length);
+      TagManagerLogger.log('?? [Cut] Selected tags:', selectedTags.length);
       
-      // ç”Ÿæˆå¸¦ç¼©è¿›çš„æ–‡æœ¬æ ¼å¼
+      // Éú³É´øËõ½øµÄÎÄ±¾¸ñÊ½
       const textFormat = selectedTags
         .map(tag => {
           const indent = ' '.repeat((tag.level || 0) * 2);
@@ -526,11 +529,11 @@ const TagManager: React.FC<TagManagerProps> = ({
         })
         .join('\n');
       
-      // ç”ŸæˆJSONæ ¼å¼ï¼ˆåŒ…å«å®Œæ•´ä¿¡æ¯å’ŒåŸå§‹IDï¼Œæ ‡è®°ä¸ºå‰ªåˆ‡æ“ä½œï¼‰
+      // Éú³ÉJSON¸ñÊ½£¨°üº¬ÍêÕûĞÅÏ¢ºÍÔ­Ê¼ID£¬±ê¼ÇÎª¼ôÇĞ²Ù×÷£©
       const jsonData = {
-        isCut: true, // æ ‡è®°ä¸ºå‰ªåˆ‡æ“ä½œ
+        isCut: true, // ±ê¼ÇÎª¼ôÇĞ²Ù×÷
         tags: selectedTags.map(tag => ({
-          id: tag.id, // ä¿ç•™åŸå§‹IDç”¨äºç§»åŠ¨
+          id: tag.id, // ±£ÁôÔ­Ê¼IDÓÃÓÚÒÆ¶¯
           name: tag.name,
           emoji: tag.emoji,
           color: tag.color,
@@ -541,42 +544,42 @@ const TagManager: React.FC<TagManagerProps> = ({
       
       const jsonFormat = JSON.stringify(jsonData);
       
-      // ğŸ”§ ä½¿ç”¨ç‰¹æ®Šæ ‡è®° + Base64 ç¼–ç å­˜å‚¨JSONæ•°æ®
+      // ?? Ê¹ÓÃÌØÊâ±ê¼Ç + Base64 ±àÂë´æ´¢JSONÊı¾İ
       const jsonBase64 = btoa(encodeURIComponent(jsonFormat));
       const textWithJson = `__REMARKABLE_TAGS_JSON__${jsonBase64}__\n${textFormat}`;
       
-      // å†™å…¥å‰ªè´´æ¿
+      // Ğ´Èë¼ôÌù°å
       try {
         e.clipboardData?.setData('text/plain', textWithJson);
         e.clipboardData?.setData('application/json', jsonFormat);
         e.preventDefault();
         
-        console.log('âœ‚ï¸ [Cut] Cut to clipboard:', {
+        TagManagerLogger.log('?? [Cut] Cut to clipboard:', {
           textFormat: textFormat,
           jsonData: jsonData,
           tagsCount: selectedTags.length
         });
         
-        // ä¿å­˜å¾…åˆ é™¤çš„æ ‡ç­¾IDï¼ˆç²˜è´´ååˆ é™¤ï¼‰
+        // ±£´æ´ıÉ¾³ıµÄ±êÇ©ID£¨Õ³ÌùºóÉ¾³ı£©
         (window as any).__cutTagIds = selectedTags.map(t => t.id);
       } catch (error) {
-        console.error('âœ‚ï¸ [Cut] Error setting clipboard data:', error);
+        TagManagerLogger.error('?? [Cut] Error setting clipboard data:', error);
       }
     };
     
-    // ğŸ“‹ è¾…åŠ©å‡½æ•°ï¼šå¤„ç†å¤åˆ¶+ç²˜è´´ï¼ˆåˆ›å»ºæ–°æ ‡ç­¾ï¼‰
+    // ?? ¸¨Öúº¯Êı£º´¦Àí¸´ÖÆ+Õ³Ìù£¨´´½¨ĞÂ±êÇ©£©
     const handleCopyPaste = (tagsData: any[]) => {
       setTags(prevTags => {
         const newTags = [...prevTags];
         const maxPosition = Math.max(...newTags.map(t => t.position || 0), -1);
         
-        const idMap = new Map<string, string>(); // æ—§ID -> æ–°IDçš„æ˜ å°„
+        const idMap = new Map<string, string>(); // ¾ÉID -> ĞÂIDµÄÓ³Éä
         
         tagsData.forEach((tagData: any, index: number) => {
           const newId = `tag-${Date.now()}-${Math.random().toString(36).substring(7)}`;
           idMap.set(tagData.id, newId);
           
-          // æŸ¥æ‰¾çˆ¶æ ‡ç­¾
+          // ²éÕÒ¸¸±êÇ©
           let parentId: string | undefined = undefined;
           if (tagData.level > 0) {
             for (let i = index - 1; i >= 0; i--) {
@@ -598,28 +601,28 @@ const TagManager: React.FC<TagManagerProps> = ({
             position: maxPosition + index + 1
           };
           
-          console.log(`ğŸ“‹ [CopyPaste] Creating tag #${index}:`, { name: newTag.name, color: newTag.color, level: newTag.level });
+          TagManagerLogger.log(`?? [CopyPaste] Creating tag #${index}:`, { name: newTag.name, color: newTag.color, level: newTag.level });
           newTags.push(newTag);
         });
         
-        console.log('âœ… [CopyPaste] Created new tags:', tagsData.length);
+        TagManagerLogger.log('? [CopyPaste] Created new tags:', tagsData.length);
         return newTags;
       });
     };
     
-    // âœ‚ï¸ è¾…åŠ©å‡½æ•°ï¼šå¤„ç†å‰ªåˆ‡+ç²˜è´´ï¼ˆç§»åŠ¨æ ‡ç­¾ï¼‰
+    // ?? ¸¨Öúº¯Êı£º´¦Àí¼ôÇĞ+Õ³Ìù£¨ÒÆ¶¯±êÇ©£©
     const handleCutPaste = (tagsData: any[]) => {
       setTags(prevTags => {
         const cutTagIds = (window as any).__cutTagIds || [];
         const newTags = [...prevTags];
         const maxPosition = Math.max(...newTags.map(t => t.position || 0), -1);
         
-        // 1. åˆ é™¤åŸä½ç½®çš„æ ‡ç­¾
+        // 1. É¾³ıÔ­Î»ÖÃµÄ±êÇ©
         const remainingTags = newTags.filter(t => !cutTagIds.includes(t.id));
         
-        // 2. åœ¨æ–°ä½ç½®æ·»åŠ æ ‡ç­¾ï¼ˆä¿ç•™åŸIDï¼‰
+        // 2. ÔÚĞÂÎ»ÖÃÌí¼Ó±êÇ©£¨±£ÁôÔ­ID£©
         tagsData.forEach((tagData: any, index: number) => {
-          // æŸ¥æ‰¾æ–°çš„çˆ¶æ ‡ç­¾ID
+          // ²éÕÒĞÂµÄ¸¸±êÇ©ID
           let newParentId: string | undefined = undefined;
           if (tagData.level > 0) {
             for (let i = index - 1; i >= 0; i--) {
@@ -630,9 +633,9 @@ const TagManager: React.FC<TagManagerProps> = ({
             }
           }
           
-          // ä¿ç•™åŸID
+          // ±£ÁôÔ­ID
           const movedTag: ExtendedHierarchicalTag = {
-            id: tagData.id, // ä¿ç•™åŸå§‹ID
+            id: tagData.id, // ±£ÁôÔ­Ê¼ID
             name: tagData.name,
             color: tagData.color || '#3b82f6',
             emoji: tagData.emoji,
@@ -641,14 +644,14 @@ const TagManager: React.FC<TagManagerProps> = ({
             position: maxPosition + index + 1
           };
           
-          console.log(`âœ‚ï¸ [CutPaste] Moving tag #${index}:`, { name: movedTag.name, color: movedTag.color, level: movedTag.level });
+          TagManagerLogger.log(`?? [CutPaste] Moving tag #${index}:`, { name: movedTag.name, color: movedTag.color, level: movedTag.level });
           remainingTags.push(movedTag);
         });
         
-        // æ¸…é™¤å¾…åˆ é™¤æ ‡è®°
+        // Çå³ı´ıÉ¾³ı±ê¼Ç
         delete (window as any).__cutTagIds;
         
-        console.log('âœ… [CutPaste] Moved tags:', tagsData.length);
+        TagManagerLogger.log('? [CutPaste] Moved tags:', tagsData.length);
         return remainingTags;
       });
     };
@@ -656,39 +659,39 @@ const TagManager: React.FC<TagManagerProps> = ({
     const handlePaste = (e: ClipboardEvent) => {
       const target = e.target as HTMLElement;
       
-      // ğŸ”§ ä¼˜å…ˆæ£€æŸ¥æ˜¯å¦æ˜¯æˆ‘ä»¬çš„è‡ªå®šä¹‰æ ¼å¼ï¼ˆå¸¦ __REMARKABLE_TAGS_JSON__ æ ‡è®°ï¼‰
+      // ?? ÓÅÏÈ¼ì²éÊÇ·ñÊÇÎÒÃÇµÄ×Ô¶¨Òå¸ñÊ½£¨´ø __REMARKABLE_TAGS_JSON__ ±ê¼Ç£©
       const pastedText = e.clipboardData?.getData('text/plain') || e.clipboardData?.getData('text');
       const isRemarkableFormat = pastedText?.startsWith('__REMARKABLE_TAGS_JSON__');
       
-      console.log('ğŸ“‹ [Paste] Event triggered:', {
+      TagManagerLogger.log('?? [Paste] Event triggered:', {
         targetTag: target.tagName,
         isEditable: target.contentEditable === 'true',
         isRemarkableFormat: isRemarkableFormat,
         className: target.className
       });
       
-      // å¦‚æœä¸æ˜¯æˆ‘ä»¬çš„æ ¼å¼ï¼Œä¸”ç›®æ ‡æ˜¯å¯ç¼–è¾‘å…ƒç´ ï¼Œå°±è®©æµè§ˆå™¨å¤„ç†é»˜è®¤ç²˜è´´
+      // Èç¹û²»ÊÇÎÒÃÇµÄ¸ñÊ½£¬ÇÒÄ¿±êÊÇ¿É±à¼­ÔªËØ£¬¾ÍÈÃä¯ÀÀÆ÷´¦ÀíÄ¬ÈÏÕ³Ìù
       if (!isRemarkableFormat && (target.contentEditable === 'true' || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
-        console.log('ğŸ“‹ [Paste] Allowing default paste behavior in editable element');
+        TagManagerLogger.log('?? [Paste] Allowing default paste behavior in editable element');
         return;
       }
       
-      // å¦‚æœæ˜¯æˆ‘ä»¬çš„æ ¼å¼ï¼Œæ— è®ºåœ¨å“ªé‡Œéƒ½è¦å¤„ç†ï¼ˆåŒ…æ‹¬ç¼–è¾‘æ¡†ï¼‰
-      console.log('ğŸ“‹ [Paste] Processing paste event');
-      console.log('ğŸ“‹ [Paste] Raw pasted text FULL:', pastedText);
-      console.log('ğŸ“‹ [Paste] Text starts with marker?', isRemarkableFormat);
-      console.log('ğŸ“‹ [Paste] First 200 chars:', pastedText?.substring(0, 200));
+      // Èç¹ûÊÇÎÒÃÇµÄ¸ñÊ½£¬ÎŞÂÛÔÚÄÄÀï¶¼Òª´¦Àí£¨°üÀ¨±à¼­¿ò£©
+      TagManagerLogger.log('?? [Paste] Processing paste event');
+      TagManagerLogger.log('?? [Paste] Raw pasted text FULL:', pastedText);
+      TagManagerLogger.log('?? [Paste] Text starts with marker?', isRemarkableFormat);
+      TagManagerLogger.log('?? [Paste] First 200 chars:', pastedText?.substring(0, 200));
       
       if (pastedText && pastedText.startsWith('__REMARKABLE_TAGS_JSON__')) {
         try {
-          // æå– Base64 ç¼–ç çš„ JSON
+          // ÌáÈ¡ Base64 ±àÂëµÄ JSON
           const match = pastedText.match(/^__REMARKABLE_TAGS_JSON__(.+?)__\n/);
           if (match) {
             const jsonBase64 = match[1];
             const jsonFormat = decodeURIComponent(atob(jsonBase64));
             const parsedData = JSON.parse(jsonFormat);
             
-            console.log('âœ… [Paste] Extracted JSON from Base64 text successfully:', parsedData);
+            TagManagerLogger.log('? [Paste] Extracted JSON from Base64 text successfully:', parsedData);
             
             const isCut = parsedData.isCut === true;
             const tagsData = parsedData.tags || [];
@@ -697,67 +700,67 @@ const TagManager: React.FC<TagManagerProps> = ({
               e.preventDefault();
               
               if (isCut) {
-                // âœ‚ï¸ å‰ªåˆ‡ + ç²˜è´´ = ç§»åŠ¨æ“ä½œï¼ˆä¿ç•™åŸIDï¼‰
-                console.log('âœ‚ï¸ [Paste] Detected CUT operation from Base64');
+                // ?? ¼ôÇĞ + Õ³Ìù = ÒÆ¶¯²Ù×÷£¨±£ÁôÔ­ID£©
+                TagManagerLogger.log('?? [Paste] Detected CUT operation from Base64');
                 handleCutPaste(tagsData);
               } else {
-                // ğŸ“‹ å¤åˆ¶ + ç²˜è´´ = æ–°å»ºæ“ä½œï¼ˆç”Ÿæˆæ–°IDï¼‰
-                console.log('ğŸ“‹ [Paste] Detected COPY operation from Base64');
+                // ?? ¸´ÖÆ + Õ³Ìù = ĞÂ½¨²Ù×÷£¨Éú³ÉĞÂID£©
+                TagManagerLogger.log('?? [Paste] Detected COPY operation from Base64');
                 handleCopyPaste(tagsData);
               }
-              return; // æˆåŠŸå¤„ç†ï¼Œé€€å‡º
+              return; // ³É¹¦´¦Àí£¬ÍË³ö
             }
           }
         } catch (error) {
-          console.warn('âš ï¸ [Paste] Failed to extract Base64 JSON:', error);
+          TagManagerLogger.warn('?? [Paste] Failed to extract Base64 JSON:', error);
         }
       }
       
-      // ğŸ”§ Step 2: å›é€€å°è¯•è¯»å– application/jsonï¼ˆå¤‡ç”¨æ–¹æ¡ˆï¼‰
+      // ?? Step 2: »ØÍË³¢ÊÔ¶ÁÈ¡ application/json£¨±¸ÓÃ·½°¸£©
       const jsonData = e.clipboardData?.getData('application/json');
-      console.log('ğŸ“‹ [Paste] JSON data from clipboard:', jsonData ? 'found' : 'not found');
+      TagManagerLogger.log('?? [Paste] JSON data from clipboard:', jsonData ? 'found' : 'not found');
       
       if (jsonData) {
         try {
           const parsedData = JSON.parse(jsonData);
-          console.log('âœ… [Paste] Parsed application/json successfully:', parsedData);
+          TagManagerLogger.log('? [Paste] Parsed application/json successfully:', parsedData);
           
           const isCut = parsedData.isCut === true;
-          const tagsData = parsedData.tags || parsedData; // å…¼å®¹æ—§æ ¼å¼
+          const tagsData = parsedData.tags || parsedData; // ¼æÈİ¾É¸ñÊ½
           
           if (Array.isArray(tagsData) && tagsData.length > 0) {
             e.preventDefault();
             
             if (isCut) {
-              console.log('âœ‚ï¸ [Paste] Detected CUT operation from application/json');
+              TagManagerLogger.log('?? [Paste] Detected CUT operation from application/json');
               handleCutPaste(tagsData);
             } else {
-              console.log('ğŸ“‹ [Paste] Detected COPY operation from application/json');
+              TagManagerLogger.log('?? [Paste] Detected COPY operation from application/json');
               handleCopyPaste(tagsData);
             }
-            return; // æˆåŠŸå¤„ç†JSONï¼Œé€€å‡º
+            return; // ³É¹¦´¦ÀíJSON£¬ÍË³ö
           }
         } catch (error) {
-          console.warn('âš ï¸ [Paste] Failed to parse application/json, fallback to text:', error);
+          TagManagerLogger.warn('?? [Paste] Failed to parse application/json, fallback to text:', error);
         }
       }
 
-      // ğŸ”§ Step 3: æœ€åå›é€€åˆ°çº¯æ–‡æœ¬æ ¼å¼è§£æï¼ˆâš ï¸ æ— æ³•ä¿ç•™é¢œè‰²ä¿¡æ¯ï¼‰
+      // ?? Step 3: ×îºó»ØÍËµ½´¿ÎÄ±¾¸ñÊ½½âÎö£¨?? ÎŞ·¨±£ÁôÑÕÉ«ĞÅÏ¢£©
       if (!pastedText) {
-        console.log('ğŸ“‹ [Paste] No paste data found');
+        TagManagerLogger.log('?? [Paste] No paste data found');
         return;
       }
       
-      // ç§»é™¤ Base64 æ ‡è®°å¤´ï¼ˆå¦‚æœå­˜åœ¨ï¼‰
+      // ÒÆ³ı Base64 ±ê¼ÇÍ·£¨Èç¹û´æÔÚ£©
       const cleanText = pastedText.replace(/^__REMARKABLE_TAGS_JSON__.+?__\n/, '');
-      console.log('ğŸ“‹ [Paste] Using text fallback. Clean text preview:', cleanText.substring(0, 100));
+      TagManagerLogger.log('?? [Paste] Using text fallback. Clean text preview:', cleanText.substring(0, 100));
       
-      // âš ï¸ æ–‡æœ¬æ ¼å¼æ— æ³•ä¿ç•™é¢œè‰²ä¿¡æ¯ï¼Œåªæœ‰JSONæ ¼å¼æ‰èƒ½å®Œæ•´ä¿ç•™
-      // æ ¼å¼1: # emoji åç§° (å¸¦å‰å¯¼ç©ºæ ¼)
-      // æ ¼å¼2: #emojiåç§° (ç´§å‡‘æ ¼å¼)
-      // æ ¼å¼3: # emojiåç§° (æ— ç©ºæ ¼)
+      // ?? ÎÄ±¾¸ñÊ½ÎŞ·¨±£ÁôÑÕÉ«ĞÅÏ¢£¬Ö»ÓĞJSON¸ñÊ½²ÅÄÜÍêÕû±£Áô
+      // ¸ñÊ½1: # emoji Ãû³Æ (´øÇ°µ¼¿Õ¸ñ)
+      // ¸ñÊ½2: #emojiÃû³Æ (½ô´Õ¸ñÊ½)
+      // ¸ñÊ½3: # emojiÃû³Æ (ÎŞ¿Õ¸ñ)
       const lines = cleanText.split('\n');
-      console.log('ğŸ“‹ [Paste] Total lines:', lines.length);
+      TagManagerLogger.log('?? [Paste] Total lines:', lines.length);
       
       const parsedTags: Array<{
         name: string;
@@ -768,53 +771,53 @@ const TagManager: React.FC<TagManagerProps> = ({
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        if (!line.trim()) continue; // è·³è¿‡ç©ºè¡Œ
+        if (!line.trim()) continue; // Ìø¹ı¿ÕĞĞ
         
-        console.log(`ğŸ“‹ [Paste] Line ${i}:`, {
+        TagManagerLogger.log(`?? [Paste] Line ${i}:`, {
           raw: line,
           trimmed: line.trim(),
           leadingSpaces: line.length - line.trimStart().length,
           chars: line.split('').map(c => c.charCodeAt(0))
         });
         
-        // è®¡ç®—å±‚çº§ï¼ˆå‰å¯¼ç©ºæ ¼æ•°ï¼‰
+        // ¼ÆËã²ã¼¶£¨Ç°µ¼¿Õ¸ñÊı£©
         const leadingSpaces = line.length - line.trimStart().length;
-        const level = Math.floor(leadingSpaces / 2); // æ¯2ä¸ªç©ºæ ¼ = 1çº§
+        const level = Math.floor(leadingSpaces / 2); // Ã¿2¸ö¿Õ¸ñ = 1¼¶
         
         const trimmedLine = line.trim();
         
-        // å°è¯•å¤šç§åŒ¹é…æ¨¡å¼
+        // ³¢ÊÔ¶àÖÖÆ¥ÅäÄ£Ê½
         let emoji: string | undefined;
         let name: string;
         
-        // æ¨¡å¼1: # emoji åç§° (æ ‡å‡†æ ¼å¼)
+        // Ä£Ê½1: # emoji Ãû³Æ (±ê×¼¸ñÊ½)
         const pattern1 = /^#\s*([^\s\w]+)\s+(.+)$/;
         const match1 = trimmedLine.match(pattern1);
         
-        // æ¨¡å¼2: #emojiåç§° (ç´§å‡‘æ ¼å¼)
+        // Ä£Ê½2: #emojiÃû³Æ (½ô´Õ¸ñÊ½)
         const pattern2 = /^#([^\s\w]+)(.+)$/;
         const match2 = trimmedLine.match(pattern2);
         
-        // æ¨¡å¼3: # åç§° (æ— emoji)
+        // Ä£Ê½3: # Ãû³Æ (ÎŞemoji)
         const pattern3 = /^#\s+(.+)$/;
         const match3 = trimmedLine.match(pattern3);
         
         if (match1) {
           emoji = match1[1];
           name = match1[2].trim();
-          console.log(`âœ… [Paste] Matched pattern1:`, { emoji, name, level });
+          TagManagerLogger.log(`? [Paste] Matched pattern1:`, { emoji, name, level });
         } else if (match2) {
           emoji = match2[1];
           name = match2[2].trim();
-          console.log(`âœ… [Paste] Matched pattern2:`, { emoji, name, level });
+          TagManagerLogger.log(`? [Paste] Matched pattern2:`, { emoji, name, level });
         } else if (match3) {
           emoji = undefined;
           name = match3[1].trim();
-          console.log(`âœ… [Paste] Matched pattern3:`, { name, level });
+          TagManagerLogger.log(`? [Paste] Matched pattern3:`, { name, level });
         } else if (trimmedLine.startsWith('#')) {
-          // å…œåº•ï¼šæå–#åçš„æ‰€æœ‰å†…å®¹
+          // ¶µµ×£ºÌáÈ¡#ºóµÄËùÓĞÄÚÈİ
           const content = trimmedLine.substring(1).trim();
-          // å°è¯•åˆ†ç¦»emojiå’Œåç§°
+          // ³¢ÊÔ·ÖÀëemojiºÍÃû³Æ
           const emojiMatch = content.match(/^([^\w\s]+)\s*(.*)$/);
           if (emojiMatch) {
             emoji = emojiMatch[1];
@@ -822,9 +825,9 @@ const TagManager: React.FC<TagManagerProps> = ({
           } else {
             name = content;
           }
-          console.log(`âš ï¸ [Paste] Fallback parsing:`, { emoji, name, level, original: trimmedLine });
+          TagManagerLogger.log(`?? [Paste] Fallback parsing:`, { emoji, name, level, original: trimmedLine });
         } else {
-          console.log(`âŒ [Paste] Line doesn't start with #, skipping:`, trimmedLine);
+          TagManagerLogger.log(`? [Paste] Line doesn't start with #, skipping:`, trimmedLine);
           continue;
         }
         
@@ -839,10 +842,10 @@ const TagManager: React.FC<TagManagerProps> = ({
       }
 
       if (parsedTags.length > 0) {
-        console.log('ğŸ“‹ [Paste] Parsed tags:', parsedTags);
+        TagManagerLogger.log('?? [Paste] Parsed tags:', parsedTags);
         e.preventDefault();
         
-        // æ‰¹é‡åˆ›å»ºæ ‡ç­¾
+        // ÅúÁ¿´´½¨±êÇ©
         setTags(prevTags => {
           const newTags = [...prevTags];
           const maxPosition = Math.max(...newTags.map(t => t.position || 0), -1);
@@ -850,16 +853,16 @@ const TagManager: React.FC<TagManagerProps> = ({
           parsedTags.forEach((parsedTag, index) => {
             const newId = `tag-${Date.now()}-${index}`;
             
-            // æŸ¥æ‰¾çˆ¶æ ‡ç­¾ï¼ˆå‘å‰æŸ¥æ‰¾ç¬¬ä¸€ä¸ªå±‚çº§æ¯”å½“å‰å°çš„æ ‡ç­¾ï¼‰
+            // ²éÕÒ¸¸±êÇ©£¨ÏòÇ°²éÕÒµÚÒ»¸ö²ã¼¶±Èµ±Ç°Ğ¡µÄ±êÇ©£©
             let parentId: string | undefined = undefined;
             if (parsedTag.level > 0) {
-              // åœ¨æ–°ç²˜è´´çš„æ ‡ç­¾ä¸­æŸ¥æ‰¾çˆ¶æ ‡ç­¾
+              // ÔÚĞÂÕ³ÌùµÄ±êÇ©ÖĞ²éÕÒ¸¸±êÇ©
               for (let i = index - 1; i >= 0; i--) {
                 if (parsedTags[i].level < parsedTag.level) {
-                  // æ‰¾åˆ°å¯¹åº”çš„æ–°åˆ›å»ºæ ‡ç­¾ID
+                  // ÕÒµ½¶ÔÓ¦µÄĞÂ´´½¨±êÇ©ID
                   const parentIndex = i;
                   parentId = `tag-${Date.now()}-${parentIndex}`;
-                  console.log(`ğŸ”— [Paste] Found parent for "${parsedTag.name}":`, {
+                  TagManagerLogger.log(`?? [Paste] Found parent for "${parsedTag.name}":`, {
                     parentName: parsedTags[parentIndex].name,
                     childLevel: parsedTag.level,
                     parentLevel: parsedTags[parentIndex].level
@@ -880,7 +883,7 @@ const TagManager: React.FC<TagManagerProps> = ({
             };
             
             newTags.push(newTag);
-            console.log(`â• [Paste] Created tag:`, {
+            TagManagerLogger.log(`? [Paste] Created tag:`, {
               id: newId,
               name: newTag.name,
               level: newTag.level,
@@ -888,8 +891,8 @@ const TagManager: React.FC<TagManagerProps> = ({
             });
           });
           
-          console.log('âœ… [Paste] Successfully imported tags:', newTags.length - prevTags.length);
-          console.log('ğŸ“Š [Paste] Final tag structure:', newTags.slice(-parsedTags.length).map(t => ({
+          TagManagerLogger.log('? [Paste] Successfully imported tags:', newTags.length - prevTags.length);
+          TagManagerLogger.log('?? [Paste] Final tag structure:', newTags.slice(-parsedTags.length).map(t => ({
             name: t.name,
             level: t.level,
             parentId: t.parentId
@@ -910,7 +913,7 @@ const TagManager: React.FC<TagManagerProps> = ({
     };
   }, [tags]);
 
-  // ğŸ†• æ‰¹é‡æ“ä½œï¼šåˆ é™¤ã€ç§»åŠ¨
+  // ?? ÅúÁ¿²Ù×÷£ºÉ¾³ı¡¢ÒÆ¶¯
   useEffect(() => {
     const getSelectedTags = () => {
       const selection = window.getSelection();
@@ -926,7 +929,7 @@ const TagManager: React.FC<TagManagerProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       
-      // ğŸ”§ å¦‚æœåœ¨ç¼–è¾‘æ¡†å†…ï¼Œè·³è¿‡æ‰¹é‡æ“ä½œ
+      // ?? Èç¹ûÔÚ±à¼­¿òÄÚ£¬Ìø¹ıÅúÁ¿²Ù×÷
       if (target.contentEditable === 'true' || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
         return;
       }
@@ -934,68 +937,68 @@ const TagManager: React.FC<TagManagerProps> = ({
       const selectedTags = getSelectedTags();
       if (selectedTags.length === 0) return;
 
-      // ğŸ—‘ï¸ Delete/Backspace - æ‰¹é‡åˆ é™¤
+      // ??? Delete/Backspace - ÅúÁ¿É¾³ı
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         
-        if (confirm(`ç¡®å®šè¦åˆ é™¤é€‰ä¸­çš„ ${selectedTags.length} ä¸ªæ ‡ç­¾å—ï¼Ÿ`)) {
-          console.log('ğŸ—‘ï¸ [Batch Delete] Deleting tags:', selectedTags.map(t => t.name));
+        if (confirm(`È·¶¨ÒªÉ¾³ıÑ¡ÖĞµÄ ${selectedTags.length} ¸ö±êÇ©Âğ£¿`)) {
+          TagManagerLogger.log('??? [Batch Delete] Deleting tags:', selectedTags.map(t => t.name));
           
           setTags(prevTags => {
             const selectedIds = new Set(selectedTags.map(t => t.id));
             return prevTags.filter(tag => !selectedIds.has(tag.id));
           });
           
-          // æ¸…é™¤é€‰åŒº
+          // Çå³ıÑ¡Çø
           window.getSelection()?.removeAllRanges();
         }
       }
 
-      // â¬†ï¸â¬‡ï¸ Shift+Alt+â†‘/â†“ - æ‰¹é‡ä¸Šä¸‹ç§»åŠ¨
+      // ???? Shift+Alt+¡ü/¡ı - ÅúÁ¿ÉÏÏÂÒÆ¶¯
       if (e.shiftKey && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
         e.preventDefault();
         
         const direction = e.key === 'ArrowUp' ? -1 : 1;
-        console.log(`ğŸ”„ [Batch Move] Moving ${selectedTags.length} tags ${direction > 0 ? 'down' : 'up'}`);
+        TagManagerLogger.log(`?? [Batch Move] Moving ${selectedTags.length} tags ${direction > 0 ? 'down' : 'up'}`);
         
         setTags(prevTags => {
           const newTags = [...prevTags].sort((a, b) => (a.position || 0) - (b.position || 0));
           const selectedIds = new Set(selectedTags.map(t => t.id));
           
-          // æ‰¾åˆ°é€‰ä¸­æ ‡ç­¾çš„ç´¢å¼•
+          // ÕÒµ½Ñ¡ÖĞ±êÇ©µÄË÷Òı
           const selectedIndices = newTags
             .map((tag, index) => selectedIds.has(tag.id) ? index : -1)
             .filter(index => index !== -1);
           
           if (selectedIndices.length === 0) return prevTags;
           
-          // æ£€æŸ¥æ˜¯å¦å¯ä»¥ç§»åŠ¨
+          // ¼ì²éÊÇ·ñ¿ÉÒÔÒÆ¶¯
           const minIndex = Math.min(...selectedIndices);
           const maxIndex = Math.max(...selectedIndices);
           
           if (direction === -1 && minIndex === 0) {
-            console.log('âš ï¸ Already at top');
+            TagManagerLogger.log('?? Already at top');
             return prevTags;
           }
           if (direction === 1 && maxIndex === newTags.length - 1) {
-            console.log('âš ï¸ Already at bottom');
+            TagManagerLogger.log('?? Already at bottom');
             return prevTags;
           }
           
-          // ç§»åŠ¨æ ‡ç­¾
+          // ÒÆ¶¯±êÇ©
           if (direction === -1) {
-            // å‘ä¸Šç§»åŠ¨ï¼šä¸ä¸Šä¸€ä¸ªæ ‡ç­¾äº¤æ¢
+            // ÏòÉÏÒÆ¶¯£ºÓëÉÏÒ»¸ö±êÇ©½»»»
             const temp = newTags[minIndex - 1];
             newTags.splice(minIndex - 1, 1);
             newTags.splice(maxIndex, 0, temp);
           } else {
-            // å‘ä¸‹ç§»åŠ¨ï¼šä¸ä¸‹ä¸€ä¸ªæ ‡ç­¾äº¤æ¢
+            // ÏòÏÂÒÆ¶¯£ºÓëÏÂÒ»¸ö±êÇ©½»»»
             const temp = newTags[maxIndex + 1];
             newTags.splice(maxIndex + 1, 1);
             newTags.splice(minIndex, 0, temp);
           }
           
-          // é‡æ–°åˆ†é… position
+          // ÖØĞÂ·ÖÅä position
           return newTags.map((tag, index) => ({
             ...tag,
             position: index
@@ -1003,20 +1006,20 @@ const TagManager: React.FC<TagManagerProps> = ({
         });
       }
 
-      // ğŸ“… Shift+Alt+M - æ‰¹é‡ç¼–è¾‘æ—¥å†æ˜ å°„
+      // ?? Shift+Alt+M - ÅúÁ¿±à¼­ÈÕÀúÓ³Éä
       if (e.shiftKey && e.altKey && e.key.toLowerCase() === 'm') {
         e.preventDefault();
         
-        console.log(`ğŸ“… [Batch Calendar] Editing calendar mapping for ${selectedTags.length} tags`);
+        TagManagerLogger.log(`?? [Batch Calendar] Editing calendar mapping for ${selectedTags.length} tags`);
         
-        // æ‰“å¼€æ—¥å†é€‰æ‹©å™¨ï¼ˆä½¿ç”¨ç¬¬ä¸€ä¸ªé€‰ä¸­æ ‡ç­¾çš„ä½ç½®ï¼‰
+        // ´ò¿ªÈÕÀúÑ¡ÔñÆ÷£¨Ê¹ÓÃµÚÒ»¸öÑ¡ÖĞ±êÇ©µÄÎ»ÖÃ£©
         if (selectedTags.length > 0) {
           const firstTagElement = document.querySelector(`[data-tag-id="${selectedTags[0].id}"]`);
           if (firstTagElement) {
             const rect = firstTagElement.getBoundingClientRect();
             setShowCalendarPicker({
               show: true,
-              tagId: `batch:${selectedTags.map(t => t.id).join(',')}`, // ç‰¹æ®Šæ ‡è®°è¡¨ç¤ºæ‰¹é‡æ“ä½œ
+              tagId: `batch:${selectedTags.map(t => t.id).join(',')}`, // ÌØÊâ±ê¼Ç±íÊ¾ÅúÁ¿²Ù×÷
               position: { x: rect.left, y: rect.bottom + 5 }
             });
           }
@@ -1031,7 +1034,7 @@ const TagManager: React.FC<TagManagerProps> = ({
     };
   }, [tags]);
 
-  // ğŸ”§ è·å–å½“å‰é€‰ä¸­çš„æ ‡ç­¾IDåˆ—è¡¨ï¼ˆç”¨äºUIæ¸²æŸ“ï¼‰
+  // ?? »ñÈ¡µ±Ç°Ñ¡ÖĞµÄ±êÇ©IDÁĞ±í£¨ÓÃÓÚUIäÖÈ¾£©
   const getSelectedTagIds = (): string[] => {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return [];
@@ -1046,17 +1049,17 @@ const TagManager: React.FC<TagManagerProps> = ({
     return selectedIds;
   };
   
-  // ğŸ”§ ç›‘å¬é€‰åŒºå˜åŒ–ï¼Œæ›´æ–°selectedTagIds
+  // ?? ¼àÌıÑ¡Çø±ä»¯£¬¸üĞÂselectedTagIds
   useEffect(() => {
     const updateSelection = () => {
       const ids = getSelectedTagIds();
       setSelectedTagIds(ids);
     };
     
-    // ç›‘å¬selectionchangeäº‹ä»¶
+    // ¼àÌıselectionchangeÊÂ¼ş
     document.addEventListener('selectionchange', updateSelection);
     
-    // åˆå§‹åŒ–
+    // ³õÊ¼»¯
     updateSelection();
     
     return () => {
@@ -1064,12 +1067,12 @@ const TagManager: React.FC<TagManagerProps> = ({
     };
   }, [tags]);
 
-  // å¤„ç†æ—¥å†æ˜ å°„
+  // ´¦ÀíÈÕÀúÓ³Éä
   const handleCalendarMappingClick = (tagId: string, event: React.MouseEvent) => {
     event.stopPropagation();
     const rect = event.currentTarget.getBoundingClientRect();
     
-    // ğŸ”§ æ™ºèƒ½æ‰¹é‡æ“ä½œï¼šæ£€æŸ¥æ˜¯å¦æœ‰å¤šä¸ªæ ‡ç­¾è¢«é€‰ä¸­
+    // ?? ÖÇÄÜÅúÁ¿²Ù×÷£º¼ì²éÊÇ·ñÓĞ¶à¸ö±êÇ©±»Ñ¡ÖĞ
     const selection = window.getSelection();
     const selectedTagIds: string[] = [];
     
@@ -1086,7 +1089,7 @@ const TagManager: React.FC<TagManagerProps> = ({
     const shouldBatchUpdate = isTagSelected && selectedTagIds.length > 1;
     
     if (shouldBatchUpdate) {
-      console.log(`ğŸ“… [Smart Batch] Tag ${tagId} is selected with ${selectedTagIds.length - 1} other tags, enabling batch mode`);
+      TagManagerLogger.log(`?? [Smart Batch] Tag ${tagId} is selected with ${selectedTagIds.length - 1} other tags, enabling batch mode`);
       setShowCalendarPicker({
         show: true,
         tagId: `batch:${selectedTagIds.join(',')}`,
@@ -1102,10 +1105,10 @@ const TagManager: React.FC<TagManagerProps> = ({
   };
 
   const handleCalendarSelect = (calendar: { calendarId: string; calendarName: string; color?: string }) => {
-    // ğŸ”§ æ£€æŸ¥æ˜¯å¦æ˜¯æ‰¹é‡æ“ä½œ
+    // ?? ¼ì²éÊÇ·ñÊÇÅúÁ¿²Ù×÷
     if (showCalendarPicker.tagId.startsWith('batch:')) {
       const tagIds = showCalendarPicker.tagId.replace('batch:', '').split(',');
-      console.log(`ğŸ“… [Batch Calendar] Setting calendar for ${tagIds.length} tags:`, calendar.calendarName);
+      TagManagerLogger.log(`?? [Batch Calendar] Setting calendar for ${tagIds.length} tags:`, calendar.calendarName);
       
       setTags(prevTags =>
         prevTags.map(tag =>
@@ -1115,12 +1118,12 @@ const TagManager: React.FC<TagManagerProps> = ({
         )
       );
       
-      // ğŸ¯ æ˜¾ç¤ºæ‰¹é‡æ“ä½œæˆåŠŸæç¤º
-      const tagNames = tags.filter(t => tagIds.includes(t.id)).map(t => t.name).join('ã€');
-      console.log(`âœ… [Batch Calendar] Updated ${tagIds.length} tags: ${tagNames}`);
+      // ?? ÏÔÊ¾ÅúÁ¿²Ù×÷³É¹¦ÌáÊ¾
+      const tagNames = tags.filter(t => tagIds.includes(t.id)).map(t => t.name).join('¡¢');
+      TagManagerLogger.log(`? [Batch Calendar] Updated ${tagIds.length} tags: ${tagNames}`);
       
     } else {
-      // å•ä¸ªæ ‡ç­¾æ“ä½œ
+      // µ¥¸ö±êÇ©²Ù×÷
       setTags(prevTags =>
         prevTags.map(tag =>
           tag.id === showCalendarPicker.tagId
@@ -1133,7 +1136,7 @@ const TagManager: React.FC<TagManagerProps> = ({
     setShowCalendarPicker({ show: false, tagId: '', position: { x: 0, y: 0 } });
   };
 
-  // å¤„ç†æ‰“å¡
+  // ´¦Àí´ò¿¨
   const handleCheckin = (tagId: string) => {
     setCheckinCounts(prev => ({
       ...prev,
@@ -1141,36 +1144,36 @@ const TagManager: React.FC<TagManagerProps> = ({
     }));
   };
 
-  // æ ¼å¼åŒ–æ—¶é—´æ˜¾ï¿½?
+  // ¸ñÊ½»¯Ê±¼äÏÔ??
   const formatDuration = (minutes: number) => {
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
-    return `æ—¥å‡${hours}h${mins.toString().padStart(2, '0')}min`;
+    return `ÈÕ¾ù${hours}h${mins.toString().padStart(2, '0')}min`;
   };
 
-  // åˆ›å»ºæ–°æ ‡ï¿½?
-  // è·å–é»˜è®¤æ—¥å†æ˜ å°„
+  // ´´½¨ĞÂ±ê??
+  // »ñÈ¡Ä¬ÈÏÈÕÀúÓ³Éä
   const getDefaultCalendarMapping = async () => {
     if (!microsoftService) return undefined;
     
     try {
       const calendars = await microsoftService.getAllCalendars();
       if (calendars && calendars.length > 0) {
-        // ä½¿ç”¨ç¬¬ä¸€ä¸ªæ—¥å†ä½œä¸ºé»˜è®¤æ—¥å†ï¼Œé€šå¸¸è¿™æ˜¯ç”¨æˆ·çš„ä¸»æ—¥å†
+        // Ê¹ÓÃµÚÒ»¸öÈÕÀú×÷ÎªÄ¬ÈÏÈÕÀú£¬Í¨³£ÕâÊÇÓÃ»§µÄÖ÷ÈÕÀú
         const defaultCalendar = calendars[0];
         return {
           calendarId: defaultCalendar.id || '',
-          calendarName: `Outlook: ${defaultCalendar.name || 'æ—¥å†'}`,
+          calendarName: `Outlook: ${defaultCalendar.name || 'ÈÕÀú'}`,
           color: convertMicrosoftColorToHex(defaultCalendar.color) || '#3b82f6'
         };
       }
     } catch (error) {
-      console.warn('è·å–é»˜è®¤æ—¥å†å¤±è´¥:', error);
+      TagManagerLogger.warn('»ñÈ¡Ä¬ÈÏÈÕÀúÊ§°Ü:', error);
     }
     return undefined;
   };
 
-  // å°†Microsofté¢œè‰²åç§°è½¬æ¢ä¸ºåå…­è¿›åˆ¶é¢œè‰²
+  // ½«MicrosoftÑÕÉ«Ãû³Æ×ª»»ÎªÊ®Áù½øÖÆÑÕÉ«
   const convertMicrosoftColorToHex = (colorName?: string): string => {
     const colorMap: { [key: string]: string } = {
       'lightBlue': '#5194f0',
@@ -1197,18 +1200,18 @@ const TagManager: React.FC<TagManagerProps> = ({
       let newParentId: string | undefined = undefined;
       let updatedTags: ExtendedHierarchicalTag[];
       
-      // å¦‚æœæ˜¯å­æ ‡ç­¾(level > 0)ï¼Œéœ€è¦æ‰¾åˆ°çˆ¶æ ‡ç­¾
+      // Èç¹ûÊÇ×Ó±êÇ©(level > 0)£¬ĞèÒªÕÒµ½¸¸±êÇ©
       if (level > 0) {
         const sortedTags = [...prevTags].sort((a, b) => (a.position || 0) - (b.position || 0));
         const insertIndex = afterTagId ? 
           sortedTags.findIndex(tag => tag.id === afterTagId) + 1 : 
           sortedTags.length;
         
-        // å‘å‰æŸ¥æ‰¾ç¬¬ä¸€ä¸ªå±‚çº§æ¯”å½“å‰levelå°çš„æ ‡ç­¾ä½œä¸ºçˆ¶æ ‡ç­¾
+        // ÏòÇ°²éÕÒµÚÒ»¸ö²ã¼¶±Èµ±Ç°levelĞ¡µÄ±êÇ©×÷Îª¸¸±êÇ©
         for (let i = insertIndex - 1; i >= 0; i--) {
           if ((sortedTags[i].level || 0) < level) {
             newParentId = sortedTags[i].id;
-            console.log('ğŸ¯ [createNewTag] Found parent for new tag:', {
+            TagManagerLogger.log('?? [createNewTag] Found parent for new tag:', {
               newTagId: newId,
               newTagLevel: level,
               parentId: newParentId,
@@ -1221,14 +1224,14 @@ const TagManager: React.FC<TagManagerProps> = ({
       }
       
       if (afterTagId) {
-        // æ‰¾åˆ°è¦æ’å…¥ä½ç½®çš„æ ‡ç­¾ï¼ŒåŸºäºpositionå€¼è€Œä¸æ˜¯æ•°ç»„ç´¢å¼•
+        // ÕÒµ½Òª²åÈëÎ»ÖÃµÄ±êÇ©£¬»ùÓÚpositionÖµ¶ø²»ÊÇÊı×éË÷Òı
         const afterTag = prevTags.find(tag => tag.id === afterTagId);
         if (!afterTag) {
-          console.error('âŒ After tag not found:', afterTagId);
+          TagManagerLogger.error('? After tag not found:', afterTagId);
           return prevTags;
         }
         
-        console.log('ğŸ“ Found afterTag:', {
+        TagManagerLogger.log('?? Found afterTag:', {
           id: afterTag.id.substring(0, 8),
           name: afterTag.name,
           position: afterTag.position,
@@ -1237,20 +1240,20 @@ const TagManager: React.FC<TagManagerProps> = ({
         
         const afterPosition = afterTag.position || 0;
         
-        // æ–°æ ‡ç­¾çš„ä½ç½®å°±æ˜¯ afterPosition + 1
+        // ĞÂ±êÇ©µÄÎ»ÖÃ¾ÍÊÇ afterPosition + 1
         newPosition = afterPosition + 1;
         
-        console.log('ğŸ¯ Creating new tag after tagId:', afterTagId, 'afterPosition:', afterPosition, 'newPosition:', newPosition);
-        console.log('ğŸ“‹ Current tags positions before shift:', 
+        TagManagerLogger.log('?? Creating new tag after tagId:', afterTagId, 'afterPosition:', afterPosition, 'newPosition:', newPosition);
+        TagManagerLogger.log('?? Current tags positions before shift:', 
           prevTags
             .sort((a, b) => (a.position || 0) - (b.position || 0))
             .map(t => ({ id: t.id.substring(0, 8), name: t.name || '(unnamed)', position: t.position }))
         );
         
-        // å°†æ‰€æœ‰ position > afterPosition çš„æ ‡ç­¾ +1ï¼ˆä¸ºæ–°æ ‡ç­¾è…¾å‡ºç©ºé—´ï¼‰
+        // ½«ËùÓĞ position > afterPosition µÄ±êÇ© +1£¨ÎªĞÂ±êÇ©ÌÚ³ö¿Õ¼ä£©
         const shiftedTags = prevTags.map(tag => {
           if ((tag.position || 0) > afterPosition) {
-            console.log(`  ğŸ”„ Shifting tag "${tag.name}" from position ${tag.position} to ${(tag.position || 0) + 1}`);
+            TagManagerLogger.log(`  ?? Shifting tag "${tag.name}" from position ${tag.position} to ${(tag.position || 0) + 1}`);
             return { ...tag, position: (tag.position || 0) + 1 };
           }
           return tag;
@@ -1260,9 +1263,9 @@ const TagManager: React.FC<TagManagerProps> = ({
           id: newId,
           name: '',
           color: '#3b82f6',
-          emoji: 'ğŸ˜€',
+          emoji: '??',
           level,
-          parentId: newParentId, // è®¾ç½®çˆ¶æ ‡ç­¾ID
+          parentId: newParentId, // ÉèÖÃ¸¸±êÇ©ID
           position: newPosition,
           dailyAvgCheckins: 0,
           dailyAvgDuration: 150,
@@ -1270,8 +1273,8 @@ const TagManager: React.FC<TagManagerProps> = ({
         };
         
         updatedTags = [...shiftedTags, newTag];
-        console.log('âœ… Created tag at position', newPosition, 'and shifted', shiftedTags.filter(t => t.position !== prevTags.find(pt => pt.id === t.id)?.position).length, 'tags forward');
-        console.log('ğŸ“Š All tags after creation (sorted by position):', 
+        TagManagerLogger.log('? Created tag at position', newPosition, 'and shifted', shiftedTags.filter(t => t.position !== prevTags.find(pt => pt.id === t.id)?.position).length, 'tags forward');
+        TagManagerLogger.log('?? All tags after creation (sorted by position):', 
           updatedTags
             .sort((a, b) => (a.position || 0) - (b.position || 0))
             .map(t => ({ id: t.id.substring(0, 8), name: t.name || '(unnamed)', position: t.position, level: t.level }))
@@ -1283,9 +1286,9 @@ const TagManager: React.FC<TagManagerProps> = ({
           id: newId,
           name: '',
           color: '#3b82f6',
-          emoji: 'ğŸ˜€',
+          emoji: '??',
           level,
-          parentId: newParentId, // è®¾ç½®çˆ¶æ ‡ç­¾ID
+          parentId: newParentId, // ÉèÖÃ¸¸±êÇ©ID
           position: newPosition,
           dailyAvgCheckins: 0,
           dailyAvgDuration: 150,
@@ -1298,24 +1301,24 @@ const TagManager: React.FC<TagManagerProps> = ({
       return updatedTags;
     });
 
-    // å¼‚æ­¥è®¾ç½®æ—¥å†æ˜ å°„ - å­æ ‡ç­¾ç»§æ‰¿çˆ¶æ ‡ç­¾ï¼Œå¦åˆ™ä½¿ç”¨é»˜è®¤æ˜ å°„
+    // Òì²½ÉèÖÃÈÕÀúÓ³Éä - ×Ó±êÇ©¼Ì³Ğ¸¸±êÇ©£¬·ñÔòÊ¹ÓÃÄ¬ÈÏÓ³Éä
     (async () => {
       let calendarMapping: { calendarId: string; calendarName: string; color?: string } | undefined = undefined;
       
-      // å¦‚æœæ˜¯å­æ ‡ç­¾(level > 0)ï¼Œå°è¯•æ‰¾åˆ°çˆ¶æ ‡ç­¾å¹¶ç»§æ‰¿å…¶æ—¥å†æ˜ å°„
+      // Èç¹ûÊÇ×Ó±êÇ©(level > 0)£¬³¢ÊÔÕÒµ½¸¸±êÇ©²¢¼Ì³ĞÆäÈÕÀúÓ³Éä
       if (level > 0) {
-        // æ‰¾åˆ°æ‰€æœ‰ä½ç½®åœ¨å½“å‰æ ‡ç­¾ä¹‹å‰ä¸”å±‚çº§æ›´å°çš„æ ‡ç­¾
+        // ÕÒµ½ËùÓĞÎ»ÖÃÔÚµ±Ç°±êÇ©Ö®Ç°ÇÒ²ã¼¶¸üĞ¡µÄ±êÇ©
         const sortedTags = [...tags].sort((a, b) => (a.position || 0) - (b.position || 0));
         const currentIndex = afterTagId ? 
-          sortedTags.findIndex(tag => tag.id === afterTagId) + 1 : // å¦‚æœæŒ‡å®šäº†afterTagIdï¼Œæ–°æ ‡ç­¾åœ¨å…¶å
-          sortedTags.length; // å¦åˆ™åœ¨æœ€å
+          sortedTags.findIndex(tag => tag.id === afterTagId) + 1 : // Èç¹ûÖ¸¶¨ÁËafterTagId£¬ĞÂ±êÇ©ÔÚÆäºó
+          sortedTags.length; // ·ñÔòÔÚ×îºó
         
-        // ä»å½“å‰ä½ç½®å‘å‰æŸ¥æ‰¾æœ€è¿‘çš„çˆ¶æ ‡ç­¾
+        // ´Óµ±Ç°Î»ÖÃÏòÇ°²éÕÒ×î½üµÄ¸¸±êÇ©
         for (let i = currentIndex - 1; i >= 0; i--) {
           const potentialParent = sortedTags[i];
           if ((potentialParent.level || 0) < level && potentialParent.calendarMapping) {
             calendarMapping = potentialParent.calendarMapping;
-            console.log('ğŸ¯ å­æ ‡ç­¾ç»§æ‰¿çˆ¶æ ‡ç­¾æ—¥å†æ˜ å°„:', {
+            TagManagerLogger.log('?? ×Ó±êÇ©¼Ì³Ğ¸¸±êÇ©ÈÕÀúÓ³Éä:', {
               childLevel: level,
               parentTag: potentialParent.name,
               parentLevel: potentialParent.level || 0,
@@ -1326,10 +1329,10 @@ const TagManager: React.FC<TagManagerProps> = ({
         }
       }
       
-      // å¦‚æœæ²¡æœ‰æ‰¾åˆ°çˆ¶æ ‡ç­¾æ˜ å°„ï¼Œä½¿ç”¨é»˜è®¤æ˜ å°„
+      // Èç¹ûÃ»ÓĞÕÒµ½¸¸±êÇ©Ó³Éä£¬Ê¹ÓÃÄ¬ÈÏÓ³Éä
       if (!calendarMapping) {
         calendarMapping = await getDefaultCalendarMapping();
-        console.log('ğŸ¯ ä½¿ç”¨é»˜è®¤æ—¥å†æ˜ å°„:', calendarMapping);
+        TagManagerLogger.log('?? Ê¹ÓÃÄ¬ÈÏÈÕÀúÓ³Éä:', calendarMapping);
       }
       
       if (calendarMapping) {
@@ -1346,21 +1349,21 @@ const TagManager: React.FC<TagManagerProps> = ({
     setCheckinCounts(prev => ({ ...prev, [newId]: 0 }));
     setNewTagId(newId);
     
-    // è‡ªåŠ¨èšç„¦åˆ°æ–°æ ‡ç­¾ - å¢åŠ æ›´é•¿çš„å»¶è¿Ÿå’Œé‡è¯•æœºåˆ¶
+    // ×Ô¶¯¾Û½¹µ½ĞÂ±êÇ© - Ôö¼Ó¸ü³¤µÄÑÓ³ÙºÍÖØÊÔ»úÖÆ
     const focusNewTag = (retryCount = 0) => {
       const element = document.querySelector(`[data-tag-id="${newId}"]`) as HTMLElement;
       if (element) {
-        console.log('ğŸ¯ Successfully found and focusing new tag:', newId);
+        TagManagerLogger.log('?? Successfully found and focusing new tag:', newId);
         element.focus();
         return;
       }
       
-      // å¦‚æœæ²¡æ‰¾åˆ°å…ƒç´ ä¸”é‡è¯•æ¬¡æ•°å°‘äº5æ¬¡ï¼Œç»§ç»­é‡è¯•
+      // Èç¹ûÃ»ÕÒµ½ÔªËØÇÒÖØÊÔ´ÎÊıÉÙÓÚ5´Î£¬¼ÌĞøÖØÊÔ
       if (retryCount < 5) {
-        console.log(`ğŸ”„ Retrying focus for tag ${newId}, attempt ${retryCount + 1}`);
+        TagManagerLogger.log(`?? Retrying focus for tag ${newId}, attempt ${retryCount + 1}`);
         setTimeout(() => focusNewTag(retryCount + 1), 50);
       } else {
-        console.error('âŒ Failed to focus new tag after 5 attempts:', newId);
+        TagManagerLogger.error('? Failed to focus new tag after 5 attempts:', newId);
       }
     };
     
@@ -1369,33 +1372,33 @@ const TagManager: React.FC<TagManagerProps> = ({
     return newId;
   };
 
-  // æ¿€æ´»æ–°æ ‡ç­¾åˆ›å»ºåŒºåŸŸ
+  // ¼¤»îĞÂ±êÇ©´´½¨ÇøÓò
   const handleNewTagActivation = () => {
-    console.log('ğŸš¨ handleNewTagActivation called!');
-    console.log('ğŸ” ç”¨æˆ·ç‚¹å‡»äº†ç°è‰²æ–‡æœ¬:', userClickedGrayText);
-    console.log('ğŸ” Call stack:', new Error().stack);
+    TagManagerLogger.log('?? handleNewTagActivation called!');
+    TagManagerLogger.log('?? ÓÃ»§µã»÷ÁË»ÒÉ«ÎÄ±¾:', userClickedGrayText);
+    TagManagerLogger.log('?? Call stack:', new Error().stack);
     
-    // åªæœ‰å½“ç”¨æˆ·æ˜ç¡®ç‚¹å‡»äº†ç°è‰²æ–‡æœ¬æ—¶æ‰æ¿€æ´»
+    // Ö»ÓĞµ±ÓÃ»§Ã÷È·µã»÷ÁË»ÒÉ«ÎÄ±¾Ê±²Å¼¤»î
     if (!userClickedGrayText) {
-      console.log('ğŸš¨ é˜»æ­¢æ¿€æ´»ï¼šç”¨æˆ·æ²¡æœ‰æ˜ç¡®ç‚¹å‡»ç°è‰²æ–‡æœ¬');
+      TagManagerLogger.log('?? ×èÖ¹¼¤»î£ºÓÃ»§Ã»ÓĞÃ÷È·µã»÷»ÒÉ«ÎÄ±¾');
       return;
     }
     
-    setIsCreatingNewTag(true); // è¿›å…¥åˆ›å»ºæ¨¡å¼
+    setIsCreatingNewTag(true); // ½øÈë´´½¨Ä£Ê½
     
-    // æ‰¾åˆ°æ‰€æœ‰æ ‡ç­¾ä¸­positionæœ€å¤§çš„æ ‡ç­¾ï¼Œåœ¨å…¶åé¢åˆ›å»ºæ–°çš„ä¸€çº§æ ‡ç­¾
+    // ÕÒµ½ËùÓĞ±êÇ©ÖĞposition×î´óµÄ±êÇ©£¬ÔÚÆäºóÃæ´´½¨ĞÂµÄÒ»¼¶±êÇ©
     const sortedTags = [...tags].sort((a, b) => (a.position || 0) - (b.position || 0));
     const lastTag = sortedTags[sortedTags.length - 1];
     const lastTagId = lastTag?.id;
     
-    console.log('ğŸ¯ [NewTagActivation] Creating new tag after last tag:', {
+    TagManagerLogger.log('?? [NewTagActivation] Creating new tag after last tag:', {
       lastTagId,
       lastTagName: lastTag?.name,
       lastTagPosition: lastTag?.position,
       newTagLevel: 0
     });
     
-    // å¦‚æœæœ‰æ ‡ç­¾ï¼Œåœ¨æœ€åä¸€ä¸ªæ ‡ç­¾åé¢åˆ›å»ºï¼›å¦åˆ™ç›´æ¥åˆ›å»º
+    // Èç¹ûÓĞ±êÇ©£¬ÔÚ×îºóÒ»¸ö±êÇ©ºóÃæ´´½¨£»·ñÔòÖ±½Ó´´½¨
     if (lastTagId) {
       createNewTag(0, lastTagId);
     } else {
@@ -1403,24 +1406,24 @@ const TagManager: React.FC<TagManagerProps> = ({
     }
   };
 
-  // å–æ¶ˆæ–°æ ‡ç­¾åˆ›å»º
+  // È¡ÏûĞÂ±êÇ©´´½¨
   const handleCancelNewTag = () => {
-    console.log('âŒ Cancelling new tag creation');
+    TagManagerLogger.log('? Cancelling new tag creation');
     setIsCreatingNewTag(false);
     setNewTagId(null);
-    setUserClickedGrayText(false); // é‡ç½®ç‚¹å‡»æ ‡è®°
+    setUserClickedGrayText(false); // ÖØÖÃµã»÷±ê¼Ç
   };
 
-  // ç§»åŠ¨å…‰æ ‡åˆ°ä¸Šä¸€ä¸ªæ ‡ç­¾
+  // ÒÆ¶¯¹â±êµ½ÉÏÒ»¸ö±êÇ©
   const focusPreviousTag = (currentTagId: string) => {
     const sortedTags = tags.sort((a, b) => (a.position || 0) - (b.position || 0));
     const currentIndex = sortedTags.findIndex(tag => tag.id === currentTagId);
     
     if (currentIndex > 0) {
       const previousTag = sortedTags[currentIndex - 1];
-      // è‡ªåŠ¨ä¿å­˜å½“å‰æ ‡ç­¾
+      // ×Ô¶¯±£´æµ±Ç°±êÇ©
       saveTagsToStorage(tags);
-      // èšç„¦åˆ°ä¸Šä¸€ä¸ªæ ‡ç­¾
+      // ¾Û½¹µ½ÉÏÒ»¸ö±êÇ©
       setTimeout(() => {
         const element = document.querySelector(`[data-tag-id="${previousTag.id}"]`) as HTMLElement;
         if (element) {
@@ -1430,16 +1433,16 @@ const TagManager: React.FC<TagManagerProps> = ({
     }
   };
 
-  // ç§»åŠ¨å…‰æ ‡åˆ°ä¸‹ä¸€ä¸ªæ ‡ç­¾
+  // ÒÆ¶¯¹â±êµ½ÏÂÒ»¸ö±êÇ©
   const focusNextTag = (currentTagId: string) => {
     const sortedTags = tags.sort((a, b) => (a.position || 0) - (b.position || 0));
     const currentIndex = sortedTags.findIndex(tag => tag.id === currentTagId);
     
     if (currentIndex < sortedTags.length - 1) {
       const nextTag = sortedTags[currentIndex + 1];
-      // è‡ªåŠ¨ä¿å­˜å½“å‰æ ‡ç­¾
+      // ×Ô¶¯±£´æµ±Ç°±êÇ©
       saveTagsToStorage(tags);
-      // èšç„¦åˆ°ä¸‹ä¸€ä¸ªæ ‡ç­¾
+      // ¾Û½¹µ½ÏÂÒ»¸ö±êÇ©
       setTimeout(() => {
         const element = document.querySelector(`[data-tag-id="${nextTag.id}"]`) as HTMLElement;
         if (element) {
@@ -1449,11 +1452,11 @@ const TagManager: React.FC<TagManagerProps> = ({
     }
   };
 
-  // å¤„ç†æ ‡ç­¾é”®ç›˜äº‹ä»¶
+  // ´¦Àí±êÇ©¼üÅÌÊÂ¼ş
   const handleTagKeyDown = (e: React.KeyboardEvent, tagId: string, currentLevel: number) => {
-    // ç«‹å³è¾“å‡ºï¼Œç¡®ä¿å‡½æ•°è¢«è°ƒç”¨
-    console.log('ğŸš¨ FUNCTION CALLED - handleTagKeyDown');
-    console.log('âŒ¨ï¸ Key event:', {
+    // Á¢¼´Êä³ö£¬È·±£º¯Êı±»µ÷ÓÃ
+    TagManagerLogger.log('?? FUNCTION CALLED - handleTagKeyDown');
+    TagManagerLogger.log('?? Key event:', {
       key: e.key,
       shiftKey: e.shiftKey,
       altKey: e.altKey,
@@ -1464,33 +1467,33 @@ const TagManager: React.FC<TagManagerProps> = ({
     
     if (e.key === 'Enter') {
       e.preventDefault();
-      // ä¿å­˜å½“å‰æ ‡ç­¾å¹¶åˆ›å»ºæ–°çš„åŒçº§æ ‡ç­¾
+      // ±£´æµ±Ç°±êÇ©²¢´´½¨ĞÂµÄÍ¬¼¶±êÇ©
       createNewTag(currentLevel, tagId);
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      // ESC å–æ¶ˆåˆ›å»ºï¼Œåˆ é™¤è¿™ä¸ªæ ‡ç­¾ï¼ˆæ— è®ºæœ‰æ²¡æœ‰å†…å®¹ï¼‰
-      console.log('ğŸš« ESC pressed - Canceling tag creation:', tagId);
+      // ESC È¡Ïû´´½¨£¬É¾³ıÕâ¸ö±êÇ©£¨ÎŞÂÛÓĞÃ»ÓĞÄÚÈİ£©
+      TagManagerLogger.log('?? ESC pressed - Canceling tag creation:', tagId);
       setTags(prev => prev.filter(tag => tag.id !== tagId));
-      // å¤±ç„¦å½“å‰è¾“å…¥æ¡†
+      // Ê§½¹µ±Ç°ÊäÈë¿ò
       (e.target as HTMLElement).blur();
     } else if (e.key === 'Tab') {
       e.preventDefault();
       if (e.shiftKey) {
-        // Shift+Tab: å‡å°‘ç¼©è¿›
+        // Shift+Tab: ¼õÉÙËõ½ø
         if (currentLevel > 0) {
           setTags(prevTags => {
             const sortedTags = [...prevTags].sort((a, b) => (a.position || 0) - (b.position || 0));
             const currentIndex = sortedTags.findIndex(tag => tag.id === tagId);
             const newLevel = Math.max(0, currentLevel - 1);
             
-            // æ‰¾åˆ°æ–°çš„çˆ¶æ ‡ç­¾ï¼šå‘å‰æŸ¥æ‰¾ç¬¬ä¸€ä¸ªå±‚çº§æ¯”æ–°å±‚çº§å°çš„æ ‡ç­¾
+            // ÕÒµ½ĞÂµÄ¸¸±êÇ©£ºÏòÇ°²éÕÒµÚÒ»¸ö²ã¼¶±ÈĞÂ²ã¼¶Ğ¡µÄ±êÇ©
             let newParentId: string | undefined = undefined;
             
             if (newLevel > 0) {
               for (let i = currentIndex - 1; i >= 0; i--) {
                 if ((sortedTags[i].level || 0) < newLevel) {
                   newParentId = sortedTags[i].id;
-                  console.log('ğŸ¯ Found parent for decreased indent:', {
+                  TagManagerLogger.log('?? Found parent for decreased indent:', {
                     childId: tagId,
                     parentId: newParentId,
                     parentName: sortedTags[i].name,
@@ -1507,20 +1510,20 @@ const TagManager: React.FC<TagManagerProps> = ({
           });
         }
       } else {
-        // Tab: å¢åŠ ç¼©è¿›ï¼ˆæ™ºèƒ½å±‚çº§é™åˆ¶ï¼‰
-        // æ‰¾åˆ°ä¸Šä¸€ä¸ªæ ‡ç­¾ï¼Œç¡®ä¿å½“å‰æ ‡ç­¾å±‚çº§ä¸è¶…è¿‡ä¸Šä¸€ä¸ªæ ‡ç­¾å±‚çº§+1
+        // Tab: Ôö¼ÓËõ½ø£¨ÖÇÄÜ²ã¼¶ÏŞÖÆ£©
+        // ÕÒµ½ÉÏÒ»¸ö±êÇ©£¬È·±£µ±Ç°±êÇ©²ã¼¶²»³¬¹ıÉÏÒ»¸ö±êÇ©²ã¼¶+1
         const sortedTags = tags.sort((a, b) => (a.position || 0) - (b.position || 0));
         const currentIndex = sortedTags.findIndex(tag => tag.id === tagId);
         
-        let maxAllowedLevel = currentLevel + 1; // é»˜è®¤å…è®¸å¢åŠ 1çº§
+        let maxAllowedLevel = currentLevel + 1; // Ä¬ÈÏÔÊĞíÔö¼Ó1¼¶
         
         if (currentIndex > 0) {
-          // æŸ¥æ‰¾ä¸Šä¸€ä¸ªæ ‡ç­¾çš„å±‚çº§
+          // ²éÕÒÉÏÒ»¸ö±êÇ©µÄ²ã¼¶
           const previousTag = sortedTags[currentIndex - 1];
           const previousLevel = previousTag.level || 0;
           maxAllowedLevel = Math.min(currentLevel + 1, previousLevel + 1);
           
-          console.log('ğŸ“Š Tabå¢åŠ ç¼©è¿›æ£€æŸ¥:', {
+          TagManagerLogger.log('?? TabÔö¼ÓËõ½ø¼ì²é:', {
             currentTagId: tagId,
             currentLevel: currentLevel,
             previousTagLevel: previousLevel,
@@ -1534,14 +1537,14 @@ const TagManager: React.FC<TagManagerProps> = ({
             const sortedTags = [...prevTags].sort((a, b) => (a.position || 0) - (b.position || 0));
             const currentIndex = sortedTags.findIndex(tag => tag.id === tagId);
             
-            // æ‰¾åˆ°æ–°çš„çˆ¶æ ‡ç­¾ï¼šå‘å‰æŸ¥æ‰¾ç¬¬ä¸€ä¸ªå±‚çº§æ¯”å½“å‰æ–°å±‚çº§å°çš„æ ‡ç­¾
+            // ÕÒµ½ĞÂµÄ¸¸±êÇ©£ºÏòÇ°²éÕÒµÚÒ»¸ö²ã¼¶±Èµ±Ç°ĞÂ²ã¼¶Ğ¡µÄ±êÇ©
             let newParentId: string | undefined = undefined;
             const newLevel = currentLevel + 1;
             
             for (let i = currentIndex - 1; i >= 0; i--) {
               if ((sortedTags[i].level || 0) < newLevel) {
                 newParentId = sortedTags[i].id;
-                console.log('ğŸ¯ Found parent for increased indent:', {
+                TagManagerLogger.log('?? Found parent for increased indent:', {
                   childId: tagId,
                   parentId: newParentId,
                   parentName: sortedTags[i].name,
@@ -1556,50 +1559,50 @@ const TagManager: React.FC<TagManagerProps> = ({
             );
           });
         } else {
-          console.log('ğŸš« è¾¾åˆ°æœ€å¤§å±‚çº§é™åˆ¶ï¼Œæ— æ³•ç»§ç»­ç¼©è¿›');
+          TagManagerLogger.log('?? ´ïµ½×î´ó²ã¼¶ÏŞÖÆ£¬ÎŞ·¨¼ÌĞøËõ½ø');
         }
       }
     } else if (e.key === 'ArrowUp' && e.shiftKey && e.altKey) {
       e.preventDefault();
-      console.log('ğŸ”¼ Shift+Alt+â†‘ detected for tagId:', tagId);
-      console.log('ğŸ”¼ Current tags state:', tags.map(t => ({id: t.id, position: t.position, name: t.name})));
-      // Shift+Alt+â†‘: å‘ä¸Šç§»åŠ¨æ ‡ç­¾
+      TagManagerLogger.log('?? Shift+Alt+¡ü detected for tagId:', tagId);
+      TagManagerLogger.log('?? Current tags state:', tags.map(t => ({id: t.id, position: t.position, name: t.name})));
+      // Shift+Alt+¡ü: ÏòÉÏÒÆ¶¯±êÇ©
       moveTagUp(tagId);
     } else if (e.key === 'ArrowDown' && e.shiftKey && e.altKey) {
       e.preventDefault();
-      console.log('ğŸ”½ Shift+Alt+â†“ detected for tagId:', tagId);
-      console.log('ğŸ”½ Current tags state:', tags.map(t => ({id: t.id, position: t.position, name: t.name})));
-      // Shift+Alt+â†“: å‘ä¸‹ç§»åŠ¨æ ‡ç­¾
+      TagManagerLogger.log('?? Shift+Alt+¡ı detected for tagId:', tagId);
+      TagManagerLogger.log('?? Current tags state:', tags.map(t => ({id: t.id, position: t.position, name: t.name})));
+      // Shift+Alt+¡ı: ÏòÏÂÒÆ¶¯±êÇ©
       moveTagDown(tagId);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      // â†‘: ç§»åŠ¨å…‰æ ‡åˆ°ä¸Šä¸€ä¸ªæ ‡ç­¾
+      // ¡ü: ÒÆ¶¯¹â±êµ½ÉÏÒ»¸ö±êÇ©
       focusPreviousTag(tagId);
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
-      // â†“: ç§»åŠ¨å…‰æ ‡åˆ°ä¸‹ä¸€ä¸ªæ ‡ç­¾
+      // ¡ı: ÒÆ¶¯¹â±êµ½ÏÂÒ»¸ö±êÇ©
       focusNextTag(tagId);
     } else if (e.key === 'F9' && e.ctrlKey) {
       e.preventDefault();
-      console.log('ğŸ”§ Manual position fix triggered');
+      TagManagerLogger.log('?? Manual position fix triggered');
       fixTagPositions();
     }
   };
 
 
 
-  // éªŒè¯å¹¶ä¿®å¤positionå€¼ï¼ˆåŒæ­¥ç‰ˆæœ¬ï¼‰
+  // ÑéÖ¤²¢ĞŞ¸´positionÖµ£¨Í¬²½°æ±¾£©
   const validateAndFixPositions = (tagsToCheck: ExtendedHierarchicalTag[]): ExtendedHierarchicalTag[] => {
     const sortedTags = [...tagsToCheck].sort((a, b) => (a.position || 0) - (b.position || 0));
     
-    // æ£€æŸ¥æ˜¯å¦æœ‰é‡å¤çš„position
+    // ¼ì²éÊÇ·ñÓĞÖØ¸´µÄposition
     const positions = sortedTags.map(tag => tag.position || 0);
     const uniquePositions = Array.from(new Set(positions));
     
     if (positions.length !== uniquePositions.length) {
-      console.warn('âš ï¸ Found duplicate positions:', positions);
-      console.warn('ğŸ”§ Synchronously fixing positions...');
-      // ç«‹å³ä¿®å¤é‡å¤çš„position
+      TagManagerLogger.warn('?? Found duplicate positions:', positions);
+      TagManagerLogger.warn('?? Synchronously fixing positions...');
+      // Á¢¼´ĞŞ¸´ÖØ¸´µÄposition
       return sortedTags.map((tag, index) => ({
         ...tag,
         position: index
@@ -1609,7 +1612,7 @@ const TagManager: React.FC<TagManagerProps> = ({
     return tagsToCheck;
   };
 
-  // ä¿®å¤æ ‡ç­¾positionå€¼
+  // ĞŞ¸´±êÇ©positionÖµ
   const fixTagPositions = () => {
     setTags(prevTags => {
       const sortedTags = [...prevTags].sort((a, b) => (a.position || 0) - (b.position || 0));
@@ -1617,56 +1620,56 @@ const TagManager: React.FC<TagManagerProps> = ({
         ...tag,
         position: index
       }));
-      console.log('ğŸ”§ Fixed tag positions:', fixedTags.map(t => ({id: t.id, position: t.position, name: t.name})));
+      TagManagerLogger.log('?? Fixed tag positions:', fixedTags.map(t => ({id: t.id, position: t.position, name: t.name})));
       return fixedTags;
     });
   };
 
-  // å‘ä¸Šç§»åŠ¨æ ‡ç­¾
+  // ÏòÉÏÒÆ¶¯±êÇ©
   const moveTagUp = (tagId: string) => {
-    console.log('ğŸ”¼ moveTagUp called with tagId:', tagId);
+    TagManagerLogger.log('?? moveTagUp called with tagId:', tagId);
     
     setTags(prevTags => {
-      console.log('ğŸ”¼ Current prevTags:', prevTags.map(t => ({id: t.id, position: t.position, name: t.name})));
+      TagManagerLogger.log('?? Current prevTags:', prevTags.map(t => ({id: t.id, position: t.position, name: t.name})));
       
-      // å…ˆéªŒè¯å’Œä¿®å¤position
+      // ÏÈÑéÖ¤ºÍĞŞ¸´position
       const validatedTags = validateAndFixPositions(prevTags);
       const sortedTags = [...validatedTags].sort((a, b) => (a.position || 0) - (b.position || 0));
-      console.log('ğŸ”¼ Sorted tags:', sortedTags.map(t => ({id: t.id, position: t.position, name: t.name})));
+      TagManagerLogger.log('?? Sorted tags:', sortedTags.map(t => ({id: t.id, position: t.position, name: t.name})));
       
       const currentIndex = sortedTags.findIndex(tag => tag.id === tagId);
-      console.log('ğŸ”¼ Current index:', currentIndex, 'for tagId:', tagId);
+      TagManagerLogger.log('?? Current index:', currentIndex, 'for tagId:', tagId);
       
       if (currentIndex <= 0) {
-        console.log('ğŸ”¼ Tag is already at the top, no movement needed');
-        return validatedTags; // è¿”å›ä¿®å¤åçš„æ•°æ®
+        TagManagerLogger.log('?? Tag is already at the top, no movement needed');
+        return validatedTags; // ·µ»ØĞŞ¸´ºóµÄÊı¾İ
       }
       
-      // ä¸ä¸Šä¸€ä¸ªæ ‡ç­¾äº¤æ¢ä½ç½®
+      // ÓëÉÏÒ»¸ö±êÇ©½»»»Î»ÖÃ
       const currentTag = sortedTags[currentIndex];
       const previousTag = sortedTags[currentIndex - 1];
       
-      console.log('ğŸ”¼ Swapping:', {
+      TagManagerLogger.log('?? Swapping:', {
         current: {id: currentTag.id, position: currentTag.position, name: currentTag.name},
         previous: {id: previousTag.id, position: previousTag.position, name: previousTag.name}
       });
       
-      // å¦‚æœç§»åŠ¨åˆ°ç¬¬ä¸€è¡Œï¼Œå¿…é¡»è®¾ç½®ä¸ºä¸€çº§æ ‡ç­¾
+      // Èç¹ûÒÆ¶¯µ½µÚÒ»ĞĞ£¬±ØĞëÉèÖÃÎªÒ»¼¶±êÇ©
       const newLevel = currentIndex === 1 ? 0 : currentTag.level;
-      console.log('ğŸ”¼ New level for moved tag:', newLevel);
+      TagManagerLogger.log('?? New level for moved tag:', newLevel);
       
       const newTags = validatedTags.map(tag => {
         if (tag.id === tagId) {
-          // è®¡ç®—ç§»åŠ¨åçš„åˆç†å±‚çº§
+          // ¼ÆËãÒÆ¶¯ºóµÄºÏÀí²ã¼¶
           let adjustedLevel = newLevel;
           if (currentIndex > 1) {
-            // ä¸æ˜¯ç§»åŠ¨åˆ°é¡¶éƒ¨ï¼Œéœ€è¦æ£€æŸ¥æ–°ä½ç½®çš„ä¸Šä¸€ä¸ªæ ‡ç­¾
-            const newPreviousTag = sortedTags[currentIndex - 2]; // æ–°ä½ç½®çš„ä¸Šä¸€ä¸ªæ ‡ç­¾
+            // ²»ÊÇÒÆ¶¯µ½¶¥²¿£¬ĞèÒª¼ì²éĞÂÎ»ÖÃµÄÉÏÒ»¸ö±êÇ©
+            const newPreviousTag = sortedTags[currentIndex - 2]; // ĞÂÎ»ÖÃµÄÉÏÒ»¸ö±êÇ©
             const newPreviousLevel = newPreviousTag.level || 0;
-            // ç¡®ä¿å±‚çº§ä¸è¶…è¿‡æ–°ä½ç½®ä¸Šä¸€ä¸ªæ ‡ç­¾çš„å±‚çº§+1
+            // È·±£²ã¼¶²»³¬¹ıĞÂÎ»ÖÃÉÏÒ»¸ö±êÇ©µÄ²ã¼¶+1
             adjustedLevel = Math.min(currentTag.level || 0, newPreviousLevel + 1);
             
-            console.log('ğŸ”¼ å±‚çº§è°ƒæ•´æ£€æŸ¥:', {
+            TagManagerLogger.log('?? ²ã¼¶µ÷Õû¼ì²é:', {
               originalLevel: currentTag.level,
               newPreviousTagLevel: newPreviousLevel,
               adjustedLevel: adjustedLevel
@@ -1674,76 +1677,76 @@ const TagManager: React.FC<TagManagerProps> = ({
           }
           
           const newTag = { ...tag, position: previousTag.position, level: adjustedLevel };
-          console.log('ğŸ”¼ Updated current tag:', newTag);
+          TagManagerLogger.log('?? Updated current tag:', newTag);
           return newTag;
         } else if (tag.id === previousTag.id) {
           const newTag = { ...tag, position: currentTag.position };
-          console.log('ğŸ”¼ Updated previous tag:', newTag);
+          TagManagerLogger.log('?? Updated previous tag:', newTag);
           return newTag;
         }
         return tag;
       });
       
-      console.log('ğŸ”¼ Final result:', newTags.map(t => ({id: t.id, position: t.position, name: t.name})));
+      TagManagerLogger.log('?? Final result:', newTags.map(t => ({id: t.id, position: t.position, name: t.name})));
       
       return newTags;
     });
   };
 
-  // å‘ä¸‹ç§»åŠ¨æ ‡ç­¾
+  // ÏòÏÂÒÆ¶¯±êÇ©
   const moveTagDown = (tagId: string) => {
-    console.log('ğŸ”½ moveTagDown called with tagId:', tagId);
+    TagManagerLogger.log('?? moveTagDown called with tagId:', tagId);
     
     setTags(prevTags => {
-      console.log('ğŸ”½ Current prevTags:', prevTags.map(t => ({id: t.id, position: t.position, name: t.name})));
+      TagManagerLogger.log('?? Current prevTags:', prevTags.map(t => ({id: t.id, position: t.position, name: t.name})));
       
-      // å…ˆéªŒè¯å’Œä¿®å¤position
+      // ÏÈÑéÖ¤ºÍĞŞ¸´position
       const validatedTags = validateAndFixPositions(prevTags);
       const sortedTags = [...validatedTags].sort((a, b) => (a.position || 0) - (b.position || 0));
-      console.log('ğŸ”½ Sorted tags:', sortedTags.map(t => ({id: t.id, position: t.position, name: t.name})));
+      TagManagerLogger.log('?? Sorted tags:', sortedTags.map(t => ({id: t.id, position: t.position, name: t.name})));
       
       const currentIndex = sortedTags.findIndex(tag => tag.id === tagId);
-      console.log('ğŸ”½ Current index:', currentIndex, 'for tagId:', tagId);
+      TagManagerLogger.log('?? Current index:', currentIndex, 'for tagId:', tagId);
       
       if (currentIndex < 0 || currentIndex >= sortedTags.length - 1) {
-        console.log('ğŸ”½ Tag is already at the bottom or not found, no movement needed');
-        return validatedTags; // è¿”å›ä¿®å¤åçš„æ•°æ®
+        TagManagerLogger.log('?? Tag is already at the bottom or not found, no movement needed');
+        return validatedTags; // ·µ»ØĞŞ¸´ºóµÄÊı¾İ
       }
       
-      // ä¸ä¸‹ä¸€ä¸ªæ ‡ç­¾äº¤æ¢ä½ç½®
+      // ÓëÏÂÒ»¸ö±êÇ©½»»»Î»ÖÃ
       const currentTag = sortedTags[currentIndex];
       const nextTag = sortedTags[currentIndex + 1];
       
-      console.log('ğŸ”½ Swapping:', {
+      TagManagerLogger.log('?? Swapping:', {
         current: {id: currentTag.id, position: currentTag.position, name: currentTag.name},
         next: {id: nextTag.id, position: nextTag.position, name: nextTag.name}
       });
       
       const newTags = validatedTags.map(tag => {
         if (tag.id === tagId) {
-          // è®¡ç®—ç§»åŠ¨åçš„åˆç†å±‚çº§
+          // ¼ÆËãÒÆ¶¯ºóµÄºÏÀí²ã¼¶
           let adjustedLevel = currentTag.level || 0;
           
-          // å½“å‘ä¸‹ç§»åŠ¨æ—¶ï¼Œæ£€æŸ¥ç§»åŠ¨åçš„ä¸Šä¸€ä¸ªæ ‡ç­¾ï¼ˆå³åŸæ¥çš„nextTagï¼‰å’Œåä¸€ä¸ªæ ‡ç­¾
+          // µ±ÏòÏÂÒÆ¶¯Ê±£¬¼ì²éÒÆ¶¯ºóµÄÉÏÒ»¸ö±êÇ©£¨¼´Ô­À´µÄnextTag£©ºÍºóÒ»¸ö±êÇ©
           const newPreviousLevel = nextTag.level || 0;
           
-          // æ‰¾åˆ°ç§»åŠ¨åçš„ä¸‹ä¸€ä¸ªæ ‡ç­¾ï¼ˆåŸæ¥ä½ç½®currentIndex+2çš„æ ‡ç­¾ï¼‰
+          // ÕÒµ½ÒÆ¶¯ºóµÄÏÂÒ»¸ö±êÇ©£¨Ô­À´Î»ÖÃcurrentIndex+2µÄ±êÇ©£©
           const newNextTag = currentIndex + 2 < sortedTags.length ? sortedTags[currentIndex + 2] : null;
           
-          // çº§åˆ«çº¦æŸæ£€æŸ¥ï¼š
-          // 1. ä¸èƒ½è¶…è¿‡æ–°ä½ç½®ä¸Šä¸€ä¸ªæ ‡ç­¾çš„å±‚çº§+1
-          // 2. å¦‚æœæœ‰ä¸‹ä¸€ä¸ªæ ‡ç­¾ï¼Œå½“å‰å±‚çº§ä¸èƒ½æ¯”ä¸‹ä¸€ä¸ªæ ‡ç­¾å°å¤ªå¤šï¼ˆé˜²æ­¢å±‚çº§è·³è·ƒè¿‡å¤§ï¼‰
+          // ¼¶±ğÔ¼Êø¼ì²é£º
+          // 1. ²»ÄÜ³¬¹ıĞÂÎ»ÖÃÉÏÒ»¸ö±êÇ©µÄ²ã¼¶+1
+          // 2. Èç¹ûÓĞÏÂÒ»¸ö±êÇ©£¬µ±Ç°²ã¼¶²»ÄÜ±ÈÏÂÒ»¸ö±êÇ©Ğ¡Ì«¶à£¨·ÀÖ¹²ã¼¶ÌøÔ¾¹ı´ó£©
           let maxAllowedLevel = newPreviousLevel + 1;
           
           if (newNextTag) {
             const nextTagLevel = newNextTag.level || 0;
-            // å¦‚æœä¸‹ä¸€ä¸ªæ ‡ç­¾å±‚çº§è¾ƒæ·±ï¼Œå…è®¸å½“å‰æ ‡ç­¾ä¹Ÿæœ‰ä¸€å®šæ·±åº¦
+            // Èç¹ûÏÂÒ»¸ö±êÇ©²ã¼¶½ÏÉî£¬ÔÊĞíµ±Ç°±êÇ©Ò²ÓĞÒ»¶¨Éî¶È
             maxAllowedLevel = Math.max(maxAllowedLevel, nextTagLevel);
           }
           
           adjustedLevel = Math.min(currentTag.level || 0, maxAllowedLevel);
           
-          console.log('ğŸ”½ å±‚çº§è°ƒæ•´æ£€æŸ¥:', {
+          TagManagerLogger.log('?? ²ã¼¶µ÷Õû¼ì²é:', {
             originalLevel: currentTag.level,
             newPreviousTagLevel: newPreviousLevel,
             newNextTagLevel: newNextTag?.level || 'none',
@@ -1752,26 +1755,26 @@ const TagManager: React.FC<TagManagerProps> = ({
           });
           
           const newTag = { ...tag, position: nextTag.position, level: adjustedLevel };
-          console.log('ğŸ”½ Updated current tag:', newTag);
+          TagManagerLogger.log('?? Updated current tag:', newTag);
           return newTag;
         } else if (tag.id === nextTag.id) {
           const newTag = { ...tag, position: currentTag.position };
-          console.log('ğŸ”½ Updated next tag:', newTag);
+          TagManagerLogger.log('?? Updated next tag:', newTag);
           return newTag;
         }
         return tag;
       });
       
-      console.log('ğŸ”½ Final result:', newTags.map(t => ({id: t.id, position: t.position, name: t.name})));
+      TagManagerLogger.log('?? Final result:', newTags.map(t => ({id: t.id, position: t.position, name: t.name})));
       
       return newTags;
     });
   };
 
-  // å¤„ç†æ ‡ç­¾ä¿å­˜
+  // ´¦Àí±êÇ©±£´æ
   const handleTagSave = (tagId: string, content: string) => {
     if (content.trim() === '') {
-      // åˆ é™¤ç©ºæ ‡ï¿½?
+      // É¾³ı¿Õ±ê??
       setTags(prev => prev.filter(tag => tag.id !== tagId));
       setCheckinCounts(prev => {
         const newCounts = { ...prev };
@@ -1779,13 +1782,13 @@ const TagManager: React.FC<TagManagerProps> = ({
         return newCounts;
       });
     } else {
-      // ä¿å­˜æ ‡ç­¾å†…å®¹
+      // ±£´æ±êÇ©ÄÚÈİ
       setTags(prev => prev.map(tag => 
         tag.id === tagId ? { ...tag, name: content.trim() } : tag
       ));
     }
     
-    // é‡ç½®æ–°æ ‡ç­¾çŠ¶æ€
+    // ÖØÖÃĞÂ±êÇ©×´Ì¬
     if (tagId === newTagId) {
       setNewTagId(null);
     }
@@ -1793,7 +1796,7 @@ const TagManager: React.FC<TagManagerProps> = ({
 
   return (
     <div>
-      {/* æ·»åŠ  kbd æ ·å¼ */}
+      {/* Ìí¼Ó kbd ÑùÊ½ */}
       <style>{`
         kbd {
           display: inline-block;
@@ -1809,22 +1812,22 @@ const TagManager: React.FC<TagManagerProps> = ({
         }
       `}</style>
       
-      {/* è°ƒè¯•ç»„ä»¶ - å·²ç¦ç”¨ä»¥å‡å°‘æ—¥å¿—è¾“å‡º 
+      {/* µ÷ÊÔ×é¼ş - ÒÑ½ûÓÃÒÔ¼õÉÙÈÕÖ¾Êä³ö 
       <ClickTracker 
         enabled={true}
         showVisualIndicators={true}
         onClickDetected={(event) => {
-          // ç›‘æµ‹æ‰€æœ‰ç‚¹å‡»äº‹ä»¶ç”¨äºè°ƒè¯•
-          console.log('ğŸ–±ï¸ GLOBAL CLICK DETECTED:', {
+          // ¼à²âËùÓĞµã»÷ÊÂ¼şÓÃÓÚµ÷ÊÔ
+          TagManagerLogger.log('??? GLOBAL CLICK DETECTED:', {
             position: `(${event.x}, ${event.y})`,
             target: event.elementInfo?.tagName,
-            size: `${event.elementBounds?.width.toFixed(1)}Ã—${event.elementBounds?.height.toFixed(1)}`,
+            size: `${event.elementBounds?.width.toFixed(1)}¡Á${event.elementBounds?.height.toFixed(1)}`,
             text: event.elementInfo?.textContent?.substring(0, 50)
           });
           
-          // ç‰¹åˆ«å…³æ³¨å¯èƒ½è§¦å‘ç°è‰²æ–‡æœ¬focusçš„å…ƒç´ 
-          if (event.elementInfo?.textContent?.includes('æ–°å¢æ ‡ç­¾')) {
-            console.log('ğŸ¯ CLICKED ELEMENT CONTAINS GRAY TEXT!', event);
+          // ÌØ±ğ¹Ø×¢¿ÉÄÜ´¥·¢»ÒÉ«ÎÄ±¾focusµÄÔªËØ
+          if (event.elementInfo?.textContent?.includes('ĞÂÔö±êÇ©')) {
+            TagManagerLogger.log('?? CLICKED ELEMENT CONTAINS GRAY TEXT!', event);
           }
         }}
       >
@@ -1832,11 +1835,11 @@ const TagManager: React.FC<TagManagerProps> = ({
         <div style={{ padding: '20px', backgroundColor: 'white' }}>
           <div style={{ position: 'relative' }}>
         
-        {/* æœç´¢æ¡† - å“åº”å¼å®šä½ï¼Œå³å¯¹é½ */}
+        {/* ËÑË÷¿ò - ÏìÓ¦Ê½¶¨Î»£¬ÓÒ¶ÔÆë */}
         <div style={{
           position: 'absolute',
           top: '-75px',
-          right: '20px', // ä½¿ç”¨rightå®šä½ï¼Œè·ç¦»å³è¾¹ç¼˜20pxï¼Œå®ç°è‡ªé€‚åº”
+          right: '20px', // Ê¹ÓÃright¶¨Î»£¬¾àÀëÓÒ±ßÔµ20px£¬ÊµÏÖ×ÔÊÊÓ¦
           zIndex: 10
         }}>
           <div style={{
@@ -1854,18 +1857,18 @@ const TagManager: React.FC<TagManagerProps> = ({
             cursor: 'pointer',
             flexShrink: 0
           }}>
-            <img src={icons.search} alt="æœç´¢" width="20" height="20" />
+            <img src={icons.search} alt="ËÑË÷" width="20" height="20" />
           </div>
         </div>
 
-        {/* æ ‡ç­¾åˆ—è¡¨ - æ·»åŠ ä¸Šè¾¹è·ä¸ºæœç´¢æ¡†ç•™å‡ºç©ºé—´ */}
+        {/* ±êÇ©ÁĞ±í - Ìí¼ÓÉÏ±ß¾àÎªËÑË÷¿òÁô³ö¿Õ¼ä */}
         <div style={{ marginTop: '60px' }}>
           {tags
             .sort((a, b) => (a.position || 0) - (b.position || 0))
             .map((tag, index) => {
-              // ä»…åœ¨å¼€å‘æ¨¡å¼ä¸‹æ‰“å°ç¬¬ä¸€ä¸ªæ ‡ç­¾çš„è°ƒè¯•ä¿¡æ¯ï¼ˆå‡å°‘æ—¥å¿—ï¼‰
+              // ½öÔÚ¿ª·¢Ä£Ê½ÏÂ´òÓ¡µÚÒ»¸ö±êÇ©µÄµ÷ÊÔĞÅÏ¢£¨¼õÉÙÈÕÖ¾£©
               // if (index === 0 && process.env.NODE_ENV === 'development') {
-              //   console.log('ğŸ¨ [Render] Tags being rendered:', tags
+              //   TagManagerLogger.log('?? [Render] Tags being rendered:', tags
               //     .sort((a, b) => (a.position || 0) - (b.position || 0))
               //     .map(t => ({ 
               //       id: t.id.substring(0, 8), 
@@ -1892,7 +1895,7 @@ const TagManager: React.FC<TagManagerProps> = ({
               onMouseEnter={() => setHoveredTagId(tag.id)}
               onMouseLeave={() => setHoveredTagId(null)}
             >
-              {/* æ ‡ç­¾å†…å®¹ - å·¦ä¾§éƒ¨åˆ† */}
+              {/* ±êÇ©ÄÚÈİ - ×ó²à²¿·Ö */}
               <div style={{ 
                 display: 'flex', 
                 alignItems: 'center',
@@ -1900,7 +1903,7 @@ const TagManager: React.FC<TagManagerProps> = ({
                 flex: 1,
                 minWidth: 0
               }}>
-                {/* # å· - å›ºå®š24px */}
+                {/* # ºÅ - ¹Ì¶¨24px */}
                 <span 
                   onClick={(e) => handleColorClick(tag.id, e)}
                   style={{ 
@@ -1923,10 +1926,10 @@ const TagManager: React.FC<TagManagerProps> = ({
                     e.currentTarget.style.backgroundColor = 'transparent';
                     e.currentTarget.style.transform = 'scale(1)';
                   }}
-                  title="ç‚¹å‡»ä¿®æ”¹é¢œè‰²"
+                  title="µã»÷ĞŞ¸ÄÑÕÉ«"
                 >#</span>
                 
-                {/* Emoji - å›ºå®š24px */}
+                {/* Emoji - ¹Ì¶¨24px */}
                 <span 
                   onClick={(e) => handleEmojiClick(tag.id, e)}
                   style={{
@@ -1952,12 +1955,12 @@ const TagManager: React.FC<TagManagerProps> = ({
                     e.currentTarget.style.backgroundColor = 'transparent';
                     e.currentTarget.style.transform = 'scale(1)';
                   }}
-                  title="ç‚¹å‡»ä¿®æ”¹è¡¨æƒ…"
+                  title="µã»÷ĞŞ¸Ä±íÇé"
                 >
                   {tag.emoji}
                 </span>
                 
-                {/* æ ‡ç­¾æ–‡å­— - å¯ç¼–è¾‘ */}
+                {/* ±êÇ©ÎÄ×Ö - ¿É±à¼­ */}
                 <span 
                   data-tag-id={tag.id}
                   style={{ 
@@ -1971,9 +1974,9 @@ const TagManager: React.FC<TagManagerProps> = ({
                     display: 'inline-block',
                     minWidth: 'fit-content',
                     cursor: 'text',
-                    userSelect: 'text', // ğŸ”§ æ˜ç¡®å…è®¸é€‰æ‹©
-                    WebkitUserSelect: 'text', // ğŸ”§ å…¼å®¹webkit
-                    MozUserSelect: 'text' // ğŸ”§ å…¼å®¹Firefox
+                    userSelect: 'text', // ?? Ã÷È·ÔÊĞíÑ¡Ôñ
+                    WebkitUserSelect: 'text', // ?? ¼æÈİwebkit
+                    MozUserSelect: 'text' // ?? ¼æÈİFirefox
                   }}
                   contentEditable
                   suppressContentEditableWarning
@@ -1983,7 +1986,7 @@ const TagManager: React.FC<TagManagerProps> = ({
                   }}
                   onKeyDown={(e) => handleTagKeyDown(e, tag.id, tag.level || 0)}
                   onMouseDown={(e) => {
-                    // ğŸ”§ é˜»æ­¢äº‹ä»¶å†’æ³¡ï¼Œç¡®ä¿å¯ä»¥é€‰æ‹©æ–‡å­—
+                    // ?? ×èÖ¹ÊÂ¼şÃ°Åİ£¬È·±£¿ÉÒÔÑ¡ÔñÎÄ×Ö
                     e.stopPropagation();
                   }}
                 >
@@ -1991,7 +1994,7 @@ const TagManager: React.FC<TagManagerProps> = ({
                 </span>
               </div>
 
-              {/* å³ä¾§åŒºåŸŸ - å“åº”å¼å¯¹é½ */}
+              {/* ÓÒ²àÇøÓò - ÏìÓ¦Ê½¶ÔÆë */}
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -1999,11 +2002,11 @@ const TagManager: React.FC<TagManagerProps> = ({
                 flex: '1',
                 minWidth: '400px',
                 justifyContent: 'flex-end',
-                userSelect: 'none', // ğŸ”§ ç¦æ­¢å³ä¾§åŒºåŸŸè¢«é€‰ä¸­
+                userSelect: 'none', // ?? ½ûÖ¹ÓÒ²àÇøÓò±»Ñ¡ÖĞ
                 WebkitUserSelect: 'none',
                 MozUserSelect: 'none'
               }}>
-                {/* æ—¥å†æ˜ å°„ */}
+                {/* ÈÕÀúÓ³Éä */}
                 <div 
                   onClick={(e) => handleCalendarMappingClick(tag.id, e)}
                   style={{
@@ -2018,18 +2021,18 @@ const TagManager: React.FC<TagManagerProps> = ({
                     transition: 'background-color 0.2s',
                     width: '180px',
                     flexShrink: 0,
-                    position: 'relative', // ğŸ”§ ç”¨äºæ‰¹é‡æŒ‡ç¤ºå™¨å®šä½
-                    border: selectedTagIds.includes(tag.id) && selectedTagIds.length > 1 ? '2px solid #3b82f6' : 'none' // ğŸ¯ æ‰¹é‡æ¨¡å¼è¾¹æ¡†
+                    position: 'relative', // ?? ÓÃÓÚÅúÁ¿Ö¸Ê¾Æ÷¶¨Î»
+                    border: selectedTagIds.includes(tag.id) && selectedTagIds.length > 1 ? '2px solid #3b82f6' : 'none' // ?? ÅúÁ¿Ä£Ê½±ß¿ò
                   }}
                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                   title={
                     selectedTagIds.includes(tag.id) && selectedTagIds.length > 1 
-                      ? `æ‰¹é‡è®¾ç½® (${selectedTagIds.length}ä¸ªæ ‡ç­¾)` 
-                      : "ç‚¹å‡»è®¾ç½®æ—¥å†æ˜ å°„"
+                      ? `ÅúÁ¿ÉèÖÃ (${selectedTagIds.length}¸ö±êÇ©)` 
+                      : "µã»÷ÉèÖÃÈÕÀúÓ³Éä"
                   }
                 >
-                  {/* ğŸ¯ æ‰¹é‡æ“ä½œæŒ‡ç¤ºå™¨ */}
+                  {/* ?? ÅúÁ¿²Ù×÷Ö¸Ê¾Æ÷ */}
                   {selectedTagIds.includes(tag.id) && selectedTagIds.length > 1 && (
                     <div style={{
                       position: 'absolute',
@@ -2064,26 +2067,26 @@ const TagManager: React.FC<TagManagerProps> = ({
                     whiteSpace: 'nowrap',
                     flex: 1
                   }}>
-                    {tag.calendarMapping?.calendarName || 'æœªæ˜ å°„'}
+                    {tag.calendarMapping?.calendarName || 'Î´Ó³Éä'}
                   </span>
                 </div>
 
-              {/* å³ä¾§æŒ‰é’®åŒºåŸŸ */}
+              {/* ÓÒ²à°´Å¥ÇøÓò */}
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '20px'
               }}>
-                {/* æ‰“å¡æŒ‰é’® */}
+                {/* ´ò¿¨°´Å¥ */}
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '4px',
                   fontSize: '16px',
                   color: '#000000',
-                  width: '95px', // å›ºå®šå®½åº¦ï¼Œé˜²æ­¢æ¼‚ç§»
+                  width: '95px', // ¹Ì¶¨¿í¶È£¬·ÀÖ¹Æ¯ÒÆ
                   justifyContent: 'center',
-                  flexShrink: 0 // é˜²æ­¢è¢«å‹ç¼©
+                  flexShrink: 0 // ·ÀÖ¹±»Ñ¹Ëõ
                 }}>
                   <div
                     onClick={() => handleCheckin(tag.id)}
@@ -2099,9 +2102,9 @@ const TagManager: React.FC<TagManagerProps> = ({
                     }}
                     onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
                     onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                    title={`æ‰“å¡ (å·²æ‰“å¡${checkinCounts[tag.id] || 0}æ¬¡)`}
+                    title={`´ò¿¨ (ÒÑ´ò¿¨${checkinCounts[tag.id] || 0}´Î)`}
                   >
-                    <img src={icons.multiCheckinColor} alt="æ‰“å¡" width="25" height="25" />
+                    <img src={icons.multiCheckinColor} alt="´ò¿¨" width="25" height="25" />
                     {checkinCounts[tag.id] > 0 && (
                       <span style={{
                         position: 'absolute',
@@ -2122,22 +2125,22 @@ const TagManager: React.FC<TagManagerProps> = ({
                     )}
                   </div>
                   <span>
-                    {(tag.dailyAvgCheckins || 0).toFixed(1)}æ¬¡/å¤©
+                    {(tag.dailyAvgCheckins || 0).toFixed(1)}´Î/Ìì
                   </span>
                 </div>
 
-                {/* è®¡æ—¶å™¨æŒ‰é’® */}
+                {/* ¼ÆÊ±Æ÷°´Å¥ */}
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '4px',
                   fontSize: '16px',
                   color: '#000000',
-                  width: '110px', // å›ºå®šå®½åº¦ï¼Œé˜²æ­¢æ¼‚ç§»
-                  justifyContent: 'flex-start', // å·¦å¯¹é½
-                  flexShrink: 0 // é˜²æ­¢è¢«å‹ç¼©
+                  width: '110px', // ¹Ì¶¨¿í¶È£¬·ÀÖ¹Æ¯ÒÆ
+                  justifyContent: 'flex-start', // ×ó¶ÔÆë
+                  flexShrink: 0 // ·ÀÖ¹±»Ñ¹Ëõ
                 }}>
-                  {/* è®¡æ—¶æŒ‰é’® - å›ºå®šåœ¨å·¦ä¾§ */}
+                  {/* ¼ÆÊ±°´Å¥ - ¹Ì¶¨ÔÚ×ó²à */}
                   <div
                     style={{
                       width: '25px',
@@ -2146,10 +2149,10 @@ const TagManager: React.FC<TagManagerProps> = ({
                       alignItems: 'center',
                       justifyContent: 'center',
                       cursor: 'pointer',
-                      flexShrink: 0 // å›ºå®šå¤§å°ï¼Œä¸ä¼šç¼©æ”¾
+                      flexShrink: 0 // ¹Ì¶¨´óĞ¡£¬²»»áËõ·Å
                     }}
                     onClick={() => {
-                      // å¦‚æœå½“å‰æ ‡ç­¾æ­£åœ¨è®¡æ—¶ï¼Œåˆ™æš‚åœ/ç»§ç»­
+                      // Èç¹ûµ±Ç°±êÇ©ÕıÔÚ¼ÆÊ±£¬ÔòÔİÍ£/¼ÌĞø
                       if (globalTimer?.tagId === tag.id) {
                         if (globalTimer.isRunning) {
                           onTimerPause?.();
@@ -2157,15 +2160,15 @@ const TagManager: React.FC<TagManagerProps> = ({
                           onTimerResume?.();
                         }
                       } else {
-                        // å¼€å§‹æ–°çš„è®¡æ—¶
+                        // ¿ªÊ¼ĞÂµÄ¼ÆÊ±
                         onTimerStart?.(tag.id);
                       }
                     }}
-                    title={globalTimer?.tagId === tag.id ? (globalTimer.isRunning ? "æš‚åœè®¡æ—¶" : "ç»§ç»­è®¡æ—¶") : "å¼€å§‹è®¡æ—¶"}
+                    title={globalTimer?.tagId === tag.id ? (globalTimer.isRunning ? "ÔİÍ£¼ÆÊ±" : "¼ÌĞø¼ÆÊ±") : "¿ªÊ¼¼ÆÊ±"}
                   >
                     <img 
                       src={icons.timerColor} 
-                      alt="è®¡æ—¶" 
+                      alt="¼ÆÊ±" 
                       width="25" 
                       height="25"
                       style={{
@@ -2177,15 +2180,15 @@ const TagManager: React.FC<TagManagerProps> = ({
                     />
                   </div>
                   
-                  {/* è®¡æ—¶æ–‡æœ¬ - å›ºå®šå®½åº¦ï¼Œé˜²æ­¢æŒ‰é’®ç§»åŠ¨ */}
+                  {/* ¼ÆÊ±ÎÄ±¾ - ¹Ì¶¨¿í¶È£¬·ÀÖ¹°´Å¥ÒÆ¶¯ */}
                   <span style={{ 
-                    width: '80px', // å›ºå®šå®½åº¦ï¼Œæ–‡æœ¬å˜åŒ–ä¸å½±å“æŒ‰é’®ä½ç½®
+                    width: '80px', // ¹Ì¶¨¿í¶È£¬ÎÄ±¾±ä»¯²»Ó°Ïì°´Å¥Î»ÖÃ
                     textAlign: 'left',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap'
                   }}>
-                    {/* å¦‚æœå½“å‰æ ‡ç­¾æ­£åœ¨è®¡æ—¶ï¼Œæ˜¾ç¤ºå®æ—¶è®¡æ—¶ï¼›å¦åˆ™æ˜¾ç¤ºå¹³å‡æ—¶é•¿ */}
+                    {/* Èç¹ûµ±Ç°±êÇ©ÕıÔÚ¼ÆÊ±£¬ÏÔÊ¾ÊµÊ±¼ÆÊ±£»·ñÔòÏÔÊ¾Æ½¾ùÊ±³¤ */}
                     {globalTimer?.tagId === tag.id ? (() => {
                       const elapsed = globalTimer.elapsedTime + 
                         (globalTimer.isRunning ? (Date.now() - globalTimer.startTime) : 0);
@@ -2198,7 +2201,7 @@ const TagManager: React.FC<TagManagerProps> = ({
                         return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
                       }
                       return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-                    })() : `${((tag.dailyAvgDuration || 150) / 60).toFixed(1)}h/å¤©`}
+                    })() : `${((tag.dailyAvgDuration || 150) / 60).toFixed(1)}h/Ìì`}
                   </span>
                 </div>
               </div>
@@ -2207,7 +2210,7 @@ const TagManager: React.FC<TagManagerProps> = ({
           );
           })}
 
-          {/* æ–°æ ‡ç­¾åˆ›å»ºåŒºåŸŸ */}
+          {/* ĞÂ±êÇ©´´½¨ÇøÓò */}
           <div 
             style={{
               display: 'flex',
@@ -2219,7 +2222,7 @@ const TagManager: React.FC<TagManagerProps> = ({
               position: 'relative'
             }}
           >
-            {/* æ ‡ç­¾å†…å®¹ - å·¦ä¾§ */}
+            {/* ±êÇ©ÄÚÈİ - ×ó²à */}
             <div 
               style={{ 
                 display: 'flex', 
@@ -2230,7 +2233,7 @@ const TagManager: React.FC<TagManagerProps> = ({
                 overflow: 'hidden'
               }}
             >
-              {/* # å·- å›ºå®š24px */}
+              {/* # ºÅ- ¹Ì¶¨24px */}
               <span 
                 style={{ 
                   color: '#9ca3af',
@@ -2243,7 +2246,7 @@ const TagManager: React.FC<TagManagerProps> = ({
                 }}
               >#</span>
               
-              {/* Emoji - å›ºå®š24px */}
+              {/* Emoji - ¹Ì¶¨24px */}
               <span 
                 style={{
                   fontSize: '16px',
@@ -2254,10 +2257,10 @@ const TagManager: React.FC<TagManagerProps> = ({
                   marginLeft: '4px'
                 }}
               >
-                ğŸ˜€
+                ??
               </span>
               
-              {/* æ–°æ ‡ç­¾æ–‡å­—è¾“å…¥åŒºåŸŸ - æ‰©å¤§æ•´ä¸ªåŒºåŸŸ */}
+              {/* ĞÂ±êÇ©ÎÄ×ÖÊäÈëÇøÓò - À©´óÕû¸öÇøÓò */}
               <span 
                 style={{ 
                   color: isCreatingNewTag ? '#3b82f6' : '#9ca3af',
@@ -2277,7 +2280,7 @@ const TagManager: React.FC<TagManagerProps> = ({
                   whiteSpace: 'nowrap',
                   padding: '2px 4px',
                   margin: '0 0 0 8px',
-                  minWidth: '120px', // ç¡®ä¿æœ‰è¶³å¤Ÿçš„ç‚¹å‡»åŒºåŸŸ
+                  minWidth: '120px', // È·±£ÓĞ×ã¹»µÄµã»÷ÇøÓò
                   borderRadius: '3px',
                   transition: 'background-color 0.2s'
                 }}
@@ -2286,15 +2289,15 @@ const TagManager: React.FC<TagManagerProps> = ({
                 onClick={(e) => {
                   e.stopPropagation();
                   
-                  // ç”¨æˆ·æ˜ç¡®ç‚¹å‡»äº†ç°è‰²æ–‡æœ¬
-                  console.log('âœ… ç”¨æˆ·æ˜ç¡®ç‚¹å‡»äº†ç°è‰²æ–‡æœ¬åŒºåŸŸ');
+                  // ÓÃ»§Ã÷È·µã»÷ÁË»ÒÉ«ÎÄ±¾
+                  TagManagerLogger.log('? ÓÃ»§Ã÷È·µã»÷ÁË»ÒÉ«ÎÄ±¾ÇøÓò');
                   
-                  // æ£€æŸ¥ç‚¹å‡»ä½ç½®æ˜¯å¦åœ¨æ–‡å­—é™„è¿‘
+                  // ¼ì²éµã»÷Î»ÖÃÊÇ·ñÔÚÎÄ×Ö¸½½ü
                   const rect = e.currentTarget.getBoundingClientRect();
                   const clickX = e.clientX - rect.left;
                   const clickY = e.clientY - rect.top;
                   
-                  console.log('ğŸ¯ Gray text area clicked at:', {
+                  TagManagerLogger.log('?? Gray text area clicked at:', {
                     clickX: clickX.toFixed(1),
                     clickY: clickY.toFixed(1),
                     rectWidth: rect.width.toFixed(1),
@@ -2302,34 +2305,34 @@ const TagManager: React.FC<TagManagerProps> = ({
                     isCreating: isCreatingNewTag
                   });
                   
-                  // å¦‚æœä¸åœ¨åˆ›å»ºæ¨¡å¼ï¼Œç›´æ¥æ¿€æ´»åˆ›å»ºï¼ˆè·³è¿‡ç”¨æˆ·æ„å›¾æ£€æµ‹ï¼‰
+                  // Èç¹û²»ÔÚ´´½¨Ä£Ê½£¬Ö±½Ó¼¤»î´´½¨£¨Ìø¹ıÓÃ»§ÒâÍ¼¼ì²â£©
                   if (!isCreatingNewTag) {
-                    console.log('ğŸ¯ Direct activation from click');
-                    setIsCreatingNewTag(true); // ç›´æ¥è¿›å…¥åˆ›å»ºæ¨¡å¼
+                    TagManagerLogger.log('?? Direct activation from click');
+                    setIsCreatingNewTag(true); // Ö±½Ó½øÈë´´½¨Ä£Ê½
                     
-                    // æ‰¾åˆ°æ‰€æœ‰æ ‡ç­¾ä¸­positionæœ€å¤§çš„æ ‡ç­¾ï¼Œåœ¨å…¶åé¢åˆ›å»ºæ–°çš„ä¸€çº§æ ‡ç­¾
+                    // ÕÒµ½ËùÓĞ±êÇ©ÖĞposition×î´óµÄ±êÇ©£¬ÔÚÆäºóÃæ´´½¨ĞÂµÄÒ»¼¶±êÇ©
                     const sortedTags = [...tags].sort((a, b) => (a.position || 0) - (b.position || 0));
                     const lastTag = sortedTags[sortedTags.length - 1];
                     const lastTagId = lastTag?.id;
                     
-                    console.log('ğŸ¯ [GrayText] Creating new tag after last tag:', {
+                    TagManagerLogger.log('?? [GrayText] Creating new tag after last tag:', {
                       lastTagId,
                       lastTagName: lastTag?.name,
                       lastTagPosition: lastTag?.position,
                       newTagLevel: 0
                     });
                     
-                    // å¦‚æœæœ‰æ ‡ç­¾ï¼Œåœ¨æœ€åä¸€ä¸ªæ ‡ç­¾åé¢åˆ›å»ºï¼›å¦åˆ™ç›´æ¥åˆ›å»º
+                    // Èç¹ûÓĞ±êÇ©£¬ÔÚ×îºóÒ»¸ö±êÇ©ºóÃæ´´½¨£»·ñÔòÖ±½Ó´´½¨
                     if (lastTagId) {
                       createNewTag(0, lastTagId);
                     } else {
                       createNewTag(0);
                     }
                     
-                    // ä¿å­˜å½“å‰å…ƒç´ çš„å¼•ç”¨ï¼Œé¿å…åœ¨setTimeoutä¸­è®¿é—®null
+                    // ±£´æµ±Ç°ÔªËØµÄÒıÓÃ£¬±ÜÃâÔÚsetTimeoutÖĞ·ÃÎÊnull
                     const currentElement = e.currentTarget;
                     setTimeout(() => {
-                      if (currentElement && currentElement.textContent === 'ç‚¹å‡»æ–°å¢æ ‡ç­¾ï¼ŒTab/Shift+Tabåˆ‡æ¢å±‚çº§ï¼ŒShift+Alt+â†‘/â†“ä¸Šä¸‹ç§»åŠ¨æ ‡ç­¾') {
+                      if (currentElement && currentElement.textContent === 'µã»÷ĞÂÔö±êÇ©£¬Tab/Shift+TabÇĞ»»²ã¼¶£¬Shift+Alt+¡ü/¡ıÉÏÏÂÒÆ¶¯±êÇ©') {
                         currentElement.textContent = '';
                       }
                       if (currentElement) {
@@ -2339,50 +2342,50 @@ const TagManager: React.FC<TagManagerProps> = ({
                   }
                 }}
                 onFocus={(e) => {
-                  console.log('ğŸ¯ Gray text focused, isCreating:', isCreatingNewTag);
-                  console.log('ğŸ” ç”¨æˆ·æ˜¯å¦æ˜ç¡®ç‚¹å‡»äº†ç°è‰²æ–‡æœ¬:', userClickedGrayText);
+                  TagManagerLogger.log('?? Gray text focused, isCreating:', isCreatingNewTag);
+                  TagManagerLogger.log('?? ÓÃ»§ÊÇ·ñÃ÷È·µã»÷ÁË»ÒÉ«ÎÄ±¾:', userClickedGrayText);
                   
-                  // å¦‚æœå·²ç»åœ¨åˆ›å»ºæ¨¡å¼ï¼Œç›´æ¥è¿”å›
+                  // Èç¹ûÒÑ¾­ÔÚ´´½¨Ä£Ê½£¬Ö±½Ó·µ»Ø
                   if (isCreatingNewTag) {
-                    console.log('âœ… Already in creation mode, nothing to do');
+                    TagManagerLogger.log('? Already in creation mode, nothing to do');
                     return;
                   }
                   
-                  // å¦‚æœç”¨æˆ·æ²¡æœ‰æ˜ç¡®ç‚¹å‡»ç°è‰²æ–‡æœ¬ï¼Œè¿™æ˜¯æ„å¤–çš„focusäº‹ä»¶ï¼Œå¿½ç•¥
+                  // Èç¹ûÓÃ»§Ã»ÓĞÃ÷È·µã»÷»ÒÉ«ÎÄ±¾£¬ÕâÊÇÒâÍâµÄfocusÊÂ¼ş£¬ºöÂÔ
                   if (!userClickedGrayText) {
-                    console.log('ğŸš¨ Focusäº‹ä»¶ä¸æ˜¯ç”±ç”¨æˆ·ç›´æ¥ç‚¹å‡»å¼•èµ·çš„ï¼Œå¿½ç•¥');
-                    // ç§»é™¤ç„¦ç‚¹ä»¥é˜²æ­¢æ„å¤–æ¿€æ´»
+                    TagManagerLogger.log('?? FocusÊÂ¼ş²»ÊÇÓÉÓÃ»§Ö±½Óµã»÷ÒıÆğµÄ£¬ºöÂÔ');
+                    // ÒÆ³ı½¹µãÒÔ·ÀÖ¹ÒâÍâ¼¤»î
                     e.currentTarget.blur();
                     return;
                   }
                   
-                  // é‡ç½®ç‚¹å‡»æ ‡è®°
+                  // ÖØÖÃµã»÷±ê¼Ç
                   setUserClickedGrayText(false);
                   
-                  // æ¿€æ´»åˆ›å»ºæ¨¡å¼ï¼ˆè¿™ç§æƒ…å†µåº”è¯¥å¾ˆå°‘å‘ç”Ÿï¼Œå› ä¸ºonClickå·²ç»å¤„ç†äº†ï¼‰
-                  console.log('âœ… Valid focus on placeholder text, activating creation');
+                  // ¼¤»î´´½¨Ä£Ê½£¨ÕâÖÖÇé¿öÓ¦¸ÃºÜÉÙ·¢Éú£¬ÒòÎªonClickÒÑ¾­´¦ÀíÁË£©
+                  TagManagerLogger.log('? Valid focus on placeholder text, activating creation');
                   handleNewTagActivation();
                   e.currentTarget.textContent = '';
                 }}
                 onBlur={(e) => {
-                  console.log('ğŸ‘‹ Gray text blurred');
+                  TagManagerLogger.log('?? Gray text blurred');
                   const content = e.currentTarget.textContent || '';
                   
                   if (isCreatingNewTag) {
                     if (content.trim() === '') {
-                      // å¦‚æœæ²¡æœ‰è¾“å…¥å†…å®¹ï¼Œå–æ¶ˆåˆ›å»º
-                      console.log('âŒ Empty content, cancelling creation');
+                      // Èç¹ûÃ»ÓĞÊäÈëÄÚÈİ£¬È¡Ïû´´½¨
+                      TagManagerLogger.log('? Empty content, cancelling creation');
                       handleCancelNewTag();
-                      e.currentTarget.textContent = 'ç‚¹å‡»æ–°å¢æ ‡ç­¾ï¼ŒTab/Shift+Tabåˆ‡æ¢å±‚çº§ï¼ŒShift+Alt+â†‘/â†“ä¸Šä¸‹ç§»åŠ¨æ ‡ç­¾';
+                      e.currentTarget.textContent = 'µã»÷ĞÂÔö±êÇ©£¬Tab/Shift+TabÇĞ»»²ã¼¶£¬Shift+Alt+¡ü/¡ıÉÏÏÂÒÆ¶¯±êÇ©';
                     } else {
-                      // ä¿å­˜æ–°æ ‡ç­¾å†…å®¹ï¼Œé€€å‡ºåˆ›å»ºæ¨¡å¼
-                      console.log('ğŸ’¾ Saving new tag:', content.trim());
+                      // ±£´æĞÂ±êÇ©ÄÚÈİ£¬ÍË³ö´´½¨Ä£Ê½
+                      TagManagerLogger.log('?? Saving new tag:', content.trim());
                       setIsCreatingNewTag(false);
                     }
                   } else {
-                    // ç¡®ä¿æ˜¾ç¤ºå ä½ç¬¦æ–‡æœ¬
+                    // È·±£ÏÔÊ¾Õ¼Î»·ûÎÄ±¾
                     if (content.trim() === '') {
-                      e.currentTarget.textContent = 'ç‚¹å‡»æ–°å¢æ ‡ç­¾ï¼ŒTab/Shift+Tabåˆ‡æ¢å±‚çº§ï¼ŒShift+Alt+â†‘/â†“ä¸Šä¸‹ç§»åŠ¨æ ‡ç­¾';
+                      e.currentTarget.textContent = 'µã»÷ĞÂÔö±êÇ©£¬Tab/Shift+TabÇĞ»»²ã¼¶£¬Shift+Alt+¡ü/¡ıÉÏÏÂÒÆ¶¯±êÇ©';
                     }
                   }
                 }}
@@ -2391,9 +2394,9 @@ const TagManager: React.FC<TagManagerProps> = ({
                     e.preventDefault();
                     const content = e.currentTarget.textContent || '';
                     if (content.trim() !== '') {
-                      console.log('âœ… Creating new tag with Enter:', content.trim());
+                      TagManagerLogger.log('? Creating new tag with Enter:', content.trim());
                       setIsCreatingNewTag(false);
-                      // è¿™é‡Œå¯ä»¥ç»§ç»­åˆ›å»ºä¸‹ä¸€ä¸ªæ ‡ç­¾
+                      // ÕâÀï¿ÉÒÔ¼ÌĞø´´½¨ÏÂÒ»¸ö±êÇ©
                       setTimeout(() => {
                         handleNewTagActivation();
                         e.currentTarget.textContent = '';
@@ -2402,9 +2405,9 @@ const TagManager: React.FC<TagManagerProps> = ({
                     }
                   } else if (e.key === 'Escape') {
                     e.preventDefault();
-                    console.log('ğŸš« Cancelling new tag creation with Escape');
+                    TagManagerLogger.log('?? Cancelling new tag creation with Escape');
                     handleCancelNewTag();
-                    e.currentTarget.textContent = 'ç‚¹å‡»æ–°å¢æ ‡ç­¾ï¼ŒTab/Shift+Tabåˆ‡æ¢å±‚çº§ï¼ŒShift+Alt+â†‘/â†“ä¸Šä¸‹ç§»åŠ¨æ ‡ç­¾';
+                    e.currentTarget.textContent = 'µã»÷ĞÂÔö±êÇ©£¬Tab/Shift+TabÇĞ»»²ã¼¶£¬Shift+Alt+¡ü/¡ıÉÏÏÂÒÆ¶¯±êÇ©';
                     e.currentTarget.blur();
                   }
                 }}
@@ -2419,13 +2422,13 @@ const TagManager: React.FC<TagManagerProps> = ({
                   }
                 }}
               >
-                {!isCreatingNewTag ? 'ç‚¹å‡»æ–°å¢æ ‡ç­¾ï¼ŒTab/Shift+Tabåˆ‡æ¢å±‚çº§ï¼ŒShift+Alt+â†‘/â†“ä¸Šä¸‹ç§»åŠ¨æ ‡ç­¾' : ''}
+                {!isCreatingNewTag ? 'µã»÷ĞÂÔö±êÇ©£¬Tab/Shift+TabÇĞ»»²ã¼¶£¬Shift+Alt+¡ü/¡ıÉÏÏÂÒÆ¶¯±êÇ©' : ''}
               </span>
             </div>
           </div>
         </div>
 
-      {/* é€‰æ‹©å™¨ç»„ä»¶ */}
+      {/* Ñ¡ÔñÆ÷×é¼ş */}
       <ColorPicker
         onSelect={handleColorSelect}
         onClose={() => setShowColorPicker({ show: false, tagId: '', position: { x: 0, y: 0 } })}
@@ -2434,12 +2437,12 @@ const TagManager: React.FC<TagManagerProps> = ({
         isVisible={showColorPicker.show}
       />
       
-      {/* emoji-mart è¡¨æƒ…é€‰æ‹©å™¨ */}
+      {/* emoji-mart ±íÇéÑ¡ÔñÆ÷ */}
       {showEmojiPicker.show && (
         <div 
           onMouseDown={handleMouseDown}
           style={{
-          position: 'fixed', // æ”¹ä¸ºfixedå®šä½
+          position: 'fixed', // ¸ÄÎªfixed¶¨Î»
           left: showEmojiPicker.position.x,
           top: showEmojiPicker.position.y,
           zIndex: 1000,
@@ -2448,7 +2451,7 @@ const TagManager: React.FC<TagManagerProps> = ({
           overflow: 'hidden',
           background: 'white',
           border: '1px solid #e5e7eb',
-          userSelect: 'none', // é˜²æ­¢æ‹–æ‹½æ—¶é€‰ä¸­æ–‡æœ¬
+          userSelect: 'none', // ·ÀÖ¹ÍÏ×§Ê±Ñ¡ÖĞÎÄ±¾
           cursor: isDragging ? 'grabbing' : 'grab'
         }}>
           <Picker
@@ -2473,16 +2476,16 @@ const TagManager: React.FC<TagManagerProps> = ({
             navPosition="bottom"
             noCountryFlags={true}
             categoryIcons={{
-              activity: 'âš½',
-              custom: 'ğŸŒŸ',
-              flags: 'ğŸ´',
-              foods: 'ğŸ•',
-              frequent: 'â­',
-              nature: 'ğŸŒ¿',
-              objects: 'ğŸ’¡',
-              people: 'ğŸ˜Š',
-              places: 'ğŸ ',
-              symbols: 'â¤ï¸'
+              activity: '?',
+              custom: '??',
+              flags: '??',
+              foods: '??',
+              frequent: '?',
+              nature: '??',
+              objects: '??',
+              people: '??',
+              places: '??',
+              symbols: '??'
             }}
           />
         </div>
@@ -2494,12 +2497,12 @@ const TagManager: React.FC<TagManagerProps> = ({
         position={showCalendarPicker.position}
         isVisible={showCalendarPicker.show}
         microsoftService={microsoftService}
-        googleService={undefined} // æœªæ¥çš„Googleæ—¥å†æœåŠ¡
-        icloudService={undefined} // æœªæ¥çš„iCloudæ—¥å†æœåŠ¡
+        googleService={undefined} // Î´À´µÄGoogleÈÕÀú·şÎñ
+        icloudService={undefined} // Î´À´µÄiCloudÈÕÀú·şÎñ
         availableCalendars={availableCalendars}
       />
       
-      {/* ç‚¹å‡»å¤–éƒ¨å…³é—­é€‰æ‹©ï¿½?*/}
+      {/* µã»÷Íâ²¿¹Ø±ÕÑ¡Ôñ??*/}
       {(showEmojiPicker.show || showColorPicker.show || showCalendarPicker.show) && (
         <div 
           style={{
