@@ -2453,6 +2453,7 @@ const TagManager: React.FC<TagManagerProps> = ({
               </span>
             </div>
           </div>
+          </div>
         </div>
 
       {/* 选择器组件 */}

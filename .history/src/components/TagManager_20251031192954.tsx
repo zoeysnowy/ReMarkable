@@ -1845,13 +1845,14 @@ const TagManager: React.FC<TagManagerProps> = ({
       >
       */}
         <div style={{ padding: '20px', backgroundColor: 'white', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
         
-        {/* 搜索框 - 固定在顶部，不参与滚动 */}
+        {/* 搜索框 - 响应式定位，右对齐 */}
         <div style={{
-          display: 'flex',
-          justifyContent: 'flex-end',
-          marginBottom: '12px',
-          flexShrink: 0
+          position: 'absolute',
+          top: '0px',
+          right: '0px',
+          zIndex: 10
         }}>
           <div style={{
             width: '122px',
@@ -1865,14 +1866,15 @@ const TagManager: React.FC<TagManagerProps> = ({
             alignItems: 'center',
             justifyContent: 'flex-start',
             paddingLeft: '12px',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            flexShrink: 0
           }}>
             <img src={icons.search} alt="搜索" width="20" height="20" />
           </div>
         </div>
 
-        {/* 标签列表滚动容器 */}
-        <div className="tag-list-scroll-container" style={{ flex: 1, minHeight: 0 }}>
+        {/* 标签列表 - 添加上边距为搜索框留出空间 */}
+        <div className="tag-list-scroll-container" style={{ paddingTop: '50px', flex: 1 }}>
           {tags
             .sort((a, b) => (a.position || 0) - (b.position || 0))
             .map((tag, index) => {
@@ -2453,6 +2455,7 @@ const TagManager: React.FC<TagManagerProps> = ({
               </span>
             </div>
           </div>
+          </div>
         </div>
 
       {/* 选择器组件 */}
@@ -2547,6 +2550,8 @@ const TagManager: React.FC<TagManagerProps> = ({
           }}
         />
       )}
+      </div>
+      </div>
     </div>
   );
 };

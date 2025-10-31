@@ -1795,7 +1795,7 @@ const TagManager: React.FC<TagManagerProps> = ({
   };
 
   return (
-    <div className="figma-tag-manager-v4" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* 添加 kbd 样式 */}
       <style>{`
         kbd {
@@ -1845,13 +1845,14 @@ const TagManager: React.FC<TagManagerProps> = ({
       >
       */}
         <div style={{ padding: '20px', backgroundColor: 'white', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         
-        {/* 搜索框 - 固定在顶部，不参与滚动 */}
+        {/* 搜索框 - 响应式定位，右对齐 */}
         <div style={{
-          display: 'flex',
-          justifyContent: 'flex-end',
-          marginBottom: '12px',
-          flexShrink: 0
+          position: 'absolute',
+          top: '-75px',
+          right: '20px', // 使用right定位，距离右边缘20px，实现自适应
+          zIndex: 10
         }}>
           <div style={{
             width: '122px',
@@ -1865,14 +1866,15 @@ const TagManager: React.FC<TagManagerProps> = ({
             alignItems: 'center',
             justifyContent: 'flex-start',
             paddingLeft: '12px',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            flexShrink: 0
           }}>
             <img src={icons.search} alt="搜索" width="20" height="20" />
           </div>
         </div>
 
-        {/* 标签列表滚动容器 */}
-        <div className="tag-list-scroll-container" style={{ flex: 1, minHeight: 0 }}>
+        {/* 标签列表 - 添加上边距为搜索框留出空间 */}
+        <div className="tag-list-scroll-container" style={{ paddingTop: '60px', flex: 1 }}>
           {tags
             .sort((a, b) => (a.position || 0) - (b.position || 0))
             .map((tag, index) => {
@@ -1967,17 +1969,7 @@ const TagManager: React.FC<TagManagerProps> = ({
                   }}
                   title="点击修改表情"
                 >
-                  {(() => {
-                    // 检查emoji是否为空或者是乱码
-                    if (tag.emoji && tag.emoji !== '??' && tag.emoji !== '�' && tag.emoji !== '？') {
-                      return tag.emoji;
-                    } else {
-                      if (tag.emoji) {
-                        console.log(`[TagManager] Tag "${tag.name}" has corrupted emoji: "${tag.emoji}", showing placeholder`);
-                      }
-                      return <img src={icons.emoji} alt="emoji" width="24" height="24" style={{ opacity: 0.5 }} />;
-                    }
-                  })()}
+                  {tag.emoji ? tag.emoji : <img src={icons.emoji} alt="emoji" width="24" height="24" style={{ opacity: 0.5 }} />}
                 </span>
                 
                 {/* 标签文字 - 可编辑 */}
@@ -2229,21 +2221,18 @@ const TagManager: React.FC<TagManagerProps> = ({
             </div>
           );
           })}
-        </div>
 
-        {/* 新标签创建区域 - 移出滚动容器，固定在底部 */}
-        <div 
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            marginBottom: '4px',
-            marginTop: '12px',
-            height: '24px',
-            fontSize: '16px',
-            fontFamily: "'Microsoft YaHei', Arial, sans-serif",
-            position: 'relative',
-            flexShrink: 0
-          }}
+          {/* 新标签创建区域 */}
+          <div 
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              marginBottom: '4px',
+              height: '24px',
+              fontSize: '16px',
+              fontFamily: "'Microsoft YaHei', Arial, sans-serif",
+              position: 'relative'
+            }}
           >
             {/* 标签内容 - 左侧 */}
             <div 
@@ -2547,6 +2536,8 @@ const TagManager: React.FC<TagManagerProps> = ({
           }}
         />
       )}
+      </div>
+      </div>
     </div>
   );
 };
