@@ -98,6 +98,8 @@
 .drag-bar {
   /* ❌ 不使用原生拖动（透明窗口有bug），使用自定义 JavaScript 拖动逻辑 */
   -webkit-app-region: no-drag !important;
+  /* stylelint-disable-next-line property-no-unknown */
+  app-region: no-drag !important;
 }
 
 /* Widget页面的body - 透明背景 */

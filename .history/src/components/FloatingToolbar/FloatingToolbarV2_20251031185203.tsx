@@ -233,10 +233,8 @@ export const FloatingToolbarV2: React.FC<FloatingToolbarProps> = ({
 
       {activePicker === 'dateRange' && (
         <UnifiedDateTimePicker
-          onSelect={(start: string | null, end: string | null) => {
-            if (start && end) {
-              onDateRangeSelect?.(new Date(start), new Date(end));
-            }
+          onSelect={(start: Date, end: Date) => {
+            onDateRangeSelect?.(start, end);
             setActivePicker(null);
           }}
           onClose={() => setActivePicker(null)}

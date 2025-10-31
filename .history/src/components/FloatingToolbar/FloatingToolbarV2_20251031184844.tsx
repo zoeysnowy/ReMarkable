@@ -12,7 +12,7 @@ import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
 import { ToolbarConfig, ToolbarFeatureType, FloatingToolbarProps } from './types';
 import { TagPicker } from './pickers/TagPicker';
-import UnifiedDateTimePicker from './pickers/UnifiedDateTimePicker';
+import { UnifiedDateTimePicker } from './pickers/UnifiedDateTimePicker';
 import { PriorityPicker } from './pickers/PriorityPicker';
 import { ColorPicker } from './pickers/ColorPicker';
 import './FloatingToolbarV2.css';
@@ -232,11 +232,9 @@ export const FloatingToolbarV2: React.FC<FloatingToolbarProps> = ({
       )}
 
       {activePicker === 'dateRange' && (
-        <UnifiedDateTimePicker
-          onSelect={(start: string | null, end: string | null) => {
-            if (start && end) {
-              onDateRangeSelect?.(new Date(start), new Date(end));
-            }
+        <AntDateRangePicker
+          onSelect={(start: Date, end: Date) => {
+            onDateRangeSelect?.(start, end);
             setActivePicker(null);
           }}
           onClose={() => setActivePicker(null)}

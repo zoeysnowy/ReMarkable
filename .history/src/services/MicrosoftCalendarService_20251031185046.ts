@@ -856,7 +856,7 @@ export class MicrosoftCalendarService {
   }
 
   // 🔧 获取指定日历的事件
-  public async getEventsFromCalendar(calendarId: string, startDate?: Date, endDate?: Date): Promise<any[]> {
+  public async getEventsFromCalendar(calendarId: string, startDate?: Date, endDate?: Date): Promise<GraphEvent[]> {
     if (this.simulationMode) {
       // console.log('📝 Simulating getEventsFromCalendar for:', calendarId);
       return this.getSimulatedEvents();

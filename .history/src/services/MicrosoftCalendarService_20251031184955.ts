@@ -856,7 +856,7 @@ export class MicrosoftCalendarService {
   }
 
   // 🔧 获取指定日历的事件
-  public async getEventsFromCalendar(calendarId: string, startDate?: Date, endDate?: Date): Promise<any[]> {
+  public async getEventsFromCalendar(calendarId: string, startDate?: Date, endDate?: Date): Promise<GraphEvent[]> {
     if (this.simulationMode) {
       // console.log('📝 Simulating getEventsFromCalendar for:', calendarId);
       return this.getSimulatedEvents();
@@ -985,14 +985,8 @@ export class MicrosoftCalendarService {
           bodyPreview: outlookEvent.bodyPreview || outlookEvent.body?.content?.substring(0, 100) || `${outlookEvent.subject} - 来自 Outlook 的日程`,
           startTime: startTime,
           endTime: endTime,
-          start: {
-            dateTime: startTime,
-            timeZone: outlookEvent.start?.timeZone || 'UTC'
-          },
-          end: {
-            dateTime: endTime,
-            timeZone: outlookEvent.end?.timeZone || 'UTC'
-          },
+          start: startTime,
+          end: endTime,
           created: this.safeFormatDateTime(outlookEvent.createdDateTime),
           modified: this.safeFormatDateTime(outlookEvent.lastModifiedDateTime),
           createdAt: this.safeFormatDateTime(outlookEvent.createdDateTime),
