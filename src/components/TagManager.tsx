@@ -1795,7 +1795,7 @@ const TagManager: React.FC<TagManagerProps> = ({
   };
 
   return (
-    <div>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* 添加 kbd 样式 */}
       <style>{`
         kbd {
@@ -1969,7 +1969,17 @@ const TagManager: React.FC<TagManagerProps> = ({
                   }}
                   title="点击修改表情"
                 >
-                  {tag.emoji ? tag.emoji : <img src={icons.emoji} alt="emoji" width="24" height="24" style={{ opacity: 0.5 }} />}
+                  {(() => {
+                    // 检查emoji是否为空或者是乱码
+                    if (tag.emoji && tag.emoji !== '??' && tag.emoji !== '�' && tag.emoji !== '？') {
+                      return tag.emoji;
+                    } else {
+                      if (tag.emoji) {
+                        console.log(`[TagManager] Tag "${tag.name}" has corrupted emoji: "${tag.emoji}", showing placeholder`);
+                      }
+                      return <img src={icons.emoji} alt="emoji" width="24" height="24" style={{ opacity: 0.5 }} />;
+                    }
+                  })()}
                 </span>
                 
                 {/* 标签文字 - 可编辑 */}
