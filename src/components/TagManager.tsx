@@ -1846,29 +1846,25 @@ const TagManager: React.FC<TagManagerProps> = ({
       */}
         <div style={{ padding: '20px', backgroundColor: 'white', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         
-        {/* 搜索框 - 固定在顶部，不参与滚动 */}
+        {/* 搜索框 - 固定在顶部右侧，不参与滚动 */}
         <div style={{
+          width: '122px',
+          height: '40px',
+          borderRadius: '25px',
+          border: '2px solid transparent',
+          background: 'linear-gradient(white, white), linear-gradient(90deg, #A855F7 0%, #3B82F6 75.48%)',
+          backgroundClip: 'padding-box, border-box',
+          backgroundOrigin: 'padding-box, border-box',
           display: 'flex',
-          justifyContent: 'flex-end',
+          alignItems: 'center',
+          justifyContent: 'flex-start',
+          paddingLeft: '12px',
+          cursor: 'pointer',
+          marginLeft: 'auto',
           marginBottom: '12px',
           flexShrink: 0
         }}>
-          <div style={{
-            width: '122px',
-            height: '40px',
-            borderRadius: '25px',
-            border: '2px solid transparent',
-            background: 'linear-gradient(white, white), linear-gradient(90deg, #A855F7 0%, #3B82F6 75.48%)',
-            backgroundClip: 'padding-box, border-box',
-            backgroundOrigin: 'padding-box, border-box',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'flex-start',
-            paddingLeft: '12px',
-            cursor: 'pointer'
-          }}>
-            <img src={icons.search} alt="搜索" width="20" height="20" />
-          </div>
+          <img src={icons.search} alt="搜索" width="20" height="20" />
         </div>
 
         {/* 标签列表滚动容器 */}
