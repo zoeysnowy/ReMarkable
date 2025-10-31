@@ -2718,6 +2718,13 @@ body {
   overflow: hidden; /* 🔧 防止内容溢出 */
 }
 
+/* TagManager容器 - 占据剩余空间 */
+.tag-setting-section > .figma-tag-manager-v4 {
+  flex: 1;
+  min-height: 0; /* 🔧 允许flex收缩 */
+  overflow: hidden;
+}
+
 .section-header {
   display: flex;
   align-items: center;

@@ -1795,7 +1795,7 @@ const TagManager: React.FC<TagManagerProps> = ({
   };
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div className="figma-tag-manager-v4" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* 添加 kbd 样式 */}
       <style>{`
         kbd {
@@ -1845,13 +1845,13 @@ const TagManager: React.FC<TagManagerProps> = ({
       >
       */}
         <div style={{ padding: '20px', backgroundColor: 'white', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
         
         {/* 搜索框 - 响应式定位，右对齐 */}
         <div style={{
           position: 'absolute',
-          top: '-75px',
-          right: '20px', // 使用right定位，距离右边缘20px，实现自适应
+          top: '0px',
+          right: '0px',
           zIndex: 10
         }}>
           <div style={{
