@@ -1844,8 +1844,8 @@ const TagManager: React.FC<TagManagerProps> = ({
         }}
       >
       */}
-        <div style={{ padding: '20px', backgroundColor: 'white' }}>
-          <div style={{ position: 'relative' }}>
+        <div style={{ padding: '20px', backgroundColor: 'white', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         
         {/* 搜索框 - 响应式定位，右对齐 */}
         <div style={{
@@ -1874,7 +1874,7 @@ const TagManager: React.FC<TagManagerProps> = ({
         </div>
 
         {/* 标签列表 - 添加上边距为搜索框留出空间 */}
-        <div className="tag-list-scroll-container" style={{ marginTop: '60px' }}>
+        <div className="tag-list-scroll-container" style={{ paddingTop: '60px', flex: 1 }}>
           {tags
             .sort((a, b) => (a.position || 0) - (b.position || 0))
             .map((tag, index) => {
@@ -1969,7 +1969,7 @@ const TagManager: React.FC<TagManagerProps> = ({
                   }}
                   title="点击修改表情"
                 >
-                  {tag.emoji}
+                  {tag.emoji ? tag.emoji : <img src={icons.emoji} alt="emoji" width="24" height="24" style={{ opacity: 0.5 }} />}
                 </span>
                 
                 {/* 标签文字 - 可编辑 */}
@@ -2273,7 +2273,7 @@ const TagManager: React.FC<TagManagerProps> = ({
                   justifyContent: 'center'
                 }}
               >
-                <img src={icons.emoji} alt="emoji" width="16" height="16" style={{ opacity: 0.5 }} />
+                <img src={icons.emoji} alt="emoji" width="24" height="24" style={{ opacity: 0.5 }} />
               </span>
               
               {/* 新标签文字输入区域 - 扩大整个区域 */}
