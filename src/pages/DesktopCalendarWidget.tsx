@@ -1,23 +1,23 @@
 /**
- * DesktopCalendarWidget - Electron 妗岄潰绐楀彛椤甸潰锛堝叏灞忔ā寮忥級
- * 瀹屽叏澶嶅埢 DesktopCalendarWidgetV3 鐨勬牱寮忓拰閫忔槑搴﹂€昏緫
- * 浣嗗竷灞€閫傞厤 Electron 鍏ㄥ睆绐楀彛锛堜笉浣跨敤 position: fixed锟?
+ * DesktopCalendarWidget - Electron 桌面窗口页面（全屏模式）
+ * 完全复刻 DesktopCalendarWidgetV3 的样式和透明度逻辑
+ * 但布局适配 Electron 全屏窗口（不使用 position: fixed�?
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
-import TimeCalendar from '../components/TimeCalendar'; // 锟?浣跨敤鍘熷 TimeCalendar
+import TimeCalendar from '../components/TimeCalendar'; // �?使用原始 TimeCalendar
 import { MicrosoftCalendarService } from '../services/MicrosoftCalendarService';
 import { ActionBasedSyncManager } from '../services/ActionBasedSyncManager';
 import { logger } from '../utils/logger';
 
 const widgetLogger = logger.module('Widget');
-import '../components/DesktopCalendarWidget.css'; // 瀵煎叆妗岄潰鏃ュ巻 CSS
+import '../components/DesktopCalendarWidget.css'; // 导入桌面日历 CSS
 import SyncIcon from '../assets/icons/Sync.svg';
 import OutlookIcon from '../assets/icons/Outlook.svg';
 
-// 锟?淇锛氱Щ闄よ繃搴︿紭鍖栫殑memo锛岃TimeCalendar姝ｅ父鍝嶅簲鍐呴儴鏁版嵁鍙樺寲
-// TimeCalendar鍐呴儴浣跨敤useState鍜寀seEffect绠＄悊鏁版嵁锛屽簲璇ュ厑璁告甯搁噸娓叉煋
-// 鍘焟emo閫昏緫浼氶樆姝㈠搷搴攍ocalStorage鍜屼簨浠剁洃鍚櫒鐨勬暟鎹洿锟?
+// �?修复：移除过度优化的memo，让TimeCalendar正常响应内部数据变化
+// TimeCalendar内部使用useState和useEffect管理数据，应该允许正常重渲染
+// 原memo逻辑会阻止响应localStorage和事件监听器的数据更�?
 const MemoizedTimeCalendar = TimeCalendar;
 
 interface CustomCSSProperties extends React.CSSProperties {
@@ -25,52 +25,52 @@ interface CustomCSSProperties extends React.CSSProperties {
 }
 
 const DesktopCalendarWidget: React.FC = () => {
-  // 鐢熸垚鎴栬鍙栧敮涓€锟?Widget ID
+  // 生成或读取唯一�?Widget ID
   const [widgetId] = useState(() => {
-    // 1. 灏濊瘯锟?URL 鍙傛暟璇诲彇
+    // 1. 尝试�?URL 参数读取
     const params = new URLSearchParams(window.location.search);
     const urlId = params.get('widgetId');
     if (urlId) {
       return urlId;
     }
     
-    // 2. 灏濊瘯锟?localStorage 璇诲彇
+    // 2. 尝试�?localStorage 读取
     const savedId = localStorage.getItem('remarkable-widget-instance-id');
     if (savedId) {
       return savedId;
     }
     
-    // 3. 鐢熸垚鏂扮殑 ID 骞朵繚锟?
+    // 3. 生成新的 ID 并保�?
     const newId = `widget-${Date.now()}`;
     localStorage.setItem('remarkable-widget-instance-id', newId);
     return newId;
   });
 
-  // 鐢熸垚鍞竴鐨勫瓨锟?key
+  // 生成唯一的存�?key
   const storageKey = `remarkable-widget-settings-${widgetId}`;
   
-  // 馃敡 Widget 涓嶅簲璇ユ湁鑷繁鐨勬湇鍔″疄渚嬶紝鍙娇鐢ㄥ叏灞€瀹炰緥
+  // 🔧 Widget 不应该有自己的服务实例，只使用全局实例
   const [microsoftService, setMicrosoftService] = useState<any>(null);
   
-  // 馃敡 鎸佺画妫€鏌ュ叏灞€鏈嶅姟锛岀洿鍒颁富搴旂敤鍒濆鍖栧畬锟?
+  // 🔧 持续检查全局服务，直到主应用初始化完�?
   useEffect(() => {
     const checkGlobalService = () => {
       if (typeof window !== 'undefined' && (window as any).microsoftCalendarService) {
         const globalService = (window as any).microsoftCalendarService;
-        widgetLogger.log('锟?[Widget] 鎵惧埌鍏ㄥ眬 microsoftCalendarService');
+        widgetLogger.log('�?[Widget] 找到全局 microsoftCalendarService');
         setMicrosoftService(globalService);
-        return true; // 鎵惧埌锟?
+        return true; // 找到�?
       }
-      widgetLogger.log('锟?[Widget] 绛夊緟鍏ㄥ眬 microsoftCalendarService...');
-      return false; // 杩樻病鎵惧埌
+      widgetLogger.log('�?[Widget] 等待全局 microsoftCalendarService...');
+      return false; // 还没找到
     };
     
-    // 绔嬪嵆妫€鏌ヤ竴锟?
+    // 立即检查一�?
     if (checkGlobalService()) {
-      return; // 濡傛灉鎵惧埌浜嗗氨涓嶉渶瑕佸悗缁锟?
+      return; // 如果找到了就不需要后续检�?
     }
     
-    // 姣忕妫€鏌ヤ竴娆★紝鐩村埌鎵惧埌涓烘
+    // 每秒检查一次，直到找到为止
     const intervalId = setInterval(() => {
       if (checkGlobalService()) {
         clearInterval(intervalId);
@@ -80,13 +80,13 @@ const DesktopCalendarWidget: React.FC = () => {
     return () => {
       clearInterval(intervalId);
     };
-  }, []); // 绌轰緷璧栨暟缁勶紝鍙湪鎸傝浇鏃舵墽琛屼竴锟?
+  }, []); // 空依赖数组，只在挂载时执行一�?
   
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
-  const [updatedEventCount, setUpdatedEventCount] = useState(0); // 馃敡 杩借釜鍚屾鏇存柊鐨勪簨浠舵暟锟?
-  const [isAuthenticated, setIsAuthenticated] = useState(false); // 馃敡 杩借釜璁よ瘉鐘讹拷?
+  const [updatedEventCount, setUpdatedEventCount] = useState(0); // 🔧 追踪同步更新的事件数�?
+  const [isAuthenticated, setIsAuthenticated] = useState(false); // 🔧 追踪认证状�?
   
-  // 馃搳 璇︾粏鍚屾缁熻
+  // 📊 详细同步统计
   const [syncStats, setSyncStats] = useState({
     syncFailed: 0,
     calendarCreated: 0,
@@ -95,10 +95,10 @@ const DesktopCalendarWidget: React.FC = () => {
   
   const [isLocked, setIsLocked] = useState(false);
   const [showControls, setShowControls] = useState(false);
-  const hideTimerRef = useRef<NodeJS.Timeout | null>(null); // 瀹氭椂鍣ㄥ紩锟?
+  const hideTimerRef = useRef<NodeJS.Timeout | null>(null); // 定时器引�?
 
-  // 鏍峰紡鎺у埗 - 绠€鍖栫増锛氬彧鎺у埗鏃ュ巻鑳屾櫙
-  // 浣跨敤 lazy initialization 纭繚鍦ㄩ娆℃覆鏌撳墠灏卞姞杞借锟?
+  // 样式控制 - 简化版：只控制日历背景
+  // 使用 lazy initialization 确保在首次渲染前就加载设�?
   const [bgOpacity, setBgOpacity] = useState(() => {
     const savedSettings = localStorage.getItem('desktop-calendar-widget-settings');
     if (savedSettings) {
@@ -127,7 +127,7 @@ const DesktopCalendarWidget: React.FC = () => {
     return '#ffffff';
   });
 
-  // 鑷€傚簲棰滆壊璁＄畻鍑芥暟
+  // 自适应颜色计算函数
   const getAdaptiveColors = useMemo(() => {
     const r = parseInt(bgColor.slice(1,3), 16);
     const g = parseInt(bgColor.slice(3,5), 16);
@@ -147,22 +147,22 @@ const DesktopCalendarWidget: React.FC = () => {
 
   const widgetRef = useRef<HTMLDivElement>(null);
   
-  // 璋冩暣澶у皬鐘讹拷?
+  // 调整大小状�?
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartRef = useRef<{ x: number; y: number; width: number; height: number; edge: string } | null>(null);
-  const resizeThrottleRef = useRef<number>(0); // 鑺傛祦鐢ㄧ殑鏃堕棿锟?
+  const resizeThrottleRef = useRef<number>(0); // 节流用的时间�?
   
-  // Resize 鎬ц兘杩借釜
+  // Resize 性能追踪
   const resizePerfRef = useRef({ count: 0, totalTime: 0, maxTime: 0, minTime: Infinity });
   const lastResizeTimeRef = useRef<number>(0);
-  const resizeIpcBusyRef = useRef<boolean>(false); // IPC蹇欑鏍囧織
+  const resizeIpcBusyRef = useRef<boolean>(false); // IPC忙碌标志
   
-  // 鎷栧姩鐘讹拷?- 鎭㈠鑷畾涔夋嫋鍔ㄥ疄锟?
+  // 拖动状�?- 恢复自定义拖动实�?
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
   const dragThrottleRef = useRef<number>(0);
   
-  // 鎬ц兘杩借釜
+  // 性能追踪
   const perfRef = useRef<{
     moveCount: number;
     totalTime: number;
@@ -170,16 +170,16 @@ const DesktopCalendarWidget: React.FC = () => {
     minTime: number;
   }>({ moveCount: 0, totalTime: 0, maxTime: 0, minTime: Infinity });
   
-  // 锟?鏂板锛欼PC蹇欑鏍囧織鍜宒elta绱Н
+  // �?新增：IPC忙碌标志和delta累积
   const ipcBusyRef = useRef<boolean>(false);
   const pendingMoveRef = useRef<{ x: number; y: number } | null>(null);
-  const sentMoveRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 }); // 杩借釜宸插彂閫佺殑鎬荤Щ鍔ㄩ噺
+  const sentMoveRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 }); // 追踪已发送的总移动量
   
-  // 璋冩暣澶у皬鍏夋爣鎮仠鐘舵€侊紙淇濇寔3绉掞級
+  // 调整大小光标悬停状态（保持3秒）
   const [isResizeHovering, setIsResizeHovering] = useState(false);
   const resizeHoverTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 锟?localStorage 璇诲彇閿佸畾鐘舵€佸苟鍚屾鍒颁富杩涚▼
+  // �?localStorage 读取锁定状态并同步到主进程
   useEffect(() => {
     const savedSettings = localStorage.getItem('desktop-calendar-widget-settings');
     
@@ -190,7 +190,7 @@ const DesktopCalendarWidget: React.FC = () => {
         
         setIsLocked(locked);
         
-        // 鍚屾閿佸畾鐘舵€佸埌 Electron 涓昏繘锟?
+        // 同步锁定状态到 Electron 主进�?
         if (window.electronAPI?.widgetLock) {
           window.electronAPI.widgetLock(locked).catch((error: Error) => {
             widgetLogger.error('Failed to sync lock state:', error);
@@ -200,14 +200,14 @@ const DesktopCalendarWidget: React.FC = () => {
         widgetLogger.error('Failed to parse widget settings for lock state', e);
       }
     } else {
-      // 纭繚涓昏繘绋嬩篃鏄В閿佺姸锟?
+      // 确保主进程也是解锁状�?
       if (window.electronAPI?.widgetLock) {
         window.electronAPI.widgetLock(false);
       }
     }
   }, []);
 
-  // 淇濆瓨璁剧疆锛堥槻鎶栵級
+  // 保存设置（防抖）
   useEffect(() => {
     const t = setTimeout(() => {
       const settings = { bgOpacity, bgColor, isLocked };
@@ -216,10 +216,10 @@ const DesktopCalendarWidget: React.FC = () => {
     return () => clearTimeout(t);
   }, [bgOpacity, bgColor, isLocked]);
 
-  // 鍒濆锟?widget-mode 鏍峰紡
+  // 初始�?widget-mode 样式
   useEffect(() => {
-    widgetLogger.log('馃帹 [Renderer] DesktopCalendarWidget mounted');
-    widgetLogger.log('馃攳 [Renderer] 妫€锟?electronAPI:', {
+    widgetLogger.log('🎨 [Renderer] DesktopCalendarWidget mounted');
+    widgetLogger.log('🔍 [Renderer] 检�?electronAPI:', {
       hasElectronAPI: !!window.electronAPI,
       hasWidgetMove: !!window.electronAPI?.widgetMove
     });
@@ -230,12 +230,12 @@ const DesktopCalendarWidget: React.FC = () => {
     document.body.style.margin = '0';
     document.body.style.padding = '0';
     
-    // 妫€鏌ユ嫋鍔ㄦ潯鍏冪礌
+    // 检查拖动条元素
     setTimeout(() => {
       const dragBar = document.querySelector('.drag-bar') as HTMLElement;
       if (dragBar) {
         const computedStyle = window.getComputedStyle(dragBar);
-        widgetLogger.log('锟?[Renderer] Drag bar found:', {
+        widgetLogger.log('�?[Renderer] Drag bar found:', {
           element: dragBar,
           webkitAppRegion: computedStyle.getPropertyValue('-webkit-app-region'),
           pointerEvents: computedStyle.pointerEvents,
@@ -246,7 +246,7 @@ const DesktopCalendarWidget: React.FC = () => {
           height: computedStyle.height
         });
       } else {
-        widgetLogger.error('锟?[Renderer] Drag bar NOT found!');
+        widgetLogger.error('�?[Renderer] Drag bar NOT found!');
       }
     }, 500);
     
@@ -259,42 +259,42 @@ const DesktopCalendarWidget: React.FC = () => {
     };
   }, []);
 
-  // 馃攧 浣跨敤鍏ㄥ眬鍚屾绠＄悊鍣紝纭繚涓庝富搴旂敤鏁版嵁涓€锟?
+  // 🔄 使用全局同步管理器，确保与主应用数据一�?
   useEffect(() => {
     const checkAuthAndInitSync = () => {
-      // 馃敡 鍙娇锟?localStorage 涓殑璁よ瘉鐘舵€侊紙涓诲簲鐢ㄤ細鏇存柊杩欎釜鏍囪锟?
+      // 🔧 只使�?localStorage 中的认证状态（主应用会更新这个标记�?
       const storedAuthState = localStorage.getItem('remarkable-outlook-authenticated') === 'true';
       
-      widgetLogger.log('馃攳 [Widget] 妫€鏌ヨ璇佺姸锟?', {
+      widgetLogger.log('🔍 [Widget] 检查认证状�?', {
         storedAuthState,
         hasMicrosoftService: !!microsoftService
       });
       
-      // 鏇存柊璁よ瘉鐘讹拷?
+      // 更新认证状�?
       setIsAuthenticated(storedAuthState);
       
-      // 馃敡 锟?Electron 鐜涓紝Widget 鍜屼富搴旂敤鏄嫭绔嬬殑 window 瀵硅薄
-      // 涓嶉渶瑕佸皾璇曡幏鍙栧叏灞€ syncManager锛岀洿鎺ヤ粠 localStorage 璇诲彇鍗冲彲
+      // 🔧 �?Electron 环境中，Widget 和主应用是独立的 window 对象
+      // 不需要尝试获取全局 syncManager，直接从 localStorage 读取即可
     };
     
-    // 鍙湁锟?microsoftService 瀛樺湪鏃舵墠妫€锟?
+    // 只有�?microsoftService 存在时才检�?
     if (microsoftService) {
       checkAuthAndInitSync();
     } else {
-      widgetLogger.log('锟?[Widget] 绛夊緟 microsoftService 鍒濆锟?..');
+      widgetLogger.log('�?[Widget] 等待 microsoftService 初始�?..');
     }
     
-    // 馃敡 鐩戝惉 localStorage 鍙樺寲锛堝疄鏃跺搷搴斾富搴旂敤鐨勮璇佺姸鎬佹洿鏂帮級
+    // 🔧 监听 localStorage 变化（实时响应主应用的认证状态更新）
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'remarkable-outlook-authenticated') {
-        widgetLogger.log('馃敂 [Widget] 妫€娴嬪埌璁よ瘉鐘舵€佸彉锟?', e.newValue);
+        widgetLogger.log('🔔 [Widget] 检测到认证状态变�?', e.newValue);
         checkAuthAndInitSync();
       }
     };
     
     window.addEventListener('storage', handleStorageChange);
     
-    // 瀹氭湡妫€鏌ヨ璇佺姸鎬侊紙锟?0绉掞級
+    // 定期检查认证状态（�?0秒）
     const authCheckInterval = setInterval(checkAuthAndInitSync, 30000);
     
     return () => {
@@ -303,76 +303,76 @@ const DesktopCalendarWidget: React.FC = () => {
     };
   }, [microsoftService]);
 
-  // 馃攧 瀹氭湡鏇存柊 lastSyncTime 锟?updatedEventCount锛堝彧锟?localStorage 璇诲彇锟?
+  // 🔄 定期更新 lastSyncTime �?updatedEventCount（只�?localStorage 读取�?
   useEffect(() => {
     const updateSyncStatus = () => {
       try {
-        // 馃敡 锟?localStorage 璇诲彇鍚屾鏃堕棿锛圗lectron 绐楀彛闂撮€氫俊鏂瑰紡锟?
+        // 🔧 �?localStorage 读取同步时间（Electron 窗口间通信方式�?
         const storedTime = localStorage.getItem('lastSyncTime');
         if (storedTime) {
           try {
             const parsedTime = new Date(storedTime);
             if (!isNaN(parsedTime.getTime())) {
-              widgetLogger.log('馃晲 [Widget] 锟?localStorage 璇诲彇鍚屾鏃堕棿:', parsedTime.toLocaleString('zh-CN'));
+              widgetLogger.log('🕐 [Widget] �?localStorage 读取同步时间:', parsedTime.toLocaleString('zh-CN'));
               setLastSyncTime(parsedTime);
             }
           } catch (parseError) {
-            widgetLogger.error('锟?[Widget] 瑙ｆ瀽鍚屾鏃堕棿澶辫触:', parseError);
+            widgetLogger.error('❌ [Widget] 解析同步时间失败:', parseError);
           }
         } else {
-          widgetLogger.log('锟?[Widget] localStorage 涓殏鏃犲悓姝ユ椂锟?);
+          widgetLogger.log('⚠️ [Widget] localStorage 中暂无同步时间');
         }
 
-        // 馃敡 锟?localStorage 璇诲彇鏇存柊浜嬩欢鏁伴噺
+        // 🔧 �?localStorage 读取更新事件数量
         const storedEventCount = localStorage.getItem('lastSyncEventCount');
         if (storedEventCount) {
           const count = parseInt(storedEventCount, 10);
           if (!isNaN(count)) {
-            widgetLogger.log('馃搳 [Widget] 锟?localStorage 璇诲彇浜嬩欢鏁伴噺:', count);
+            widgetLogger.log('📊 [Widget] �?localStorage 读取事件数量:', count);
             setUpdatedEventCount(count);
           }
         }
         
-        // 馃搳 锟?localStorage 璇诲彇鍚屾缁熻淇℃伅
+        // 📊 �?localStorage 读取同步统计信息
         const storedSyncStats = localStorage.getItem('syncStats');
         if (storedSyncStats) {
           try {
             const stats = JSON.parse(storedSyncStats);
-            widgetLogger.log('馃搳 [Widget] 锟?localStorage 璇诲彇鍚屾缁熻:', stats);
+            widgetLogger.log('📊 [Widget] �?localStorage 读取同步统计:', stats);
             setSyncStats(stats);
           } catch (e) {
-            widgetLogger.error('锟?[Widget] 瑙ｆ瀽鍚屾缁熻澶辫触:', e);
+            widgetLogger.error('�?[Widget] 解析同步统计失败:', e);
           }
         }
       } catch (error) {
-        widgetLogger.error('锟?[Widget] 鑾峰彇鍚屾鐘舵€佸け锟?', error);
+        widgetLogger.error('�?[Widget] 获取同步状态失�?', error);
       }
     };
     
-    // 绔嬪嵆鏇存柊涓€锟?
-    widgetLogger.log('馃攧 [Widget] 寮€濮嬬洃鍚悓姝ョ姸鎬佹洿锟?..');
+    // 立即更新一�?
+    widgetLogger.log('🔄 [Widget] 开始监听同步状态更�?..');
     updateSyncStatus();
     
-    // 鐩戝惉 localStorage 鍙樺寲锛堝疄鏃跺搷搴斾富搴旂敤鐨勫悓姝ュ畬鎴愶級
+    // 监听 localStorage 变化（实时响应主应用的同步完成）
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'lastSyncTime' || e.key === 'lastSyncEventCount' || e.key === 'syncStats') {
-        widgetLogger.log('馃敂 [Widget] 妫€娴嬪埌鍚屾鐘舵€佸彉锟?', e.key, '=', e.newValue);
+        widgetLogger.log('🔔 [Widget] 检测到同步状态变�?', e.key, '=', e.newValue);
         updateSyncStatus();
       }
     };
     
     window.addEventListener('storage', handleStorageChange);
     
-    // 锟?0绉掕疆璇竴娆★紙鍏滃簳锟?
+    // �?0秒轮询一次（兜底�?
     const syncStatusInterval = setInterval(updateSyncStatus, 10000);
     
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       clearInterval(syncStatusInterval);
     };
-  }, []); // 馃敡 涓嶄緷璧栦换浣曠姸鎬侊紝鍙緷锟?localStorage
+  }, []); // 🔧 不依赖任何状态，只依�?localStorage
 
-  // 绉婚櫎鎺у埗鏍忚嚜鍔ㄦ樉绀洪€昏緫锛屼笉鍐嶉渶锟?
+  // 移除控制栏自动显示逻辑，不再需�?
   // useEffect(() => {
   //   const handleMouseMove = (e: MouseEvent) => {
   //     const isNearTop = e.clientY <= 10;
@@ -395,41 +395,41 @@ const DesktopCalendarWidget: React.FC = () => {
   //   };
   // }, []);
 
-  // 鍔ㄦ€佹敞锟?CSS 鎺у埗鏃ュ巻鍐呴儴鍏冪礌閫忔槑锟?
-  // 绉婚櫎閿欒鐨勫姩鎬丆SS娉ㄥ叆閫昏緫
-  // calendar.css 涓殑闈欐€佹牱寮忓凡缁忚冻澶燂紝涓嶉渶瑕佸姩鎬佽锟?
-  // bgOpacity 鍙簲璇ュ奖锟?TimeCalendar 锟?backgroundColor锛屼笉搴旇褰卞搷鍐呴儴鍏冪礌
+  // 动态注�?CSS 控制日历内部元素透明�?
+  // 移除错误的动态CSS注入逻辑
+  // calendar.css 中的静态样式已经足够，不需要动态覆�?
+  // bgOpacity 只应该影�?TimeCalendar �?backgroundColor，不应该影响内部元素
 
-  // 閿佸畾鍒囨崲锛堣皟锟?Electron API锟?- 浣跨敤 useCallback 浼樺寲
+  // 锁定切换（调�?Electron API�?- 使用 useCallback 优化
   const handleLockToggle = useCallback(async (newLockState?: boolean) => {
     const targetState = newLockState !== undefined ? newLockState : !isLocked;
-    widgetLogger.log('馃攧 handleLockToggle called:', { current: isLocked, target: targetState });
+    widgetLogger.log('🔄 handleLockToggle called:', { current: isLocked, target: targetState });
     
     setIsLocked(targetState);
     
     if (window.electronAPI?.widgetLock) {
       try {
         const result = await window.electronAPI.widgetLock(targetState);
-        widgetLogger.log('锟?Widget lock state changed:', { locked: targetState, result });
+        widgetLogger.log('�?Widget lock state changed:', { locked: targetState, result });
       } catch (error) {
-        widgetLogger.error('锟?Failed to set widget lock:', error);
+        widgetLogger.error('�?Failed to set widget lock:', error);
       }
     } else {
-      widgetLogger.warn('鈿狅笍 electronAPI.widgetLock not available');
+      widgetLogger.warn('⚠️ electronAPI.widgetLock not available');
     }
   }, [isLocked]);
 
-  // 璋冩暣澶у皬澶勭悊
+  // 调整大小处理
   const handleResizeStart = useCallback((edge: string, e: React.MouseEvent) => {
-    widgetLogger.log('馃幆 [Resize] handleResizeStart 琚皟锟?', { edge, isLocked });
+    widgetLogger.log('🎯 [Resize] handleResizeStart 被调�?', { edge, isLocked });
     if (isLocked) {
-      widgetLogger.log('锟?[Resize] 锟?isLocked 闃绘');
+      widgetLogger.log('�?[Resize] �?isLocked 阻止');
       return;
     }
     e.preventDefault();
     e.stopPropagation();
     
-    widgetLogger.log('锟?[Resize] 寮€濮嬭皟鏁村ぇ锟?', edge);
+    widgetLogger.log('�?[Resize] 开始调整大�?', edge);
     setIsResizing(true);
     const bounds = widgetRef.current?.getBoundingClientRect();
     if (bounds) {
@@ -440,27 +440,27 @@ const DesktopCalendarWidget: React.FC = () => {
         height: bounds.height,
         edge
       };
-      widgetLogger.log('馃搻 [Resize] 鍒濆灏哄:', { width: bounds.width, height: bounds.height });
+      widgetLogger.log('📐 [Resize] 初始尺寸:', { width: bounds.width, height: bounds.height });
     }
   }, [isLocked]);
 
-  // 璋冩暣澶у皬鎵嬫焺鎮仠澶勭悊锛堜繚锟?绉掞級
+  // 调整大小手柄悬停处理（保�?秒）
   const handleResizeHover = useCallback(() => {
     setIsResizeHovering(true);
     
-    // 娓呴櫎涔嬪墠鐨勮鏃跺櫒
+    // 清除之前的计时器
     if (resizeHoverTimerRef.current) {
       clearTimeout(resizeHoverTimerRef.current);
     }
     
-    // 馃幆 2绉掑悗闅愯棌锛堟弧锟?鑷冲皯缁存寔2锟?鐨勮姹傦級
+    // 🎯 2秒后隐藏（满�?至少维持2�?的要求）
     resizeHoverTimerRef.current = setTimeout(() => {
       setIsResizeHovering(false);
     }, 2000);
   }, []);
 
   const handleResizeLeave = useCallback(() => {
-    // 涓嶇珛鍗抽殣钘忥紝绛夊緟璁℃椂锟?
+    // 不立即隐藏，等待计时�?
   }, []);
 
   const handleResizeMove = useCallback((e: MouseEvent) => {
@@ -482,116 +482,116 @@ const DesktopCalendarWidget: React.FC = () => {
     if (edge.includes('bottom')) newHeight = height + deltaY;
     if (edge.includes('top')) newHeight = height - deltaY;
     
-    // 鏈€灏忓昂瀵搁檺锟?
+    // 最小尺寸限�?
     newWidth = Math.max(400, newWidth);
     newHeight = Math.max(300, newHeight);
     
-    // 馃敡 婵€杩涚殑鑺傛祦锛氭嫋鍔ㄤ腑锟?00ms鏈€澶氭洿鏂颁竴娆★紙鍑忓皯娓叉煋娆℃暟锟?
+    // 🔧 激进的节流：拖动中�?00ms最多更新一次（减少渲染次数�?
     const now = Date.now();
     if (now - resizeThrottleRef.current < 100) {
-      // 闈欓粯璺宠繃锛屼笉鎵撳嵃鏃ュ織
+      // 静默跳过，不打印日志
       return;
     }
     resizeThrottleRef.current = now;
     
-    // 馃敡 濡傛灉涓婁竴涓猺esize IPC杩樺湪澶勭悊涓紝璺宠繃鏈璇锋眰
+    // 🔧 如果上一个resize IPC还在处理中，跳过本次请求
     if (resizeIpcBusyRef.current) {
       return;
     }
     
-    // 璋冪敤Electron API璋冩暣绐楀彛澶у皬
+    // 调用Electron API调整窗口大小
     if (window.electronAPI?.widgetResize) {
-      resizeIpcBusyRef.current = true; // 鏍囪蹇欑
+      resizeIpcBusyRef.current = true; // 标记忙碌
       const ipcStart = Date.now();
       window.electronAPI.widgetResize({ width: Math.round(newWidth), height: Math.round(newHeight) })
         .then((result: any) => {
-          resizeIpcBusyRef.current = false; // 閲嶇疆蹇欑鏍囧織
+          resizeIpcBusyRef.current = false; // 重置忙碌标志
           const ipcEnd = Date.now();
           const ipcDuration = ipcEnd - ipcStart;
           
-          // 鏇存柊鎬ц兘缁熻
+          // 更新性能统计
           resizePerfRef.current.count++;
           resizePerfRef.current.totalTime += ipcDuration;
           resizePerfRef.current.maxTime = Math.max(resizePerfRef.current.maxTime, ipcDuration);
           resizePerfRef.current.minTime = Math.min(resizePerfRef.current.minTime, ipcDuration);
         })
         .catch((error: any) => {
-          resizeIpcBusyRef.current = false; // 鍑洪敊涔熻閲嶇疆
-          widgetLogger.error('锟?[Renderer] widgetResize 澶辫触:', error);
+          resizeIpcBusyRef.current = false; // 出错也要重置
+          widgetLogger.error('�?[Renderer] widgetResize 失败:', error);
         });
     }
-  }, [isResizing]); // 绉婚櫎 isDragging 渚濊禆
+  }, [isResizing]); // 移除 isDragging 依赖
 
   const handleResizeEnd = useCallback(async (event?: MouseEvent) => {
-    widgetLogger.log('馃弫 [Resize] handleResizeEnd 琚皟锟?', { isResizing, hasEvent: !!event });
+    widgetLogger.log('🏁 [Resize] handleResizeEnd 被调�?', { isResizing, hasEvent: !!event });
     if (!isResizing) {
-      widgetLogger.log('鈿狅笍 [Resize] isResizing=false, 璺宠繃缁撴潫閫昏緫');
+      widgetLogger.log('⚠️ [Resize] isResizing=false, 跳过结束逻辑');
       return;
     }
     
-    widgetLogger.log('锟?[Resize] 缁撴潫 resize');
+    widgetLogger.log('�?[Resize] 结束 resize');
     
-    // 濡傛灉鏈塭vent锛岀珛鍗冲簲鐢ㄦ渶缁堝昂锟?
+    // 如果有event，立即应用最终尺�?
     if (event && resizeStartRef.current) {
       const deltaX = event.clientX - resizeStartRef.current.x;
       const deltaY = event.clientY - resizeStartRef.current.y;
       const newWidth = Math.max(400, resizeStartRef.current.width + deltaX);
       const newHeight = Math.max(300, resizeStartRef.current.height + deltaY);
       
-      widgetLogger.log('馃搻 [Resize] 搴旂敤鏈€缁堝昂锟?', { newWidth, newHeight });
+      widgetLogger.log('📐 [Resize] 应用最终尺�?', { newWidth, newHeight });
       
-      // 寮哄埗搴旂敤鏈€缁堝昂锟?
+      // 强制应用最终尺�?
       try {
         await window.electronAPI.widgetResize({
           width: newWidth,
           height: newHeight
         });
       } catch (error) {
-        widgetLogger.error('锟?搴旂敤鏈€缁堝昂瀵稿け锟?', error);
+        widgetLogger.error('�?应用最终尺寸失�?', error);
       }
     }
     
-    // 閲嶇疆IPC蹇欑鏍囧織
+    // 重置IPC忙碌标志
     resizeIpcBusyRef.current = false;
     
-    // 閲嶇疆鎬ц兘缁熻
+    // 重置性能统计
     resizePerfRef.current = { count: 0, totalTime: 0, maxTime: 0, minTime: Infinity };
     lastResizeTimeRef.current = 0;
     
     setIsResizing(false);
     resizeStartRef.current = null;
-    widgetLogger.log('锟?[Resize] 鐘舵€佸凡閲嶇疆');
+    widgetLogger.log('�?[Resize] 状态已重置');
   }, [isResizing]);
 
-  // 鐩戝惉榧犳爣绉诲姩鍜岄噴锟?
+  // 监听鼠标移动和释�?
   useEffect(() => {
     if (isResizing) {
-      widgetLogger.log('馃憘 [Resize] 娣诲姞 mousemove 锟?mouseup 鐩戝惉锟?);
+      widgetLogger.log('👂 [Resize] 添加 mousemove 和 mouseup 监听器');
       window.addEventListener('mousemove', handleResizeMove);
       window.addEventListener('mouseup', handleResizeEnd);
       return () => {
-        widgetLogger.log('馃攪 [Resize] 绉婚櫎 mousemove 锟?mouseup 鐩戝惉锟?);
+        widgetLogger.log('🔇 [Resize] 移除 mousemove 和 mouseup 监听器');
         window.removeEventListener('mousemove', handleResizeMove);
         window.removeEventListener('mouseup', handleResizeEnd);
       };
     }
   }, [isResizing, handleResizeMove, handleResizeEnd]);
 
-  // 鎷栧姩澶勭悊 - 绠€鍖栫増锛屼緷璧栦富杩涚▼鐨勫昂瀵告仮澶嶆満锟?
-  // ===== 鎷栧姩鐩稿叧閫昏緫 - 鑷畾涔夋嫋鍔ㄥ疄锟?=====
+  // 拖动处理 - 简化版，依赖主进程的尺寸恢复机�?
+  // ===== 拖动相关逻辑 - 自定义拖动实�?=====
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     if (isLocked || isResizing) {
-      widgetLogger.log('馃毇 [Renderer] 鎷栧姩琚樆锟?', { isLocked, isResizing });
+      widgetLogger.log('🚫 [Renderer] 拖动被阻�?', { isLocked, isResizing });
       return;
     }
     
     e.preventDefault();
     e.stopPropagation();
     
-    // 閲嶇疆鎬ц兘缁熻
+    // 重置性能统计
     perfRef.current = { moveCount: 0, totalTime: 0, maxTime: 0, minTime: Infinity };
     
-    widgetLogger.log('馃幀 [Renderer] 寮€濮嬫嫋锟?', { screenX: e.screenX, screenY: e.screenY });
+    widgetLogger.log('🎬 [Renderer] 开始拖�?', { screenX: e.screenX, screenY: e.screenY });
     setIsDragging(true);
     dragStartRef.current = {
       x: e.screenX,
@@ -610,26 +610,26 @@ const DesktopCalendarWidget: React.FC = () => {
     e.preventDefault();
     e.stopPropagation();
     
-    // 馃敡 璁＄畻鐩稿浜庢嫋鍔ㄨ捣濮嬬偣鐨勬€荤Щ鍔ㄩ噺
+    // 🔧 计算相对于拖动起始点的总移动量
     const totalMoveX = e.screenX - dragStartRef.current.x;
     const totalMoveY = e.screenY - dragStartRef.current.y;
     
-    // 馃敡 璁＄畻杩樻湭鍙戦€佺殑澧為噺 = 鎬荤Щ鍔ㄩ噺 - 宸插彂閫侀噺
+    // 🔧 计算还未发送的增量 = 总移动量 - 已发送量
     const deltaX = totalMoveX - sentMoveRef.current.x;
     const deltaY = totalMoveY - sentMoveRef.current.y;
     
-    // 锟?鍏抽敭浼樺寲锛氱疮绉痙elta,閬垮厤IPC璇锋眰鎺掗槦
+    // �?关键优化：累积delta,避免IPC请求排队
     if (!pendingMoveRef.current) {
       pendingMoveRef.current = { x: 0, y: 0 };
     }
     pendingMoveRef.current.x += deltaX;
     pendingMoveRef.current.y += deltaY;
     
-    // 鏇存柊宸茶绠楃殑鎬荤Щ鍔ㄩ噺锛堝寘鎷琾ending锟?
+    // 更新已计算的总移动量（包括pending�?
     sentMoveRef.current.x = totalMoveX;
     sentMoveRef.current.y = totalMoveY;
     
-    widgetLogger.log('馃殮 [Renderer] 鎷栧姩锟?', { 
+    widgetLogger.log('🚚 [Renderer] 拖动�?', { 
       currentScreen: { x: e.screenX, y: e.screenY },
       totalMove: { x: totalMoveX, y: totalMoveY },
       delta: { x: deltaX, y: deltaY },
@@ -639,38 +639,38 @@ const DesktopCalendarWidget: React.FC = () => {
       ipcBusy: ipcBusyRef.current
     });
     
-    // 锟?鍏抽敭浼樺寲锛氬鏋滀笂涓€涓狪PC杩樺湪澶勭悊,璺宠繃鏈鍙戯拷?
+    // �?关键优化：如果上一个IPC还在处理,跳过本次发�?
     if (ipcBusyRef.current) {
-      widgetLogger.log('鈴笍 [Renderer] IPC蹇欑锟?璺宠繃鏈璇锋眰');
+      widgetLogger.log('⏭️ [Renderer] IPC忙碌�?跳过本次请求');
       dragThrottleRef.current = now;
       return;
     }
     
-    // 锟?鑺傛祦锛氳嚦灏戠瓑锟?6ms (60fps)
+    // �?节流：至少等�?6ms (60fps)
     if (now - dragThrottleRef.current < 16) {
       return;
     }
     dragThrottleRef.current = now;
     
-    // 馃殌 鍙戦€佺疮绉殑delta
+    // 🚀 发送累积的delta
     const moveX = pendingMoveRef.current.x;
     const moveY = pendingMoveRef.current.y;
     
     if (Math.abs(moveX) > 0 || Math.abs(moveY) > 0) {
-      pendingMoveRef.current = { x: 0, y: 0 }; // 閲嶇疆绱Н
+      pendingMoveRef.current = { x: 0, y: 0 }; // 重置累积
       
       if (window.electronAPI?.widgetMove) {
         try {
           const ipcStartTime = performance.now();
-          ipcBusyRef.current = true; // 鏍囪IPC蹇欑
+          ipcBusyRef.current = true; // 标记IPC忙碌
           
-          // 锟?涓嶇瓑寰呰繑鍥烇紝绔嬪嵆鍙戦€佷笅涓€涓Щ锟?
+          // �?不等待返回，立即发送下一个移�?
           window.electronAPI.widgetMove({ x: moveX, y: moveY }).then((result) => {
             const ipcEndTime = performance.now();
             const ipcDuration = ipcEndTime - ipcStartTime;
-            ipcBusyRef.current = false; // 閲婃斁鏍囧織
+            ipcBusyRef.current = false; // 释放标志
             
-            // 鏇存柊鎬ц兘缁熻
+            // 更新性能统计
             perfRef.current.moveCount++;
             perfRef.current.totalTime += ipcDuration;
             perfRef.current.maxTime = Math.max(perfRef.current.maxTime, ipcDuration);
@@ -678,7 +678,7 @@ const DesktopCalendarWidget: React.FC = () => {
             
             const avgTime = perfRef.current.totalTime / perfRef.current.moveCount;
             
-            widgetLogger.log('锟?[Renderer] widgetMove 瀹屾垚:', {
+            widgetLogger.log('�?[Renderer] widgetMove 完成:', {
               sent: { x: moveX, y: moveY },
               result,
               duration: `${ipcDuration.toFixed(2)}ms`,
@@ -688,64 +688,64 @@ const DesktopCalendarWidget: React.FC = () => {
               count: perfRef.current.moveCount
             });
           }).catch((error) => {
-            widgetLogger.error('锟?[Renderer] widgetMove 澶辫触:', error);
-            ipcBusyRef.current = false; // 鍑洪敊鏃朵篃瑕侀噴锟?
+            widgetLogger.error('�?[Renderer] widgetMove 失败:', error);
+            ipcBusyRef.current = false; // 出错时也要释�?
           });
           
         } catch (error) {
-          widgetLogger.error('锟?[Renderer] widgetMove 寮傚父:', error);
+          widgetLogger.error('�?[Renderer] widgetMove 异常:', error);
           ipcBusyRef.current = false;
         }
       } else {
-        widgetLogger.error('锟?[Renderer] widgetMove API 涓嶅瓨锟?);
+        widgetLogger.error('❌ [Renderer] widgetMove API 不存在');
       }
     }
   }, [isDragging, isResizing]);
 
   const handleDragEnd = useCallback(() => {
-    widgetLogger.log('馃弫 [Renderer] 鎷栧姩缁撴潫');
+    widgetLogger.log('🏁 [Renderer] 拖动结束');
     
-    // 鎵撳嵃鎬ц兘鎬荤粨
+    // 打印性能总结
     if (perfRef.current.moveCount > 0) {
       const avgTime = perfRef.current.totalTime / perfRef.current.moveCount;
-      widgetLogger.log('馃搳 [Renderer] 鎷栧姩鎬ц兘鎬荤粨:', {
+      widgetLogger.log('📊 [Renderer] 拖动性能总结:', {
         totalMoves: perfRef.current.moveCount,
         avgIpcTime: `${avgTime.toFixed(2)}ms`,
         minIpcTime: `${perfRef.current.minTime.toFixed(2)}ms`,
         maxIpcTime: `${perfRef.current.maxTime.toFixed(2)}ms`,
         totalTime: `${perfRef.current.totalTime.toFixed(2)}ms`,
-        avgFps: Math.round(1000 / (avgTime + 32)) // 32ms鏄妭娴佹椂锟?
+        avgFps: Math.round(1000 / (avgTime + 32)) // 32ms是节流时�?
       });
     }
     
     setIsDragging(false);
     dragStartRef.current = null;
     
-    // 馃敡 閲嶇疆鎵€鏈塺ef鐘讹拷?
+    // 🔧 重置所有ref状�?
     ipcBusyRef.current = false;
     pendingMoveRef.current = null;
     sentMoveRef.current = { x: 0, y: 0 };
     
-    // 锟?閲嶇疆IPC鐘讹拷?
+    // �?重置IPC状�?
     ipcBusyRef.current = false;
     pendingMoveRef.current = null;
     
-    // 閫氱煡涓昏繘绋嬫嫋鍔ㄧ粨鏉燂紝閲嶇疆鐩爣灏哄
+    // 通知主进程拖动结束，重置目标尺寸
     if ((window.electronAPI as any)?.widgetDragEnd) {
       (window.electronAPI as any).widgetDragEnd().catch((err: Error) => {
-        widgetLogger.error('锟?[Renderer] widgetDragEnd 澶辫触:', err);
+        widgetLogger.error('�?[Renderer] widgetDragEnd 失败:', err);
       });
     }
   }, []);
 
-  // 鐩戝惉鎷栧姩
+  // 监听拖动
   useEffect(() => {
     if (isDragging) {
-      widgetLogger.log('馃憘 [Renderer] 寮€濮嬬洃锟?mousemove 锟?mouseup');
+      widgetLogger.log('👂 [Renderer] 开始监�?mousemove �?mouseup');
       window.addEventListener('mousemove', handleDragMove);
       window.addEventListener('mouseup', handleDragEnd);
       return () => {
-        widgetLogger.log('馃攪 [Renderer] 鍋滄鐩戝惉 mousemove 锟?mouseup');
+        widgetLogger.log('🔇 [Renderer] 停止监听 mousemove �?mouseup');
         window.removeEventListener('mousemove', handleDragMove);
         window.removeEventListener('mouseup', handleDragEnd);
       };
@@ -762,23 +762,23 @@ const DesktopCalendarWidget: React.FC = () => {
     return `rgba(${r}, ${g}, ${b}, ${bgOpacity})`;
   })();
 
-  // 鏈€澶栧眰瀹瑰櫒鏍峰紡 - 閫忔槑瀹瑰櫒
+  // 最外层容器样式 - 透明容器
   const widgetStyle: CustomCSSProperties = {
     width: '100vw',
     height: '100vh',
-    backgroundColor: 'transparent', // 瀹瑰櫒閫忔槑锛岃 Electron 绐楀彛鑳屾櫙閫忚繃
+    backgroundColor: 'transparent', // 容器透明，让 Electron 窗口背景透过
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
     cursor: 'default',
     userSelect: 'none',
-    position: 'relative', // 馃幆 锟?absolute 瀹氫綅锟?resize handles 鎻愪緵瀹氫綅涓婁笅锟?
-    transition: 'opacity 0.2s ease', // 鍙繚鐣欓€忔槑搴﹁繃娓★紝绉婚櫎缂╂斁鍔ㄧ敾
-    WebkitAppRegion: 'no-drag' // 榛樿涓嶅彲鎷栧姩锛屽彧鏈夋嫋鍔ㄦ潯鍙互鎷栧姩
+    position: 'relative', // 🎯 �?absolute 定位�?resize handles 提供定位上下�?
+    transition: 'opacity 0.2s ease', // 只保留透明度过渡，移除缩放动画
+    WebkitAppRegion: 'no-drag' // 默认不可拖动，只有拖动条可以拖动
   };
 
-  // 娓叉煋鏃惰緭鍑虹姸鎬侊紙璋冭瘯鐢級
-  // widgetLogger.log('馃帹 [Render] Widget鐘讹拷?', { isLocked, isDragging, isResizing, showControls });
+  // 渲染时输出状态（调试用）
+  // widgetLogger.log('🎨 [Render] Widget状�?', { isLocked, isDragging, isResizing, showControls });
 
   return (
     <div
@@ -786,13 +786,13 @@ const DesktopCalendarWidget: React.FC = () => {
       className="desktop-calendar-widget"
       style={{
         ...widgetStyle,
-        // 馃帹 璁剧疆CSS鍙橀噺渚涘瓙鍏冪礌浣跨敤
+        // 🎨 设置CSS变量供子元素使用
         ['--adaptive-text-primary' as any]: getAdaptiveColors.textPrimary,
         ['--adaptive-text-secondary' as any]: getAdaptiveColors.textSecondary,
         ['--adaptive-icon-filter' as any]: getAdaptiveColors.iconFilter,
       }}
     >
-      {/* 璋冩暣澶у皬鏃剁殑鍏ㄥ睆閬僵锟?*/}
+      {/* 调整大小时的全屏遮罩�?*/}
       {isResizing && (
         <div style={{
           position: 'fixed',
@@ -802,27 +802,27 @@ const DesktopCalendarWidget: React.FC = () => {
           bottom: 0,
           zIndex: 9999,
           cursor: 'default',
-          pointerEvents: 'none' // 涓嶉樆姝㈤紶鏍囦簨浠朵紶锟?
+          pointerEvents: 'none' // 不阻止鼠标事件传�?
         }} />
       )}
       
-      {/* 涓嶉渶瑕佹嫋鍔ㄩ伄缃╁眰 - window 绾у埆鐨勭洃鍚櫒瓒冲锟?*/}
+      {/* 不需要拖动遮罩层 - window 级别的监听器足够�?*/}
 
-      {/* 椤堕儴鎷栧姩锟?- 鑷畾涔夋嫋鍔ㄥ疄锟?*/}
+      {/* 顶部拖动�?- 自定义拖动实�?*/}
       {!isLocked && (
         <div
           className="drag-bar"
           data-testid="widget-drag-bar"
           style={{
             position: 'absolute',
-            top: '0px', // 馃幆 绱ц创椤堕儴杈圭紭
+            top: '0px', // 🎯 紧贴顶部边缘
             left: '8px',
             right: '8px',
             width: 'calc(100% - 16px)',
             height: '10px',
             zIndex: 10000,
             cursor: isDragging ? 'grabbing' : 'grab',
-            backgroundColor: showControls ? 'rgba(100, 150, 255, 0.5)' : 'rgba(100, 150, 255, 0.25)', // 馃幆 鍥哄畾钃濊壊锛屽崐閫忔槑
+            backgroundColor: showControls ? 'rgba(100, 150, 255, 0.5)' : 'rgba(100, 150, 255, 0.25)', // 🎯 固定蓝色，半透明
             backdropFilter: showControls ? 'blur(8px)' : 'blur(3px)',
             borderRadius: '20px',
             display: 'flex',
@@ -843,7 +843,7 @@ const DesktopCalendarWidget: React.FC = () => {
           }}
           onMouseDown={handleDragStart}
         >
-          {/* 鎷栧姩鏉℃彁绀烘枃锟?*/}
+          {/* 拖动条提示文�?*/}
           <span style={{
             fontSize: '9px',
             fontWeight: 600,
@@ -855,12 +855,12 @@ const DesktopCalendarWidget: React.FC = () => {
             transition: 'opacity 0.15s ease'
           }}
           >
-            鈰嫯锟?
+            ⋮⋮�?
           </span>
         </div>
       )}
 
-      {/* 璋冩暣澶у皬鎵嬫焺 - 鍙繚鐣欏簳閮ㄥ拰渚ц竟 */}
+      {/* 调整大小手柄 - 只保留底部和侧边 */}
       {!isLocked && (
         <>
           <div className="resize-handle-bottom" onMouseDown={(e) => handleResizeStart('bottom', e)} onMouseEnter={handleResizeHover} onMouseLeave={handleResizeLeave} />
@@ -871,11 +871,11 @@ const DesktopCalendarWidget: React.FC = () => {
         </>
       )}
 
-      {/* 涓昏鍐呭瀹瑰櫒 - 浣跨敤 flexbox 甯冨眬 */}
+      {/* 主要内容容器 - 使用 flexbox 布局 */}
       <div 
         style={{ 
           flex: 1, 
-          marginTop: '14px', // 馃幆 drag-bar (0px + 10px height) + 4px 闂磋窛 = 14px
+          marginTop: '14px', // 🎯 drag-bar (0px + 10px height) + 4px 间距 = 14px
           marginBottom: '0',
           position: 'relative', 
           overflow: 'hidden', 
@@ -886,16 +886,16 @@ const DesktopCalendarWidget: React.FC = () => {
         } as CustomCSSProperties} 
         onMouseDown={(e) => e.stopPropagation()}
       >
-        {/* 鏃ュ巻涓讳綋鍖哄煙 */}
+        {/* 日历主体区域 */}
         <div style={{ flex: 1, overflow: 'hidden' }}>
           <MemoizedTimeCalendar
             onStartTimer={useCallback((taskTitle: string) => { 
-              widgetLogger.log('馃摑 Timer started:', taskTitle); 
+              widgetLogger.log('📝 Timer started:', taskTitle); 
             }, [])}
             microsoftService={microsoftService}
             lastSyncTime={lastSyncTime}
             isWidgetMode={true}
-            storageKey={storageKey} // 馃敡 浣跨敤鍞竴鐨勫瓨鍌╧ey
+            storageKey={storageKey} // 🔧 使用唯一的存储key
             className="desktop-calendar-inner"
             style={useMemo(() => ({ 
               height: '100%', 
@@ -912,14 +912,14 @@ const DesktopCalendarWidget: React.FC = () => {
           />
         </div>
 
-        {/* 馃搳 Widget 涓撳睘鐘舵€佹爮 - 姝ｅ父甯冨眬锛屽簳閮ㄥ浐锟?*/}
+        {/* 📊 Widget 专属状态栏 - 正常布局，底部固�?*/}
         <div 
           style={{
             flexShrink: 0,
-            margin: '4px 8px 4px 8px', // 馃幆 缁熶竴闂磋窛锛氫笂锟?4px锛屽乏锟?8px
-            background: `rgba(${parseInt(bgColor.slice(1,3), 16)}, ${parseInt(bgColor.slice(3,5), 16)}, ${parseInt(bgColor.slice(5,7), 16)}, ${bgOpacity * 0.8})`, // 馃幆 锟?controller 涓€鑷达細bgOpacity * 0.8
-            backdropFilter: 'blur(3px)', // 馃幆 锟?controller 涓€鑷达細blur(3px)
-            borderRadius: '20px', // 馃帹 鍥涗釜瑙掗兘鏈夊渾瑙掞紝鐙珛鍗＄墖璁捐
+            margin: '4px 8px 4px 8px', // 🎯 统一间距：上�?4px，左�?8px
+            background: `rgba(${parseInt(bgColor.slice(1,3), 16)}, ${parseInt(bgColor.slice(3,5), 16)}, ${parseInt(bgColor.slice(5,7), 16)}, ${bgOpacity * 0.8})`, // 🎯 �?controller 一致：bgOpacity * 0.8
+            backdropFilter: 'blur(3px)', // 🎯 �?controller 一致：blur(3px)
+            borderRadius: '20px', // 🎨 四个角都有圆角，独立卡片设计
             border: 'none',
             padding: '8px 12px',
             display: 'flex',
@@ -932,7 +932,7 @@ const DesktopCalendarWidget: React.FC = () => {
             WebkitAppRegion: 'no-drag',
             // @ts-ignore - Electron specific property  
             appRegion: 'no-drag',
-            pointerEvents: 'auto' // 锟?姝ｅ父鎺ユ敹榧犳爣浜嬩欢锛宺esize handles 閫氳繃锟?z-index 瑕嗙洊
+            pointerEvents: 'auto' // �?正常接收鼠标事件，resize handles 通过�?z-index 覆盖
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -944,7 +944,7 @@ const DesktopCalendarWidget: React.FC = () => {
             <span>
               {lastSyncTime ? (
                 <>
-                  鏈€鍚庡悓姝ワ細<strong style={{ 
+                  最后同步：<strong style={{ 
                     color: getAdaptiveColors.textPrimary
                   }}>
                     {lastSyncTime.toLocaleString('zh-CN', {
@@ -956,22 +956,22 @@ const DesktopCalendarWidget: React.FC = () => {
                       second: '2-digit'
                     })}
                   </strong>
-                  {/* 馃搳 璇︾粏鍚屾鏃ュ織 */}
+                  {/* 📊 详细同步日志 */}
                   {(() => {
                     const logs: string[] = [];
                     if (syncStats.syncFailed > 0) {
-                      logs.push(`${syncStats.syncFailed}涓簨椤瑰悓姝ヨ嚦鏃ュ巻澶辫触鉂宍);
+                      logs.push(`${syncStats.syncFailed}个事项同步至日历失败❌`);
                     }
                     if (syncStats.calendarCreated > 0) {
-                      logs.push(`鏂板鏃ュ巻浜嬮」${syncStats.calendarCreated}涓煉宍);
+                      logs.push(`新增日历事项${syncStats.calendarCreated}个💌`);
                     }
                     if (syncStats.syncSuccess > 0) {
-                      logs.push(`${syncStats.syncSuccess}涓簨椤规垚鍔熷悓姝ヨ嚦鏃ュ巻鉁卄);
+                      logs.push(`${syncStats.syncSuccess}个事项成功同步至日历✅`);
                     }
-                    return logs.length > 0 ? <> {logs.join('锟?)}</> : null;
+                    return logs.length > 0 ? <> {logs.join('，')}</> : null;
                   })()}
                 </>
-              ) : '姝ｅ湪鍚屾...'}
+              ) : '正在同步...'}
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -991,7 +991,7 @@ const DesktopCalendarWidget: React.FC = () => {
                   : '0 0 8px rgba(239, 68, 68, 0.6)',
                 transition: 'all 0.3s ease'
               }}
-              title={isAuthenticated ? '宸茶繛锟? : '鏈繛锟?}
+              title={isAuthenticated ? '已连接' : '未连接'}
             />
           </div>
         </div>

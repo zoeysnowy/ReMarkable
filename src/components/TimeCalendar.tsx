@@ -1,7 +1,9 @@
 /**
- * TimeCalendar Component - 鏃跺厜鏃ュ巻
+ * TimeCalendar Component - 时光日历
  * 
- * 浣跨敤 TUI Calendar 瀹炵幇鐨勬椂鍏夋棩鍘嗙粍浠? * 鏀寔涓?Outlook 鐨勫弻鍚戝疄鏃跺悓姝? * 
+ * 使用 TUI Calendar 实现的时光日历组件
+ * 支持与 Outlook 的双向实时同步
+ * 
  * @charset UTF-8
  * @author Zoey Gong
  * @version 1.0.0
@@ -13,7 +15,8 @@ import { EventEditModal } from './EventEditModal';
 import CalendarSettingsPanel, { CalendarSettings } from './CalendarSettingsPanel';
 import type { EventObject } from '@toast-ui/calendar';
 import '@toast-ui/calendar/dist/toastui-calendar.css';
-import '../styles/calendar.css'; // 馃帹 ReMarkable 鑷畾涔夋牱寮?import { Event } from '../types';
+import '../styles/calendar.css'; // 🎨 ReMarkable 自定义样式
+import { Event } from '../types';
 import { TagService } from '../services/TagService';
 import { MicrosoftCalendarService } from '../services/MicrosoftCalendarService';
 import { STORAGE_KEYS } from '../constants/storage';
@@ -35,20 +38,26 @@ interface TimeCalendarProps {
   microsoftService?: MicrosoftCalendarService;
   syncManager?: any; // ActionBasedSyncManager instance
   lastSyncTime?: Date | null;
-  availableTags?: any[]; // 馃啎 娣诲姞锛氬彲鐢ㄦ爣绛惧垪琛?  globalTimer?: {
+  availableTags?: any[]; // 🆕 添加：可用标签列表
+  globalTimer?: {
     isRunning: boolean;
     tagId: string;
     startTime: number;
     originalStartTime: number;
     elapsedTime: number;
-  } | null; // 馃啎 娣诲姞锛氬綋鍓嶈繍琛岀殑璁℃椂鍣ㄧ姸鎬?  className?: string; // 馃啎 娣诲姞锛欳SS绫诲悕鏀寔
-  style?: React.CSSProperties; // 馃啎 娣诲姞锛氬唴鑱旀牱寮忔敮鎸?  isWidgetMode?: boolean; // 馃啎 娣诲姞锛氭槸鍚﹀湪 widget 妯″紡涓嬶紙闅愯棌鎮诞绐楁寜閽級
-  storageKey?: string; // 馃啎 娣诲姞锛氳嚜瀹氫箟瀛樺偍key锛堢敤浜庡瀹炰緥闅旂锛?  calendarBackgroundColor?: string; // 馃啎 鏃ュ巻鑳屾櫙棰滆壊锛堢敤浜庝笁涓煩褰級
-  calendarOpacity?: number; // 馃啎 鏃ュ巻閫忔槑搴︼紙0-1锛?  // Widget 鎺у埗鍥炶皟锛堜粎鍦?widget 妯″紡涓嬩娇鐢級
+  } | null; // 🆕 添加：当前运行的计时器状态
+  className?: string; // 🆕 添加：CSS类名支持
+  style?: React.CSSProperties; // 🆕 添加：内联样式支持
+  isWidgetMode?: boolean; // 🆕 添加：是否在 widget 模式下（隐藏悬浮窗按钮）
+  storageKey?: string; // 🆕 添加：自定义存储key（用于多实例隔离）
+  calendarBackgroundColor?: string; // 🆕 日历背景颜色（用于三个矩形）
+  calendarOpacity?: number; // 🆕 日历透明度（0-1）
+  // Widget 控制回调（仅在 widget 模式下使用）
   onWidgetOpacityChange?: (opacity: number) => void;
   onWidgetColorChange?: (color: string) => void;
   onWidgetLockToggle?: (locked: boolean) => void;
-  widgetLocked?: boolean; // Widget 閿佸畾鐘舵€?}
+  widgetLocked?: boolean; // Widget 锁定状态
+}
 
 export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   onStartTimer,
@@ -60,26 +69,27 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   className = '',
   style = {},
   isWidgetMode = false,
-  storageKey = 'remarkable-calendar-settings', // 榛樿key
-  calendarBackgroundColor = '#ffffff', // 榛樿鐧借壊
-  calendarOpacity = 0.95, // 榛樿95%涓嶉€忔槑搴?  onWidgetOpacityChange,
+  storageKey = 'remarkable-calendar-settings', // 默认key
+  calendarBackgroundColor = '#ffffff', // 默认白色
+  calendarOpacity = 0.95, // 默认95%不透明度
+  onWidgetOpacityChange,
   onWidgetColorChange,
   onWidgetLockToggle,
   widgetLocked = false
 }) => {
-  // 鈴憋笍 缁勪欢鎸傝浇鎬ц兘鐩戞帶
+  // ⏱️ 组件挂载性能监控
   const mountTimeRef = useRef(performance.now());
   useEffect(() => {
     const mountDuration = performance.now() - mountTimeRef.current;
-    console.log(`鉁?[TimeCalendar] Component mounted in ${mountDuration.toFixed(2)}ms`);
+    console.log(`✅ [TimeCalendar] Component mounted in ${mountDuration.toFixed(2)}ms`);
     
-    // 馃攳 璋冭瘯锛氱粍浠舵寕杞藉悗妫€鏌?localStorage
-    console.log('馃攳 [缁勪欢鎸傝浇鍚嶿 storageKey:', storageKey);
+    // 🔍 调试：组件挂载后检查 localStorage
+    console.log('🔍 [组件挂载后] storageKey:', storageKey);
     const savedAfterMount = localStorage.getItem(storageKey);
-    console.log('馃攳 [缁勪欢鎸傝浇鍚嶿 localStorage 涓殑鍊?', savedAfterMount);
+    console.log('🔍 [组件挂载后] localStorage 中的值:', savedAfterMount);
     if (savedAfterMount) {
       const parsed = JSON.parse(savedAfterMount);
-      console.log('馃攳 [缁勪欢鎸傝浇鍚嶿 瑙ｆ瀽鍚庣殑楂樺害:', {
+      console.log('🔍 [组件挂载后] 解析后的高度:', {
         task: parsed.taskHeight,
         allDay: parsed.allDayHeight,
         milestone: parsed.milestoneHeight
@@ -87,17 +97,18 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     }
   }, [storageKey]);
   
-  // 馃攳 娓叉煋璁℃暟鍣?  const renderCountRef = useRef(0);
+  // 🔍 渲染计数器
+  const renderCountRef = useRef(0);
   const renderStartRef = useRef(performance.now());
   renderCountRef.current++;
   renderStartRef.current = performance.now();
   
-  // 鍙湪鍓?娆℃覆鏌撴椂鎵撳嵃鏃ュ織
+  // 只在前3次渲染时打印日志
   if (renderCountRef.current <= 3) {
-    console.log(`馃搳 [TimeCalendar] Render #${renderCountRef.current} started`);
+    console.log(`📊 [TimeCalendar] Render #${renderCountRef.current} started`);
   }
   
-  // 馃帹 杞崲鑳屾櫙鑹蹭负 rgba
+  // 🎨 转换背景色为 rgba
   const hexToRgb = (hex: string) => {
     const r = parseInt(hex.slice(1,3), 16);
     const g = parseInt(hex.slice(3,5), 16);
@@ -107,30 +118,32 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   const { r, g, b } = hexToRgb(calendarBackgroundColor);
   const bgRgba = `rgba(${r}, ${g}, ${b}, ${calendarOpacity})`;
   
-  // 馃帹 棰滆壊鑷€傚簲绯荤粺锛氭牴鎹儗鏅壊鏄庢殫搴︾敓鎴愰€傞厤鐨勯鑹?  const getAdaptiveColors = useMemo(() => {
-    // 璁＄畻浜害 (0-255)
+  // 🎨 颜色自适应系统：根据背景色明暗度生成适配的颜色
+  const getAdaptiveColors = useMemo(() => {
+    // 计算亮度 (0-255)
     const luminance = (0.299 * r + 0.587 * g + 0.114 * b);
     const isDark = luminance < 128;
     
     return {
       isDark,
-      // 鏂囧瓧棰滆壊
+      // 文字颜色
       textPrimary: isDark ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.87)',
       textSecondary: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)',
       textDisabled: isDark ? 'rgba(255,255,255,0.38)' : 'rgba(0,0,0,0.38)',
       
-      // 杈规棰滆壊
+      // 边框颜色
       borderLight: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
       borderMedium: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)',
       
-      // 鑳屾櫙鑹插彉浣?      bgOverlay: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+      // 背景色变体
+      bgOverlay: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
       bgHover: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
       
-      // 楂樹寒鑹诧紙浠婂ぉ銆侀€変腑绛夛級
+      // 高亮色（今天、选中等）
       accentColor: isDark ? '#60a5fa' : '#667eea',
       accentLight: isDark ? 'rgba(96,165,250,0.15)' : 'rgba(102,126,234,0.1)',
       
-      // 鐗规畩鏃ユ湡棰滆壊
+      // 特殊日期颜色
       holiday: isDark ? '#ff6b6b' : '#ff4040',
       weekend: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(102,126,234,0.02)',
     };
@@ -140,24 +153,26 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   const [events, setEvents] = useState<Event[]>([]);
   const [hierarchicalTags, setHierarchicalTags] = useState<any[]>([]);
   
-  // 馃幆 浣跨敤lazy initialization鎭㈠涓婃鏌ョ湅鐨勬棩鏈?  const [currentDate, setCurrentDate] = useState<Date>(() => {
+  // 🎯 使用lazy initialization恢复上次查看的日期
+  const [currentDate, setCurrentDate] = useState<Date>(() => {
     try {
       const saved = localStorage.getItem('remarkable-calendar-current-date');
       if (saved) {
         const savedDate = new Date(saved);
         if (!isNaN(savedDate.getTime())) {
-          console.log(`馃搮 [INIT] Restored last viewed date: ${savedDate.toLocaleDateString()}`);
+          console.log(`📅 [INIT] Restored last viewed date: ${savedDate.toLocaleDateString()}`);
           return savedDate;
         }
       }
     } catch (error) {
-      console.error('鉂?Failed to restore current date:', error);
+      console.error('❌ Failed to restore current date:', error);
     }
-    console.log(`馃搮 [INIT] Using today's date`);
+    console.log(`📅 [INIT] Using today's date`);
     return new Date();
   });
   
-  // 馃幆 浣跨敤lazy initialization鍚屾鍔犺浇璁剧疆锛岄伩鍏嶅垵濮嬫覆鏌撻棯鐑?  const [currentView, setCurrentView] = useState<'month' | 'week' | 'day'>(() => {
+  // 🎯 使用lazy initialization同步加载设置，避免初始渲染闪烁
+  const [currentView, setCurrentView] = useState<'month' | 'week' | 'day'>(() => {
     try {
       const saved = localStorage.getItem('remarkable-calendar-settings');
       if (saved) {
@@ -165,39 +180,43 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         return settings.view || 'month';
       }
     } catch (error) {
-      console.error('鉂?Failed to load initial view:', error);
+      console.error('❌ Failed to load initial view:', error);
     }
     return 'month';
   });
   
-  // 鉁忥笍 浜嬩欢缂栬緫寮圭獥鐘舵€?  const [showEventEditModal, setShowEventEditModal] = useState(false);
+  // ✏️ 事件编辑弹窗状态
+  const [showEventEditModal, setShowEventEditModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
-  // 馃搮 鍙敤鏃ュ巻鐘舵€?  const [availableCalendars, setAvailableCalendars] = useState<any[]>([]);
+  // 📅 可用日历状态
+  const [availableCalendars, setAvailableCalendars] = useState<any[]>([]);
 
-  // 馃攧 鐩戝惉 localStorage 涓殑 globalTimer 鍙樺寲锛堢敤浜?Widget 瀹炴椂鏇存柊锛?  const [localStorageTimerTrigger, setLocalStorageTimerTrigger] = useState(0);
+  // 🔄 监听 localStorage 中的 globalTimer 变化（用于 Widget 实时更新）
+  const [localStorageTimerTrigger, setLocalStorageTimerTrigger] = useState(0);
   const lastTimerStateRef = useRef<string | null>(null);
-  const lastEventsStateRef = useRef<string | null>(null); // 馃啎 鐢ㄤ簬璺熻釜events鍙樺寲
+  const lastEventsStateRef = useRef<string | null>(null); // 🆕 用于跟踪events变化
   
-  // 馃攧 瀹氭湡妫€鏌?localStorage锛圵idget 鍦烘櫙鐨勫鐢ㄦ柟妗堬級
-  // 鍥犱负 Electron 涓?storage 浜嬩欢鍙兘涓嶇ǔ瀹氾紝浣跨敤杞纭繚鍚屾
+  // 🔄 定期检查 localStorage（Widget 场景的备用方案）
+  // 因为 Electron 中 storage 事件可能不稳定，使用轮询确保同步
   useEffect(() => {
-    if (!globalTimer) { // 鍙湪 Widget 鍦烘櫙锛堟病鏈?prop锛夋椂杞
-      console.log('馃攧 [TIMER] Starting localStorage polling for Widget (focusing on events)');
+    if (!globalTimer) { // 只在 Widget 场景（没有 prop）时轮询
+      console.log('🔄 [TIMER] Starting localStorage polling for Widget (focusing on events)');
       
       const checkTimer = () => {
         const eventsData = localStorage.getItem('remarkable-events');
         const timerState = localStorage.getItem('remarkable-global-timer');
         
-        // 馃幆 涓昏鍏虫敞浜嬩欢鏁版嵁鍙樺寲锛堣繖閲屾湁timer鐨勫疄闄呮洿鏂帮級
+        // 🎯 主要关注事件数据变化（这里有timer的实际更新）
         if (eventsData !== lastEventsStateRef.current) {
-          // console.log('馃攳 [TIMER] Events data changed - timer may have updated');
+          // console.log('🔍 [TIMER] Events data changed - timer may have updated');
           lastEventsStateRef.current = eventsData;
           setLocalStorageTimerTrigger(prev => prev + 1);
         }
         
-        // 馃攧 鍚屾椂妫€鏌imer鐘舵€佸彉鍖栵紙浣滀负琛ュ厖锛?        if (timerState !== lastTimerStateRef.current) {
-          console.log('馃攳 [TIMER] Timer state changed:', {
+        // 🔄 同时检查timer状态变化（作为补充）
+        if (timerState !== lastTimerStateRef.current) {
+          console.log('🔍 [TIMER] Timer state changed:', {
             old: lastTimerStateRef.current,
             new: timerState
           });
@@ -206,54 +225,58 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         }
       };
       
-      // 绔嬪嵆妫€鏌ヤ竴娆?      checkTimer();
+      // 立即检查一次
+      checkTimer();
       
-      // 姣?绉掓鏌ヤ竴娆?      const interval = setInterval(checkTimer, 2000);
+      // 每2秒检查一次
+      const interval = setInterval(checkTimer, 2000);
       
       return () => {
-        console.log('馃攧 [TIMER] Stopping localStorage polling');
+        console.log('🔄 [TIMER] Stopping localStorage polling');
         clearInterval(interval);
       };
     }
-  }, [globalTimer]); // 渚濊禆 globalTimer锛岀‘淇濅富搴旂敤涓嶄細鍚姩杞
+  }, [globalTimer]); // 依赖 globalTimer，确保主应用不会启动轮询
   
-  // 馃帶 鐩戝惉璺ㄧ獥鍙ｇ殑 storage 浜嬩欢锛堜綔涓鸿ˉ鍏咃級
+  // 🎧 监听跨窗口的 storage 事件（作为补充）
   useEffect(() => {
-    console.log('馃帶 [TIMER] Setting up storage event listener');
+    console.log('🎧 [TIMER] Setting up storage event listener');
     
     const handleStorageChange = (e: StorageEvent) => {
-      // console.log('馃摗 [TIMER] Storage event detected:', {
+      // console.log('📡 [TIMER] Storage event detected:', {
       //   key: e.key,
       //   newValue: e.newValue,
       //   oldValue: e.oldValue
       // });
       
       if (e.key === 'remarkable-global-timer') {
-        console.log('馃攧 [TIMER] Timer storage changed via event, triggering recalculation');
+        console.log('🔄 [TIMER] Timer storage changed via event, triggering recalculation');
         lastTimerStateRef.current = e.newValue;
         setLocalStorageTimerTrigger(prev => prev + 1);
       }
     };
     
-    // 鉁?娉ㄥ唽浜嬩欢鐩戝惉鍣?    window.addEventListener('storage', handleStorageChange);
+    // ✅ 注册事件监听器
+    window.addEventListener('storage', handleStorageChange);
     
-    // 鉁?娓呯悊鍑芥暟
+    // ✅ 清理函数
     return () => {
-      console.log('馃帶 [TIMER] Removing storage event listener');
+      console.log('🎧 [TIMER] Removing storage event listener');
       window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
 
-  // 鈿欙笍 璁剧疆闈㈡澘鐘舵€?  const [showSettings, setShowSettings] = useState(false);
+  // ⚙️ 设置面板状态
+  const [showSettings, setShowSettings] = useState(false);
   const [calendarSettings, setCalendarSettings] = useState<CalendarSettings>(() => {
-    console.log('馃攳 [鍒濆鍖朷 storageKey:', storageKey);
+    console.log('🔍 [初始化] storageKey:', storageKey);
     try {
       const saved = localStorage.getItem(storageKey);
-      console.log('馃攳 [鍒濆鍖朷 localStorage 鍘熷鍊?', saved);
+      console.log('🔍 [初始化] localStorage 原始值:', saved);
       
       if (saved) {
         const settings = JSON.parse(saved);
-        console.log('馃攳 [鍒濆鍖朷 瑙ｆ瀽鍚庣殑璁剧疆:', settings);
+        console.log('🔍 [初始化] 解析后的设置:', settings);
         
         const initialSettings = {
           eventOpacity: settings.eventOpacity ?? 85,
@@ -266,11 +289,11 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           taskHeight: settings.taskHeight || 24,
           allDayHeight: settings.allDayHeight || 24
         };
-        console.log('馃攳 [鍒濆鍖朷 鏈€缁堜娇鐢ㄧ殑璁剧疆:', initialSettings);
+        console.log('🔍 [初始化] 最终使用的设置:', initialSettings);
         return initialSettings;
       }
     } catch (error) {
-      console.error('鉂?Failed to load initial settings:', error);
+      console.error('❌ Failed to load initial settings:', error);
     }
     
     const defaultSettings = {
@@ -284,22 +307,23 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       taskHeight: 24,
       allDayHeight: 24
     };
-    console.log('馃攳 [鍒濆鍖朷 浣跨敤榛樿璁剧疆:', defaultSettings);
+    console.log('🔍 [初始化] 使用默认设置:', defaultSettings);
     return defaultSettings;
   });
 
-  // 馃搹 浣跨敤 ref 淇濆瓨鏈€鏂扮殑楂樺害璁剧疆锛屼緵 useLayoutEffect 浣跨敤
+  // 📏 使用 ref 保存最新的高度设置，供 useLayoutEffect 使用
   const heightSettingsRef = useRef({
     taskHeight: calendarSettings.taskHeight,
     allDayHeight: calendarSettings.allDayHeight,
     milestoneHeight: calendarSettings.milestoneHeight
   });
 
-  // 馃帹 璺熻釜鏄惁鏄垵濮嬪姞杞斤紙鐢ㄤ簬鍐冲畾鏄惁浣跨敤 !important锛?  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  // 🎨 跟踪是否是初始加载（用于决定是否使用 !important）
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-  // 鏇存柊 ref 褰撻珮搴﹀彉鍖栨椂
+  // 更新 ref 当高度变化时
   useEffect(() => {
-    console.log('馃攳 [ref鏇存柊] 楂樺害鍙樺寲:', {
+    console.log('🔍 [ref更新] 高度变化:', {
       task: calendarSettings.taskHeight,
       allDay: calendarSettings.allDayHeight,
       milestone: calendarSettings.milestoneHeight
@@ -313,54 +337,55 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   }, [calendarSettings.taskHeight, calendarSettings.allDayHeight, calendarSettings.milestoneHeight]);
 
 
-  //  浠?localStorage 鍔犺浇浜嬩欢鏁版嵁
+  //  从 localStorage 加载事件数据
   const loadEvents = useCallback(() => {
     try {
       const savedEvents = localStorage.getItem(STORAGE_KEYS.EVENTS);
       if (savedEvents) {
         const parsedEvents = JSON.parse(savedEvents);
-        // console.log(`馃搮 [LOAD] Loading ${parsedEvents.length} events from localStorage`);
+        // console.log(`📅 [LOAD] Loading ${parsedEvents.length} events from localStorage`);
         
-        // 馃攳 璋冭瘯锛氭煡鎵総imer浜嬩欢
+        // 🔍 调试：查找timer事件
         // const timerEvents = parsedEvents.filter((e: any) => e.id && e.id.includes('timer-'));
         // if (timerEvents.length > 0) {
-        //   console.log('馃攳 [TIMER EVENTS] Found timer events:', timerEvents.map((e: any) => ({ 
+        //   console.log('🔍 [TIMER EVENTS] Found timer events:', timerEvents.map((e: any) => ({ 
         //     id: e.id, 
         //     title: e.title, 
         //     syncStatus: e.syncStatus,
         //     isTimer: e.isTimer 
         //   })));
         // } else {
-        //   console.log('鈿狅笍 [TIMER EVENTS] No timer events found in localStorage');
+        //   console.log('⚠️ [TIMER EVENTS] No timer events found in localStorage');
         // }
         
         setEvents(parsedEvents);
       }
     } catch (error) {
-      console.error('鉂?[LOAD] Failed to load events:', error);
+      console.error('❌ [LOAD] Failed to load events:', error);
     }
   }, []);
 
-  // 馃彿锔?浠?localStorage 鍔犺浇鏍囩鏁版嵁
+  // 🏷️ 从 localStorage 加载标签数据
   const loadHierarchicalTags = useCallback(() => {
     try {
       const savedTags = PersistentStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS, PERSISTENT_OPTIONS.TAGS);
       if (savedTags && Array.isArray(savedTags)) {
         setHierarchicalTags(savedTags);
-        console.log(`馃摜 [LOAD] Loading ${savedTags.length} tags`);
+        console.log(`📥 [LOAD] Loading ${savedTags.length} tags`);
       }
     } catch (error) {
-      console.error('鉂?[LOAD] Failed to load tags:', error);
+      console.error('❌ [LOAD] Failed to load tags:', error);
     }
   }, []);
 
-  // 鈿欙笍 楠岃瘉骞舵竻鐞嗙瓫閫夎缃?  const validateAndCleanSettings = useCallback((settings: CalendarSettings) => {
-    // 鑾峰彇褰撳墠鏈夋晥鐨勬爣绛綢D鍜屾棩鍘咺D
+  // ⚙️ 验证并清理筛选设置
+  const validateAndCleanSettings = useCallback((settings: CalendarSettings) => {
+    // 获取当前有效的标签ID和日历ID
     const validTagIds = new Set(flattenTags(hierarchicalTags).map(tag => tag.id));
     const validCalendarIds = new Set<string>();
     
-    // 鉁?娣诲姞鐗规畩閫夐」ID鍒版湁鏁堥泦鍚堜腑
-    validTagIds.add('no-tag'); // 鐗规畩鏍囩锛氭湭瀹氫箟鏍囩
+    // ✅ 添加特殊选项ID到有效集合中
+    validTagIds.add('no-tag'); // 特殊标签：未定义标签
     
     try {
       const calendarsCache = localStorage.getItem(STORAGE_KEYS.CALENDARS_CACHE);
@@ -369,33 +394,36 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         calendars.forEach((cal: any) => validCalendarIds.add(cal.id));
       }
     } catch (error) {
-      console.warn('鈿狅笍 Failed to load calendar cache:', error);
+      console.warn('⚠️ Failed to load calendar cache:', error);
     }
     
-    // 鉁?娣诲姞鐗规畩鏃ュ巻閫夐」ID鍒版湁鏁堥泦鍚堜腑
-    validCalendarIds.add('local-created'); // 鐗规畩鏃ュ巻锛氬垱寤鸿嚜鏈湴
-    validCalendarIds.add('not-synced');    // 鐗规畩鏃ュ巻锛氭湭鍚屾鑷虫棩鍘?
-    // 杩囨护鍑烘湁鏁堢殑鏍囩鍜屾棩鍘咺D
+    // ✅ 添加特殊日历选项ID到有效集合中
+    validCalendarIds.add('local-created'); // 特殊日历：创建自本地
+    validCalendarIds.add('not-synced');    // 特殊日历：未同步至日历
+
+    // 过滤出有效的标签和日历ID
     let validVisibleTags = (settings.visibleTags || []).filter(id => validTagIds.has(id));
     let validVisibleCalendars = (settings.visibleCalendars || []).filter(id => validCalendarIds.has(id));
 
-    // 妫€鏌ユ槸鍚︽湁鏃犳晥鐨処D琚Щ闄?    const invalidTagsRemoved = (settings.visibleTags?.length || 0) - validVisibleTags.length;
+    // 检查是否有无效的ID被移除
+    const invalidTagsRemoved = (settings.visibleTags?.length || 0) - validVisibleTags.length;
     const invalidCalendarsRemoved = (settings.visibleCalendars?.length || 0) - validVisibleCalendars.length;
 
     if (invalidTagsRemoved > 0 || invalidCalendarsRemoved > 0) {
-      console.warn(`馃Ч [TimeCalendar] Cleaned invalid filters: ${invalidTagsRemoved} tags, ${invalidCalendarsRemoved} calendars`);
+      console.warn(`🧹 [TimeCalendar] Cleaned invalid filters: ${invalidTagsRemoved} tags, ${invalidCalendarsRemoved} calendars`);
       
-      // 鉁?鏍稿績淇锛氬鏋滄竻鐞嗗悗鏈夋晥鏍囩澶皯锛? 2涓級锛岀洿鎺ユ竻绌虹瓫閫夛紝閬垮厤鏃犳剰涔夌殑绛涢€?      if (validVisibleTags.length > 0 && validVisibleTags.length < 2) {
-        console.log('鉁?[TimeCalendar] Too few valid tags after cleanup, clearing tag filter');
+      // ✅ 核心修复：如果清理后有效标签太少（< 2个），直接清空筛选，避免无意义的筛选
+      if (validVisibleTags.length > 0 && validVisibleTags.length < 2) {
+        console.log('✅ [TimeCalendar] Too few valid tags after cleanup, clearing tag filter');
         validVisibleTags = [];
       }
       
-      // 濡傛灉娓呯悊鍚庣瓫閫夊垪琛ㄤ负绌猴紝璇存槑鎵€鏈変箣鍓嶄繚瀛樼殑ID閮芥棤鏁堜簡
+      // 如果清理后筛选列表为空，说明所有之前保存的ID都无效了
       if (settings.visibleTags && settings.visibleTags.length > 0 && validVisibleTags.length === 0) {
-        console.log('鉁?[TimeCalendar] All saved tag filters are invalid, clearing tag filter');
+        console.log('✅ [TimeCalendar] All saved tag filters are invalid, clearing tag filter');
       }
       if (settings.visibleCalendars && settings.visibleCalendars.length > 0 && validVisibleCalendars.length === 0) {
-        console.log('鉁?[TimeCalendar] All saved calendar filters are invalid, clearing calendar filter');
+        console.log('✅ [TimeCalendar] All saved calendar filters are invalid, clearing calendar filter');
       }
     }
 
@@ -406,18 +434,20 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     };
   }, [hierarchicalTags]);
 
-  // 鈿欙笍 楠岃瘉骞舵竻鐞嗗凡鍔犺浇鐨勮缃紙鍙湪鏍囩鍔犺浇瀹屾垚鍚庢墽琛屼竴娆★級
+  // ⚙️ 验证并清理已加载的设置（只在标签加载完成后执行一次）
   const validateSettings = useCallback(() => {
     try {
       const saved = localStorage.getItem('remarkable-calendar-settings');
       if (saved) {
         const settings = JSON.parse(saved);
         
-        // 楠岃瘉骞舵竻鐞嗙瓫閫夎缃?        const cleanedSettings = validateAndCleanSettings(settings);
+        // 验证并清理筛选设置
+        const cleanedSettings = validateAndCleanSettings(settings);
         
-        // 濡傛灉璁剧疆琚竻鐞嗚繃锛屾洿鏂皊tate骞朵繚瀛?        if (cleanedSettings.visibleTags.length !== settings.visibleTags?.length || 
+        // 如果设置被清理过，更新state并保存
+        if (cleanedSettings.visibleTags.length !== settings.visibleTags?.length || 
             cleanedSettings.visibleCalendars.length !== settings.visibleCalendars?.length) {
-          console.log('馃Ч [TimeCalendar] Cleaning invalid filters');
+          console.log('🧹 [TimeCalendar] Cleaning invalid filters');
           setCalendarSettings(prev => ({
             ...prev,
             visibleTags: cleanedSettings.visibleTags,
@@ -427,20 +457,20 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         }
       }
     } catch (error) {
-      console.error('鉂?[TimeCalendar] Failed to validate settings:', error);
+      console.error('❌ [TimeCalendar] Failed to validate settings:', error);
     }
-  }, [hierarchicalTags, validateAndCleanSettings, calendarSettings]); // 娣诲姞渚濊禆
+  }, [hierarchicalTags, validateAndCleanSettings, calendarSettings]); // 添加依赖
 
-  // 馃捑 淇濆瓨璁剧疆鍒?localStorage
+  // 💾 保存设置到 localStorage
   const saveSettings = useCallback((settings: CalendarSettings, view?: string) => {
     try {
       const settingsToSave = {
         ...settings,
         view: view || currentView
       };
-      console.log('锟?[淇濆瓨] storageKey:', storageKey);
-      console.log('馃攳 [淇濆瓨] 淇濆瓨鐨勮缃?', settingsToSave);
-      console.log('馃攳 [淇濆瓨] 楂樺害鍊?', {
+      console.log('� [保存] storageKey:', storageKey);
+      console.log('🔍 [保存] 保存的设置:', settingsToSave);
+      console.log('🔍 [保存] 高度值:', {
         task: settingsToSave.taskHeight,
         allDay: settingsToSave.allDayHeight,
         milestone: settingsToSave.milestoneHeight
@@ -448,34 +478,39 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       
       localStorage.setItem(storageKey, JSON.stringify(settingsToSave));
       
-      // 楠岃瘉淇濆瓨鎴愬姛
+      // 验证保存成功
       const verified = localStorage.getItem(storageKey);
-      console.log('馃攳 [淇濆瓨楠岃瘉] localStorage 涓殑鍊?', verified);
+      console.log('🔍 [保存验证] localStorage 中的值:', verified);
     } catch (error) {
-      console.error('鉂?[TimeCalendar] Failed to save settings:', error);
+      console.error('❌ [TimeCalendar] Failed to save settings:', error);
     }
   }, [storageKey, currentView]);
 
-  // 馃攧 鑷姩淇濆瓨 calendarSettings 鐨勫彉鍖栵紙鍖呮嫭楂樺害璋冩暣锛?  useEffect(() => {
-    console.log('馃攳 [鑷姩淇濆瓨] calendarSettings 鍙樺寲锛岃Е鍙戜繚瀛?);
+  // 🔄 自动保存 calendarSettings 的变化（包括高度调整）
+  useEffect(() => {
+    console.log('🔍 [自动保存] calendarSettings 变化，触发保存');
     saveSettings(calendarSettings);
   }, [calendarSettings, saveSettings]);
 
-  // 馃攧 鐩戝惉鍚屾瀹屾垚浜嬩欢 - 鏀硅繘涓哄閲忔洿鏂版満鍒?  const initialSyncCompletedRef = useRef(false);
+  // 🔄 监听同步完成事件 - 改进为增量更新机制
+  const initialSyncCompletedRef = useRef(false);
   const eventsLoadedRef = useRef(false);
-  const eventListenersAttachedRef = useRef(false); // 鉁?闃叉閲嶅缁戝畾浜嬩欢鐩戝惉鍣?  const isSyncingRef = useRef(false); // 鉁?闃叉鍚屾鏈熼棿鍝嶅簲 local-events-changed
+  const eventListenersAttachedRef = useRef(false); // ✅ 防止重复绑定事件监听器
+  const isSyncingRef = useRef(false); // ✅ 防止同步期间响应 local-events-changed
   
   useEffect(() => {
-    // 鉁?闃叉閲嶅缁戝畾浜嬩欢鐩戝惉鍣?    if (eventListenersAttachedRef.current) {
-      console.log('鈿狅笍 [EVENT] Event listeners already attached, skipping');
+    // ✅ 防止重复绑定事件监听器
+    if (eventListenersAttachedRef.current) {
+      console.log('⚠️ [EVENT] Event listeners already attached, skipping');
       return;
     }
 
-    console.log('馃帶 [EVENT] Attaching event listeners');
+    console.log('🎧 [EVENT] Attaching event listeners');
     let syncDebounceTimer: NodeJS.Timeout | null = null;
 
     const handleSyncCompleted = () => {
-      // 鉁?鍚屾瀹屾垚鍚庯紝閲嶆柊鍔犺浇浜嬩欢浠ユ樉绀烘渶鏂版暟鎹?      console.log('馃攧 [SYNC] Sync completed, reloading events to update UI');
+      // ✅ 同步完成后，重新加载事件以显示最新数据
+      console.log('🔄 [SYNC] Sync completed, reloading events to update UI');
       
       if (syncDebounceTimer) {
         clearTimeout(syncDebounceTimer);
@@ -484,156 +519,165 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       syncDebounceTimer = setTimeout(() => {
         loadEvents();
         
-        // 鏍囪鍒濆鍚屾瀹屾垚
+        // 标记初始同步完成
         if (!initialSyncCompletedRef.current) {
           initialSyncCompletedRef.current = true;
-          console.log('鉁?[SYNC] Initial sync completed');
+          console.log('✅ [SYNC] Initial sync completed');
         }
         
-        isSyncingRef.current = false; // 鉁?鍚屾瀹屾垚
-      }, isWidgetMode ? 100 : 500); // Widget妯″紡涓嬪噺灏戝欢杩燂紝鎻愰珮瀹炴椂鎬?    };
+        isSyncingRef.current = false; // ✅ 同步完成
+      }, isWidgetMode ? 100 : 500); // Widget模式下减少延迟，提高实时性
+    };
 
     const handleSyncStarted = () => {
-      // 鉁?鍚屾寮€濮嬫椂璁剧疆鏍囧織
+      // ✅ 同步开始时设置标志
       isSyncingRef.current = true;
-      console.log('馃攧 [SYNC] Sync started, will ignore local-events-changed');
+      console.log('🔄 [SYNC] Sync started, will ignore local-events-changed');
     };
 
     const handleLocalEventsChanged = (event: unknown) => {
       const customEvent = event as CustomEvent;
       const detail = customEvent.detail;
       
-      // 鉁?濡傛灉姝ｅ湪鍚屾锛屽拷鐣ヤ簨浠跺彉鍖栵紙闃叉鏃犻檺寰幆锛?      if (isSyncingRef.current) {
-        console.log('鈴笍 [EVENT] Ignoring during sync:', detail?.action || 'unknown');
+      // ✅ 如果正在同步，忽略事件变化（防止无限循环）
+      if (isSyncingRef.current) {
+        console.log('⏭️ [EVENT] Ignoring during sync:', detail?.action || 'unknown');
         return;
       }
       
-      console.log('馃攧 [EVENT] Local events changed:', detail?.action || 'unknown');
+      console.log('🔄 [EVENT] Local events changed:', detail?.action || 'unknown');
       
-      // 鉁?浼樺寲闃叉姈澶勭悊锛歐idget妯″紡涓嬩娇鐢ㄦ洿鐭殑寤惰繜
+      // ✅ 优化防抖处理：Widget模式下使用更短的延迟
       if (syncDebounceTimer) {
         clearTimeout(syncDebounceTimer);
       }
       
       syncDebounceTimer = setTimeout(() => {
         loadEvents();
-      }, isWidgetMode ? 100 : 300); // Widget妯″紡涓嬪噺灏戝欢杩燂紝鎻愰珮瀹炴椂鎬?    };
+      }, isWidgetMode ? 100 : 300); // Widget模式下减少延迟，提高实时性
+    };
 
     const handleEventsUpdated = (event: unknown) => {
       const customEvent = event as CustomEvent;
       const detail = customEvent.detail;
       
-      console.log('馃攧 [EVENT] Events updated:', detail?.eventId || 'unknown', detail);
+      console.log('🔄 [EVENT] Events updated:', detail?.eventId || 'unknown', detail);
       
-      // 鈿?Timer 浜嬩欢绔嬪嵆鏇存柊锛岃烦杩囬槻鎶?      if (detail?.isTimerEvent) {
-        console.log('鈿?[EVENT] Timer event detected, updating immediately');
+      // ⚡ Timer 事件立即更新，跳过防抖
+      if (detail?.isTimerEvent) {
+        console.log('⚡ [EVENT] Timer event detected, updating immediately');
         loadEvents();
         return;
       }
       
-      // 鉁?浼樺寲闃叉姈澶勭悊锛歐idget妯″紡涓嬩娇鐢ㄦ洿鐭殑寤惰繜
+      // ✅ 优化防抖处理：Widget模式下使用更短的延迟
       if (syncDebounceTimer) {
         clearTimeout(syncDebounceTimer);
       }
       
       syncDebounceTimer = setTimeout(() => {
         loadEvents();
-      }, isWidgetMode ? 100 : 300); // Widget妯″紡涓嬪噺灏戝欢杩燂紝鎻愰珮瀹炴椂鎬?    };
+      }, isWidgetMode ? 100 : 300); // Widget模式下减少延迟，提高实时性
+    };
 
     window.addEventListener('action-sync-started', handleSyncStarted as any);
     window.addEventListener('action-sync-completed', handleSyncCompleted);
-    // 鉂?绉婚櫎锛歰utlook-sync-completed 宸茬粡涓嶅啀浣跨敤
+    // ❌ 移除：outlook-sync-completed 已经不再使用
     // window.addEventListener('outlook-sync-completed', handleSyncCompleted);
     window.addEventListener('local-events-changed', handleLocalEventsChanged as any);
     window.addEventListener('eventsUpdated', handleEventsUpdated as any);
     
     eventListenersAttachedRef.current = true;
 
-    // 鍒濆鍔犺浇 - 浠庣紦瀛樺姞杞斤紝纭繚绂荤嚎鍙敤锛堝彧鍔犺浇涓€娆★級
+    // 初始加载 - 从缓存加载，确保离线可用（只加载一次）
     if (!eventsLoadedRef.current) {
-      console.log('锟?[INIT] Initial loading events from cache');
+      console.log('� [INIT] Initial loading events from cache');
       loadEvents();
       loadHierarchicalTags();
       eventsLoadedRef.current = true;
     }
 
     return () => {
-      console.log('馃帶 [EVENT] Removing event listeners');
+      console.log('🎧 [EVENT] Removing event listeners');
       if (syncDebounceTimer) {
         clearTimeout(syncDebounceTimer);
       }
       window.removeEventListener('action-sync-started', handleSyncStarted as any);
       window.removeEventListener('action-sync-completed', handleSyncCompleted);
-      // 鉂?绉婚櫎锛歰utlook-sync-completed 宸茬粡涓嶅啀浣跨敤
+      // ❌ 移除：outlook-sync-completed 已经不再使用
       // window.removeEventListener('outlook-sync-completed', handleSyncCompleted);
       window.removeEventListener('local-events-changed', handleLocalEventsChanged as any);
       window.removeEventListener('eventsUpdated', handleEventsUpdated as any);
       eventListenersAttachedRef.current = false;
     };
-  }, [loadEvents, loadHierarchicalTags]); // 绉婚櫎鐘舵€佷緷璧栵紝鍙緷璧栫ǔ瀹氱殑鍥炶皟
+  }, [loadEvents, loadHierarchicalTags]); // 移除状态依赖，只依赖稳定的回调
 
-  // 锟?Widget涓撶敤锛氬綋timer鐘舵€佸彉鍖栨椂锛屽己鍒堕噸鏂板姞杞絜vents
-  // 纭繚Widget鑳界湅鍒版柊鍒涘缓鐨則imer浜嬩欢
+  // � Widget专用：当timer状态变化时，强制重新加载events
+  // 确保Widget能看到新创建的timer事件
   useEffect(() => {
-    if (!globalTimer) { // 鍙湪Widget妯″紡涓嬬敓鏁堬紙Widget涓嶄細浼犻€抔lobalTimer prop锛?      // console.log('馃攧 [WIDGET TIMER] Timer state changed, reloading events for Widget');
+    if (!globalTimer) { // 只在Widget模式下生效（Widget不会传递globalTimer prop）
+      // console.log('🔄 [WIDGET TIMER] Timer state changed, reloading events for Widget');
       loadEvents();
     }
   }, [localStorageTimerTrigger, globalTimer, loadEvents]);
 
-  // 锟金煋?鍔犺浇鍙敤鏃ュ巻鍒楄〃
+  // �📋 加载可用日历列表
   useEffect(() => {
-    // 馃敡 Widget 妯″紡涓嬭烦杩囨棩鍘嗗姞杞斤紙Widget 浠?localStorage 璇诲彇鏁版嵁锛?    if (isWidgetMode) {
-      console.log('馃搵 [CALENDAR] Widget mode - skipping calendar loading');
+    // 🔧 Widget 模式下跳过日历加载（Widget 从 localStorage 读取数据）
+    if (isWidgetMode) {
+      console.log('📋 [CALENDAR] Widget mode - skipping calendar loading');
       setAvailableCalendars([]);
       return;
     }
     
     const loadCalendars = async () => {
       if (!microsoftService) {
-        console.log('馃搵 [CALENDAR] Microsoft service not available, skipping calendar loading');
+        console.log('📋 [CALENDAR] Microsoft service not available, skipping calendar loading');
         setAvailableCalendars([]);
         return;
       }
 
       try {
-        console.log('馃搵 [CALENDAR] Loading available calendars...');
+        console.log('📋 [CALENDAR] Loading available calendars...');
         const calendars = await microsoftService.getAllCalendars();
         setAvailableCalendars(calendars);
-        console.log('馃搵 [CALENDAR] Loaded calendars:', calendars.length);
+        console.log('📋 [CALENDAR] Loaded calendars:', calendars.length);
       } catch (error) {
-        console.error('鉂?[CALENDAR] Failed to load calendars:', error);
+        console.error('❌ [CALENDAR] Failed to load calendars:', error);
         setAvailableCalendars([]);
       }
     };
 
     loadCalendars();
-  }, [microsoftService, isWidgetMode]); // 娣诲姞 isWidgetMode 渚濊禆
+  }, [microsoftService, isWidgetMode]); // 添加 isWidgetMode 依赖
 
-  // 鈿欙笍 楠岃瘉璁剧疆锛堝彧鍦ㄦ爣绛惧姞杞藉畬鎴愬悗鎵ц涓€娆★級
+  // ⚙️ 验证设置（只在标签加载完成后执行一次）
   const [settingsValidated, setSettingsValidated] = useState(false);
   useEffect(() => {
     if (!settingsValidated && hierarchicalTags.length > 0) {
       validateSettings();
       setSettingsValidated(true);
     }
-  }, [hierarchicalTags.length, settingsValidated]); // 鉁?绉婚櫎validateSettings渚濊禆锛岄伩鍏嶉噸澶嶈Е鍙?
-  // 馃啎 鑷姩娣诲姞鏂版爣绛惧埌 visibleTags锛堢‘淇濇柊寤烘爣绛鹃粯璁ゅ嬀閫夛級
+  }, [hierarchicalTags.length, settingsValidated]); // ✅ 移除validateSettings依赖，避免重复触发
+
+  // 🆕 自动添加新标签到 visibleTags（确保新建标签默认勾选）
   const previousTagIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (hierarchicalTags.length === 0) return;
     
-    // 鑾峰彇褰撳墠鎵€鏈夋爣绛綢D
+    // 获取当前所有标签ID
     const currentTagIds = new Set(flattenTags(hierarchicalTags).map(tag => tag.id));
     
-    // 鎵惧嚭鏂板鐨勬爣绛?    const newTagIds = Array.from(currentTagIds).filter(id => !previousTagIdsRef.current.has(id));
+    // 找出新增的标签
+    const newTagIds = Array.from(currentTagIds).filter(id => !previousTagIdsRef.current.has(id));
     
     if (newTagIds.length > 0) {
-      console.log('馃啎 [TimeCalendar] Detected new tags:', newTagIds);
+      console.log('🆕 [TimeCalendar] Detected new tags:', newTagIds);
       
-      // 濡傛灉褰撳墠鏈夌瓫閫夛紙visibleTags涓嶄负绌猴級锛屽垯灏嗘柊鏍囩娣诲姞鍒扮瓫閫変腑
+      // 如果当前有筛选（visibleTags不为空），则将新标签添加到筛选中
       if (calendarSettings.visibleTags.length > 0) {
         const updatedVisibleTags = [...calendarSettings.visibleTags, ...newTagIds];
-        console.log('鉁?[TimeCalendar] Auto-adding new tags to filter:', newTagIds);
+        console.log('✅ [TimeCalendar] Auto-adding new tags to filter:', newTagIds);
         
         setCalendarSettings(prev => ({
           ...prev,
@@ -645,58 +689,63 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           visibleTags: updatedVisibleTags
         });
       } else {
-        // 濡傛灉褰撳墠娌℃湁绛涢€夛紙鏄剧ず鎵€鏈夋爣绛撅級锛屼繚鎸佷笉鍙?        console.log('鈩癸笍 [TimeCalendar] No filter active, new tags will be visible automatically');
+        // 如果当前没有筛选（显示所有标签），保持不变
+        console.log('ℹ️ [TimeCalendar] No filter active, new tags will be visible automatically');
       }
     }
     
-    // 鏇存柊涓婃鐨勬爣绛綢D闆嗗悎
+    // 更新上次的标签ID集合
     previousTagIdsRef.current = currentTagIds;
   }, [hierarchicalTags, calendarSettings, saveSettings]);
 
-  // 馃搮 鎸佷箙鍖栧綋鍓嶆煡鐪嬬殑鏃ユ湡
+  // 📅 持久化当前查看的日期
   useEffect(() => {
     try {
       localStorage.setItem('remarkable-calendar-current-date', currentDate.toISOString());
-      console.log(`馃捑 [SAVE] Saved current date: ${currentDate.toLocaleDateString()}`);
+      console.log(`💾 [SAVE] Saved current date: ${currentDate.toLocaleDateString()}`);
     } catch (error) {
-      console.error('鉂?Failed to save current date:', error);
+      console.error('❌ Failed to save current date:', error);
     }
   }, [currentDate]);
 
-  // 馃搮 鍒濆鍖栨棩鍘嗗疄渚嬬殑鏃ユ湡锛堟仮澶嶄笂娆℃煡鐪嬬殑浣嶇疆锛?  const calendarInitializedRef = useRef(false);
+  // 📅 初始化日历实例的日期（恢复上次查看的位置）
+  const calendarInitializedRef = useRef(false);
   const [isCalendarReady, setIsCalendarReady] = useState(false);
   
-  // 馃攧 缁勪欢鎸傝浇鏃堕噸缃垵濮嬪寲鏍囧織锛屽苟鍑嗗鎭㈠鏃ユ湡
+  // 🔄 组件挂载时重置初始化标志，并准备恢复日期
   useEffect(() => {
-    console.log(`馃搮 [MOUNT] TimeCalendar component mounted`);
+    console.log(`📅 [MOUNT] TimeCalendar component mounted`);
     calendarInitializedRef.current = false;
     
-    // 绔嬪嵆鎭㈠鏃ユ湡鍒?state锛岃繖鏍锋棩鍘嗘覆鏌撴椂灏辨槸姝ｇ‘鐨勪綅缃?    const savedDate = localStorage.getItem('remarkable-calendar-current-date');
+    // 立即恢复日期到 state，这样日历渲染时就是正确的位置
+    const savedDate = localStorage.getItem('remarkable-calendar-current-date');
     if (savedDate) {
       try {
         const restoredDate = new Date(savedDate);
         if (!isNaN(restoredDate.getTime())) {
           setCurrentDate(restoredDate);
-          console.log(`馃搮 [MOUNT] Restored date to state: ${restoredDate.toLocaleDateString()}`);
+          console.log(`📅 [MOUNT] Restored date to state: ${restoredDate.toLocaleDateString()}`);
         }
       } catch (error) {
-        console.error('鉂?Failed to restore date:', error);
+        console.error('❌ Failed to restore date:', error);
       }
     }
     
-    // 鏍囪鏃ュ巻鍑嗗濂芥覆鏌?    setIsCalendarReady(true);
+    // 标记日历准备好渲染
+    setIsCalendarReady(true);
     
     return () => {
-      console.log(`馃搮 [UNMOUNT] TimeCalendar component unmounted`);
+      console.log(`📅 [UNMOUNT] TimeCalendar component unmounted`);
       setIsCalendarReady(false);
     };
-  }, []); // 鍙湪鎸傝浇/鍗歌浇鏃舵墽琛?
-  // 馃帹 娉ㄥ叆鑷€傚簲鏍峰紡 + Widget妯″紡锛氬己鍒剁Щ闄?Toast UI Calendar 鐨勫唴鑱旇儗鏅壊
+  }, []); // 只在挂载/卸载时执行
+
+  // 🎨 注入自适应样式 + Widget模式：强制移除 Toast UI Calendar 的内联背景色
   useEffect(() => {
-    // Widget 妯″紡涓嬮渶瑕佺Щ闄よ儗鏅壊
+    // Widget 模式下需要移除背景色
     if (isWidgetMode) {
       const removeInlineBackgroundColor = () => {
-        // 閫夋嫨鎵€鏈?Toast UI Calendar 鐨?layout 瀹瑰櫒
+        // 选择所有 Toast UI Calendar 的 layout 容器
         const layouts = document.querySelectorAll('.toastui-calendar-layout');
         layouts.forEach(layout => {
           if (layout instanceof HTMLElement && layout.style.backgroundColor) {
@@ -704,7 +753,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           }
         });
         
-        // 涔熷鐞?panel 瀹瑰櫒
+        // 也处理 panel 容器
         const panels = document.querySelectorAll('.toastui-calendar-panel');
         panels.forEach(panel => {
           if (panel instanceof HTMLElement && panel.style.backgroundColor) {
@@ -713,11 +762,11 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         });
       };
 
-      // 鍒濆鎵ц
+      // 初始执行
       removeInlineBackgroundColor();
     }
     
-    // 馃帹 娉ㄥ叆鍔ㄦ€佹牱寮忥細瑕嗙洊 Toast UI Calendar 鐨?today 鏍峰紡锛堟墍鏈夋ā寮忛兘闇€瑕侊級
+    // 🎨 注入动态样式：覆盖 Toast UI Calendar 的 today 样式（所有模式都需要）
     const styleId = 'timecalendar-adaptive-styles';
     let styleElement = document.getElementById(styleId) as HTMLStyleElement;
     
@@ -727,22 +776,22 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       document.head.appendChild(styleElement);
     }
     
-    // 鍔ㄦ€佺敓鎴?CSS锛屼娇鐢ㄨ嚜閫傚簲棰滆壊
+    // 动态生成 CSS，使用自适应颜色
     styleElement.textContent = `
-      /* 馃帹 TimeCalendar 鑷€傚簲棰滆壊瑕嗙洊 */
+      /* 🎨 TimeCalendar 自适应颜色覆盖 */
       .toastui-calendar .is-today {
         color: ${getAdaptiveColors.accentColor} !important;
         font-weight: 600 !important;
       }
       
       /* ===============================================
-         馃帹 鎺у埗鏍忔寜閽拰瀵艰埅鑷€傚簲
+         🎨 控制栏按钮和导航自适应
          =============================================== */
       
-      /* 鎺у埗鏍忚儗鏅?- 绉婚櫎寮哄埗瑕嗙洊锛岃鍐呰仈鏍峰紡鐢熸晥 */
-      /* .toastui-calendar-controls 鐨勮儗鏅敱鍐呰仈鏍峰紡鎺у埗锛屼笉鍦ㄦ瑕嗙洊 */
+      /* 控制栏背景 - 移除强制覆盖，让内联样式生效 */
+      /* .toastui-calendar-controls 的背景由内联样式控制，不在此覆盖 */
       
-      /* 瑙嗗浘鎺у埗瀹瑰櫒 - 鐣ヤ綆浜庢寜閽殑瀹炲績搴︼紝鏃犺竟妗?*/
+      /* 视图控制容器 - 略低于按钮的实心度，无边框 */
       .toastui-calendar-view-controls {
         background: ${getAdaptiveColors.isDark 
           ? 'rgba(255,255,255,0.28)' 
@@ -754,7 +803,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         box-shadow: none !important;
       }
       
-      /* 鎺у埗鏍忔爣棰?- 浣跨敤娓愬彉鑹诧紙涓诲簲鐢級鎴栫函鑹诧紙Widget锛?*/
+      /* 控制栏标题 - 使用渐变色（主应用）或纯色（Widget） */
       .toastui-calendar-title {
         ${isWidgetMode 
           ? `color: ${getAdaptiveColors.accentColor} !important;` 
@@ -771,7 +820,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         display: inline-block !important;
       }
       
-      /* 瀵艰埅鎸夐挳鍩虹鏍峰紡 - 鏇村疄蹇冿紝閫忔槑搴﹂檷浣庯紝鏃犺竟妗?*/
+      /* 导航按钮基础样式 - 更实心，透明度降低，无边框 */
       .toastui-calendar-nav-button {
         background: ${getAdaptiveColors.isDark 
           ? 'rgba(255,255,255,0.35)' 
@@ -781,7 +830,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         transition: all 0.2s ease !important;
       }
       
-      /* 瀵艰埅鎸夐挳鎮仠 - 鏇村疄蹇?*/
+      /* 导航按钮悬停 - 更实心 */
       .toastui-calendar-nav-button:hover {
         background: ${getAdaptiveColors.isDark 
           ? 'rgba(255,255,255,0.5)' 
@@ -789,7 +838,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         color: ${getAdaptiveColors.textPrimary} !important;
       }
       
-      /* 瀵艰埅鎸夐挳婵€娲荤姸鎬?- 楂樺姣斿害锛屾棤杈规 */
+      /* 导航按钮激活状态 - 高对比度，无边框 */
       .toastui-calendar-nav-button.active {
         background: ${getAdaptiveColors.accentColor} !important;
         color: white !important;
@@ -800,7 +849,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           : 'rgba(102,126,234,0.3)'} !important;
       }
       
-      /* 瑙嗗浘鍒囨崲鎸夐挳鍩虹鏍峰紡 - 鏇村疄蹇冿紝閫忔槑搴﹂檷浣庯紝鏃犺竟妗?*/
+      /* 视图切换按钮基础样式 - 更实心，透明度降低，无边框 */
       .toastui-calendar-view-button {
         background: ${getAdaptiveColors.isDark 
           ? 'rgba(255,255,255,0.35)' 
@@ -810,7 +859,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         transition: all 0.2s ease !important;
       }
       
-      /* 瑙嗗浘鎸夐挳鎮仠 - 鏇村疄蹇?*/
+      /* 视图按钮悬停 - 更实心 */
       .toastui-calendar-view-button:hover {
         background: ${getAdaptiveColors.isDark 
           ? 'rgba(255,255,255,0.5)' 
@@ -818,7 +867,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         color: ${getAdaptiveColors.textPrimary} !important;
       }
       
-      /* 瑙嗗浘鎸夐挳婵€娲荤姸鎬?- 楂樺姣斿害锛屾棤杈规 */
+      /* 视图按钮激活状态 - 高对比度，无边框 */
       .toastui-calendar-view-button.active {
         background: ${getAdaptiveColors.accentColor} !important;
         color: white !important;
@@ -829,7 +878,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           : 'rgba(102,126,234,0.3)'} !important;
       }
       
-      /* 娣诲姞鎸夐挳 - 楂樺姣斿害涓昏壊璋?*/
+      /* 添加按钮 - 高对比度主色调 */
       .toastui-calendar-add-button {
         background: ${getAdaptiveColors.accentColor} !important;
         color: white !important;
@@ -840,7 +889,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           : 'rgba(102,126,234,0.25)'} !important;
       }
       
-      /* 娣诲姞鎸夐挳鎮仠 - 鍔犳繁鏁堟灉 */
+      /* 添加按钮悬停 - 加深效果 */
       .toastui-calendar-add-button:hover {
         background: ${getAdaptiveColors.isDark 
           ? '#5094ed' 
@@ -851,52 +900,52 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           : 'rgba(102,126,234,0.4)'} !important;
       }
       
-      /* 璁剧疆鎸夐挳 - 涓庡叾浠栨寜閽浉鍚岀殑瀹炲績搴?*/
-      .toastui-calendar-nav-button[title*="璁剧疆"] {
+      /* 设置按钮 - 与其他按钮相同的实心度 */
+      .toastui-calendar-nav-button[title*="设置"] {
         background: ${getAdaptiveColors.isDark 
           ? 'rgba(255,255,255,0.35)' 
           : 'rgba(255,255,255,0.45)'} !important;
       }
       
-      .toastui-calendar-nav-button[title*="璁剧疆"]:hover {
+      .toastui-calendar-nav-button[title*="设置"]:hover {
         background: ${getAdaptiveColors.isDark 
           ? 'rgba(255,255,255,0.5)' 
           : 'rgba(255,255,255,0.6)'} !important;
       }
       
       /* ===============================================
-         馃帹 Toast UI Calendar 鍏ㄥ眬杈规瑕嗙洊
+         🎨 Toast UI Calendar 全局边框覆盖
          =============================================== */
       
-      /* 涓诲鍣ㄥ拰闈㈡澘 */
+      /* 主容器和面板 */
       .toastui-calendar,
       .toastui-calendar *,
       .toastui-calendar-panel {
         border-color: ${getAdaptiveColors.borderLight} !important;
       }
       
-      /* 瑕嗙洊鎵€鏈夊唴鑱?border-right */
+      /* 覆盖所有内联 border-right */
       .toastui-calendar [style*="border-right"],
       .toastui-calendar-column[style*="border-right"] {
         border-right-color: ${getAdaptiveColors.borderLight} !important;
       }
       
-      /* 瑕嗙洊鎵€鏈夊唴鑱?border-bottom */
+      /* 覆盖所有内联 border-bottom */
       .toastui-calendar [style*="border-bottom"] {
         border-bottom-color: ${getAdaptiveColors.borderLight} !important;
       }
       
-      /* 瑕嗙洊鎵€鏈夊唴鑱?border-top */
+      /* 覆盖所有内联 border-top */
       .toastui-calendar [style*="border-top"] {
         border-top-color: ${getAdaptiveColors.borderLight} !important;
       }
       
-      /* 瑕嗙洊鎵€鏈夊唴鑱?border-left */
+      /* 覆盖所有内联 border-left */
       .toastui-calendar [style*="border-left"] {
         border-left-color: ${getAdaptiveColors.borderLight} !important;
       }
       
-      /* 鏄熸湡瀵艰埅鏉?- 瀹屽叏閫忔槑鑳屾櫙 */
+      /* 星期导航条 - 完全透明背景 */
       .toastui-calendar-day-view-day-names,
       .toastui-calendar-week-view-day-names,
       .toastui-calendar-day-names,
@@ -916,7 +965,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         color: ${getAdaptiveColors.textSecondary} !important;
       }
       
-      /* 鏃堕棿缃戞牸 */
+      /* 时间网格 */
       .toastui-calendar-timegrid {
         background-color: transparent !important;
         border-color: ${getAdaptiveColors.borderLight} !important;
@@ -929,7 +978,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         border-top: 1px solid ${getAdaptiveColors.borderLight} !important;
       }
       
-      /* 缃戞牸鍗曞厓鏍?*/
+      /* 网格单元格 */
       .toastui-calendar-daygrid-cell,
       .toastui-calendar-weekday,
       .toastui-calendar-column {
@@ -937,7 +986,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         border-bottom: 1px solid ${getAdaptiveColors.borderLight} !important;
       }
       
-      /* 鏃堕棿鍒楀垎闅旂嚎 */
+      /* 时间列分隔线 */
       .toastui-calendar-timegrid-timezone,
       .toastui-calendar-timegrid-left,
       .toastui-calendar-panel-grid-left {
@@ -945,7 +994,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         background-color: ${getAdaptiveColors.bgOverlay} !important;
       }
       
-      /* 鏈堣鍥剧綉鏍?*/
+      /* 月视图网格 */
       .toastui-calendar-month-daygrid,
       .toastui-calendar-month-daygrid-item {
         border-right: 1px solid ${getAdaptiveColors.borderLight} !important;
@@ -953,53 +1002,54 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         border-left: 1px solid ${getAdaptiveColors.borderLight} !important;
       }
       
-      /* 鏃ヨ鍥惧拰鍛ㄨ鍥剧殑鍒?*/
+      /* 日视图和周视图的列 */
       .toastui-calendar-daygrid,
       .toastui-calendar-daygrid-row {
         border-color: ${getAdaptiveColors.borderLight} !important;
       }
       
-      /* 鍗婂皬鏃舵爣璁扮嚎 */
+      /* 半小时标记线 */
       .toastui-calendar-time .toastui-calendar-half-hour {
         border-top: 1px dashed ${getAdaptiveColors.borderLight} !important;
       }
       
-      /* Panel 鍒嗛殧绾?*/
+      /* Panel 分隔线 */
       .toastui-calendar-section-line,
       .toastui-calendar-panel-resizer {
         border-color: ${getAdaptiveColors.borderLight} !important;
       }
       
       /* ===============================================
-         馃帹 鐗瑰畾鍏冪礌瑕嗙洊锛堥拡瀵瑰唴鑱旀牱寮忥級
+         🎨 特定元素覆盖（针对内联样式）
          =============================================== */
       
-      /* 寮哄埗瑕嗙洊鎵€鏈夊叿鏈?border 鏍峰紡鐨勫厓绱?*/
+      /* 强制覆盖所有具有 border 样式的元素 */
       .toastui-calendar-layout *[style*="border"],
       .toastui-calendar-week-view *[style*="border"],
       .toastui-calendar-month-view *[style*="border"] {
         border-color: ${getAdaptiveColors.borderLight} !important;
       }
       
-      /* 鏃堕棿杞寸嚎鏉?*/
+      /* 时间轴线条 */
       .toastui-calendar-timegrid-hourmarker::before,
       .toastui-calendar-timegrid-hourmarker::after {
         border-color: ${getAdaptiveColors.borderLight} !important;
       }
       
-      /* 缃戞牸绾?*/
+      /* 网格线 */
       .toastui-calendar-panel-grid * {
         border-color: ${getAdaptiveColors.borderLight} !important;
       }
       
-      /* 鏃ユ湡鍗曞厓鏍艰竟妗?*/
+      /* 日期单元格边框 */
       .toastui-calendar-month-daygrid-cell,
       .toastui-calendar-week-daygrid-cell {
         border-color: ${getAdaptiveColors.borderLight} !important;
       }
     `;
     
-    // 鐩戝惉 DOM 鍙樺寲锛圵idget 妯″紡涓嬬Щ闄よ儗鏅壊锛?    if (isWidgetMode) {
+    // 监听 DOM 变化（Widget 模式下移除背景色）
+    if (isWidgetMode) {
       const removeInlineBackgroundColor = () => {
         const layouts = document.querySelectorAll('.toastui-calendar-layout');
         layouts.forEach(layout => {
@@ -1030,10 +1080,10 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         observer.disconnect();
       };
     }
-  }, [isWidgetMode, currentView, getAdaptiveColors]); // 瑙嗗浘鍒囨崲鎴栭鑹插彉鍖栨椂閲嶆柊鎵ц
+  }, [isWidgetMode, currentView, getAdaptiveColors]); // 视图切换或颜色变化时重新执行
   
   useEffect(() => {
-    // 褰撴棩鍘嗘覆鏌撳畬鎴愪笖浜嬩欢鍔犺浇鍚庯紝寰皟鏃ュ巻瀹炰緥鍒版纭殑鏃ユ湡
+    // 当日历渲染完成且事件加载后，微调日历实例到正确的日期
     if (!isCalendarReady || !calendarRef.current || calendarInitializedRef.current) {
       return;
     }
@@ -1054,40 +1104,41 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
               
               if (!isSameDay) {
                 instance.setDate(restoredDate);
-                console.log(`馃搮 [INIT] Fine-tuned calendar to: ${restoredDate.toLocaleDateString()}`);
+                console.log(`📅 [INIT] Fine-tuned calendar to: ${restoredDate.toLocaleDateString()}`);
               }
               calendarInitializedRef.current = true;
             }
           } catch (error) {
-            console.error('鉂?Failed to set calendar date:', error);
+            console.error('❌ Failed to set calendar date:', error);
           }
         }
       }
-    }, 50); // 鍑忓皯鍒?50ms锛屽洜涓?state 宸茬粡鏄纭殑浜?
-    return () => clearTimeout(timer);
-  }, [isCalendarReady, events.length]); // 渚濊禆鏃ュ巻灏辩华鐘舵€佸拰浜嬩欢鍔犺浇
+    }, 50); // 减少到 50ms，因为 state 已经是正确的了
 
-  // 馃帹 鍦ㄦ棩鍘嗗垵濮嬪寲鍚庣珛鍗宠缃珮搴︼紙瑕嗙洊TUI Calendar鐨勯粯璁ゅ€硷級
-  // 浣跨敤 useLayoutEffect 鍦ㄦ祻瑙堝櫒缁樺埗鍓嶅悓姝ユ墽琛岋紝閬垮厤闂儊
+    return () => clearTimeout(timer);
+  }, [isCalendarReady, events.length]); // 依赖日历就绪状态和事件加载
+
+  // 🎨 在日历初始化后立即设置高度（覆盖TUI Calendar的默认值）
+  // 使用 useLayoutEffect 在浏览器绘制前同步执行，避免闪烁
   useLayoutEffect(() => {
     if (!isCalendarReady) {
-      console.log('馃攳 [useLayoutEffect] 鏃ュ巻鏈氨缁紝璺宠繃');
+      console.log('🔍 [useLayoutEffect] 日历未就绪，跳过');
       return;
     }
     
-    console.log('馃攳 [useLayoutEffect] 鏃ュ巻宸插氨缁紝鍑嗗搴旂敤楂樺害');
+    console.log('🔍 [useLayoutEffect] 日历已就绪，准备应用高度');
     
-    // 浣跨敤 ref 鑾峰彇鏈€鏂扮殑楂樺害鍊硷紝閬垮厤闂寘闂
+    // 使用 ref 获取最新的高度值，避免闭包问题
     const { taskHeight, allDayHeight, milestoneHeight } = heightSettingsRef.current;
-    console.log('馃攳 [useLayoutEffect] ref涓殑楂樺害:', { taskHeight, allDayHeight, milestoneHeight });
+    console.log('🔍 [useLayoutEffect] ref中的高度:', { taskHeight, allDayHeight, milestoneHeight });
     
-    // 闇€瑕佺瓑寰?DOM 鍏冪礌娓叉煋
+    // 需要等待 DOM 元素渲染
     const timer = setTimeout(() => {
       let applied = false;
       
-      // Task 闈㈡澘
+      // Task 面板
       const taskPanels = document.querySelectorAll('.toastui-calendar-panel-task, .toastui-calendar-panel.toastui-calendar-task');
-      console.log('馃攳 [useLayoutEffect] 鎵惧埌 Task 闈㈡澘:', taskPanels.length);
+      console.log('🔍 [useLayoutEffect] 找到 Task 面板:', taskPanels.length);
       if (taskPanels.length > 0 && taskHeight) {
         taskPanels.forEach((panel: Element) => {
           (panel as HTMLElement).style.height = `${taskHeight}px`;
@@ -1095,9 +1146,9 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         applied = true;
       }
       
-      // AllDay 闈㈡澘
+      // AllDay 面板
       const allDayPanels = document.querySelectorAll('.toastui-calendar-panel-allday');
-      console.log('馃攳 [useLayoutEffect] 鎵惧埌 AllDay 闈㈡澘:', allDayPanels.length);
+      console.log('🔍 [useLayoutEffect] 找到 AllDay 面板:', allDayPanels.length);
       if (allDayPanels.length > 0 && allDayHeight) {
         allDayPanels.forEach((panel: Element) => {
           (panel as HTMLElement).style.height = `${allDayHeight}px`;
@@ -1105,9 +1156,9 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         applied = true;
       }
       
-      // Milestone 闈㈡澘
+      // Milestone 面板
       const milestonePanels = document.querySelectorAll('.toastui-calendar-panel-milestone, .toastui-calendar-panel.toastui-calendar-milestone');
-      console.log('馃攳 [useLayoutEffect] 鎵惧埌 Milestone 闈㈡澘:', milestonePanels.length);
+      console.log('🔍 [useLayoutEffect] 找到 Milestone 面板:', milestonePanels.length);
       if (milestonePanels.length > 0 && milestoneHeight) {
         milestonePanels.forEach((panel: Element) => {
           (panel as HTMLElement).style.height = `${milestoneHeight}px`;
@@ -1116,43 +1167,45 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       }
       
       if (applied) {
-        console.log('馃帹 [鍒濆楂樺害] 宸插簲鐢ㄩ潰鏉块珮搴?', {
+        console.log('🎨 [初始高度] 已应用面板高度:', {
           task: taskHeight,
           allDay: allDayHeight,
           milestone: milestoneHeight
         });
       } else {
-        console.warn('鈿狅笍 [useLayoutEffect] 娌℃湁鎵惧埌浠讳綍闈㈡澘鍏冪礌');
+        console.warn('⚠️ [useLayoutEffect] 没有找到任何面板元素');
       }
-    }, 100); // 绛夊緟 DOM 娓叉煋
+    }, 100); // 等待 DOM 渲染
     
     return () => clearTimeout(timer);
-  }, [isCalendarReady, currentView]); // 鍙湪鍒濆鍖栧拰瑙嗗浘鍒囨崲鏃跺簲鐢紝閬垮厤涓?MutationObserver 鍐茬獊
+  }, [isCalendarReady, currentView]); // 只在初始化和视图切换时应用，避免与 MutationObserver 冲突
 
-  // 馃憗锔?鐩戝惉鐢ㄦ埛鎷栧姩鏀瑰彉闈㈡澘楂樺害锛岃嚜鍔ㄤ繚瀛樺埌localStorage
+  // 👁️ 监听用户拖动改变面板高度，自动保存到localStorage
   useEffect(() => {
     if (!isCalendarReady) return;
     
-    console.log('馃攳 [MutationObserver] 寮€濮嬭缃洃鍚?);
+    console.log('🔍 [MutationObserver] 开始设置监听');
     
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
           const target = mutation.target as HTMLElement;
           
-          // 妫€娴嬪埌鐢ㄦ埛鎷栧姩锛岀Щ闄?!important 浠ュ厑璁告嫋鍔ㄧ敓鏁?          if (isInitialLoad) {
-            console.log('馃攳 [鎷栧姩妫€娴媇 鐢ㄦ埛寮€濮嬫嫋鍔紝绉婚櫎 !important');
+          // 检测到用户拖动，移除 !important 以允许拖动生效
+          if (isInitialLoad) {
+            console.log('🔍 [拖动检测] 用户开始拖动，移除 !important');
             setIsInitialLoad(false);
           }
           
-          // 妫€鏌ユ槸鍚︽槸鎴戜滑鍏冲績鐨勯潰鏉?          if (target.classList.contains('toastui-calendar-task') || 
+          // 检查是否是我们关心的面板
+          if (target.classList.contains('toastui-calendar-task') || 
               target.classList.contains('toastui-calendar-panel-task')) {
             const newHeight = parseInt(target.style.height);
             if (!isNaN(newHeight)) {
-              console.log('馃攳 [鎷栧姩妫€娴媇 Task 闈㈡澘楂樺害鍙樺寲:', newHeight);
+              console.log('🔍 [拖动检测] Task 面板高度变化:', newHeight);
               setCalendarSettings(prev => {
                 if (newHeight !== prev.taskHeight) {
-                  console.log('馃搹 [鎷栧姩] Task楂樺害浠?, prev.taskHeight, '鍙樹负', newHeight);
+                  console.log('📏 [拖动] Task高度从', prev.taskHeight, '变为', newHeight);
                   return { ...prev, taskHeight: newHeight };
                 }
                 return prev;
@@ -1161,10 +1214,10 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           } else if (target.classList.contains('toastui-calendar-panel-allday')) {
             const newHeight = parseInt(target.style.height);
             if (!isNaN(newHeight)) {
-              console.log('馃攳 [鎷栧姩妫€娴媇 AllDay 闈㈡澘楂樺害鍙樺寲:', newHeight);
+              console.log('🔍 [拖动检测] AllDay 面板高度变化:', newHeight);
               setCalendarSettings(prev => {
                 if (newHeight !== prev.allDayHeight) {
-                  console.log('馃搹 [鎷栧姩] AllDay楂樺害浠?, prev.allDayHeight, '鍙樹负', newHeight);
+                  console.log('📏 [拖动] AllDay高度从', prev.allDayHeight, '变为', newHeight);
                   return { ...prev, allDayHeight: newHeight };
                 }
                 return prev;
@@ -1174,10 +1227,10 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
                      target.classList.contains('toastui-calendar-panel-milestone')) {
             const newHeight = parseInt(target.style.height);
             if (!isNaN(newHeight)) {
-              console.log('馃攳 [鎷栧姩妫€娴媇 Milestone 闈㈡澘楂樺害鍙樺寲:', newHeight);
+              console.log('🔍 [拖动检测] Milestone 面板高度变化:', newHeight);
               setCalendarSettings(prev => {
                 if (newHeight !== prev.milestoneHeight) {
-                  console.log('馃搹 [鎷栧姩] Milestone楂樺害浠?, prev.milestoneHeight, '鍙樹负', newHeight);
+                  console.log('📏 [拖动] Milestone高度从', prev.milestoneHeight, '变为', newHeight);
                   return { ...prev, milestoneHeight: newHeight };
                 }
                 return prev;
@@ -1188,7 +1241,8 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       });
     });
     
-    // 瑙傚療鎵€鏈夐潰鏉垮厓绱?    const observeTimer = setTimeout(() => {
+    // 观察所有面板元素
+    const observeTimer = setTimeout(() => {
       const panels = document.querySelectorAll(
         '.toastui-calendar-panel-task, .toastui-calendar-task, ' +
         '.toastui-calendar-panel-allday, ' +
@@ -1199,53 +1253,58 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         observer.observe(panel, { attributes: true, attributeFilter: ['style'] });
       });
       
-      console.log('锟?[MutationObserver] 寮€濮嬬洃鍚?, panels.length, '涓潰鏉跨殑楂樺害鍙樺寲');
-      console.log('馃攳 [MutationObserver] 鐩戝惉鐨勯潰鏉?', Array.from(panels).map(p => p.className));
+      console.log('� [MutationObserver] 开始监听', panels.length, '个面板的高度变化');
+      console.log('🔍 [MutationObserver] 监听的面板:', Array.from(panels).map(p => p.className));
     }, 200);
     
     return () => {
-      console.log('馃攳 [MutationObserver] 娓呯悊鐩戝惉');
+      console.log('🔍 [MutationObserver] 清理监听');
       clearTimeout(observeTimer);
       observer.disconnect();
     };
-  }, [isCalendarReady, currentView]); // 鍙緷璧栨棩鍘嗗噯澶囩姸鎬佸拰瑙嗗浘锛岄伩鍏嶄笉蹇呰鐨勯噸寤?
-  // 馃帹 灏嗕簨浠舵暟鎹浆鎹负 TUI Calendar 鏍煎紡锛屽簲鐢ㄧ瓫閫夊拰閫忔槑搴?  const useMemoCallCountRef = useRef(0);
+  }, [isCalendarReady, currentView]); // 只依赖日历准备状态和视图，避免不必要的重建
+
+  // 🎨 将事件数据转换为 TUI Calendar 格式，应用筛选和透明度
+  const useMemoCallCountRef = useRef(0);
   
-  // 馃敡 鎻愬彇鍏抽敭渚濊禆锛岄伩鍏嶆暣涓?calendarSettings 瀵硅薄鍙樺寲瀵艰嚧閲嶆柊璁＄畻
+  // 🔧 提取关键依赖，避免整个 calendarSettings 对象变化导致重新计算
   const { visibleTags, visibleCalendars, eventOpacity } = calendarSettings;
   
-  // 馃敡 瀹炴椂璇诲彇褰撳墠杩愯涓殑 Timer锛堜笉浣跨敤 useMemo锛屾瘡娆￠兘璇诲彇鏈€鏂扮姸鎬侊級
-  // 鐢ㄤ簬鍦?calendarEvents 璁＄畻鏃惰幏鍙栨渶鏂扮殑 timer 鐘舵€?  const getRunningTimerEventId = () => {
-    // 1. 浼樺厛浣跨敤浼犲叆鐨?globalTimer prop锛堜富搴旂敤鍦烘櫙锛?    if (globalTimer !== undefined) {
+  // 🔧 实时读取当前运行中的 Timer（不使用 useMemo，每次都读取最新状态）
+  // 用于在 calendarEvents 计算时获取最新的 timer 状态
+  const getRunningTimerEventId = () => {
+    // 1. 优先使用传入的 globalTimer prop（主应用场景）
+    if (globalTimer !== undefined) {
       if (globalTimer && globalTimer.isRunning) {
         const startTime = globalTimer.originalStartTime || globalTimer.startTime;
         const eventId = `timer-${globalTimer.tagId}-${startTime}`;
-        console.log('鉁?[TIMER] Using globalTimer prop:', eventId);
+        console.log('✅ [TIMER] Using globalTimer prop:', eventId);
         return eventId;
       } else {
-        // 涓诲簲鐢ㄤ腑globalTimer瀛樺湪浣嗕笉杩愯锛岃鏄巘imer宸插仠姝?        console.log('鈿狅笍 [TIMER] GlobalTimer prop exists but not running - timer stopped');
+        // 主应用中globalTimer存在但不运行，说明timer已停止
+        console.log('⚠️ [TIMER] GlobalTimer prop exists but not running - timer stopped');
         return null;
       }
     }
     
-    // 2. Widget绠€鍖栨柟妗堬細妫€娴媗ocalStorage涓槸鍚︽湁甯?[涓撴敞涓璢"鍓嶇紑鐨則imer浜嬩欢
-    // console.log('馃攳 [WIDGET TIMER] Checking for events with [涓撴敞涓璢 prefix...');
+    // 2. Widget简化方案：检测localStorage中是否有带"[专注中]"前缀的timer事件
+    // console.log('🔍 [WIDGET TIMER] Checking for events with [专注中] prefix...');
     try {
       const eventsData = localStorage.getItem('remarkable-events');
       if (eventsData) {
         const events = JSON.parse(eventsData);
         
-        // 鏌ユ壘甯︽湁"[涓撴敞涓璢"鍓嶇紑鐨則imer浜嬩欢
+        // 查找带有"[专注中]"前缀的timer事件
         const prefixedTimerEvents = events.filter((e: any) => 
-          e.isTimer && e.title && e.title.startsWith('[涓撴敞涓璢')
+          e.isTimer && e.title && e.title.startsWith('[专注中]')
         );
         
         if (prefixedTimerEvents.length > 0) {
-          // 鎵惧埌鏈€鏂扮殑甯﹀墠缂€鐨則imer浜嬩欢
+          // 找到最新的带前缀的timer事件
           const latestPrefixedTimer = prefixedTimerEvents
             .sort((a: any, b: any) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())[0];
           
-          // console.log('鉁?[WIDGET TIMER] Found prefixed timer event:', {
+          // console.log('✅ [WIDGET TIMER] Found prefixed timer event:', {
           //   id: latestPrefixedTimer.id,
           //   title: latestPrefixedTimer.title
           // });
@@ -1253,28 +1312,31 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           return latestPrefixedTimer.id;
         }
         // else {
-        //   console.log('鈿狅笍 [WIDGET TIMER] No events with [涓撴敞涓璢 prefix found');
+        //   console.log('⚠️ [WIDGET TIMER] No events with [专注中] prefix found');
         // }
       }
     } catch (error) {
-      console.error('鉂?[WIDGET TIMER] Failed to check prefixed events:', error);
+      console.error('❌ [WIDGET TIMER] Failed to check prefixed events:', error);
     }
     
-    // console.log('鈿狅笍 [TIMER] Returning null');
+    // console.log('⚠️ [TIMER] Returning null');
     return null;
   };
 
-  // 馃敡 [鏂规3] 鐢熸垚瀹炴椂瀹屾暣鐨則imer浜嬩欢锛岀粨鍚堝凡淇濆瓨浜嬩欢鍜屽綋鍓峵imer鐘舵€?  const generateRealtimeTimerEvent = () => {
-    // 馃敡 鍏抽敭淇锛氫娇鐢ㄤ笌getRunningTimerEventId鐩稿悓鐨勯€昏緫鑾峰彇timer
+  // 🔧 [方案3] 生成实时完整的timer事件，结合已保存事件和当前timer状态
+  const generateRealtimeTimerEvent = () => {
+    // 🔧 关键修正：使用与getRunningTimerEventId相同的逻辑获取timer
     let currentTimer = null;
     let timerEventId = null;
 
-    // 1. 浼樺厛浣跨敤浼犲叆鐨?globalTimer prop锛堜富搴旂敤鍦烘櫙锛?    if (globalTimer && globalTimer.isRunning) {
+    // 1. 优先使用传入的 globalTimer prop（主应用场景）
+    if (globalTimer && globalTimer.isRunning) {
       currentTimer = globalTimer;
       const startTime = globalTimer.originalStartTime || globalTimer.startTime;
       timerEventId = `timer-${globalTimer.tagId}-${startTime}`;
     } else {
-      // 2. 濡傛灉娌℃湁 prop锛屼粠 localStorage 璇诲彇锛圵idget 鍦烘櫙锛?      try {
+      // 2. 如果没有 prop，从 localStorage 读取（Widget 场景）
+      try {
         const saved = localStorage.getItem('remarkable-global-timer');
         if (saved) {
           const timer = JSON.parse(saved);
@@ -1285,24 +1347,26 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           }
         }
       } catch (error) {
-        console.error('鉂?[REALTIME TIMER] Failed to load timer from localStorage:', error);
+        console.error('❌ [REALTIME TIMER] Failed to load timer from localStorage:', error);
       }
     }
 
     if (!currentTimer || !timerEventId) {
-      return null; // 娌℃湁杩愯涓殑timer
+      return null; // 没有运行中的timer
     }
     
-    // 璁＄畻timer鐨勭湡瀹炲紑濮嬫椂闂村拰褰撳墠鏃堕棿
+    // 计算timer的真实开始时间和当前时间
     const now = new Date();
     const timerStartTime = new Date(currentTimer.originalStartTime || currentTimer.startTime);
     
-    // 馃敡 鍏抽敭淇锛氭樉绀哄畬鏁寸殑timer浜嬩欢锛堜粠寮€濮嬪埌鐜板湪锛夛紝鑰屼笉鏄垎娈?    const realtimeEvent: Event = {
+    // 🔧 关键修正：显示完整的timer事件（从开始到现在），而不是分段
+    const realtimeEvent: Event = {
       id: timerEventId,
-      title: currentTimer.eventTitle || currentTimer.taskTitle || '璁℃椂涓?..',
-      startTime: formatTimeForStorage(timerStartTime), // timer鐨勭湡瀹炲紑濮嬫椂闂?      endTime: formatTimeForStorage(now), // 褰撳墠鏃堕棿
+      title: currentTimer.eventTitle || currentTimer.taskTitle || '计时中...',
+      startTime: formatTimeForStorage(timerStartTime), // timer的真实开始时间
+      endTime: formatTimeForStorage(now), // 当前时间
       location: '',
-      description: '瀹炴椂璁℃椂浜嬩欢',
+      description: '实时计时事件',
       tags: [currentTimer.tagId],
       tagId: currentTimer.tagId,
       calendarId: '',
@@ -1313,7 +1377,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       remarkableSource: true
     };
 
-    console.log('馃攧 [REALTIME TIMER] Generated realtime timer event:', {
+    console.log('🔄 [REALTIME TIMER] Generated realtime timer event:', {
       id: realtimeEvent.id,
       startTime: realtimeEvent.startTime,
       endTime: realtimeEvent.endTime,
@@ -1327,26 +1391,29 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   };
 
   const calendarEvents = useMemo(() => {
-    const startTime = performance.now(); // 鈴憋笍 鎬ц兘鐩戞帶
+    const startTime = performance.now(); // ⏱️ 性能监控
     useMemoCallCountRef.current++;
     
-    // 鍙湪鍓?娆¤皟鐢ㄦ椂鎵撳嵃鏃ュ織
+    // 只在前3次调用时打印日志
     if (useMemoCallCountRef.current <= 3) {
-      console.log(`馃帹 [useMemo #${useMemoCallCountRef.current}] Computing calendar events: ${events.length} raw events`);
+      console.log(`🎨 [useMemo #${useMemoCallCountRef.current}] Computing calendar events: ${events.length} raw events`);
     }
 
-    // 馃敡 [鏂规3] 澶勭悊瀹炴椂timer浜嬩欢锛氬悎骞跺凡淇濆瓨浜嬩欢鍜屽疄鏃秚imer鐘舵€?    let eventsToProcess = [...events];
+    // 🔧 [方案3] 处理实时timer事件：合并已保存事件和实时timer状态
+    let eventsToProcess = [...events];
     
     const realtimeTimerEvent = generateRealtimeTimerEvent();
     if (realtimeTimerEvent) {
-      // 绉婚櫎宸蹭繚瀛樼殑鍚孖D timer浜嬩欢锛岄伩鍏嶉噸澶嶆樉绀?      eventsToProcess = eventsToProcess.filter(e => e.id !== realtimeTimerEvent.id);
-      // 娣诲姞瀹炴椂timer浜嬩欢
+      // 移除已保存的同ID timer事件，避免重复显示
+      eventsToProcess = eventsToProcess.filter(e => e.id !== realtimeTimerEvent.id);
+      // 添加实时timer事件
       eventsToProcess.push(realtimeTimerEvent);
       
-      console.log('馃攧 [REALTIME TIMER] Merged realtime timer event, total events:', eventsToProcess.length);
+      console.log('🔄 [REALTIME TIMER] Merged realtime timer event, total events:', eventsToProcess.length);
     }
 
-    // 馃殌 鎬ц兘浼樺寲锛氬彧鍔犺浇褰撳墠瑙嗗浘鑼冨洿 卤3涓湀鐨勪簨浠讹紙鍑忓皯DOM鑺傜偣锛?    const viewStart = new Date(currentDate);
+    // 🚀 性能优化：只加载当前视图范围 ±3个月的事件（减少DOM节点）
+    const viewStart = new Date(currentDate);
     viewStart.setMonth(viewStart.getMonth() - 3);
     viewStart.setHours(0, 0, 0, 0);
     
@@ -1357,61 +1424,70 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     const filteredByDateRange = eventsToProcess.filter(event => {
       const eventStart = new Date(event.startTime);
       const eventEnd = new Date(event.endTime);
-      // 浜嬩欢涓庤鍥捐寖鍥存湁閲嶅彔鍗冲姞杞?      return eventEnd >= viewStart && eventStart <= viewEnd;
+      // 事件与视图范围有重叠即加载
+      return eventEnd >= viewStart && eventStart <= viewEnd;
     });
     
-    // 鍙湪鍓?娆¤皟鐢ㄦ椂鎵撳嵃鏃ュ織
+    // 只在前3次调用时打印日志
     if (useMemoCallCountRef.current <= 3) {
-      console.log(`馃搮 [useMemo] Date range filter: ${events.length} 鈫?${filteredByDateRange.length} events`);
+      console.log(`📅 [useMemo] Date range filter: ${events.length} → ${filteredByDateRange.length} events`);
     }
     
-    // 绮剧‘璇箟锛氬彧瑕侀€夋嫨闈炵┖锛屽氨鍚敤绛涢€夛紙涓嶅仛"绛変环鍏ㄩ€?鐨勬帹鏂級
+    // 精确语义：只要选择非空，就启用筛选（不做"等价全选"的推断）
     const hasTagFilter = visibleTags.length > 0;
     const hasCalendarFilter = visibleCalendars.length > 0;
 
     const filteredByTags = filteredByDateRange.filter(event => {
-      // 鏍囩绛涢€?- 褰撳惎鐢ㄧ瓫閫夋椂锛屽尮閰嶅寘鍚换涓€鎵€閫夋爣绛剧殑浜嬩欢
+      // 标签筛选 - 当启用筛选时，匹配包含任一所选标签的事件
       if (hasTagFilter) {
         const eventTags = event.tags || (event.tagId ? [event.tagId] : []);
         
-        // 鉁?鏂伴€昏緫锛氭敮鎸佺壒娈婃爣绛鹃€夐」
-        // "no-tag" - 鏄剧ず鏈畾涔夋爣绛剧殑浜嬩欢
+        // ✅ 新逻辑：支持特殊标签选项
+        // "no-tag" - 显示未定义标签的事件
         const hasNoTagOption = visibleTags.includes('no-tag');
         
         if (eventTags.length === 0) {
-          // 娌℃湁鏍囩鐨勪簨浠讹細鍙湁鍕鹃€変簡"鏈畾涔夋爣绛?鎵嶆樉绀?          return hasNoTagOption;
+          // 没有标签的事件：只有勾选了"未定义标签"才显示
+          return hasNoTagOption;
         }
         
-        // 鏈夋爣绛剧殑浜嬩欢锛氭鏌ユ槸鍚︿笌绛涢€夋潯浠跺尮閰?        return eventTags.some(tagId => visibleTags.includes(tagId));
+        // 有标签的事件：检查是否与筛选条件匹配
+        return eventTags.some(tagId => visibleTags.includes(tagId));
       }
       return true;
     });
 
     const filteredByCalendars = filteredByTags.filter(event => {
-      // 鏃ュ巻鍒嗙粍绛涢€?- 褰撳惎鐢ㄧ瓫閫夋椂锛屽尮閰嶅睘浜庝换涓€鎵€閫夋棩鍘嗙殑浜嬩欢
+      // 日历分组筛选 - 当启用筛选时，匹配属于任一所选日历的事件
       if (hasCalendarFilter) {
-        // 鉁?鏂伴€昏緫锛氭敮鎸佺壒娈婃棩鍘嗛€夐」
-        // "local-created" - 鏄剧ず鏈湴鍒涘缓鐨勪簨浠讹紙source=local鎴杛emarkableSource=true锛?        // "not-synced" - 鏄剧ず鏈悓姝ヨ嚦鏃ュ巻鐨勪簨浠讹紙娌℃湁calendarId鎴栨病鏈塭xternalId锛?        const hasLocalCreatedOption = visibleCalendars.includes('local-created');
+        // ✅ 新逻辑：支持特殊日历选项
+        // "local-created" - 显示本地创建的事件（source=local或remarkableSource=true）
+        // "not-synced" - 显示未同步至日历的事件（没有calendarId或没有externalId）
+        const hasLocalCreatedOption = visibleCalendars.includes('local-created');
         const hasNotSyncedOption = visibleCalendars.includes('not-synced');
         
-        // 鍒ゆ柇浜嬩欢鏄惁涓烘湰鍦板垱寤?        const isLocalCreated = event.source === 'local' || event.remarkableSource === true;
+        // 判断事件是否为本地创建
+        const isLocalCreated = event.source === 'local' || event.remarkableSource === true;
         
-        // 鍒ゆ柇浜嬩欢鏄惁鏈悓姝ヨ嚦鏃ュ巻
+        // 判断事件是否未同步至日历
         const isNotSynced = !event.calendarId || !event.externalId;
         
-        // 濡傛灉浜嬩欢绗﹀悎鐗规畩閫夐」锛屽垯鏄剧ず
+        // 如果事件符合特殊选项，则显示
         if (isLocalCreated && hasLocalCreatedOption) return true;
         if (isNotSynced && hasNotSyncedOption) return true;
         
-        // 濡傛灉浜嬩欢娌℃湁calendarId锛屼絾涔熶笉绗﹀悎鐗规畩閫夐」锛屽垯闅愯棌
+        // 如果事件没有calendarId，但也不符合特殊选项，则隐藏
         if (!event.calendarId) return false;
         
-        // 姝ｅ父鐨勬棩鍘嗙瓫閫夛細妫€鏌ユ槸鍚﹀睘浜庢墍閫夋棩鍘?        // 濡傛灉 visibleCalendars 涓虹┖锛岃鏄庣敤鎴峰彇娑堜簡鎵€鏈夊嬀閫夛紝涓嶆樉绀轰换浣曟棩鍘?        return visibleCalendars.includes(event.calendarId);
+        // 正常的日历筛选：检查是否属于所选日历
+        // 如果 visibleCalendars 为空，说明用户取消了所有勾选，不显示任何日历
+        return visibleCalendars.includes(event.calendarId);
       }
       return true;
     });
 
-    // 鍘婚噸锛堟寜浜嬩欢ID锛夐伩鍏嶆覆鏌撻噸澶?    const uniqueByIdMap = new Map<string, any>();
+    // 去重（按事件ID）避免渲染重复
+    const uniqueByIdMap = new Map<string, any>();
     filteredByCalendars.forEach(e => {
       if (e && e.id && !uniqueByIdMap.has(e.id)) {
         uniqueByIdMap.set(e.id, e);
@@ -1419,22 +1495,23 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     });
     const uniqueFiltered = Array.from(uniqueByIdMap.values());
 
-    // console.log(`馃帹 [USEMEMO] Processing ${uniqueFiltered.length} events in ${(performance.now() - startTime).toFixed(1)}ms`);
+    // console.log(`🎨 [USEMEMO] Processing ${uniqueFiltered.length} events in ${(performance.now() - startTime).toFixed(1)}ms`);
 
-    // 馃敡 姣忔娓叉煋鏃跺疄鏃惰鍙?timer 鐘舵€侊紙涓嶇紦瀛橈級
+    // 🔧 每次渲染时实时读取 timer 状态（不缓存）
     const currentRunningTimerEventId = getRunningTimerEventId();
     
-    // 馃攳 棰濆璋冭瘯锛氭鏌ュ疄鏃秚imer浜嬩欢鍜宑urrentRunningTimerEventId鐨勫尮閰?    // const realtimeTimer = generateRealtimeTimerEvent();
+    // 🔍 额外调试：检查实时timer事件和currentRunningTimerEventId的匹配
+    // const realtimeTimer = generateRealtimeTimerEvent();
     // if (realtimeTimer) {
-    //   console.log('馃攳 [涓撴敞涓?MATCH DEBUG] ID comparison:', {
+    //   console.log('🔍 [专注中 MATCH DEBUG] ID comparison:', {
     //     realtimeTimerEventId: realtimeTimer.id,
     //     currentRunningTimerEventId: currentRunningTimerEventId,
     //     idsMatch: realtimeTimer.id === currentRunningTimerEventId
     //   });
     // }
     
-    // 馃攳 娣诲姞璋冭瘯淇℃伅
-    // console.log('馃攳 [WIDGET DEBUG] Timer state:', {
+    // 🔍 添加调试信息
+    // console.log('🔍 [WIDGET DEBUG] Timer state:', {
     //   isWidgetMode,
     //   globalTimer: !!globalTimer,
     //   localStorageTimerTrigger,
@@ -1443,7 +1520,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     //   timerEvents: uniqueFiltered.filter(e => e.id.includes('timer-')).map(e => ({ id: e.id, title: e.title }))
     // });
     
-    // 馃敡 浼樺寲锛氶璁＄畻閫忔槑搴ex鍊硷紝閬垮厤閲嶅璁＄畻
+    // 🔧 优化：预计算透明度hex值，避免重复计算
     const opacity = eventOpacity / 100;
     const opacityHex = Math.floor(opacity * 255).toString(16).padStart(2, '0');
     
@@ -1451,7 +1528,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       .map(event => {
         const calendarEvent = convertToCalendarEvent(event, hierarchicalTags, currentRunningTimerEventId, isWidgetMode);
         
-        // 馃敡 涓€娆℃€у簲鐢ㄩ€忔槑搴︼紙澶嶇敤棰勮绠楃殑hex鍊硷級
+        // 🔧 一次性应用透明度（复用预计算的hex值）
         const originalColor = calendarEvent.backgroundColor || '#3788d8';
         return {
           ...calendarEvent,
@@ -1460,7 +1537,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         } as typeof calendarEvent;
       });
     
-    // 馃搳 缁熻浜嬩欢绫诲瀷鍒嗗竷
+    // 📊 统计事件类型分布
     const categoryStats = calendarEventsWithStats.reduce((acc, evt) => {
       const cat = (evt.category as string) || 'unknown';
       acc[cat] = (acc[cat] || 0) + 1;
@@ -1469,20 +1546,20 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     
     const endTime = performance.now();
     
-    // 鍙湪鍓?娆¤皟鐢ㄦ椂鎵撳嵃鏃ュ織
+    // 只在前3次调用时打印日志
     if (useMemoCallCountRef.current <= 3) {
-      console.log(`鈴憋笍 [useMemo] Total: ${(endTime - startTime).toFixed(1)}ms | Filtered: ${calendarEventsWithStats.length} events`);
+      console.log(`⏱️ [useMemo] Total: ${(endTime - startTime).toFixed(1)}ms | Filtered: ${calendarEventsWithStats.length} events`);
     }
     
     return calendarEventsWithStats;
-  }, [events, hierarchicalTags, visibleTags, visibleCalendars, eventOpacity, currentDate, globalTimer, localStorageTimerTrigger]); // 鉁?娣诲姞 localStorageTimerTrigger 渚濊禆锛岀‘淇?Widget 妯″紡涓?timer 鐘舵€佸彉鍖栬兘瑙﹀彂閲嶆柊璁＄畻
-  // 馃搮 鍒涘缓鏃ュ巻鍒嗙粍閰嶇疆
+  }, [events, hierarchicalTags, visibleTags, visibleCalendars, eventOpacity, currentDate, globalTimer, localStorageTimerTrigger]); // ✅ 添加 localStorageTimerTrigger 依赖，确保 Widget 模式下 timer 状态变化能触发重新计算
+  // 📅 创建日历分组配置
   const getCalendars = () => createCalendarsFromTags(hierarchicalTags);
 
-  // 鈿欙笍 澶勭悊璁剧疆鍙樻洿
+  // ⚙️ 处理设置变更
   const handleSettingsChange = (newSettings: CalendarSettings) => {
     const startTime = performance.now();
-    console.log('鈿欙笍 [Settings] Change received:', {
+    console.log('⚙️ [Settings] Change received:', {
       tags: newSettings.visibleTags.length,
       calendars: newSettings.visibleCalendars.length,
       opacity: newSettings.eventOpacity
@@ -1490,41 +1567,43 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     
     const setStateStart = performance.now();
     setCalendarSettings(newSettings);
-    console.log(`鈿欙笍 [Settings] setState completed in ${(performance.now() - setStateStart).toFixed(2)}ms`);
+    console.log(`⚙️ [Settings] setState completed in ${(performance.now() - setStateStart).toFixed(2)}ms`);
     
     const saveStart = performance.now();
     saveSettings(newSettings);
-    console.log(`鈿欙笍 [璁剧疆鍙樻洿] saveSettings 瀹屾垚锛岃€楁椂: ${(performance.now() - saveStart).toFixed(2)}ms`);
+    console.log(`⚙️ [设置变更] saveSettings 完成，耗时: ${(performance.now() - saveStart).toFixed(2)}ms`);
     
     const endTime = performance.now();
-    console.log(`鈿欙笍 [璁剧疆鍙樻洿] 鎬昏€楁椂: ${(endTime - startTime).toFixed(2)}ms`);
+    console.log(`⚙️ [设置变更] 总耗时: ${(endTime - startTime).toFixed(2)}ms`);
   };
 
-  // 鑾峰彇鍙敤鐨勬爣绛惧拰鏃ュ巻鍒楄〃
+  // 获取可用的标签和日历列表
   const getAvailableTagsForSettings = () => {
-    // 鉁?妫€娴嬫暟鎹槸鍚﹀凡缁忔槸鎵佸钩缁撴瀯锛堝寘鍚玪evel瀛楁涓旀棤children锛?    const isAlreadyFlat = hierarchicalTags.length > 0 && 
+    // ✅ 检测数据是否已经是扁平结构（包含level字段且无children）
+    const isAlreadyFlat = hierarchicalTags.length > 0 && 
                          hierarchicalTags[0].level !== undefined && 
                          !hierarchicalTags[0].children;
     
-    // 濡傛灉宸茬粡鏄墎骞崇殑锛岀洿鎺ヤ娇鐢紱鍚﹀垯璋冪敤flattenTags
+    // 如果已经是扁平的，直接使用；否则调用flattenTags
     const flatTags = isAlreadyFlat ? hierarchicalTags : flattenTags(hierarchicalTags);
     
     const regularTags = flatTags.map(tag => ({
       id: tag.id,
       name: tag.displayName || tag.name,
       color: tag.color,
-      emoji: tag.emoji || '馃彿锔?, // 娣诲姞 emoji
-      level: tag.level || 0,     // 娣诲姞灞傜骇
-      calendarId: tag.calendarMapping?.calendarId // 馃敆 鍖呭惈鏃ュ巻鏄犲皠淇℃伅锛岀敤浜庤仈鍔?    }));
+      emoji: tag.emoji || '🏷️', // 添加 emoji
+      level: tag.level || 0,     // 添加层级
+      calendarId: tag.calendarMapping?.calendarId // 🔗 包含日历映射信息，用于联动
+    }));
     
-    // 鉁?娣诲姞鐗规畩閫夐」锛?鏈畾涔夋爣绛?
+    // ✅ 添加特殊选项："未定义标签"
     return [
       ...regularTags,
       {
         id: 'no-tag',
-        name: '鏈畾涔夋爣绛?,
+        name: '未定义标签',
         color: '#9e9e9e',
-        emoji: '馃搶',
+        emoji: '📌',
         level: 0,
         calendarId: undefined
       }
@@ -1532,14 +1611,15 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   };
 
   // ====================================
-  // 馃幆 浜嬩欢澶勭悊鍣?- CRUD 鎿嶄綔
+  // 🎯 事件处理器 - CRUD 操作
   // ====================================
 
   /**
-   * 馃摑 鐐瑰嚮浜嬩欢 - 鎵撳紑缂栬緫寮圭獥
+   * 📝 点击事件 - 打开编辑弹窗
    */
   const handleClickEvent = useCallback((eventInfo: any) => {
-    // 鐩存帴浠?localStorage 璇诲彇鏈€鏂扮殑 events锛岄伩鍏嶉棴鍖呴棶棰?    const savedEvents = localStorage.getItem(STORAGE_KEYS.EVENTS);
+    // 直接从 localStorage 读取最新的 events，避免闭包问题
+    const savedEvents = localStorage.getItem(STORAGE_KEYS.EVENTS);
     const currentEvents = savedEvents ? JSON.parse(savedEvents) : [];
     
     const event = currentEvents.find((e: Event) => e.id === eventInfo.event.id);
@@ -1549,17 +1629,17 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       setShowEventEditModal(true);
     }
     return false;
-  }, []); // 绌轰緷璧栨暟缁勶紝鍥犱负鎴戜滑鐩存帴浠?localStorage 璇诲彇
+  }, []); // 空依赖数组，因为我们直接从 localStorage 读取
 
   /**
-   * 馃搮 閫夋嫨鏃ユ湡鏃堕棿 - 鎵撳紑鍒涘缓浜嬩欢妯℃€佹
+   * 📅 选择日期时间 - 打开创建事件模态框
    */
   const handleSelectDateTime = useCallback((selectionInfo: any) => {
-    console.log('馃搮 [TimeCalendar] Time selection:', selectionInfo);
+    console.log('📅 [TimeCalendar] Time selection:', selectionInfo);
     
     const { start, end, isAllday } = selectionInfo;
     
-    // 鍒涘缓鏂颁簨浠跺璞★紙涓嶄繚瀛橈紝浠呯敤浜庣紪杈戯級
+    // 创建新事件对象（不保存，仅用于编辑）
     const newEvent: Event = {
       id: `local-${Date.now()}`,
       title: '',
@@ -1569,35 +1649,38 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       description: '',
       tags: [],
       tagId: '',
-      calendarId: '', // 鐢ㄦ埛闇€瑕佸湪妯℃€佹涓€夋嫨
+      calendarId: '', // 用户需要在模态框中选择
       isAllDay: isAllday || false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       syncStatus: 'pending'
     };
     
-    // 鎵撳紑缂栬緫妯℃€佹
+    // 打开编辑模态框
     setEditingEvent(newEvent);
     setShowEventEditModal(true);
   }, []);
 
   /**
-   * 鉁?鍒涘缓浜嬩欢 - 闃绘 TUI Calendar 榛樿琛屼负
-   * 鎴戜滑浣跨敤 onSelectDateTime 鍜屾ā鎬佹鏉ュ垱寤轰簨浠?   */
+   * ✨ 创建事件 - 阻止 TUI Calendar 默认行为
+   * 我们使用 onSelectDateTime 和模态框来创建事件
+   */
   const handleBeforeCreateEvent = useCallback((eventData: any) => {
-    console.log('鈿狅笍 [TimeCalendar] beforeCreateEvent blocked (use modal instead):', eventData);
-    // 杩斿洖 false 闃绘榛樿鐨勪簨浠跺垱寤?    return false;
+    console.log('⚠️ [TimeCalendar] beforeCreateEvent blocked (use modal instead):', eventData);
+    // 返回 false 阻止默认的事件创建
+    return false;
   }, []);
 
   /**
-   * 馃摑 鏇存柊浜嬩欢 - 鏀寔鎷栨嫿鍜岀紪杈?   */
+   * 📝 更新事件 - 支持拖拽和编辑
+   */
   const handleBeforeUpdateEvent = async (updateInfo: any) => {
-    console.log('馃摑 [TimeCalendar] Updating event:', updateInfo);
+    console.log('📝 [TimeCalendar] Updating event:', updateInfo);
     
     try {
       const { event: calendarEvent, changes } = updateInfo;
       
-      // 鏌ユ壘鍘熷浜嬩欢
+      // 查找原始事件
       const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
       if (!saved) return;
       
@@ -1605,13 +1688,13 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       const eventIndex = existingEvents.findIndex((e: Event) => e.id === calendarEvent.id);
       
       if (eventIndex === -1) {
-        console.error('鉂?[TimeCalendar] Event not found:', calendarEvent.id);
+        console.error('❌ [TimeCalendar] Event not found:', calendarEvent.id);
         return;
       }
 
       const originalEvent = existingEvents[eventIndex];
       
-      // 搴旂敤鏇存柊
+      // 应用更新
       const updatedCalendarEvent = {
         ...calendarEvent,
         ...changes
@@ -1619,42 +1702,42 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       
       const updatedEvent = convertFromCalendarEvent(updatedCalendarEvent, originalEvent);
       
-      // 楠岃瘉鏇存柊鍚庣殑鏁版嵁
+      // 验证更新后的数据
       if (!validateEvent(updatedEvent)) {
-        console.error('鉂?[TimeCalendar] Updated event validation failed');
+        console.error('❌ [TimeCalendar] Updated event validation failed');
         return;
       }
 
-      // 鏇存柊 localStorage
+      // 更新 localStorage
       existingEvents[eventIndex] = updatedEvent;
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
       setEvents(existingEvents);
 
-      // 馃攧 鍚屾鍒?Outlook
+      // 🔄 同步到 Outlook
       const activeSyncManager = syncManager || (window as any).syncManager;
       if (activeSyncManager) {
         try {
           await activeSyncManager.recordLocalAction('update', 'event', updatedEvent.id, updatedEvent, originalEvent);
-          console.log('鉁?[TimeCalendar] Event updated and synced');
+          console.log('✅ [TimeCalendar] Event updated and synced');
         } catch (error) {
-          console.error('鉂?[TimeCalendar] Failed to sync updated event:', error);
+          console.error('❌ [TimeCalendar] Failed to sync updated event:', error);
         }
       }
     } catch (error) {
-      console.error('鉂?[TimeCalendar] Failed to update event:', error);
+      console.error('❌ [TimeCalendar] Failed to update event:', error);
     }
   };
 
   /**
-   * 馃棏锔?鍒犻櫎浜嬩欢
+   * 🗑️ 删除事件
    */
   const handleBeforeDeleteEvent = async (eventInfo: any) => {
-    console.log('馃棏锔?[TimeCalendar] Deleting event:', eventInfo.event.id);
+    console.log('🗑️ [TimeCalendar] Deleting event:', eventInfo.event.id);
     
     try {
       const eventId = eventInfo.event.id;
       
-      // 浠?localStorage 鍒犻櫎
+      // 从 localStorage 删除
       const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
       if (!saved) return;
       
@@ -1662,7 +1745,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       const eventToDelete = existingEvents.find((e: Event) => e.id === eventId);
       
       if (!eventToDelete) {
-        console.error('鉂?[TimeCalendar] Event to delete not found');
+        console.error('❌ [TimeCalendar] Event to delete not found');
         return;
       }
 
@@ -1670,8 +1753,8 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(updatedEvents));
       setEvents(updatedEvents);
 
-      // 锟?瑙﹀彂鍏ㄥ眬浜嬩欢鏇存柊閫氱煡锛堥€氱煡DailyStatsCard绛夌粍浠跺埛鏂帮級
-      console.log('馃敂 [TimeCalendar] Dispatching eventsUpdated event after delete');
+      // � 触发全局事件更新通知（通知DailyStatsCard等组件刷新）
+      console.log('🔔 [TimeCalendar] Dispatching eventsUpdated event after delete');
       window.dispatchEvent(new CustomEvent('eventsUpdated', {
         detail: { 
           eventId: eventId,
@@ -1680,53 +1763,56 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         }
       }));
 
-      // 锟金煍?鍚屾鍒犻櫎鍒?Outlook
+      // �🔄 同步删除到 Outlook
       const activeSyncManager = syncManager || (window as any).syncManager;
       if (activeSyncManager) {
         try {
           await activeSyncManager.recordLocalAction('delete', 'event', eventId, null, eventToDelete);
-          console.log('鉁?[TimeCalendar] Event deleted and synced');
+          console.log('✅ [TimeCalendar] Event deleted and synced');
         } catch (error) {
-          console.error('鉂?[TimeCalendar] Failed to sync deleted event:', error);
+          console.error('❌ [TimeCalendar] Failed to sync deleted event:', error);
         }
       }
     } catch (error) {
-      console.error('鉂?[TimeCalendar] Failed to delete event:', error);
+      console.error('❌ [TimeCalendar] Failed to delete event:', error);
     }
   };
 
   /**
-   * 馃捑 淇濆瓨缂栬緫寮圭獥鐨勬洿鏀?   */
+   * 💾 保存编辑弹窗的更改
+   */
   const handleSaveEventFromModal = async (updatedEvent: Event) => {
-    console.log('馃捑 [TimeCalendar] Saving event:', updatedEvent.id, 'tags:', updatedEvent.tags);
+    console.log('💾 [TimeCalendar] Saving event:', updatedEvent.id, 'tags:', updatedEvent.tags);
     
     try {
-      // 楠岃瘉鏃堕棿瀛楁
+      // 验证时间字段
       if (!updatedEvent.startTime || !updatedEvent.endTime) {
-        console.error('鉂?[TimeCalendar] Invalid time fields:', updatedEvent);
+        console.error('❌ [TimeCalendar] Invalid time fields:', updatedEvent);
         return;
       }
       
-      // 纭繚鏃堕棿瀛楁鏄湁鏁堢殑ISO瀛楃涓?      const startDate = new Date(updatedEvent.startTime);
+      // 确保时间字段是有效的ISO字符串
+      const startDate = new Date(updatedEvent.startTime);
       const endDate = new Date(updatedEvent.endTime);
       if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        console.error('鉂?[TimeCalendar] Invalid date values:', { startTime: updatedEvent.startTime, endTime: updatedEvent.endTime });
+        console.error('❌ [TimeCalendar] Invalid date values:', { startTime: updatedEvent.startTime, endTime: updatedEvent.endTime });
         return;
       }
 
-      // 馃彿锔?Bug Fix #4: 濡傛灉鏍囬涓虹┖锛屼娇鐢ㄦ爣绛惧悕绉帮紙鍚玡moji锛変綔涓烘爣棰?      if (!updatedEvent.title || updatedEvent.title.trim() === '') {
+      // 🏷️ Bug Fix #4: 如果标题为空，使用标签名称（含emoji）作为标题
+      if (!updatedEvent.title || updatedEvent.title.trim() === '') {
         const tagId = updatedEvent.tags?.[0] || updatedEvent.tagId;
         if (tagId) {
           const flatTags = TagService.getFlatTags();
           const tag = flatTags.find(t => t.id === tagId);
           if (tag) {
             updatedEvent.title = tag.emoji ? `${tag.emoji} ${tag.name}` : tag.name;
-            console.log('馃彿锔?[TimeCalendar] Using tag name as title:', updatedEvent.title);
+            console.log('🏷️ [TimeCalendar] Using tag name as title:', updatedEvent.title);
           }
         }
       }
       
-      // 鏇存柊 localStorage
+      // 更新 localStorage
       const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
       const existingEvents: Event[] = saved ? JSON.parse(saved) : [];
       const eventIndex = existingEvents.findIndex((e: Event) => e.id === updatedEvent.id);
@@ -1735,26 +1821,28 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       let isNewEvent = false;
       
       if (eventIndex === -1) {
-        // 鏂颁簨浠讹細娣诲姞鍒版暟缁?        console.log('鉃?[TimeCalendar] Creating new event:', updatedEvent.id);
+        // 新事件：添加到数组
+        console.log('➕ [TimeCalendar] Creating new event:', updatedEvent.id);
         isNewEvent = true;
         existingEvents.push(updatedEvent);
       } else {
-        // 鐜版湁浜嬩欢锛氭洿鏂?        console.log('鉁忥笍 [TimeCalendar] Updating existing event:', updatedEvent.id);
+        // 现有事件：更新
+        console.log('✏️ [TimeCalendar] Updating existing event:', updatedEvent.id);
         originalEvent = existingEvents[eventIndex];
         const tagsChanged = JSON.stringify(originalEvent.tags) !== JSON.stringify(updatedEvent.tags);
         if (tagsChanged) {
-          console.log('馃彿锔?[TimeCalendar] Tags changed:', originalEvent.tags, '鈫?, updatedEvent.tags);
+          console.log('🏷️ [TimeCalendar] Tags changed:', originalEvent.tags, '→', updatedEvent.tags);
         }
         existingEvents[eventIndex] = updatedEvent;
       }
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
       
-      // 馃帹 绔嬪嵆鏇存柊 UI - 瑙﹀彂 events state 鏇存柊
-      console.log('馃帹 [TimeCalendar] Updating UI immediately');
+      // 🎨 立即更新 UI - 触发 events state 更新
+      console.log('🎨 [TimeCalendar] Updating UI immediately');
       setEvents([...existingEvents]);
 
-      // 锟?瑙﹀彂鍏ㄥ眬浜嬩欢鏇存柊閫氱煡锛堥€氱煡DailyStatsCard绛夌粍浠跺埛鏂帮級
-      console.log('馃敂 [TimeCalendar] Dispatching eventsUpdated event');
+      // � 触发全局事件更新通知（通知DailyStatsCard等组件刷新）
+      console.log('🔔 [TimeCalendar] Dispatching eventsUpdated event');
       window.dispatchEvent(new CustomEvent('eventsUpdated', {
         detail: { 
           eventId: updatedEvent.id,
@@ -1763,37 +1851,39 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         }
       }));
 
-      // 锟金煍?鍚屾鍒?Outlook
+      // �🔄 同步到 Outlook
       const activeSyncManager = syncManager || (window as any).syncManager;
       if (activeSyncManager) {
-        // 馃敡 [FIX] 璺宠繃 syncStatus 涓?'local-only' 鐨勪簨浠讹紙渚嬪锛氳繍琛屼腑鐨?Timer锛?        if (updatedEvent.syncStatus === 'local-only') {
-          console.log('鈴笍 [TimeCalendar] Skipping sync for local-only event (Timer in progress):', updatedEvent.id);
+        // 🔧 [FIX] 跳过 syncStatus 为 'local-only' 的事件（例如：运行中的 Timer）
+        if (updatedEvent.syncStatus === 'local-only') {
+          console.log('⏭️ [TimeCalendar] Skipping sync for local-only event (Timer in progress):', updatedEvent.id);
         } else {
           try {
             if (isNewEvent) {
               await activeSyncManager.recordLocalAction('create', 'event', updatedEvent.id, updatedEvent);
-              console.log('鉁?[TimeCalendar] New event synced');
+              console.log('✅ [TimeCalendar] New event synced');
             } else {
               await activeSyncManager.recordLocalAction('update', 'event', updatedEvent.id, updatedEvent, originalEvent);
-              console.log('鉁?[TimeCalendar] Updated event synced');
+              console.log('✅ [TimeCalendar] Updated event synced');
             }
           } catch (error) {
-            console.error('鉂?[TimeCalendar] Sync failed:', error);
+            console.error('❌ [TimeCalendar] Sync failed:', error);
           }
         }
       }
     } catch (error) {
-      console.error('鉂?[TimeCalendar] Save failed:', error);
+      console.error('❌ [TimeCalendar] Save failed:', error);
     }
   };
 
   /**
-   * 馃棏锔?浠庣紪杈戝脊绐楀垹闄や簨浠?   */
+   * 🗑️ 从编辑弹窗删除事件
+   */
   const handleDeleteEventFromModal = async (eventId: string) => {
-    console.log('馃棏锔?[TimeCalendar] Deleting event from modal:', eventId);
+    console.log('🗑️ [TimeCalendar] Deleting event from modal:', eventId);
     
     try {
-      // 浠?localStorage 鍒犻櫎
+      // 从 localStorage 删除
       const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
       if (!saved) return;
       
@@ -1801,7 +1891,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       const eventToDelete = existingEvents.find((e: Event) => e.id === eventId);
       
       if (!eventToDelete) {
-        console.error('鉂?[TimeCalendar] Event to delete not found');
+        console.error('❌ [TimeCalendar] Event to delete not found');
         return;
       }
 
@@ -1809,8 +1899,8 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(updatedEvents));
       setEvents(updatedEvents);
 
-      // 锟?瑙﹀彂鍏ㄥ眬浜嬩欢鏇存柊閫氱煡锛堥€氱煡DailyStatsCard绛夌粍浠跺埛鏂帮級
-      console.log('馃敂 [TimeCalendar] Dispatching eventsUpdated event after delete from modal');
+      // � 触发全局事件更新通知（通知DailyStatsCard等组件刷新）
+      console.log('🔔 [TimeCalendar] Dispatching eventsUpdated event after delete from modal');
       window.dispatchEvent(new CustomEvent('eventsUpdated', {
         detail: { 
           eventId: eventId,
@@ -1819,23 +1909,24 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         }
       }));
 
-      // 锟金煍?鍚屾鍒?Outlook
+      // �🔄 同步到 Outlook
       const activeSyncManager = syncManager || (window as any).syncManager;
       if (activeSyncManager) {
         try {
           await activeSyncManager.recordLocalAction('delete', 'event', eventId, eventToDelete);
-          console.log('鉁?[TimeCalendar] Event deleted and synced from modal');
+          console.log('✅ [TimeCalendar] Event deleted and synced from modal');
         } catch (error) {
-          console.error('鉂?[TimeCalendar] Failed to sync deleted event:', error);
+          console.error('❌ [TimeCalendar] Failed to sync deleted event:', error);
         }
       }
     } catch (error) {
-      console.error('鉂?[TimeCalendar] Failed to delete event from modal:', error);
+      console.error('❌ [TimeCalendar] Failed to delete event from modal:', error);
     }
   };
 
   /**
-   * 馃彿锔?鑾峰彇鏍囩瀵瑰簲鐨勬棩鍘嗘槧灏?   */
+   * 🏷️ 获取标签对应的日历映射
+   */
   const getCalendarMappingsForTags = async (tagIds: string[]) => {
     const mappings: Array<{calendarId: string; calendarName: string; color?: string}> = [];
     
@@ -1844,7 +1935,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       if (tag?.calendarMapping) {
         mappings.push(tag.calendarMapping);
       } else {
-        // 濡傛灉鏍囩娌℃湁鏄犲皠锛屾煡鎵惧叾瀛愭爣绛炬槸鍚︽湁鏄犲皠
+        // 如果标签没有映射，查找其子标签是否有映射
         const findMapping = (tags: any[]): any => {
           for (const t of tags) {
             if (t.id === tagId && t.calendarMapping) {
@@ -1869,21 +1960,23 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   };
 
   // ====================================
-  // 馃幃 瑙嗗浘鎺у埗
+  // 🎮 视图控制
   // ====================================
 
   const handleViewChange = useCallback((view: 'month' | 'week' | 'day') => {
-    // 鉁?濡傛灉瑙嗗浘鐩稿悓锛岀洿鎺ヨ繑鍥烇紝閬垮厤涓嶅繀瑕佺殑娓叉煋
+    // ✅ 如果视图相同，直接返回，避免不必要的渲染
     if (currentView === view) {
-      console.log(`馃幃 [VIEW] Already in ${view} view, skipping`);
+      console.log(`🎮 [VIEW] Already in ${view} view, skipping`);
       return;
     }
 
-    console.log(`馃幃 [VIEW] Changing from ${currentView} to ${view}`);
+    console.log(`🎮 [VIEW] Changing from ${currentView} to ${view}`);
     
-    // 鉁?鎵归噺鏇存柊锛氬湪鍚屼竴涓搷浣滀腑鏇存柊瑙嗗浘鍜屼繚瀛樿缃?    setCurrentView(view);
+    // ✅ 批量更新：在同一个操作中更新视图和保存设置
+    setCurrentView(view);
     
-    // 鉁?浣跨敤 setTimeout 寤惰繜闈炲叧閿搷浣?    setTimeout(() => {
+    // ✅ 使用 setTimeout 延迟非关键操作
+    setTimeout(() => {
       saveSettings(calendarSettings, view);
       
       const instance = calendarRef.current?.getInstance();
@@ -1891,23 +1984,23 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         const dateRange = instance.getDateRangeStart().toDate().toLocaleDateString() + 
                          ' ~ ' + 
                          instance.getDateRangeEnd().toDate().toLocaleDateString();
-        console.log(`馃幃 [VIEW] Changed to: ${view}, Date Range: ${dateRange}`);
+        console.log(`🎮 [VIEW] Changed to: ${view}, Date Range: ${dateRange}`);
       } else {
-        console.log(`馃幃 [VIEW] Changed to: ${view}`);
+        console.log(`🎮 [VIEW] Changed to: ${view}`);
       }
     }, 0);
-  }, [currentView, calendarSettings]); // 鉁?娣诲姞渚濊禆
+  }, [currentView, calendarSettings]); // ✅ 添加依赖
 
   const goToToday = () => {
-    console.log(`馃搮 [NAV] goToToday called`);
+    console.log(`📅 [NAV] goToToday called`);
     const instance = calendarRef.current?.getInstance();
     if (instance) {
       instance.today();
       const newDate = new Date();
       setCurrentDate(newDate);
-      console.log(`馃搮 [NAV] Go to Today: ${newDate.toLocaleDateString()}, currentView: ${currentView}`);
+      console.log(`📅 [NAV] Go to Today: ${newDate.toLocaleDateString()}, currentView: ${currentView}`);
     } else {
-      console.warn(`鈿狅笍 [NAV] Calendar instance not found`);
+      console.warn(`⚠️ [NAV] Calendar instance not found`);
     }
   };
 
@@ -1918,12 +2011,13 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       const date = instance.getDate();
       const newDate = date.toDate();
       
-      // 鉁?淇锛氬浜庢湀瑙嗗浘锛岀‘淇濊缃负鏈堜唤鐨勭涓€澶?      if (currentView === 'month') {
-        newDate.setDate(15); // 璁剧疆涓烘湀涓紝閬垮厤杈圭晫闂
+      // ✅ 修复：对于月视图，确保设置为月份的第一天
+      if (currentView === 'month') {
+        newDate.setDate(15); // 设置为月中，避免边界问题
       }
       
       setCurrentDate(newDate);
-      console.log(`馃搮 [NAV] Go to Previous: ${newDate.toLocaleDateString()}`);
+      console.log(`📅 [NAV] Go to Previous: ${newDate.toLocaleDateString()}`);
     }
   };
 
@@ -1934,107 +2028,120 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       const date = instance.getDate();
       const newDate = date.toDate();
       
-      // 鉁?淇锛氬浜庢湀瑙嗗浘锛岀‘淇濊缃负鏈堜唤鐨勭涓€澶?      if (currentView === 'month') {
-        newDate.setDate(15); // 璁剧疆涓烘湀涓紝閬垮厤杈圭晫闂
+      // ✅ 修复：对于月视图，确保设置为月份的第一天
+      if (currentView === 'month') {
+        newDate.setDate(15); // 设置为月中，避免边界问题
       }
       
       setCurrentDate(newDate);
-      console.log(`馃搮 [NAV] Go to Next: ${newDate.toLocaleDateString()}`);
+      console.log(`📅 [NAV] Go to Next: ${newDate.toLocaleDateString()}`);
     }
   };
 
-  // 馃柋锔?榧犳爣婊氳疆瀵艰埅 - 鏀硅繘鐗堬細鏈堣鍥炬寜鍛ㄦ粴鍔紙7澶╋級锛屾洿绮剧粏鐨勫鑸?  useEffect(() => {
+  // 🖱️ 鼠标滚轮导航 - 改进版：月视图按周滚动（7天），更精细的导航
+  useEffect(() => {
     if (currentView !== 'month') {
-      return; // 鍙湪鏈堣鍥惧惎鐢ㄦ粴杞鑸?    }
+      return; // 只在月视图启用滚轮导航
+    }
 
-    // 绛夊緟 DOM 娓叉煋瀹屾垚
+    // 等待 DOM 渲染完成
     const timer = setTimeout(() => {
       const calendarElement = document.querySelector('.toastui-calendar-month') || 
                               document.querySelector('.time-calendar-container');
       
       if (!calendarElement) {
-        console.warn('馃柋锔?[WHEEL] Calendar element not found');
+        console.warn('🖱️ [WHEEL] Calendar element not found');
         return;
       }
 
-      let accumulatedDelta = 0; // 绱Н婊氬姩璺濈
-      const threshold = 150; // 闄嶄綆闃堝€硷紝璁╂粴鍔ㄦ洿鐏垫晱锛?50鍍忕礌 = 涓€鍛級
+      let accumulatedDelta = 0; // 累积滚动距离
+      const threshold = 150; // 降低阈值，让滚动更灵敏（150像素 = 一周）
       let lastWheelTime = 0;
-      const resetDelay = 600; // 缂╃煭閲嶇疆鏃堕棿锛屾洿蹇搷搴旀柊鐨勬粴鍔?
+      const resetDelay = 600; // 缩短重置时间，更快响应新的滚动
+
       const handleWheel = (e: unknown) => {
         const wheelEvent = e as globalThis.WheelEvent;
         const now = Date.now();
         
-        // 濡傛灉瓒呰繃resetDelay娌℃湁婊氬姩锛岄噸缃疮绉?        if (now - lastWheelTime > resetDelay) {
+        // 如果超过resetDelay没有滚动，重置累积
+        if (now - lastWheelTime > resetDelay) {
           accumulatedDelta = 0;
         }
         lastWheelTime = now;
 
-        // 绱Н婊氬姩璺濈
+        // 累积滚动距离
         accumulatedDelta += wheelEvent.deltaY;
 
-        // 鍚戜笅婊氬姩锛堜笅涓€鍛級
+        // 向下滚动（下一周）
         if (accumulatedDelta > threshold) {
           const instance = calendarRef.current?.getInstance();
           if (instance) {
             const currentDate = instance.getDate().toDate();
             const newDate = new Date(currentDate);
-            newDate.setDate(newDate.getDate() + 7); // 鍓嶈繘 7 澶?            instance.setDate(newDate);
+            newDate.setDate(newDate.getDate() + 7); // 前进 7 天
+            instance.setDate(newDate);
             setCurrentDate(newDate);
-            console.log(`馃柋锔?[WHEEL] Scroll forward 1 week: ${newDate.toLocaleDateString()}`);
+            console.log(`🖱️ [WHEEL] Scroll forward 1 week: ${newDate.toLocaleDateString()}`);
           }
-          accumulatedDelta = 0; // 閲嶇疆绱Н
+          accumulatedDelta = 0; // 重置累积
           wheelEvent.preventDefault();
         }
-        // 鍚戜笂婊氬姩锛堜笂涓€鍛級
+        // 向上滚动（上一周）
         else if (accumulatedDelta < -threshold) {
           const instance = calendarRef.current?.getInstance();
           if (instance) {
             const currentDate = instance.getDate().toDate();
             const newDate = new Date(currentDate);
-            newDate.setDate(newDate.getDate() - 7); // 鍚庨€€ 7 澶?            instance.setDate(newDate);
+            newDate.setDate(newDate.getDate() - 7); // 后退 7 天
+            instance.setDate(newDate);
             setCurrentDate(newDate);
-            console.log(`馃柋锔?[WHEEL] Scroll backward 1 week: ${newDate.toLocaleDateString()}`);
+            console.log(`🖱️ [WHEEL] Scroll backward 1 week: ${newDate.toLocaleDateString()}`);
           }
-          accumulatedDelta = 0; // 閲嶇疆绱Н
+          accumulatedDelta = 0; // 重置累积
           wheelEvent.preventDefault();
         }
       };
 
       calendarElement.addEventListener('wheel', handleWheel as EventListener, { passive: false });
-      console.log('馃柋锔?[WHEEL] Month view wheel navigation enabled (weekly scroll, threshold: 150px)');
+      console.log('🖱️ [WHEEL] Month view wheel navigation enabled (weekly scroll, threshold: 150px)');
 
-      // 娓呯悊鍑芥暟
+      // 清理函数
       return () => {
         calendarElement.removeEventListener('wheel', handleWheel as EventListener);
-        console.log('馃柋锔?[WHEEL] Month view wheel navigation disabled');
+        console.log('🖱️ [WHEEL] Month view wheel navigation disabled');
       };
-    }, 100); // 寤惰繜 100ms 绛夊緟 DOM
+    }, 100); // 延迟 100ms 等待 DOM
 
     return () => {
       clearTimeout(timer);
     };
-  }, [currentView]); // 鍙緷璧?currentView锛実oToNext 鍜?goToPrevious 鍦ㄩ棴鍖呬腑璁块棶
+  }, [currentView]); // 只依赖 currentView，goToNext 和 goToPrevious 在闭包中访问
 
-  // 馃棑锔?璁＄畻鏈堣鍥剧殑鏄剧ず鏈堜唤锛堟壘鍒扮涓€涓?鍙锋墍鍦ㄧ殑鏈堜唤锛?  const getDisplayMonth = useMemo(() => {
+  // 🗓️ 计算月视图的显示月份（找到第一个1号所在的月份）
+  const getDisplayMonth = useMemo(() => {
     if (currentView !== 'month') {
-      // 闈炴湀瑙嗗浘锛岀洿鎺ヨ繑鍥炲綋鍓嶆棩鏈熺殑骞存湀
+      // 非月视图，直接返回当前日期的年月
       return {
         year: currentDate.getFullYear(),
         month: currentDate.getMonth() + 1
       };
     }
 
-    // 鏈堣鍥撅細鎵惧埌绗竴涓?鍙?    // TUI Calendar 鏈堣鍥鹃€氬父浠庝笂涓湀鏈紑濮嬫樉绀?    // 鎴戜滑闇€瑕佹壘鍒扮涓€涓棩鏈熶负1鐨勬棩鏈?    const instance = calendarRef.current?.getInstance();
+    // 月视图：找到第一个1号
+    // TUI Calendar 月视图通常从上个月末开始显示
+    // 我们需要找到第一个日期为1的日期
+    const instance = calendarRef.current?.getInstance();
     if (instance) {
       try {
         const rangeStart = instance.getDateRangeStart().toDate();
         const rangeEnd = instance.getDateRangeEnd().toDate();
         
-        // 浠?rangeStart 寮€濮嬶紝鎵惧埌绗竴涓?鍙?        let currentCheckDate = new Date(rangeStart);
+        // 从 rangeStart 开始，找到第一个1号
+        let currentCheckDate = new Date(rangeStart);
         while (currentCheckDate <= rangeEnd) {
           if (currentCheckDate.getDate() === 1) {
-            // 鎵惧埌绗竴涓?鍙?            return {
+            // 找到第一个1号
+            return {
               year: currentCheckDate.getFullYear(),
               month: currentCheckDate.getMonth() + 1
             };
@@ -2042,32 +2149,34 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           currentCheckDate.setDate(currentCheckDate.getDate() + 1);
         }
       } catch (error) {
-        console.warn('鈿狅笍 Failed to get date range from calendar instance');
+        console.warn('⚠️ Failed to get date range from calendar instance');
       }
     }
     
-    // 鍥為€€鏂规锛氫娇鐢?currentDate
+    // 回退方案：使用 currentDate
     return {
       year: currentDate.getFullYear(),
       month: currentDate.getMonth() + 1
     };
-  }, [currentView, currentDate]); // 褰撹鍥炬垨鏃ユ湡鏀瑰彉鏃堕噸鏂拌绠?
+  }, [currentView, currentDate]); // 当视图或日期改变时重新计算
+
   // ====================================
-  // 馃帹 娓叉煋 UI
+  // 🎨 渲染 UI
   // ====================================
 
-  // 鈴憋笍 娓叉煋鎬ц兘鐩戞帶
+  // ⏱️ 渲染性能监控
   useEffect(() => {
     const renderDuration = performance.now() - renderStartRef.current;
     
-    // 鍙湪鍓?娆℃覆鏌撴椂鎵撳嵃鏃ュ織
+    // 只在前3次渲染时打印日志
     if (renderCountRef.current <= 3) {
-      console.log(`鈴憋笍 [TimeCalendar] Render #${renderCountRef.current} completed in ${renderDuration.toFixed(2)}ms`);
+      console.log(`⏱️ [TimeCalendar] Render #${renderCountRef.current} completed in ${renderDuration.toFixed(2)}ms`);
     }
   });
 
-  // 馃帹 浣跨敤 useMemo 缂撳瓨鍔ㄦ€佹牱寮忥紝纭繚楂樺害璁剧疆鑳芥纭簲鐢?  const dynamicStyles = useMemo(() => {
-    console.log('馃帹 [鍔ㄦ€佹牱寮廬 閲嶆柊鐢熸垚:', {
+  // 🎨 使用 useMemo 缓存动态样式，确保高度设置能正确应用
+  const dynamicStyles = useMemo(() => {
+    console.log('🎨 [动态样式] 重新生成:', {
       taskHeight: calendarSettings.taskHeight,
       milestoneHeight: calendarSettings.milestoneHeight,
       allDayHeight: calendarSettings.allDayHeight,
@@ -2077,33 +2186,34 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       isInitialLoad
     });
     
-    // 鍒濆鍔犺浇鏃朵娇鐢?!important 闃叉闂儊锛屾嫋鍔ㄥ悗绉婚櫎浠ュ厑璁哥敤鎴疯皟鏁?    const important = isInitialLoad ? ' !important' : '';
+    // 初始加载时使用 !important 防止闪烁，拖动后移除以允许用户调整
+    const important = isInitialLoad ? ' !important' : '';
     
     return `
-      /* All Day 闈㈡澘 - 鍙帶鍒舵樉绀?闅愯棌 */
+      /* All Day 面板 - 只控制显示/隐藏 */
       .toastui-calendar-panel-allday {
         ${calendarSettings.showAllDay === false ? 'display: none !important;' : ''}
       }
       
-      /* Task 闈㈡澘 - 鍒濆楂樺害锛堝彲鎷栧姩淇敼锛?*/
+      /* Task 面板 - 初始高度（可拖动修改） */
       .toastui-calendar-panel-task,
       .toastui-calendar-panel.toastui-calendar-task {
         ${calendarSettings.showTask === false ? 'display: none !important;' : ''}
         height: ${calendarSettings.taskHeight}px${important};
       }
       
-      /* AllDay 闈㈡澘 - 鍒濆楂樺害锛堝彲鎷栧姩淇敼锛?*/
+      /* AllDay 面板 - 初始高度（可拖动修改） */
       .toastui-calendar-panel-allday {
         height: ${calendarSettings.allDayHeight}px${important};
       }
       
-      /* Milestone 闈㈡澘 - 鍙帶鍒舵樉绀?闅愯棌 */
+      /* Milestone 面板 - 只控制显示/隐藏 */
       .toastui-calendar-panel-milestone,
       .toastui-calendar-panel.toastui-calendar-milestone {
         ${calendarSettings.showMilestone === false ? 'display: none !important;' : ''}
       }
       
-      /* Milestone 浜嬩欢 - 鎵€鏈夎鍥?*/
+      /* Milestone 事件 - 所有视图 */
       .toastui-calendar-weekday-event.toastui-calendar-milestone,
       .toastui-calendar-month-milestone {
         ${calendarSettings.showMilestone === false ? 'display: none !important;' : ''}
@@ -2116,15 +2226,15 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     calendarSettings.showTask,
     calendarSettings.showMilestone,
     calendarSettings.showAllDay,
-    isInitialLoad  // 褰撶Щ闄?!important 鏃堕噸鏂扮敓鎴?CSS
+    isInitialLoad  // 当移除 !important 时重新生成 CSS
   ]);
 
   return (
     <>
-      {/* 馃拝 鍔ㄦ€丆SS鏍峰紡 - 搴旂敤浜嬩欢绫诲瀷楂樺害璁剧疆 */}
+      {/* 💅 动态CSS样式 - 应用事件类型高度设置 */}
       <style>{dynamicStyles}{`
         
-        /* 鏈堣鍥句簨浠跺乏瀵归綈 */
+        /* 月视图事件左对齐 */
         .toastui-calendar-month .toastui-calendar-weekday-event,
         .toastui-calendar-month-day-event {
           text-align: left !important;
@@ -2132,7 +2242,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           padding-left: 4px !important;
         }
         
-        /* 鏈堣鍥句簨浠舵爣棰樺乏瀵归綈 */
+        /* 月视图事件标题左对齐 */
         .toastui-calendar-month .toastui-calendar-event-title,
         .toastui-calendar-month-day-event .toastui-calendar-event-title {
           text-align: left !important;
@@ -2146,35 +2256,38 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         fontFamily: 'Microsoft YaHei, Arial, sans-serif',
         display: 'flex',
         flexDirection: 'column',
-        background: 'transparent', // 馃敡 鏀逛负閫忔槑锛岃涓変釜鐭╁舰鍚勮嚜鐨勮儗鏅壊鐢熸晥
-        opacity: calendarOpacity, // 馃帹 鏁翠綋閫忔槑搴︼細褰卞搷鎵€鏈夊瓙鍏冪礌
-        ...style // 鍏佽澶栭儴瑕嗙洊
+        background: 'transparent', // 🔧 改为透明，让三个矩形各自的背景色生效
+        opacity: calendarOpacity, // 🎨 整体透明度：影响所有子元素
+        ...style // 允许外部覆盖
       }}>
-        {/* 馃帥锔?鎺у埗宸ュ叿鏍?*/}
+        {/* 🎛️ 控制工具栏 */}
         <div className="toastui-calendar-controls" style={{
-          background: bgRgba, // 馃帹 浣跨敤涓庝富浣撶浉鍚岀殑鑳屾櫙鑹?閫忔槑搴?          backdropFilter: calendarOpacity < 1 ? 'blur(10px)' : 'none',
-          border: 'none' // 馃幆 绉婚櫎杈规
+          background: bgRgba, // 🎨 使用与主体相同的背景色+透明度
+          backdropFilter: calendarOpacity < 1 ? 'blur(10px)' : 'none',
+          border: 'none' // 🎯 移除边框
         }}>
           <div className="toastui-calendar-navigation">
             <button 
               className="toastui-calendar-nav-button"
               onClick={goToPrevious}
-              title="涓婁竴涓?
+              title="上一个"
             >
-              鈼€ 鍓?            </button>
+              ◀ 前
+            </button>
             <button 
               className={`toastui-calendar-nav-button active`}
               onClick={goToToday}
-              title="鍥炲埌浠婂ぉ"
+              title="回到今天"
             >
-              馃搮 浠婂ぉ
+              📅 今天
             </button>
             <button 
               className="toastui-calendar-nav-button"
               onClick={goToNext}
-              title="涓嬩竴涓?
+              title="下一个"
             >
-              鍚?鈻?            </button>
+              后 ▶
+            </button>
           </div>
 
           <div className="toastui-calendar-title">
@@ -2182,13 +2295,14 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           </div>
 
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            {/* 鉃?娣诲姞鏃ョ▼鎸夐挳 */}
+            {/* ➕ 添加日程按钮 */}
             <button 
               className="toastui-calendar-add-button"
               onClick={() => {
-                // 鍒涘缓鏂颁簨浠讹紝榛樿浠庡綋鍓嶆椂闂村紑濮嬶紝鎸佺画1灏忔椂
+                // 创建新事件，默认从当前时间开始，持续1小时
                 const now = new Date();
-                const end = new Date(now.getTime() + 60 * 60 * 1000); // 1灏忔椂鍚?                
+                const end = new Date(now.getTime() + 60 * 60 * 1000); // 1小时后
+                
                 const newEvent: Event = {
                   id: `local-${Date.now()}`,
                   title: '',
@@ -2208,21 +2322,22 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
                 setEditingEvent(newEvent);
                 setShowEventEditModal(true);
               }}
-              title="娣诲姞鏂版棩绋?
+              title="添加新日程"
             >
-              锛?            </button>
+              ＋
+            </button>
 
-            {/* 鈿欙笍 璁剧疆鎸夐挳 */}
+            {/* ⚙️ 设置按钮 */}
             <button 
               className={`toastui-calendar-nav-button ${showSettings ? 'active' : ''}`}
               onClick={() => setShowSettings(!showSettings)}
-              title="鏃ュ巻璁剧疆"
+              title="日历设置"
               style={{ fontSize: '14px' }}
             >
-              鈿欙笍 璁剧疆
+              ⚙️ 设置
             </button>
 
-            {/* 馃搷 妗岄潰鎮诞绐楀彛鎸夐挳 - 浠呭湪Electron鐜涓旈潪Widget妯″紡涓嬫樉绀?*/}
+            {/* 📍 桌面悬浮窗口按钮 - 仅在Electron环境且非Widget模式下显示 */}
             {window.electronAPI?.isElectron && !isWidgetMode && (
               <button 
                 className="toastui-calendar-nav-button"
@@ -2238,51 +2353,58 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
                     console.warn('toggleWidget function not available');
                   }
                 }}
-                title="鎵撳紑妗岄潰鎮诞鏃ュ巻"
+                title="打开桌面悬浮日历"
                 style={{ fontSize: '14px' }}
               >
-                馃搷 鎮诞绐?              </button>
+                📍 悬浮窗
+              </button>
             )}
 
-            {/* 瑙嗗浘鍒囨崲鎸夐挳 */}
+            {/* 视图切换按钮 */}
           <div className="toastui-calendar-view-controls">
             <button 
               className={`toastui-calendar-view-button ${currentView === 'month' ? 'active' : ''}`}
               onClick={() => handleViewChange('month')}
-              title="鏈堣鍥?
+              title="月视图"
             >
-              鏈?            </button>
+              月
+            </button>
             <button 
               className={`toastui-calendar-view-button ${currentView === 'week' ? 'active' : ''}`}
               onClick={() => handleViewChange('week')}
-              title="鍛ㄨ鍥?
+              title="周视图"
             >
-              鍛?            </button>
+              周
+            </button>
             <button 
               className={`toastui-calendar-view-button ${currentView === 'day' ? 'active' : ''}`}
               onClick={() => handleViewChange('day')}
-              title="鏃ヨ鍥?
+              title="日视图"
             >
-              鏃?            </button>
+              日
+            </button>
             </div>
           </div>
         </div>
 
-        {/* 馃搮 TUI Calendar 涓讳綋 */}
+        {/* 📅 TUI Calendar 主体 */}
         <div style={{ 
           flex: 1, 
           minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
-          marginBottom: isWidgetMode ? '0' : '4px', // 馃敡 鍑忓皯搴曢儴杈硅窛浠?8px 鍒?4px
-          backgroundColor: bgRgba, // 浣跨敤鍙皟鑺傜殑鑳屾櫙鑹?          borderRadius: isWidgetMode ? '20px' : '4px', // 馃帹 Widget 妯″紡浣跨敤澶у渾瑙?          border: 'none', // 馃敡 绉婚櫎杈规
+          marginBottom: isWidgetMode ? '0' : '4px', // 🔧 减少底部边距从 8px 到 4px
+          backgroundColor: bgRgba, // 使用可调节的背景色
+          borderRadius: isWidgetMode ? '20px' : '4px', // 🎨 Widget 模式使用大圆角
+          border: 'none', // 🔧 移除边框
           boxShadow: isWidgetMode 
             ? (calendarOpacity > 0.5 
                 ? '0 4px 12px rgba(0,0,0,0.15)' 
                 : '0 2px 8px rgba(0,0,0,0.1)') 
-            : 'none', // 馃帹 Widget 妯″紡娣诲姞闃村奖
-          overflow: 'hidden', // 馃敡 鏀瑰洖 hidden锛岃 TUI Calendar 鍐呴儴鐨?vlayout-area 澶勭悊婊氬姩
-          backdropFilter: calendarOpacity < 1 ? 'blur(10px)' : 'none' // 姣涚幓鐠冩晥鏋?        }}>
+            : 'none', // 🎨 Widget 模式添加阴影
+          overflow: 'hidden', // 🔧 改回 hidden，让 TUI Calendar 内部的 vlayout-area 处理滚动
+          backdropFilter: calendarOpacity < 1 ? 'blur(10px)' : 'none' // 毛玻璃效果
+        }}>
         <ToastUIReactCalendar
           ref={calendarRef}
           height="100%"
@@ -2304,202 +2426,214 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
             showTimezoneCollapseButton: false
           }}
           month={{
-            dayNames: ['鏃?, '涓€', '浜?, '涓?, '鍥?, '浜?, '鍏?],
-            visibleWeeksCount: 4, // 馃敡 鍥哄畾鏄剧ず 4 鍛?            workweek: false,
+            dayNames: ['日', '一', '二', '三', '四', '五', '六'],
+            visibleWeeksCount: 4, // 🔧 固定显示 4 周
+            workweek: false,
             narrowWeekend: false,
             startDayOfWeek: 0,
-            isAlways6Weeks: false, // 馃敡 鏀逛负 false锛岃鏈堣鍥炬牴鎹疄闄呭懆鏁拌嚜閫傚簲楂樺害
-            visibleEventCount: 6 // 馃敡 澧炲姞鍙浜嬩欢鏁伴噺浠?4 鍒?6
+            isAlways6Weeks: false, // 🔧 改为 false，让月视图根据实际周数自适应高度
+            visibleEventCount: 6 // 🔧 增加可见事件数量从 4 到 6
           }}
           template={{
-            // 鏈堣鍥撅細鏄熸湡鍚嶇О琛岋紙鏃ャ€佷竴銆佷簩...锛?            monthDayName(model: any) {
+            // 月视图：星期名称行（日、一、二...）
+            monthDayName(model: any) {
               return `<span class="toastui-calendar-template-monthDayName">${model.label}</span>`;
             },
-            // 鏈堣鍥撅細鏃ユ湡鏍煎瓙澶撮儴锛堟樉绀烘棩鏈熸暟瀛楋級
+            // 月视图：日期格子头部（显示日期数字）
             monthGridHeader(model: any) {
-              // model.date 鏍煎紡: "2025-10-20"
-              // model.ymd 鏍煎紡: "20251020"
-              // model.isToday: 鏄惁鏄粖澶?              // 浠?date 瀛楃涓蹭腑鎻愬彇鏃ユ湡鏁板瓧
+              // model.date 格式: "2025-10-20"
+              // model.ymd 格式: "20251020"
+              // model.isToday: 是否是今天
+              // 从 date 字符串中提取日期数字
               const dateParts = model.date.split('-'); // ["2025", "10", "20"]
               const dayNumber = parseInt(dateParts[2], 10); // 20
-              const month = model.month + 1; // 鏈堜唤 0-based锛岄渶瑕?1
+              const month = model.month + 1; // 月份 0-based，需要+1
               
-              // 馃帹 绉婚櫎纭紪鐮佹牱寮忥紝璁?theme 鐨?today 鏍峰紡鐢熸晥
+              // 🎨 移除硬编码样式，让 theme 的 today 样式生效
               const todayClass = model.isToday ? 'is-today' : '';
               
-              // 涓烘瘡鏈?鍙锋樉绀?"鏈?鏃? 鏍煎紡
+              // 为每月1号显示 "月/日" 格式
               if (dayNumber === 1) {
                 return `<span class="toastui-calendar-template-monthGridHeader ${todayClass}">${month}/${dayNumber}</span>`;
               }
               
-              // 鍏朵粬鏃ユ湡鍙樉绀烘棩鏈熸暟瀛?              return `<span class="toastui-calendar-template-monthGridHeader ${todayClass}">${dayNumber}</span>`;
+              // 其他日期只显示日期数字
+              return `<span class="toastui-calendar-template-monthGridHeader ${todayClass}">${dayNumber}</span>`;
             },
-            // 鍛ㄨ鍥撅細鏄熸湡鍚嶇О+鏃ユ湡琛岋紙Sun 19, Mon 20...锛?            weekDayName(model: any) {
-              const date = model.date; // 鏃ユ湡鏁板瓧 (1-31)
-              const dateInstance = model.dateInstance; // TZDate 瀵硅薄
-              const isToday = model.isToday; // 鏄惁鏄粖澶?              
-              // 馃帹 绉婚櫎纭紪鐮佹牱寮忥紝璁?theme 鐨?today 鏍峰紡鐢熸晥
+            // 周视图：星期名称+日期行（Sun 19, Mon 20...）
+            weekDayName(model: any) {
+              const date = model.date; // 日期数字 (1-31)
+              const dateInstance = model.dateInstance; // TZDate 对象
+              const isToday = model.isToday; // 是否是今天
+              
+              // 🎨 移除硬编码样式，让 theme 的 today 样式生效
               const todayClass = isToday ? 'is-today' : '';
               
               if (dateInstance) {
                 const month = dateInstance.getMonth() + 1;
                 
-                // 涓烘瘡鏈?鍙锋樉绀?"鏈?鏃? 鏍煎紡
+                // 为每月1号显示 "月/日" 格式
                 if (date === 1) {
                   return `<span class="toastui-calendar-template-weekDayName ${todayClass}">${month}/${date}</span>`;
                 }
               }
               
-              // 鍏朵粬鏃ユ湡鍙樉绀烘棩鏈熸暟瀛?              return `<span class="toastui-calendar-template-weekDayName ${todayClass}">${date}</span>`;
+              // 其他日期只显示日期数字
+              return `<span class="toastui-calendar-template-weekDayName ${todayClass}">${date}</span>`;
             }
           }}
           theme={{
             common: {
-              border: isWidgetMode ? 'none' : `1px solid ${getAdaptiveColors.borderLight}`, // 馃帹 鑷€傚簲杈规
-              backgroundColor: isWidgetMode ? 'transparent' : bgRgba, // 馃帹 鑷€傚簲鑳屾櫙
+              border: isWidgetMode ? 'none' : `1px solid ${getAdaptiveColors.borderLight}`, // 🎨 自适应边框
+              backgroundColor: isWidgetMode ? 'transparent' : bgRgba, // 🎨 自适应背景
               holiday: {
-                color: getAdaptiveColors.holiday // 馃帹 鑷€傚簲鍋囨棩棰滆壊
+                color: getAdaptiveColors.holiday // 🎨 自适应假日颜色
               },
               saturday: {
-                color: getAdaptiveColors.textPrimary // 馃帹 鑷€傚簲鏂囧瓧
+                color: getAdaptiveColors.textPrimary // 🎨 自适应文字
               },
               dayName: {
-                color: getAdaptiveColors.textSecondary // 馃帹 鑷€傚簲鏂囧瓧
+                color: getAdaptiveColors.textSecondary // 🎨 自适应文字
               }
             },
             month: {
               dayName: {
                 borderLeft: 'none',
-                borderBottom: `1px solid ${getAdaptiveColors.borderLight}`, // 馃帹 鑷€傚簲杈规
+                borderBottom: `1px solid ${getAdaptiveColors.borderLight}`, // 🎨 自适应边框
                 paddingLeft: '8px',
                 textAlign: 'left',
-                backgroundColor: getAdaptiveColors.bgOverlay // 馃帹 鑷€傚簲鑳屾櫙
+                backgroundColor: getAdaptiveColors.bgOverlay // 🎨 自适应背景
               },
               holidayExceptThisMonth: {
-                color: getAdaptiveColors.textDisabled // 馃帹 鑷€傚簲鏂囧瓧
+                color: getAdaptiveColors.textDisabled // 🎨 自适应文字
               },
               dayExceptThisMonth: {
-                color: getAdaptiveColors.textDisabled // 馃帹 鑷€傚簲鏂囧瓧
+                color: getAdaptiveColors.textDisabled // 🎨 自适应文字
               },
               weekend: {
-                backgroundColor: getAdaptiveColors.weekend // 馃帹 鑷€傚簲鍛ㄦ湯鑳屾櫙
+                backgroundColor: getAdaptiveColors.weekend // 🎨 自适应周末背景
               },
               today: {
-                color: getAdaptiveColors.accentColor, // 馃帹 鑷€傚簲楂樹寒鑹?                backgroundColor: getAdaptiveColors.accentLight // 馃帹 鑷€傚簲楂樹寒鑳屾櫙
+                color: getAdaptiveColors.accentColor, // 🎨 自适应高亮色
+                backgroundColor: getAdaptiveColors.accentLight // 🎨 自适应高亮背景
               },
               moreView: {
-                border: `1px solid ${getAdaptiveColors.borderMedium}`, // 馃帹 鑷€傚簲杈规
+                border: `1px solid ${getAdaptiveColors.borderMedium}`, // 🎨 自适应边框
                 boxShadow: getAdaptiveColors.isDark 
                   ? '0 2px 8px rgba(0,0,0,0.5)' 
                   : '0 2px 8px rgba(0,0,0,0.1)',
-                backgroundColor: bgRgba, // 馃帹 鑷€傚簲鑳屾櫙
+                backgroundColor: bgRgba, // 🎨 自适应背景
                 width: 280,
                 height: 280
               }
             },
             week: {
               today: {
-                color: getAdaptiveColors.accentColor, // 馃帹 鑷€傚簲楂樹寒鑹?                backgroundColor: getAdaptiveColors.accentLight // 馃帹 鑷€傚簲楂樹寒鑳屾櫙
+                color: getAdaptiveColors.accentColor, // 🎨 自适应高亮色
+                backgroundColor: getAdaptiveColors.accentLight // 🎨 自适应高亮背景
               },
               pastDay: {
-                color: getAdaptiveColors.textDisabled // 馃帹 鑷€傚簲杩囧幓鏃ユ湡
+                color: getAdaptiveColors.textDisabled // 🎨 自适应过去日期
               },
               dayName: {
-                borderTop: `1px solid ${getAdaptiveColors.borderLight}`, // 馃帹 鑷€傚簲杈规
-                borderBottom: `1px solid ${getAdaptiveColors.borderLight}`, // 馃帹 鑷€傚簲杈规
+                borderTop: `1px solid ${getAdaptiveColors.borderLight}`, // 🎨 自适应边框
+                borderBottom: `1px solid ${getAdaptiveColors.borderLight}`, // 🎨 自适应边框
                 borderLeft: 'none',
                 paddingLeft: '8px',
-                backgroundColor: getAdaptiveColors.bgOverlay, // 馃帹 鑷€傚簲鑳屾櫙
-                color: getAdaptiveColors.textSecondary // 馃帹 鑷€傚簲鏂囧瓧
+                backgroundColor: getAdaptiveColors.bgOverlay, // 🎨 自适应背景
+                color: getAdaptiveColors.textSecondary // 🎨 自适应文字
               },
               panelResizer: {
-                border: `1px solid ${getAdaptiveColors.borderLight}` // 馃帹 鑷€傚簲杈规
+                border: `1px solid ${getAdaptiveColors.borderLight}` // 🎨 自适应边框
               },
               dayGrid: {
-                borderRight: `1px solid ${getAdaptiveColors.borderLight}` // 馃帹 鑷€傚簲杈规
+                borderRight: `1px solid ${getAdaptiveColors.borderLight}` // 🎨 自适应边框
               },
               dayGridLeft: {
                 width: '72px',
-                backgroundColor: getAdaptiveColors.bgOverlay, // 馃帹 鑷€傚簲鑳屾櫙
-                borderRight: `1px solid ${getAdaptiveColors.borderMedium}`, // 馃帹 鑷€傚簲杈规
-                color: getAdaptiveColors.textSecondary // 馃帹 鑷€傚簲鏂囧瓧
+                backgroundColor: getAdaptiveColors.bgOverlay, // 🎨 自适应背景
+                borderRight: `1px solid ${getAdaptiveColors.borderMedium}`, // 🎨 自适应边框
+                color: getAdaptiveColors.textSecondary // 🎨 自适应文字
               },
               timeGrid: {
-                borderRight: `1px solid ${getAdaptiveColors.borderLight}` // 馃帹 鑷€傚簲杈规
+                borderRight: `1px solid ${getAdaptiveColors.borderLight}` // 🎨 自适应边框
               },
               timeGridLeft: {
                 width: '72px',
-                backgroundColor: getAdaptiveColors.bgOverlay, // 馃帹 鑷€傚簲鑳屾櫙
-                borderRight: `1px solid ${getAdaptiveColors.borderMedium}`, // 馃帹 鑷€傚簲杈规
-                color: getAdaptiveColors.textSecondary // 馃帹 鑷€傚簲鏂囧瓧
+                backgroundColor: getAdaptiveColors.bgOverlay, // 🎨 自适应背景
+                borderRight: `1px solid ${getAdaptiveColors.borderMedium}`, // 🎨 自适应边框
+                color: getAdaptiveColors.textSecondary // 🎨 自适应文字
               },
               timeGridLeftAdditionalTimezone: {
-                backgroundColor: getAdaptiveColors.bgHover // 馃帹 鑷€傚簲鑳屾櫙
+                backgroundColor: getAdaptiveColors.bgHover // 🎨 自适应背景
               },
               nowIndicatorLabel: {
-                color: getAdaptiveColors.holiday // 馃帹 浣跨敤鍋囨棩棰滆壊浣滀负"鐜板湪"鎸囩ず鍣?              },
+                color: getAdaptiveColors.holiday // 🎨 使用假日颜色作为"现在"指示器
+              },
               nowIndicatorPast: {
-                border: `1px dashed ${getAdaptiveColors.holiday}` // 馃帹 鑷€傚簲杈规
+                border: `1px dashed ${getAdaptiveColors.holiday}` // 🎨 自适应边框
               },
               nowIndicatorBullet: {
-                backgroundColor: getAdaptiveColors.holiday // 馃帹 鑷€傚簲鑳屾櫙
+                backgroundColor: getAdaptiveColors.holiday // 🎨 自适应背景
               },
               nowIndicatorToday: {
-                border: `1px solid ${getAdaptiveColors.holiday}` // 馃帹 鑷€傚簲杈规
+                border: `1px solid ${getAdaptiveColors.holiday}` // 🎨 自适应边框
               },
               nowIndicatorFuture: {
                 border: 'none'
               },
               pastTime: {
-                color: getAdaptiveColors.textDisabled // 馃帹 鑷€傚簲杩囧幓鏃堕棿
+                color: getAdaptiveColors.textDisabled // 🎨 自适应过去时间
               },
               futureTime: {
-                color: getAdaptiveColors.textPrimary // 馃帹 鑷€傚簲鏈潵鏃堕棿
+                color: getAdaptiveColors.textPrimary // 🎨 自适应未来时间
               },
               gridSelection: {
-                backgroundColor: getAdaptiveColors.accentLight, // 馃帹 鑷€傚簲閫変腑鑳屾櫙
-                border: `1px solid ${getAdaptiveColors.accentColor}` // 馃帹 鑷€傚簲閫変腑杈规
+                backgroundColor: getAdaptiveColors.accentLight, // 🎨 自适应选中背景
+                border: `1px solid ${getAdaptiveColors.accentColor}` // 🎨 自适应选中边框
               }
             }
           }}
         />
         </div>
 
-        {/* 馃搳 鐘舵€佹爮 - Widget 妯″紡涓嬬敱 DesktopCalendarWidget 鐙珛鏄剧ず */}
+        {/* 📊 状态栏 - Widget 模式下由 DesktopCalendarWidget 独立显示 */}
         {!isWidgetMode && (
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            padding: '6px 12px', // 馃敡 鍑忓皯 padding 浠?8px 鍒?6px
+            padding: '6px 12px', // 🔧 减少 padding 从 8px 到 6px
             background: bgRgba,
             borderRadius: '4px',
-            border: `1px solid ${getAdaptiveColors.borderMedium}`, // 馃帹 鑷€傚簲杈规
+            border: `1px solid ${getAdaptiveColors.borderMedium}`, // 🎨 自适应边框
             fontSize: '12px',
-            color: getAdaptiveColors.textSecondary, // 馃帹 鑷€傚簲鏂囧瓧棰滆壊
+            color: getAdaptiveColors.textSecondary, // 🎨 自适应文字颜色
             flexShrink: 0,
-            marginTop: '4px', // 馃敡 娣诲姞涓婅竟璺濓紝涓庢棩鍘嗕富浣撲繚鎸?4px 闂磋窛
+            marginTop: '4px', // 🔧 添加上边距，与日历主体保持 4px 间距
             backdropFilter: calendarOpacity < 1 ? 'blur(10px)' : 'none'
           }}>
             <span>
-              馃搱 鍏?<strong style={{ color: getAdaptiveColors.accentColor }}>{events.length}</strong> 涓簨浠?            </span>
+              📈 共 <strong style={{ color: getAdaptiveColors.accentColor }}>{events.length}</strong> 个事件
+            </span>
             {lastSyncTime && (
               <span>
-                馃攧 鏈€鍚庡悓姝? <strong style={{ color: getAdaptiveColors.textPrimary }}>{lastSyncTime.toLocaleString('zh-CN')}</strong>
+                🔄 最后同步: <strong style={{ color: getAdaptiveColors.textPrimary }}>{lastSyncTime.toLocaleString('zh-CN')}</strong>
               </span>
             )}
           </div>
         )}
       </div>
 
-      {/* 鉁忥笍 浜嬩欢缂栬緫寮圭獥 */}
+      {/* ✏️ 事件编辑弹窗 */}
       <EventEditModal
         event={editingEvent}
         isOpen={showEventEditModal}
         onClose={() => {
           setShowEventEditModal(false);
           setEditingEvent(null);
-          // 娓呴櫎 TUI Calendar 鐨勬椂闂存閫夋嫨鐘舵€?          if (calendarRef.current) {
+          // 清除 TUI Calendar 的时间段选择状态
+          if (calendarRef.current) {
             const instance = calendarRef.current.getInstance();
             if (instance) {
               instance.clearGridSelections();
@@ -2512,7 +2646,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         availableCalendars={getAvailableCalendarsForSettings()}
       />
 
-      {/* 鈿欙笍 璁剧疆闈㈡澘 */}
+      {/* ⚙️ 设置面板 */}
       <CalendarSettingsPanel
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
