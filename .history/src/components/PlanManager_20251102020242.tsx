@@ -514,7 +514,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             onLinesChange={handleLinesChange}
             renderLinePrefix={renderLinePrefix}
             renderLineSuffix={renderLineSuffix}
-            placeholder="✨ Enter 创建新事件 | Shift+Enter 切换描述模式 | Tab 调整层级 | ↑↓ 导航"
+            placeholder="✨ 点击创建新任务，按 Enter 快速创建，Tab 调整层级，↑↓ 导航"
           />
       </div>
 

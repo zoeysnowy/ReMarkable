@@ -156,6 +156,43 @@ export const FreeFormEditor = <T,>({
       return;
     }
     
+    // 🆕 Shift+Tab: Description → Title 模式切换
+    if (e.key === 'Tab' && e.shiftKey && isDescriptionMode) {
+      e.preventDefault();
+      
+      const target = e.currentTarget as HTMLElement;
+      const isEmpty = target.textContent?.trim() === '';
+      
+      // 先保存当前 description 内容（如果有内容）
+      if (!isEmpty) {
+        handleLineBlur(lineId, target);
+      }
+      
+      // 如果 description 为空，删除该行；否则保留
+      const newLines = isEmpty 
+        ? lines.filter(l => l.id !== lineId)
+        : lines; // 保留 description 行，只是切换焦点
+      
+      onLinesChange(newLines);
+      
+      // 聚焦到对应的 title 行
+      const titleLineId = lineId.replace('-desc', '');
+      setTimeout(() => {
+        const element = document.querySelector(`[data-line-id="${titleLineId}"]`) as HTMLElement;
+        if (element) {
+          element.focus();
+          // 光标移到末尾
+          const range = document.createRange();
+          const sel = window.getSelection();
+          range.selectNodeContents(element);
+          range.collapse(false);
+          sel?.removeAllRanges();
+          sel?.addRange(range);
+        }
+      }, 10);
+      return;
+    }
+    
     // Enter: 创建新 Event（title 模式）或在 description 模式下换行
     if (e.key === 'Enter' && !e.shiftKey) {
       // Description 模式：允许换行（多行描述）

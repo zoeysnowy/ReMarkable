@@ -92,37 +92,39 @@ export const FreeFormEditor = <T,>({
     const currentLine = lines[currentIndex];
     const isDescriptionMode = (currentLine.data as any)?.mode === 'description';
     
-    // 🆕 Shift+Enter: Title ↔ Description 模式切换
-    if (e.key === 'Enter' && e.shiftKey) {
+    // 🆕 Shift+Enter: Title → Description 模式切换
+    if (e.key === 'Enter' && e.shiftKey && !isDescriptionMode) {
       e.preventDefault();
       
-      // Title → Description: 创建新的 description 行
-      if (!isDescriptionMode) {
-        const descLine: FreeFormLine<T> = {
-          id: `${lineId}-desc`,
-          content: '',
-          level: level + 1,
-          data: { ...(currentLine.data || {}), mode: 'description' } as T,
-        };
-        
-        // 插入 description 行在当前行后面
-        const newLines = [
-          ...lines.slice(0, currentIndex + 1),
-          descLine,
-          ...lines.slice(currentIndex + 1),
-        ];
-        
-        onLinesChange(newLines);
-        
-        // 聚焦到新创建的 description 行
-        setTimeout(() => {
-          const element = document.querySelector(`[data-line-id="${descLine.id}"]`) as HTMLElement;
-          element?.focus();
-        }, 10);
-        return;
-      }
+      // 创建一个新的 description 行
+      const descLine: FreeFormLine<T> = {
+        id: `${lineId}-desc`,
+        content: '',
+        level: level + 1,
+        data: { ...(currentLine.data || {}), mode: 'description' } as T,
+      };
       
-      // Description → Title: 返回对应的 title 行
+      // 插入 description 行在当前行后面
+      const newLines = [
+        ...lines.slice(0, currentIndex + 1),
+        descLine,
+        ...lines.slice(currentIndex + 1),
+      ];
+      
+      onLinesChange(newLines);
+      
+      // 聚焦到新创建的 description 行
+      setTimeout(() => {
+        const element = document.querySelector(`[data-line-id="${descLine.id}"]`) as HTMLElement;
+        element?.focus();
+      }, 10);
+      return;
+    }
+    
+    // 🆕 Shift+Tab: Description → Title 模式切换
+    if (e.key === 'Tab' && e.shiftKey && isDescriptionMode) {
+      e.preventDefault();
+      
       const target = e.currentTarget as HTMLElement;
       const isEmpty = target.textContent?.trim() === '';
       
@@ -134,7 +136,7 @@ export const FreeFormEditor = <T,>({
       // 如果 description 为空，删除该行；否则保留
       const newLines = isEmpty 
         ? lines.filter(l => l.id !== lineId)
-        : lines;
+        : lines; // 保留 description 行，只是切换焦点
       
       onLinesChange(newLines);
       
