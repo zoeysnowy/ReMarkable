@@ -30,7 +30,6 @@ export interface PlanItem {
   endTime?: string;      // 结束时间 → Event
   
   isCompleted?: boolean;
-  isTask?: boolean;      // 🆕 标记为任务（控制 checkbox 显示和任务区域归属）
   priority?: 'low' | 'medium' | 'high' | 'urgent';
   duration?: number;
   notes?: string;

@@ -30,7 +30,6 @@ export interface PlanItem {
   endTime?: string;      // 结束时间 → Event
   
   isCompleted?: boolean;
-  isTask?: boolean;      // 🆕 标记为任务（控制 checkbox 显示和任务区域归属）
   priority?: 'low' | 'medium' | 'high' | 'urgent';
   duration?: number;
   notes?: string;
@@ -91,7 +90,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   // FloatingToolbarV2 配置 - quick-action 模式
   const toolbarConfig: ToolbarConfig = {
     mode: 'quick-action',
-    features: ['tag', 'emoji', 'dateRange', 'priority', 'color', 'addTask'],
+    features: ['tag', 'emoji', 'dateRange', 'priority', 'color'],
   };
   
   // FloatingToolbar
@@ -126,31 +125,22 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           const isDescriptionLine = lineId.includes('-desc') || target.classList.contains('description-mode');
           setCurrentFocusedMode(isDescriptionLine ? 'description' : 'title');
           
-          // 找到对应的 PlanItem，更新当前选中的标签和 isTask 状态
+          // 找到对应的 PlanItem，更新当前选中的标签
           const actualItemId = lineId.replace('-desc', ''); // 移除 -desc 后缀获取真实 item id
           const item = items.find(i => i.id === actualItemId);
-          if (item) {
-            // 更新标签
-            if (item.tags) {
-              const tagIds = item.tags
-                .map(tagName => {
-                  const tag = TagService.getFlatTags().find(t => t.name === tagName);
-                  return tag?.id;
-                })
-                .filter(Boolean) as string[];
-              setCurrentSelectedTags(tagIds);
-              currentSelectedTagsRef.current = tagIds;
-            } else {
-              setCurrentSelectedTags([]);
-              currentSelectedTagsRef.current = [];
-            }
-            
-            // 🆕 更新 isTask 状态
-            setCurrentIsTask(item.isTask || false);
+          if (item && item.tags) {
+            // 将标签名称转换为标签ID
+            const tagIds = item.tags
+              .map(tagName => {
+                const tag = TagService.getFlatTags().find(t => t.name === tagName);
+                return tag?.id;
+              })
+              .filter(Boolean) as string[];
+            setCurrentSelectedTags(tagIds);
+            currentSelectedTagsRef.current = tagIds; // 同步更新 ref
           } else {
             setCurrentSelectedTags([]);
             currentSelectedTagsRef.current = []; // 同步更新 ref
-            setCurrentIsTask(false);
           }
         }
       }
@@ -796,22 +786,6 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         }}
         availableTags={existingTags}
         currentTags={currentSelectedTags}
-        currentIsTask={currentIsTask}
-        onTaskToggle={(isTask: boolean) => {
-          // 🆕 切换任务状态
-          if (currentFocusedLineId && currentFocusedMode === 'title') {
-            const actualItemId = currentFocusedLineId.replace('-desc', '');
-            const item = items.find(i => i.id === actualItemId);
-            if (item) {
-              const updatedItem: PlanItem = {
-                ...item,
-                isTask,
-              };
-              onSave(updatedItem);
-              setCurrentIsTask(isTask); // 更新本地状态
-            }
-          }
-        }}
       />
       
       {/* 日期提及弹窗 - 使用 Tippy 定位 */}

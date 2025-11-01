@@ -30,7 +30,6 @@ export interface PlanItem {
   endTime?: string;      // 结束时间 → Event
   
   isCompleted?: boolean;
-  isTask?: boolean;      // 🆕 标记为任务（控制 checkbox 显示和任务区域归属）
   priority?: 'low' | 'medium' | 'high' | 'urgent';
   duration?: number;
   notes?: string;
@@ -91,7 +90,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   // FloatingToolbarV2 配置 - quick-action 模式
   const toolbarConfig: ToolbarConfig = {
     mode: 'quick-action',
-    features: ['tag', 'emoji', 'dateRange', 'priority', 'color', 'addTask'],
+    features: ['tag', 'emoji', 'dateRange', 'priority', 'color'],
   };
   
   // FloatingToolbar
@@ -796,22 +795,6 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         }}
         availableTags={existingTags}
         currentTags={currentSelectedTags}
-        currentIsTask={currentIsTask}
-        onTaskToggle={(isTask: boolean) => {
-          // 🆕 切换任务状态
-          if (currentFocusedLineId && currentFocusedMode === 'title') {
-            const actualItemId = currentFocusedLineId.replace('-desc', '');
-            const item = items.find(i => i.id === actualItemId);
-            if (item) {
-              const updatedItem: PlanItem = {
-                ...item,
-                isTask,
-              };
-              onSave(updatedItem);
-              setCurrentIsTask(isTask); // 更新本地状态
-            }
-          }
-        }}
       />
       
       {/* 日期提及弹窗 - 使用 Tippy 定位 */}

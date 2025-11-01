@@ -94,29 +94,6 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps> = ({
     const btnConfig = actionFeatureConfig[feature as keyof typeof actionFeatureConfig];
     if (!btnConfig) return null;
 
-    // 🆕 addTask 特殊处理：Toggle 按钮
-    if (feature === 'addTask') {
-      return (
-        <Tippy key={feature} content={btnConfig.label} placement="top">
-          <button
-            className={`headless-toolbar-btn headless-toolbar-action-btn ${
-              currentIsTask ? 'headless-toolbar-btn-active' : ''
-            }`}
-            style={{ 
-              backgroundColor: currentIsTask ? btnConfig.color : undefined,
-              opacity: currentIsTask ? 1 : 0.6,
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              onTaskToggle?.(!currentIsTask);
-            }}
-          >
-            {btnConfig.icon}
-          </button>
-        </Tippy>
-      );
-    }
-
     // Emoji 按钮使用 Tippy.js
     if (feature === 'emoji') {
       return (

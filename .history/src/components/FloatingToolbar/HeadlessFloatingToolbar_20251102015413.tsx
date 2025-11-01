@@ -64,7 +64,6 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps> = ({
     dateRange: { icon: '📅', label: '选择日期', color: '#10b981' },
     priority: { icon: '⚡', label: '设置优先级', color: '#ef4444' },
     color: { icon: '🎨', label: '选择颜色', color: '#8b5cf6' },
-    addTask: { icon: '☑', label: '任务模式', color: '#6b7280' }, // 🆕 任务开关
   };
 
   // 渲染文本格式化按钮
@@ -93,29 +92,6 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps> = ({
   const renderQuickActionButton = (feature: ToolbarFeatureType) => {
     const btnConfig = actionFeatureConfig[feature as keyof typeof actionFeatureConfig];
     if (!btnConfig) return null;
-
-    // 🆕 addTask 特殊处理：Toggle 按钮
-    if (feature === 'addTask') {
-      return (
-        <Tippy key={feature} content={btnConfig.label} placement="top">
-          <button
-            className={`headless-toolbar-btn headless-toolbar-action-btn ${
-              currentIsTask ? 'headless-toolbar-btn-active' : ''
-            }`}
-            style={{ 
-              backgroundColor: currentIsTask ? btnConfig.color : undefined,
-              opacity: currentIsTask ? 1 : 0.6,
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              onTaskToggle?.(!currentIsTask);
-            }}
-          >
-            {btnConfig.icon}
-          </button>
-        </Tippy>
-      );
-    }
 
     // Emoji 按钮使用 Tippy.js
     if (feature === 'emoji') {

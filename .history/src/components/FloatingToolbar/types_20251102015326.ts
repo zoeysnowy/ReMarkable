@@ -52,7 +52,6 @@ export interface FloatingToolbarProps {
   onDateRangeSelect?: (startDate: Date, endDate: Date) => void;
   onPrioritySelect?: (priority: 'low' | 'medium' | 'high' | 'urgent') => void;
   onColorSelect?: (color: string) => void;
-  onTaskToggle?: (isTask: boolean) => void; // 🆕 任务开关回调
   
   // 数据源
   availableTags?: Array<{
@@ -64,7 +63,6 @@ export interface FloatingToolbarProps {
     parentId?: string;
   }>; // 改为层级标签
   currentTags?: string[]; // 保持 ID 数组
-  currentIsTask?: boolean; // 🆕 当前是否为任务状态
   
   // 键盘控制
   activePickerIndex?: number | null; // 通过数字键激活的 picker 索引
