@@ -1,0 +1,36 @@
+/* Tiptap 编辑器基础样式 */
+.tiptap-editor {
+  width: 100%;
+}
+
+.tiptap-editor .ProseMirror {
+  outline: none;
+  min-height: 20px;
+  padding: 4px 0;
+}
+
+/* Placeholder 样式 */
+.tiptap-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #9ca3af;
+  pointer-events: none;
+  height: 0;
+}
+
+/* 段落样式 */
+.tiptap-editor .ProseMirror p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* 列表样式 */
+.tiptap-editor .ProseMirror ul,
+.tiptap-editor .ProseMirror ol {
+  padding-left: 20px;
+  margin: 4px 0;
+}
+
+.tiptap-editor .ProseMirror li {
+  margin: 2px 0;
+}
