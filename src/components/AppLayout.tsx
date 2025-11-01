@@ -264,12 +264,9 @@ const StatusBar: React.FC = () => {
     if (savedSyncStats) {
       try {
         syncStats = JSON.parse(savedSyncStats);
-        console.log('📊 [StatusBar] Loaded sync stats from localStorage:', syncStats);
       } catch (e) {
         console.error('Failed to parse sync stats:', e);
       }
-    } else {
-      console.log('📊 [StatusBar] No sync stats found in localStorage');
     }
     
     if (savedSyncTime) {
@@ -302,7 +299,6 @@ const StatusBar: React.FC = () => {
       if (savedSyncStats) {
         try {
           syncStats = JSON.parse(savedSyncStats);
-          console.log('📊 [StatusBar] Sync completed, reloaded stats:', syncStats);
         } catch (e) {
           console.error('Failed to parse sync stats on sync complete:', e);
         }
@@ -313,6 +309,7 @@ const StatusBar: React.FC = () => {
         ...prev,
         lastSync: timestamp,
         isSyncing: false,
+        isConnected: true, // 🔧 同步成功说明已连接
         ...syncStats
       }));
     };
@@ -383,8 +380,6 @@ const StatusBar: React.FC = () => {
     if (syncSuccess > 0) {
       logs.push(`${syncSuccess}个事项成功同步至日历✅`);
     }
-    
-    console.log('📊 [formatSyncStatus] Building logs:', { syncFailed, calendarCreated, syncSuccess, logs });
     
     const logStr = logs.length > 0 ? ` ${logs.join('，')}` : '';
     

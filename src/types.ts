@@ -32,7 +32,7 @@ export interface Event {
   calendarId?: string;
   calendarIds?: string[]; // 🆕 添加：多日历分组支持
   source?: 'local' | 'outlook' | 'google' | 'icloud'; // 🆕 事件来源
-  syncStatus?: 'pending' | 'synced' | 'error' | 'local-only'; // 🔧 添加 local-only 用于运行中的 Timer
+  syncStatus?: 'pending' | 'synced' | 'error' | 'local-only'; // 🔧 unified: 'pending' 表示所有待同步状态（新建或更新）
   lastSyncTime?: string; // 🔧 修改：使用字符串存储本地时间
   createdAt: string;     // 🔧 修改：使用字符串存储本地时间
   updatedAt: string;     // 🔧 修改：使用字符串存储本地时间

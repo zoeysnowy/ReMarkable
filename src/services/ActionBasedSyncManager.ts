@@ -1063,13 +1063,8 @@ export class ActionBasedSyncManager {
       }
       
       await this.fetchRemoteChanges();
-      console.log('📊 [After fetchRemoteChanges] Current stats:', this.syncStats);
-      
       await this.syncPendingLocalActions();
-      console.log('📊 [After syncPendingLocalActions] Current stats:', this.syncStats);
-      
       await this.syncPendingRemoteActions();
-      console.log('📊 [After syncPendingRemoteActions] Current stats:', this.syncStats);
       
       await this.resolveConflicts();
       this.cleanupSynchronizedActions();
@@ -1085,8 +1080,10 @@ export class ActionBasedSyncManager {
       
       // 📊 保存同步统计信息
       localStorage.setItem('syncStats', JSON.stringify(this.syncStats));
-      console.log('📊 [Sync Stats] Final statistics:', this.syncStats);
-      console.log('📊 [Sync Stats] Saved to localStorage:', JSON.stringify(this.syncStats));
+      // 仅在有统计数据时输出
+      if (this.syncStats.syncFailed > 0 || this.syncStats.calendarCreated > 0 || this.syncStats.syncSuccess > 0) {
+        console.log('📊 [Sync Stats]', this.syncStats);
+      }
       
       const syncDuration = performance.now() - syncStartTime;
       
@@ -1344,8 +1341,10 @@ export class ActionBasedSyncManager {
         }
       });
       
-      console.log('📊 [Sync] Actions created:', { create: createActionCount, update: updateActionCount });
-      console.log('📊 [Sync] Total actions in queue:', this.actionQueue.length);
+      // 📊 统计创建和更新的action数量（仅在有变化时输出）
+      if (createActionCount > 0 || updateActionCount > 0) {
+        console.log('📊 [Sync] Actions created:', { create: createActionCount, update: updateActionCount });
+      }
 
       // 🔧 检测远程删除的事件
       // ⚠️ 重要：只在获取了完整事件列表时才检查删除
@@ -1358,20 +1357,9 @@ export class ActionBasedSyncManager {
         return rawId;
       }));
       
-      // 🔍 [DEBUG] 记录删除检测的基本信息
-      console.log(`🔍 [Sync] Deletion check: ${combinedEvents.length} remote, ${localEvents.length} local, ${remoteEventIds.size} remoteIds`);
-      
-      // 🔍 [DEBUG] 只检查远程是否有"🧨刷小红书"事件
-      const remoteTargetEvents = combinedEvents.filter((e: any) => 
-        e.subject && e.subject.includes('🧨刷小红书')
-      );
-      console.log(`🔍 [Sync] Remote has ${remoteTargetEvents.length} "🧨刷小红书" events`);
-      
       const localEventsWithExternalId = localEvents.filter((localEvent: any) => 
         localEvent.externalId && localEvent.externalId.trim() !== ''
       );
-      
-      console.log(`🔍 [Sync] Local has ${localEventsWithExternalId.length} events with externalId`);
 
       // 🔍 [DEBUG] 检查是否有重复的 externalId
       const externalIdCounts = new Map<string, number>();
@@ -1386,16 +1374,10 @@ export class ActionBasedSyncManager {
       if (duplicates.length > 0) {
         console.warn(`⚠️ [Sync] Found ${duplicates.length} duplicate externalIds in localStorage`);
       }
+
       
-      // 🔍 [DEBUG] 专门检查"🧨刷小红书"事件
-      const targetEvents = localEvents.filter((e: any) => e.title && e.title.includes('🧨刷小红书'));
-      console.log(`🔍 [Sync] Local has ${targetEvents.length} "🧨刷小红书" events`);
-
       // 📝 [NEW] 增加同步轮次
-      this.syncRoundCounter++;
-      console.log(`🔄 [Sync] Round #${this.syncRoundCounter}`);
-
-      // ⚠️ 删除检查逻辑（两轮确认机制）：
+      this.syncRoundCounter++;      // ⚠️ 删除检查逻辑（两轮确认机制）：
       // 性能优化：只检查在同步窗口内的事件（通常 < 100个）
       // 1. 第一轮：未找到的事件加入候选列表（pending）
       // 2. 第二轮：候选列表中依然未找到的事件才真正删除
@@ -1496,7 +1478,10 @@ export class ActionBasedSyncManager {
       });
       
       const deletionCheckDuration = performance.now() - deletionCheckStartTime;
-      console.log(`📊 [Sync] Deletion check completed in ${deletionCheckDuration.toFixed(1)}ms: ${deletionCheckCount} events checked, ${deletionCandidateCount} pending, ${deletionConfirmedCount} confirmed deletions`);
+      // 仅在有删除或候选时输出日志
+      if (deletionCandidateCount > 0 || deletionConfirmedCount > 0) {
+        console.log(`📊 [Sync] Deletion check: ${deletionCandidateCount} pending, ${deletionConfirmedCount} confirmed (${deletionCheckDuration.toFixed(1)}ms)`);
+      }
       
       // ⚠️ 性能警告
       if (deletionCheckDuration > 50) {
@@ -1815,7 +1800,7 @@ private getUserSettings(): any {
           const eventData = {
             subject: action.data.title,
             body: { 
-              contentType: 'text', 
+              contentType: 'Text', 
               content: createDescription
             },
             start: {
@@ -1907,7 +1892,7 @@ private getUserSettings(): any {
                 ...action.data,
                 updatedAt: new Date(),
                 lastLocalEdit: new Date(),
-                syncStatus: 'pending-update'
+                syncStatus: 'pending' // 🔧 [Unified] 统一使用 'pending'，不再区分 update
               };
               
               priorityLocalEvents[eventIndex] = updatedEvent;
@@ -3798,29 +3783,35 @@ private getUserSettings(): any {
   
   // 🔧 [NEW] 修复历史 pending 事件（补充到同步队列）
   private fixOrphanedPendingEvents() {
-    const MIGRATION_KEY = 'remarkable-pending-events-migration-v1';
-    
-    // 检查是否已经修复过
-    if (localStorage.getItem(MIGRATION_KEY) === 'completed') {
-      console.log('✅ [Fix Pending] Migration already completed, skipping');
-      return;
-    }
-    
+    // 每次启动时都检查，不使用迁移标记
     console.log('🔧 [Fix Pending] Scanning for orphaned pending events...');
     
     try {
       const events = JSON.parse(localStorage.getItem(STORAGE_KEYS.EVENTS) || '[]');
       
-      // 查找所有 syncStatus 为 'pending' 且 remarkableSource 为 true 的事件
-      const pendingEvents = events.filter((event: any) => 
-        event.syncStatus === 'pending' && 
-        event.remarkableSource === true &&
-        !event.externalId // 没有远程ID，说明从未同步过
-      );
+      // 查找需要同步但未同步的事件：
+      // 1. syncStatus 为 'pending'（统一的待同步状态，包含新建和更新）
+      // 2. remarkableSource = true（本地创建）
+      // 3. 没有 externalId（尚未同步到远程）
+      // 4. syncStatus !== 'local-only'（排除本地专属事件，如运行中的 Timer）
+      // 5. 有目标日历：calendarIds 不为空 或 有 tagId（可能有日历映射）
+      const pendingEvents = events.filter((event: any) => {
+        const needsSync = event.syncStatus === 'pending' && 
+                         event.remarkableSource === true &&
+                         !event.externalId;
+        
+        if (!needsSync) return false;
+        
+        // 检查是否有目标日历
+        const hasCalendars = (event.calendarIds && event.calendarIds.length > 0) || event.calendarId;
+        const hasTag = event.tagId || (event.tags && event.tags.length > 0);
+        
+        // 有日历或有标签（标签可能有日历映射）才需要同步
+        return hasCalendars || hasTag;
+      });
       
       if (pendingEvents.length === 0) {
         console.log('✅ [Fix Pending] No orphaned pending events found');
-        localStorage.setItem(MIGRATION_KEY, 'completed');
         return;
       }
       
@@ -3863,10 +3854,6 @@ private getUserSettings(): any {
       } else {
         console.log('✅ [Fix Pending] All pending events already in queue');
       }
-      
-      // 标记修复完成
-      localStorage.setItem(MIGRATION_KEY, 'completed');
-      console.log('✅ [Fix Pending] Migration completed');
       
     } catch (error) {
       console.error('❌ [Fix Pending] Failed to fix orphaned pending events:', error);

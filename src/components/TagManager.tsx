@@ -1795,7 +1795,7 @@ const TagManager: React.FC<TagManagerProps> = ({
   };
 
   return (
-    <div className="figma-tag-manager-v4" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div className="figma-tag-manager-v4" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* 添加 kbd 样式 */}
       <style>{`
         kbd {
@@ -1817,6 +1817,7 @@ const TagManager: React.FC<TagManagerProps> = ({
           scrollbar-width: none; /* Firefox */
           -ms-overflow-style: none; /* IE/Edge */
           min-height: 0; /* 允许flex收缩 */
+          padding-top: 12px; /* 🔧 为第一行的 badge 留出空间，防止被截断 */
         }
         
         .tag-list-scroll-container::-webkit-scrollbar {
@@ -1844,7 +1845,7 @@ const TagManager: React.FC<TagManagerProps> = ({
         }}
       >
       */}
-        <div style={{ padding: '20px', backgroundColor: 'white', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ backgroundColor: 'white', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
         
         {/* 搜索框 - 固定在顶部右侧，不参与滚动 */}
         <div style={{
@@ -1896,7 +1897,8 @@ const TagManager: React.FC<TagManagerProps> = ({
                 width: '100%',
                 position: 'relative',
                 borderBottom: hoveredTagId === tag.id ? '1px solid #d1d5db' : '1px solid transparent',
-                transition: 'border-bottom-color 0.2s ease'
+                transition: 'border-bottom-color 0.2s ease',
+                overflow: 'visible' // 🔧 允许 badge 溢出，防止被截断
               }}
               onMouseEnter={() => setHoveredTagId(tag.id)}
               onMouseLeave={() => setHoveredTagId(null)}
@@ -2102,7 +2104,8 @@ const TagManager: React.FC<TagManagerProps> = ({
                   color: '#000000',
                   width: '95px', // 固定宽度，防止漂移
                   justifyContent: 'center',
-                  flexShrink: 0 // 防止被压缩
+                  flexShrink: 0, // 防止被压缩
+                  overflow: 'visible' // 允许徽章溢出
                 }}>
                   <div
                     onClick={() => handleCheckin(tag.id)}
@@ -2114,7 +2117,8 @@ const TagManager: React.FC<TagManagerProps> = ({
                       alignItems: 'center',
                       justifyContent: 'center',
                       width: '25px',
-                      height: '25px'
+                      height: '25px',
+                      overflow: 'visible' // 允许徽章溢出
                     }}
                     onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
                     onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
@@ -2225,17 +2229,16 @@ const TagManager: React.FC<TagManagerProps> = ({
             </div>
           );
           })}
-        </div>
 
-        {/* 新标签创建区域 - 移出滚动容器，固定在底部 */}
-        <div 
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            marginBottom: '4px',
-            marginTop: '12px',
-            height: '24px',
-            fontSize: '16px',
+          {/* 新标签创建区域 - 在滚动容器内，跟随最后一个标签 */}
+          <div 
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              marginBottom: '4px',
+              marginTop: '12px',
+              height: '24px',
+              fontSize: '16px',
             fontFamily: "'Microsoft YaHei', Arial, sans-serif",
             position: 'relative',
             flexShrink: 0
@@ -2450,6 +2453,7 @@ const TagManager: React.FC<TagManagerProps> = ({
             </div>
           </div>
         </div>
+      </div>
 
       {/* 选择器组件 */}
       <ColorPicker

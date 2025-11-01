@@ -272,11 +272,10 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     console.log('🔍 [初始化] storageKey:', storageKey);
     try {
       const saved = localStorage.getItem(storageKey);
-      console.log('🔍 [初始化] localStorage 原始值:', saved);
       
       if (saved) {
         const settings = JSON.parse(saved);
-        console.log('🔍 [初始化] 解析后的设置:', settings);
+        console.log('🔍 [初始化] 解析后的设置 - visibleTags数量:', settings.visibleTags?.length || 0);
         
         const initialSettings = {
           eventOpacity: settings.eventOpacity ?? 85,
@@ -510,8 +509,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
 
     const handleSyncCompleted = () => {
       // ✅ 同步完成后，重新加载事件以显示最新数据
-      console.log('🔄 [SYNC] Sync completed, reloading events to update UI');
-      
       if (syncDebounceTimer) {
         clearTimeout(syncDebounceTimer);
       }
@@ -1282,7 +1279,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         return eventId;
       } else {
         // 主应用中globalTimer存在但不运行，说明timer已停止
-        console.log('⚠️ [TIMER] GlobalTimer prop exists but not running - timer stopped');
         return null;
       }
     }

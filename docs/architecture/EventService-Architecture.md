@@ -1,12 +1,15 @@
 # EventService 架构文档
 
-本文档整合了 EventService 的设计、实现和集成过程。
+本文档整合了 EventService 的设计、实现和集成过程，以及完整的事件同步机制说明。
 
 ---
 
-##  目录
+## 目录
 1. [改造背景与总结](#改造背景与总结)
-2. [集成指南](#集成指南)
+2. [完整的事件更新链路](#完整的事件更新链路)
+3. [同步状态详解](#同步状态详解)
+4. [多日历支持现状](#多日历支持现状)
+5. [集成指南](#集成指南)
 
 ---
 
@@ -290,7 +293,616 @@ EventService 不破坏现有代码：
 
 ---
 
-# 集成指南
+# 完整的事件更新链路
+
+本节详细说明应用中所有可能的事件更新源头、可能遇到的问题以及处理方案。
+
+---
+
+## 事件更新源头清单
+
+### 1. Timer 计时器
+
+#### 1.1 Timer 启动（创建 local-only 事件）
+
+**源头**：`App.tsx` → `handleTimerStart()`
+
+**流程**：
+```
+用户点击 Start Timer
+  ↓
+创建事件对象：syncStatus = 'local-only'
+  ↓
+EventService.createEvent(event, skipSync=true)
+  ↓
+保存到 localStorage（不加入同步队列）
+  ↓
+每30秒自动保存进度（skipSync=true）
+```
+
+**关键点**：
+- `skipSync=true`：避免频繁同步
+- `syncStatus='local-only'`：明确标记为本地专属
+- 不会出现在同步队列中
+
+#### 1.2 Timer 停止（转为待同步事件）
+
+**源头**：`App.tsx` → `handleTimerStopAndSave()`
+
+**流程**：
+```
+用户点击 Stop Timer
+  ↓
+更新事件：syncStatus = 'pending'（从 local-only 改为 pending）
+  ↓
+EventService.updateEvent(id, updates, skipSync=false)
+  ↓
+保存到 localStorage + 加入同步队列
+  ↓
+recordLocalAction('update', 'event', id, data)
+  ↓
+SyncAction 加入队列（synchronized=false）
+  ↓
+SyncManager 轮询队列 → 同步到 Outlook
+```
+
+**可能问题**：
+- ❌ Timer 事件没有 `tagId` 或 `calendarId` → 同步到默认日历
+- ✅ 解决：在 Timer Stop 时让用户选择标签/日历
+
+#### 1.3 Timer 取消（删除本地事件）
+
+**源头**：`App.tsx` → `handleTimerCancel()`
+
+**流程**：
+```
+用户点击 Cancel Timer
+  ↓
+EventService.deleteEvent(id, skipSync=true)
+  ↓
+从 localStorage 删除（不同步到 Outlook）
+  ↓
+触发 eventsUpdated 事件
+```
+
+**关键点**：
+- `skipSync=true`：取消操作不需要同步
+- 如果事件已有 `externalId`，需要手动处理删除（当前未实现）
+
+---
+
+### 2. TimeCalendar 日历界面
+
+#### 2.1 拖拽创建事件
+
+**源头**：`TimeCalendar.tsx` → `handleBeforeCreateEvent()`
+
+**当前实现**：❌ **未使用 EventService**（待迁移）
+
+**当前流程**：
+```
+用户拖拽日历空白区域
+  ↓
+TUI Calendar 触发 beforeCreateEvent
+  ↓
+创建事件对象：syncStatus = 'pending'
+  ↓
+直接操作 localStorage（未经过 EventService）
+  ↓
+手动调用 recordLocalAction('create', ...)
+  ↓
+手动触发 dispatchEvent('eventsUpdated')
+```
+
+**问题**：
+- ❌ 绕过了 EventService，代码重复
+- ❌ 如果忘记调用 `recordLocalAction`，事件不会同步
+- ❌ ~150 行重复的同步逻辑
+
+**应改为**：
+```
+用户拖拽日历空白区域
+  ↓
+TUI Calendar 触发 beforeCreateEvent
+  ↓
+创建事件对象
+  ↓
+EventService.createEvent(event) // 自动处理所有逻辑
+  ↓
+更新 UI：setEvents(EventService.getAllEvents())
+```
+
+#### 2.2 拖拽调整时间
+
+**源头**：`TimeCalendar.tsx` → `handleBeforeUpdateEvent()`
+
+**当前实现**：❌ **未使用 EventService**（待迁移）
+
+**当前流程**：
+```
+用户拖拽事件改变时间
+  ↓
+TUI Calendar 触发 beforeUpdateEvent
+  ↓
+更新事件对象：syncStatus = 'pending-update'
+  ↓
+直接操作 localStorage
+  ↓
+手动调用 recordLocalAction('update', ...)
+  ↓
+手动触发 dispatchEvent('eventsUpdated')
+```
+
+**问题**：
+- ❌ 可能忘记调用 `recordLocalAction` → 产生 "orphaned pending events"
+- ❌ 这是 `fixOrphanedPendingEvents()` 函数需要修复的主要场景
+
+**应改为**：
+```
+用户拖拽事件改变时间
+  ↓
+TUI Calendar 触发 beforeUpdateEvent
+  ↓
+EventService.updateEvent(id, { startTime, endTime })
+  ↓
+自动保存 + 自动同步
+```
+
+#### 2.3 删除事件
+
+**源头**：`TimeCalendar.tsx` → `handleBeforeDeleteEvent()`
+
+**流程类似**：未使用 EventService（待迁移）
+
+---
+
+### 3. EventEditModal 事件编辑弹窗
+
+#### 3.1 编辑事件内容
+
+**源头**：`EventEditModal.tsx` → `handleSave()` → 回调到父组件
+
+**流程**：
+```
+用户在弹窗中编辑事件
+  ↓
+点击保存
+  ↓
+EventEditModal 收集 formData（标题、时间、标签、日历等）
+  ↓
+自动合并标签的日历映射：
+  mappedCalendarIds = tags.map(tag => tag.calendarMapping?.calendarId)
+  uniqueCalendarIds = [...calendarIds, ...mappedCalendarIds]
+  ↓
+调用父组件的 onSave(updatedEvent)
+  ↓
+父组件（TimeCalendar 或 EventManager）保存事件
+```
+
+**关键逻辑**：
+- 标签的 `calendarMapping` 自动添加到 `calendarIds` 数组
+- `calendarId` = `calendarIds[0]`（兼容字段）
+- 如果用户选择了 2 个标签 + 1 个日历，`calendarIds` = [cal1, cal2, cal3]
+
+**当前问题**：
+- ⚠️ 父组件可能未使用 EventService → 导致同步遗漏
+- ⚠️ 多日历支持不完整（见下文"多日历支持现状"）
+
+---
+
+### 4. EventManager 事件管理器
+
+**源头**：`EventManager.tsx` → `saveEventFromModal()`
+
+**当前实现**：❌ **部分使用 EventService**
+
+**流程**：
+```
+EventEditModal 返回 updatedEvent
+  ↓
+saveEventFromModal() 接收
+  ↓
+判断是否新事件
+  ↓
+直接操作 localStorage（未使用 EventService）
+  ↓
+手动触发 dispatchEvent('local-events-changed')
+  ↓
+手动调用 recordLocalAction（如果连接到 Outlook）
+```
+
+**问题**：
+- ❌ 应该使用 `EventService.createEvent` 或 `EventService.updateEvent`
+
+---
+
+### 5. Outlook 远程同步回写
+
+#### 5.1 Outlook → 本地同步
+
+**源头**：`ActionBasedSyncManager.ts` → `syncPendingRemoteActions()`
+
+**流程**：
+```
+SyncManager 定期轮询 Outlook
+  ↓
+发现 Outlook 新增/修改/删除事件
+  ↓
+创建 SyncAction（source='outlook'）
+  ↓
+加入 actionQueue
+  ↓
+applyRemoteActionToLocal()
+  ↓
+更新本地 localStorage
+  ↓
+触发 local-events-changed 事件
+  ↓
+UI 自动刷新
+```
+
+**关键点**：
+- 远程同步**不经过 EventService**（避免循环同步）
+- 直接操作 IndexMap 和 localStorage
+- 通过 `editLocks` 机制避免冲突（用户正在编辑的事件不被覆盖）
+
+#### 5.2 同步冲突处理
+
+**冲突场景**：
+1. 用户在本地修改事件 A
+2. 同时 Outlook 也修改了事件 A
+3. 两个修改同时到达
+
+**当前处理**：
+```
+UPDATE 操作检测到冲突
+  ↓
+PRIORITY 0: 保护用户数据
+  - 立即保存用户修改到 localStorage
+  - 设置 syncStatus = 'pending-update'
+  - 创建备份（backupReason: 'update-operation'）
+  ↓
+PRIORITY 1: 检查编辑锁定
+  - 如果用户正在编辑，清除锁定允许同步
+  ↓
+PRIORITY 2-4: 决定同步策略（创建/更新/删除）
+  ↓
+最终：用户数据优先，远程修改在下次同步时处理
+```
+
+**关键机制**：
+- `editLocks`：存储正在编辑的事件ID + 过期时间
+- `recentlyUpdatedEvents`：防止误删最近更新的事件
+- 冲突标记：在标题前添加 `⚠️同步冲突 - `
+
+---
+
+### 6. 批量导入/迁移
+
+**源头**：`fixOrphanedPendingEvents()` 自动修复
+
+**触发时机**：
+- 每次应用启动（SyncManager 初始化时）
+
+**流程**：
+```
+应用启动
+  ↓
+SyncManager.initialize()
+  ↓
+fixOrphanedPendingEvents()
+  ↓
+扫描 localStorage 中的所有事件
+  ↓
+筛选条件：
+  - syncStatus = 'pending' 或 'pending-update'
+  - syncStatus ≠ 'local-only'
+  - remarkableSource = true
+  - 没有 externalId
+  - 有 calendarIds 或有 tagId（有同步目标）
+  ↓
+检查是否在同步队列中
+  ↓
+如果不在，创建 SyncAction 加入队列
+  ↓
+下次同步周期自动同步
+```
+
+**这个函数解决的问题**：
+- ✅ TimeCalendar 直接操作 localStorage 忘记调用 `recordLocalAction`
+- ✅ 应用崩溃导致同步队列丢失
+- ✅ 用户修改事件但同步失败（网络问题）
+- ✅ 历史遗留的 pending 事件
+
+**最新优化**（2025-10-30）：
+- ✅ 支持 `pending-update` 状态
+- ✅ 每次启动都检查（不再使用一次性迁移标记）
+- ✅ 过滤 `local-only` 事件（如运行中的 Timer）
+- ✅ 检查 `calendarIds` 或 `tagId`，确保有同步目标
+
+---
+
+## 问题场景与处理方案
+
+### 场景1：事件创建后没有同步
+
+**症状**：
+- 事件在本地存在
+- `syncStatus = 'pending'`
+- 没有 `externalId`
+- 不在同步队列中
+
+**原因**：
+- TimeCalendar 直接操作 localStorage，忘记调用 `recordLocalAction`
+
+**自动修复**：
+- `fixOrphanedPendingEvents()` 在下次启动时自动检测并修复
+
+**根本解决方案**：
+- 迁移 TimeCalendar 到 EventService
+
+---
+
+### 场景2：Timer 事件同步到错误的日历
+
+**症状**：
+- Timer 停止后，事件同步到了默认日历，而不是用户期望的标签日历
+
+**原因**：
+- Timer 事件创建时没有设置 `tagId` 或 `calendarId`
+- 同步时使用 `microsoftService.getSelectedCalendarId()`（默认日历）
+
+**当前处理**：
+```typescript
+// ActionBasedSyncManager.ts - CREATE 操作
+if (!syncTargetCalendarId) {
+  // 如果没有标签也没有日历，使用默认日历
+  syncTargetCalendarId = this.microsoftService.getSelectedCalendarId();
+}
+```
+
+**建议优化**：
+- 在 Timer Stop 时弹出标签选择器
+- 或者在 Timer 设置中添加"默认标签"选项
+
+---
+
+### 场景3：多标签多日历同步
+
+**症状**：
+- 用户选择了 2 个标签 + 1 个日历（共 3 个目标日历）
+- 但 Outlook 只出现 1 个事件
+
+**原因**：
+- 当前架构 `externalId` 是单值，一个本地事件只能对应一个远程事件
+- 同步时只取 `calendarIds[0]`
+
+**当前行为**：
+```typescript
+// EventEditModal 收集所有日历
+calendarIds = [cal1, cal2, cal3]
+
+// 保存时兼容处理
+calendarId = calendarIds[0] // 只用第一个
+
+// 同步时
+syncTargetCalendarId = action.data.calendarId // 只同步一个
+```
+
+**根本限制**：
+- Event 数据结构：`externalId: string`（单值）
+- 需要改为：`externalIds: { [calendarId]: externalId }`
+
+**如果要实现真正的多日历同步**：
+1. 修改 Event 类型定义
+2. 修改同步逻辑，为每个 calendarId 创建独立的远程事件
+3. UPDATE/DELETE 操作需要同步到所有关联日历
+4. 需要处理"部分日历同步失败"的场景
+
+**建议**：
+- 短期：在 UI 上明确说明"只会同步到第一个日历"
+- 长期：作为独立功能立项实现
+
+---
+
+### 场景4：同步失败后的重试
+
+**症状**：
+- 事件创建成功
+- 同步失败（网络错误 / API 错误）
+- 事件卡在 `syncStatus = 'pending'`
+
+**处理机制**：
+```typescript
+// SyncAction 结构
+interface SyncAction {
+  synchronized: boolean;  // false = 未同步
+  retryCount: number;     // 重试次数
+  lastError?: string;     // 最后错误
+  lastAttemptTime?: Date; // 最后尝试时间
+}
+```
+
+**自动重试**：
+```
+SyncManager 轮询队列
+  ↓
+发现 synchronized=false 的 action
+  ↓
+尝试同步
+  ↓
+失败 → retryCount++, synchronized=false
+  ↓
+下次轮询再次尝试（最多重试N次）
+```
+
+**持久化保证**：
+- SyncAction 队列保存在 localStorage（`remarkable-sync-actions`）
+- 应用重启后继续重试
+- `fixOrphanedPendingEvents()` 双重保险
+
+---
+
+### 场景5：用户正在编辑时远程同步覆盖
+
+**症状**：
+- 用户正在 EventEditModal 中编辑事件
+- 同时 Outlook 同步回来该事件的修改
+- 用户修改被覆盖
+
+**保护机制**：
+```typescript
+// editLocks: Map<eventId, expiryTimestamp>
+this.editLocks.set(eventId, Date.now() + 60000); // 锁定60秒
+
+// 远程同步检查锁定
+const lockStatus = this.editLocks.get(eventId);
+if (lockStatus && Date.now() < lockStatus) {
+  console.log('⏸️ Event locked by user, skipping remote update');
+  return;
+}
+```
+
+**配合 PRIORITY 0 机制**：
+```
+UPDATE 操作最高优先级：
+  1. 立即保存用户修改到 localStorage
+  2. 设置 syncStatus = 'pending-update'
+  3. 创建备份
+  4. 然后再处理远程同步
+```
+
+---
+
+## 同步流程总结
+
+### 完整链路图
+
+```
+┌─────────────┐
+│   用户操作   │ (Timer Stop / 拖拽创建 / 编辑弹窗)
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│ EventService│ (推荐) 或 直接操作 localStorage (待迁移)
+└──────┬──────┘
+       │
+       ├──► localStorage 保存 (remarkable-events)
+       │
+       ├──► recordLocalAction('create'/'update'/'delete')
+       │
+       ├──► dispatchEvent('eventsUpdated')
+       │
+       ▼
+┌─────────────┐
+│ SyncAction  │
+│   Queue     │ (localStorage: remarkable-sync-actions)
+└──────┬──────┘
+       │
+       │ (定期轮询: 30秒)
+       ▼
+┌─────────────┐
+│ SyncManager │
+│  Polling    │
+└──────┬──────┘
+       │
+       ├──► syncPendingLocalActions() → Outlook API
+       │     - POST/PATCH/DELETE 请求
+       │     - 更新 externalId
+       │     - 更新 syncStatus = 'synced'
+       │
+       └──► syncPendingRemoteActions() → 本地 localStorage
+             - Outlook 新增/修改/删除
+             - 避免 editLocks 冲突
+             - 触发 local-events-changed
+
+```
+
+### 关键数据结构
+
+**Event（types.ts）**：
+```typescript
+{
+  id: string;                // 本地唯一ID
+  externalId?: string;       // Outlook 事件ID（单值）
+  calendarId?: string;       // 兼容字段（第一个日历）
+  calendarIds?: string[];    // 多日历支持（UI层面）
+  syncStatus: 'pending' | 'pending-update' | 'synced' | 'local-only' | 'error';
+  remarkableSource: boolean; // true=本地创建，false=Outlook导入
+  tags?: string[];           // 标签（可能有日历映射）
+}
+```
+
+**SyncAction（ActionBasedSyncManager.ts）**：
+```typescript
+{
+  id: string;
+  type: 'create' | 'update' | 'delete';
+  entityType: 'event' | 'task';
+  entityId: string;          // 对应 Event.id
+  source: 'local' | 'outlook';
+  data: Event;               // 完整事件数据
+  oldData?: Event;           // 更新前的数据（用于冲突检测）
+  synchronized: boolean;     // false=待同步，true=已完成
+  retryCount: number;        // 重试次数
+  timestamp: Date;           // 创建时间
+}
+```
+
+---
+
+## 最佳实践建议
+
+### 1. 所有事件操作都应使用 EventService
+
+```typescript
+// ✅ 推荐
+await EventService.createEvent(event);
+await EventService.updateEvent(id, updates);
+await EventService.deleteEvent(id);
+
+// ❌ 不推荐
+localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+syncManager.recordLocalAction('create', 'event', id, event);
+```
+
+### 2. Timer 运行中使用 skipSync=true
+
+```typescript
+// Timer 启动 - 不同步
+await EventService.createEvent(event, true);
+
+// Timer 停止 - 同步
+await EventService.updateEvent(id, updates, false);
+```
+
+### 3. 明确事件的同步意图
+
+```typescript
+// 需要同步：设置 syncStatus 和目标日历
+event.syncStatus = 'pending';
+event.calendarIds = [selectedCalendarId];
+
+// 不需要同步：设置 local-only
+event.syncStatus = 'local-only';
+```
+
+### 4. 处理同步失败
+
+```typescript
+const result = await EventService.createEvent(event);
+
+if (!result.success) {
+  // 事件已保存到本地，但可能同步失败
+  console.error('同步失败，将在后台重试');
+  // 不需要特殊处理，SyncManager 会自动重试
+}
+```
+
+---
+
+
 
 
 

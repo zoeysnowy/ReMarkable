@@ -1037,7 +1037,7 @@ export class MicrosoftCalendarService {
       
       const outlookEventData: any = {
         subject: eventData.subject || eventData.title,
-        body: eventData.body || { contentType: 'text', content: eventData.description || '' }
+        body: eventData.body || { contentType: 'Text', content: eventData.description || '' }
       };
       
       // 🔧 强化时间字段处理和验证
@@ -1142,7 +1142,7 @@ export class MicrosoftCalendarService {
       
       const outlookEventData = {
         subject: eventData.subject || eventData.title,
-        body: eventData.body || { contentType: 'text', content: eventData.description || '' },
+        body: eventData.body || { contentType: 'Text', content: eventData.description || '' },
         start: {
           dateTime: typeof startDateTime === 'string' ? startDateTime : formatTimeForStorage(startDateTime),
           timeZone: 'Asia/Shanghai'
@@ -1568,7 +1568,7 @@ export class MicrosoftCalendarService {
       
       const outlookEventData = {
         subject: event.subject || event.title,
-        body: event.body || { contentType: 'text', content: event.description || '' },
+        body: event.body || { contentType: 'Text', content: event.description || '' },
         start: {
           dateTime: typeof startDateTime === 'string' ? startDateTime : formatTimeForStorage(startDateTime),
           timeZone: 'Asia/Shanghai'
@@ -1577,7 +1577,11 @@ export class MicrosoftCalendarService {
           dateTime: typeof endDateTime === 'string' ? endDateTime : formatTimeForStorage(endDateTime),
           timeZone: 'Asia/Shanghai'
         },
-        location: event.location ? { displayName: event.location } : undefined,
+        location: event.location 
+          ? (typeof event.location === 'string' 
+              ? { displayName: event.location }
+              : event.location)
+          : undefined,
         isAllDay: event.isAllDay || false
       };
       

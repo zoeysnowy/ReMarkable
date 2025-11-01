@@ -496,14 +496,6 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
                           const paddingLeft = `${(tag.level || 0) * 12}px`;
                           const computedPadding = (tag.level || 0) * 12;
                           
-                          // 每个标签渲染时单独记录
-                          console.log(`🏷️ 渲染标签 "${tag.name}":`, {
-                            level: tag.level,
-                            paddingLeft,
-                            computedPadding,
-                            style对象: { paddingLeft }
-                          });
-                          
                           return (
                             <label
                               key={tag.id}
