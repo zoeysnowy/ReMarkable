@@ -189,22 +189,13 @@ export const FreeFormEditor = <T,>({
       
       onLinesChange(newLines);
       
-      // 聚焦到新行（增加延迟确保 DOM 更新完成）
+      // 聚焦到新行
       setTimeout(() => {
         const newElement = document.querySelector(
           `[data-line-id="${newLine.id}"]`
         ) as HTMLElement;
-        if (newElement) {
-          newElement.focus();
-          // 确保光标在开头
-          const range = document.createRange();
-          const sel = window.getSelection();
-          range.selectNodeContents(newElement);
-          range.collapse(true); // true = 光标在开头
-          sel?.removeAllRanges();
-          sel?.addRange(range);
-        }
-      }, 50); // 增加延迟到 50ms
+        newElement?.focus();
+      }, 10);
     }
     
     // Backspace: 删除标签或删除空行
@@ -488,8 +479,6 @@ export const FreeFormEditor = <T,>({
                 cursor: 'text',
                 userSelect: 'text',
                 minWidth: '100px',
-                whiteSpace: 'pre-wrap', // 🎯 支持换行和空格保留
-                wordBreak: 'break-word', // 🎯 长单词自动换行
                 // 🆕 Description 模式样式
                 ...(isDescriptionMode && {
                   fontSize: '13px',

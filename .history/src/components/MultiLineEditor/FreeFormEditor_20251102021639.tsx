@@ -488,8 +488,6 @@ export const FreeFormEditor = <T,>({
                 cursor: 'text',
                 userSelect: 'text',
                 minWidth: '100px',
-                whiteSpace: 'pre-wrap', // 🎯 支持换行和空格保留
-                wordBreak: 'break-word', // 🎯 长单词自动换行
                 // 🆕 Description 模式样式
                 ...(isDescriptionMode && {
                   fontSize: '13px',
