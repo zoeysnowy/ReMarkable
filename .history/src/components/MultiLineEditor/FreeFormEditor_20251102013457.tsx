@@ -96,26 +96,17 @@ export const FreeFormEditor = <T,>({
     if (e.key === 'Enter' && e.shiftKey && !isDescriptionMode) {
       e.preventDefault();
       
-      // 创建一个新的 description 行
-      const descLine: FreeFormLine<T> = {
-        id: `${lineId}-desc`,
-        content: '',
-        level: level + 1,
-        data: { ...(currentLine.data || {}), mode: 'description' } as T,
-      };
+      // 切换到 description 模式
+      const updatedLines = lines.map(line =>
+        line.id === lineId
+          ? { ...line, data: { ...(line.data || {}), mode: 'description' } as T }
+          : line
+      );
+      onLinesChange(updatedLines);
       
-      // 插入 description 行在当前行后面
-      const newLines = [
-        ...lines.slice(0, currentIndex + 1),
-        descLine,
-        ...lines.slice(currentIndex + 1),
-      ];
-      
-      onLinesChange(newLines);
-      
-      // 聚焦到新创建的 description 行
+      // 保持焦点
       setTimeout(() => {
-        const element = document.querySelector(`[data-line-id="${descLine.id}"]`) as HTMLElement;
+        const element = document.querySelector(`[data-line-id="${lineId}"]`) as HTMLElement;
         element?.focus();
       }, 10);
       return;
@@ -125,35 +116,18 @@ export const FreeFormEditor = <T,>({
     if (e.key === 'Tab' && e.shiftKey && isDescriptionMode) {
       e.preventDefault();
       
-      const target = e.currentTarget as HTMLElement;
-      const isEmpty = target.textContent?.trim() === '';
+      // 切换回 title 模式
+      const updatedLines = lines.map(line =>
+        line.id === lineId
+          ? { ...line, data: { ...(line.data || {}), mode: 'title' } as T }
+          : line
+      );
+      onLinesChange(updatedLines);
       
-      // 先保存当前 description 内容（如果有内容）
-      if (!isEmpty) {
-        handleLineBlur(lineId, target);
-      }
-      
-      // 如果 description 为空，删除该行；否则保留
-      const newLines = isEmpty 
-        ? lines.filter(l => l.id !== lineId)
-        : lines; // 保留 description 行，只是切换焦点
-      
-      onLinesChange(newLines);
-      
-      // 聚焦到对应的 title 行
-      const titleLineId = lineId.replace('-desc', '');
+      // 保持焦点
       setTimeout(() => {
-        const element = document.querySelector(`[data-line-id="${titleLineId}"]`) as HTMLElement;
-        if (element) {
-          element.focus();
-          // 光标移到末尾
-          const range = document.createRange();
-          const sel = window.getSelection();
-          range.selectNodeContents(element);
-          range.collapse(false);
-          sel?.removeAllRanges();
-          sel?.addRange(range);
-        }
+        const element = document.querySelector(`[data-line-id="${lineId}"]`) as HTMLElement;
+        element?.focus();
       }, 10);
       return;
     }
@@ -331,8 +305,8 @@ export const FreeFormEditor = <T,>({
       }
     }
     
-    // Tab: 增加缩进（Description 模式不支持）
-    else if (e.key === 'Tab' && !e.shiftKey && !isDescriptionMode) {
+    // Tab: 增加缩进
+    else if (e.key === 'Tab' && !e.shiftKey) {
       e.preventDefault();
       e.stopPropagation();
       
@@ -344,9 +318,8 @@ export const FreeFormEditor = <T,>({
       onLinesChange(updatedLines);
     }
     
-    // Shift+Tab: 减少缩进（Title 模式）或切换回 Title（Description 模式）
-    // Description 模式的 Shift+Tab 已在上面处理，这里只处理 Title 模式
-    else if (e.key === 'Tab' && e.shiftKey && !isDescriptionMode) {
+    // Shift+Tab: 减少缩进
+    else if (e.key === 'Tab' && e.shiftKey) {
       e.preventDefault();
       e.stopPropagation();
       
@@ -401,78 +374,67 @@ export const FreeFormEditor = <T,>({
   // ==================== 渲染 ====================
   return (
     <div className={`free-form-editor ${className}`} style={style}>
-      {lines.map((line) => {
-        const isDescriptionMode = (line.data as any)?.mode === 'description';
-        
-        return (
-          <div
-            key={line.id}
-            className="free-form-line"
-            style={{
+      {lines.map((line) => (
+        <div
+          key={line.id}
+          className="free-form-line"
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start', // 🔧 改为顶部对齐，防止多行文本时首行向上移动
+            marginBottom: '4px',
+            paddingLeft: `${line.level * 24}px`,
+            width: '100%', // 🔧 确保占满宽度，suffix 才能右对齐到边缘
+          }}
+        >
+          {/* 前缀装饰（Checkbox、Emoji 等）*/}
+          {renderLinePrefix && (
+            <span className="line-prefix" style={{ 
+              marginRight: '8px',
               display: 'flex',
-              alignItems: 'flex-start', // 🔧 改为顶部对齐，防止多行文本时首行向上移动
-              marginBottom: '4px',
-              paddingLeft: isDescriptionMode ? `${(line.level + 1) * 24}px` : `${line.level * 24}px`, // 🆕 description 模式额外缩进
-              width: '100%', // 🔧 确保占满宽度，suffix 才能右对齐到边缘
-            }}
-          >
-            {/* 前缀装饰（Checkbox、Emoji 等）- Description 模式不显示 */}
-            {renderLinePrefix && !isDescriptionMode && (
-              <span className="line-prefix" style={{ 
-                marginRight: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                paddingTop: '2px' // 🔧 轻微向下偏移，与首行文字对齐
-              }}>
-                {renderLinePrefix(line)}
-              </span>
-            )}
-            
-            {/* 可编辑文本 */}
-            <span
-              className={`line-text ${isDescriptionMode ? 'description-mode' : ''}`}
-              data-line-id={line.id}
-              contentEditable
-              suppressContentEditableWarning
-              onBlur={(e) => handleLineBlur(line.id, e.currentTarget)}
-              onKeyDown={(e) => handleLineKeyDown(e, line.id, line.level)}
-              onClick={() => onLineClick?.(line)}
-              ref={(el) => {
-                if (el && !initializedLinesRef.current.has(line.id)) {
-                  // 只在首次渲染时设置 innerHTML
-                  if (el.innerHTML !== line.content) {
-                    el.innerHTML = line.content || '';
-                  }
-                  initializedLinesRef.current.add(line.id);
+              alignItems: 'center',
+              paddingTop: '2px' // 🔧 轻微向下偏移，与首行文字对齐
+            }}>
+              {renderLinePrefix(line)}
+            </span>
+          )}
+          
+          {/* 可编辑文本 */}
+          <span
+            className="line-text"
+            data-line-id={line.id}
+            contentEditable
+            suppressContentEditableWarning
+            onBlur={(e) => handleLineBlur(line.id, e.currentTarget)}
+            onKeyDown={(e) => handleLineKeyDown(e, line.id, line.level)}
+            onClick={() => onLineClick?.(line)}
+            ref={(el) => {
+              if (el && !initializedLinesRef.current.has(line.id)) {
+                // 只在首次渲染时设置 innerHTML
+                if (el.innerHTML !== line.content) {
+                  el.innerHTML = line.content || '';
                 }
-              }}
-              style={{
-                outline: 'none',
-                border: 'none',
-                background: 'transparent',
-                flex: 1,
-                cursor: 'text',
-                userSelect: 'text',
-                minWidth: '100px',
-                // 🆕 Description 模式样式
-                ...(isDescriptionMode && {
-                  fontSize: '13px',
-                  color: '#6b7280',
-                  lineHeight: '1.6',
-                  fontStyle: 'italic',
-                }),
-              }}
-            />
-            
-            {/* 后缀装饰（标签、时间等）- Description 模式不显示 */}
-            {renderLineSuffix && !isDescriptionMode && (
-              <span className="line-suffix" style={{ marginLeft: 'auto', paddingLeft: '8px' }}>
-                {renderLineSuffix(line)}
-              </span>
-            )}
-          </div>
-        );
-      })}
+                initializedLinesRef.current.add(line.id);
+              }
+            }}
+            style={{
+              outline: 'none',
+              border: 'none',
+              background: 'transparent',
+              flex: 1,
+              cursor: 'text',
+              userSelect: 'text',
+              minWidth: '100px',
+            }}
+          />
+          
+          {/* 后缀装饰（标签、时间等）*/}
+          {renderLineSuffix && (
+            <span className="line-suffix" style={{ marginLeft: 'auto', paddingLeft: '8px' }}>
+              {renderLineSuffix(line)}
+            </span>
+          )}
+        </div>
+      ))}
       
       {/* Gray Text 提示 */}
       <div

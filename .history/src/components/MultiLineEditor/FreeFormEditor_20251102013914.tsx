@@ -125,19 +125,8 @@ export const FreeFormEditor = <T,>({
     if (e.key === 'Tab' && e.shiftKey && isDescriptionMode) {
       e.preventDefault();
       
-      const target = e.currentTarget as HTMLElement;
-      const isEmpty = target.textContent?.trim() === '';
-      
-      // 先保存当前 description 内容（如果有内容）
-      if (!isEmpty) {
-        handleLineBlur(lineId, target);
-      }
-      
-      // 如果 description 为空，删除该行；否则保留
-      const newLines = isEmpty 
-        ? lines.filter(l => l.id !== lineId)
-        : lines; // 保留 description 行，只是切换焦点
-      
+      // 删除当前 description 行，回到 title
+      const newLines = lines.filter(l => l.id !== lineId);
       onLinesChange(newLines);
       
       // 聚焦到对应的 title 行

@@ -96,26 +96,17 @@ export const FreeFormEditor = <T,>({
     if (e.key === 'Enter' && e.shiftKey && !isDescriptionMode) {
       e.preventDefault();
       
-      // 创建一个新的 description 行
-      const descLine: FreeFormLine<T> = {
-        id: `${lineId}-desc`,
-        content: '',
-        level: level + 1,
-        data: { ...(currentLine.data || {}), mode: 'description' } as T,
-      };
+      // 切换到 description 模式
+      const updatedLines = lines.map(line =>
+        line.id === lineId
+          ? { ...line, data: { ...(line.data || {}), mode: 'description' } as T }
+          : line
+      );
+      onLinesChange(updatedLines);
       
-      // 插入 description 行在当前行后面
-      const newLines = [
-        ...lines.slice(0, currentIndex + 1),
-        descLine,
-        ...lines.slice(currentIndex + 1),
-      ];
-      
-      onLinesChange(newLines);
-      
-      // 聚焦到新创建的 description 行
+      // 保持焦点
       setTimeout(() => {
-        const element = document.querySelector(`[data-line-id="${descLine.id}"]`) as HTMLElement;
+        const element = document.querySelector(`[data-line-id="${lineId}"]`) as HTMLElement;
         element?.focus();
       }, 10);
       return;
@@ -125,35 +116,18 @@ export const FreeFormEditor = <T,>({
     if (e.key === 'Tab' && e.shiftKey && isDescriptionMode) {
       e.preventDefault();
       
-      const target = e.currentTarget as HTMLElement;
-      const isEmpty = target.textContent?.trim() === '';
+      // 切换回 title 模式
+      const updatedLines = lines.map(line =>
+        line.id === lineId
+          ? { ...line, data: { ...(line.data || {}), mode: 'title' } as T }
+          : line
+      );
+      onLinesChange(updatedLines);
       
-      // 先保存当前 description 内容（如果有内容）
-      if (!isEmpty) {
-        handleLineBlur(lineId, target);
-      }
-      
-      // 如果 description 为空，删除该行；否则保留
-      const newLines = isEmpty 
-        ? lines.filter(l => l.id !== lineId)
-        : lines; // 保留 description 行，只是切换焦点
-      
-      onLinesChange(newLines);
-      
-      // 聚焦到对应的 title 行
-      const titleLineId = lineId.replace('-desc', '');
+      // 保持焦点
       setTimeout(() => {
-        const element = document.querySelector(`[data-line-id="${titleLineId}"]`) as HTMLElement;
-        if (element) {
-          element.focus();
-          // 光标移到末尾
-          const range = document.createRange();
-          const sel = window.getSelection();
-          range.selectNodeContents(element);
-          range.collapse(false);
-          sel?.removeAllRanges();
-          sel?.addRange(range);
-        }
+        const element = document.querySelector(`[data-line-id="${lineId}"]`) as HTMLElement;
+        element?.focus();
       }, 10);
       return;
     }

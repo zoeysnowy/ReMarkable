@@ -253,35 +253,10 @@ const PlanManager: React.FC<PlanManagerProps> = ({
 
   // 处理编辑器内容变化
   const handleLinesChange = (newLines: FreeFormLine<PlanItem>[]) => {
-    // 按 item id 分组（title + description）
-    const itemGroups = new Map<string, { title?: FreeFormLine<PlanItem>, description?: FreeFormLine<PlanItem> }>();
-    
     newLines.forEach((line) => {
-      const itemId = line.id.includes('-desc') ? line.id.replace('-desc', '') : line.id;
-      const isDescription = line.id.includes('-desc') || line.data?.mode === 'description';
-      
-      if (!itemGroups.has(itemId)) {
-        itemGroups.set(itemId, {});
-      }
-      
-      const group = itemGroups.get(itemId)!;
-      if (isDescription) {
-        group.description = line;
-      } else {
-        group.title = line;
-      }
-    });
-    
-    // 处理每个 item 组
-    itemGroups.forEach((group, itemId) => {
-      const titleLine = group.title;
-      const descLine = group.description;
-      
-      if (!titleLine) return; // 没有 title 行，跳过
-      
-      // 从 title HTML 内容中提取纯文本和标签
+      // 从 HTML 内容中提取纯文本和标签
       const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = titleLine.content;
+      tempDiv.innerHTML = line.content;
       
       // 提取标签
       const tagElements = tempDiv.querySelectorAll('.inline-tag');
@@ -294,30 +269,26 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       // 提取纯文本（移除标签后的文本）
       const plainText = tempDiv.textContent || '';
       
-      if (titleLine.data) {
-        const updatedItem: PlanItem = { 
-          ...titleLine.data, 
+      if (line.data) {
+        const updatedItem = { 
+          ...line.data, 
           title: plainText,
-          content: titleLine.content, // 保存 HTML 用于显示
+          content: line.content, // 保存 HTML 用于显示
           tags: extractedTags,
-          level: titleLine.level,
-          mode: (descLine ? 'description' : 'title') as 'title' | 'description', // 🆕 有 description 行则标记为 description 模式
-          description: descLine?.content || undefined, // 🆕 保存 description HTML
+          level: line.level,
         };
         onSave(updatedItem);
       } else {
         // 创建新项目
         const newItem: PlanItem = {
-          id: titleLine.id,
+          id: line.id,
           title: plainText,
-          content: titleLine.content,
+          content: line.content,
           tags: extractedTags,
           priority: 'medium',
           isCompleted: false,
           type: 'todo',
-          level: titleLine.level,
-          mode: descLine ? 'description' : 'title',
-          description: descLine?.content || undefined,
+          level: line.level,
         };
         onSave(newItem);
         syncToUnifiedTimeline(newItem);

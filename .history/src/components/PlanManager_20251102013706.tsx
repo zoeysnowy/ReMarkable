@@ -295,13 +295,13 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       const plainText = tempDiv.textContent || '';
       
       if (titleLine.data) {
-        const updatedItem: PlanItem = { 
+        const updatedItem = { 
           ...titleLine.data, 
           title: plainText,
           content: titleLine.content, // 保存 HTML 用于显示
           tags: extractedTags,
           level: titleLine.level,
-          mode: (descLine ? 'description' : 'title') as 'title' | 'description', // 🆕 有 description 行则标记为 description 模式
+          mode: descLine ? 'description' : 'title', // 🆕 有 description 行则标记为 description 模式
           description: descLine?.content || undefined, // 🆕 保存 description HTML
         };
         onSave(updatedItem);
