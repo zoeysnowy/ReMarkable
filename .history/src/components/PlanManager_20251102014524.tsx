@@ -118,13 +118,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           // 更新当前聚焦的行 ID
           setCurrentFocusedLineId(lineId);
           
-          // 🆕 检测当前行的模式
-          const isDescriptionLine = lineId.includes('-desc') || target.classList.contains('description-mode');
-          setCurrentFocusedMode(isDescriptionLine ? 'description' : 'title');
-          
           // 找到对应的 PlanItem，更新当前选中的标签
-          const actualItemId = lineId.replace('-desc', ''); // 移除 -desc 后缀获取真实 item id
-          const item = items.find(i => i.id === actualItemId);
+          const item = items.find(i => i.id === lineId);
           if (item && item.tags) {
             // 将标签名称转换为标签ID
             const tagIds = item.tags
@@ -578,8 +573,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           
           // 只插入新增的标签到光标位置
           if (currentFocusedLineId && newTagIds.length > 0) {
-            const actualItemId = currentFocusedLineId.replace('-desc', '');
-            const item = items.find(i => i.id === actualItemId);
+            const item = items.find(i => i.id === currentFocusedLineId);
             
             if (item) {
               // 获取当前聚焦的 contentEditable 元素
@@ -593,10 +587,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                   editableElement.focus();
                 }
                 
-                // 🆕 根据模式决定行为
-                const isDescriptionMode = currentFocusedMode === 'description';
-                
-                // 只为新增的标签创建 HTML（两种模式都需要视觉显示）
+                // 只为新增的标签创建 HTML
                 newTagIds.forEach(tagId => {
                   const tag = TagService.getTagById(tagId);
                   if (!tag) return;
@@ -618,7 +609,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                   tagSpan.contentEditable = 'false';
                   tagSpan.setAttribute('data-tag-id', tagId);
                   tagSpan.setAttribute('data-tag-name', tag.name);
-                  tagSpan.className = isDescriptionMode ? 'inline-tag mention-only' : 'inline-tag';
+                  tagSpan.className = 'inline-tag';
                   tagSpan.style.cssText = `
                     display: inline-block;
                     padding: 2px 6px;
@@ -656,39 +647,29 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                 // 手动触发保存（不使用 blur/focus，避免焦点混乱）
                 const updatedContent = editableElement.innerHTML;
                 
-                // 🆕 区分 Title 和 Description 模式的保存逻辑
-                if (isDescriptionMode) {
-                  // Description 模式：仅更新 description 内容，不提取标签到元数据
-                  const updatedItem = {
-                    ...item,
-                    description: updatedContent, // 保存 HTML
-                  };
-                  onSave(updatedItem);
-                } else {
-                  // Title 模式：提取标签并更新元数据
-                  const tempDiv = document.createElement('div');
-                  tempDiv.innerHTML = updatedContent;
-                  
-                  // 提取标签（只提取非 mention-only 的标签）
-                  const tagElements = tempDiv.querySelectorAll('.inline-tag:not(.mention-only)');
-                  const extractedTags: string[] = [];
-                  tagElements.forEach(tagEl => {
-                    const tagName = tagEl.getAttribute('data-tag-name');
-                    if (tagName) extractedTags.push(tagName);
-                  });
-                  
-                  // 提取纯文本
-                  const plainText = tempDiv.textContent || '';
-                  
-                  const updatedItem = {
-                    ...item,
-                    title: plainText,
-                    content: updatedContent,
-                    tags: extractedTags, // 🎯 关联到 Event 元数据
-                  };
-                  
-                  onSave(updatedItem);
-                }
+                // 从 HTML 内容中提取纯文本和标签
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = updatedContent;
+                
+                // 提取标签
+                const tagElements = tempDiv.querySelectorAll('.inline-tag');
+                const extractedTags: string[] = [];
+                tagElements.forEach(tagEl => {
+                  const tagName = tagEl.getAttribute('data-tag-name');
+                  if (tagName) extractedTags.push(tagName);
+                });
+                
+                // 提取纯文本
+                const plainText = tempDiv.textContent || '';
+                
+                const updatedItem = {
+                  ...item,
+                  title: plainText,
+                  content: updatedContent,
+                  tags: extractedTags,
+                };
+                
+                onSave(updatedItem);
               }
             }
           }
@@ -697,80 +678,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           // TODO: 应用 emoji 到当前选中的项目
         }}
         onDateRangeSelect={(start: Date, end: Date) => {
-          // 🆕 根据模式决定行为
-          if (currentFocusedLineId) {
-            const actualItemId = currentFocusedLineId.replace('-desc', '');
-            const item = items.find(i => i.id === actualItemId);
-            const editableElement = document.querySelector(
-              `[data-line-id="${currentFocusedLineId}"]`
-            ) as HTMLElement;
-            
-            if (item && editableElement && editableElement.isContentEditable) {
-              const isDescriptionMode = currentFocusedMode === 'description';
-              
-              // 创建日期 span（两种模式都需要视觉显示）
-              const dateSpan = document.createElement('span');
-              dateSpan.contentEditable = 'false';
-              dateSpan.className = isDescriptionMode ? 'inline-date mention-only' : 'inline-date';
-              dateSpan.setAttribute('data-start-date', start.toISOString());
-              if (end && end.getTime() !== start.getTime()) {
-                dateSpan.setAttribute('data-end-date', end.toISOString());
-              }
-              dateSpan.style.cssText = `
-                display: inline-block;
-                padding: 2px 8px;
-                margin: 0 2px;
-                border-radius: 4px;
-                background-color: rgba(59, 130, 246, 0.1);
-                color: #3b82f6;
-                font-size: 13px;
-                font-weight: 500;
-                cursor: default;
-                user-select: none;
-              `;
-              dateSpan.textContent = `📅 ${formatDateDisplay(start, true)}${end && end.getTime() !== start.getTime() ? ' - ' + formatDateDisplay(end, true) : ''}`;
-              
-              // 在光标位置插入
-              const selection = window.getSelection();
-              if (selection && selection.rangeCount > 0) {
-                const range = selection.getRangeAt(0);
-                range.deleteContents();
-                range.insertNode(dateSpan);
-                
-                // 添加空格
-                const space = document.createTextNode(' ');
-                range.collapse(false);
-                range.insertNode(space);
-                
-                // 移动光标到空格后
-                range.setStartAfter(space);
-                range.setEndAfter(space);
-                selection.removeAllRanges();
-                selection.addRange(range);
-              }
-              
-              // 🆕 区分模式保存
-              const updatedContent = editableElement.innerHTML;
-              
-              if (isDescriptionMode) {
-                // Description 模式：仅更新 description 内容
-                const updatedItem = {
-                  ...item,
-                  description: updatedContent,
-                };
-                onSave(updatedItem);
-              } else {
-                // Title 模式：更新 content 并关联时间到元数据
-                const updatedItem = {
-                  ...item,
-                  content: updatedContent,
-                  startTime: start.toISOString(), // 🎯 关联到 Event 元数据
-                  endTime: (end && end.getTime() !== start.getTime()) ? end.toISOString() : start.toISOString(),
-                };
-                onSave(updatedItem);
-              }
-            }
-          }
+          // TODO: 应用日期范围到当前选中的项目
         }}
         onPrioritySelect={(priority: 'low' | 'medium' | 'high' | 'urgent') => {
           // TODO: 应用优先级到当前选中的项目
