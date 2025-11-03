@@ -931,12 +931,18 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       </div>
 
       <div className="plan-list-scroll-container" ref={editorContainerRef}>
-        <SlateFreeFormEditor
+        <TiptapFreeFormEditor
             lines={editorLines}
             onLinesChange={handleLinesChange}
             renderLinePrefix={renderLinePrefix}
             renderLineSuffix={renderLineSuffix}
             placeholder="✨ Enter 创建新事件 | Shift+Enter 切换描述模式 | Tab 调整层级 | ↑↓ 导航"
+            onEditorReady={(lineId, editor) => {
+              editorRegistryRef.current.set(lineId, editor);
+            }}
+            onEditorDestroy={(lineId) => {
+              editorRegistryRef.current.delete(lineId);
+            }}
           />
       </div>
 
