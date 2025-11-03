@@ -72,11 +72,8 @@ export const SlateLine: React.FC<SlateLineProps> = ({
   onDelete,
   className = '',
 }) => {
-  // 创建编辑器实例 - 应用插件链：withCustom (自定义配置) → withHistory (撤销/重做) → withReact (React绑定)
-  const baseEditor = useMemo(() => withCustom(withHistory(withReact(createEditor()))), []);
-  
-  // 应用 Android 插件（使用 Hook，确保移动端兼容性）
-  const editor = useAndroidPlugin(baseEditor);
+  // 创建编辑器实例 - 应用插件链：withAndroid (移动端支持) → withCustom (自定义配置) → withHistory (撤销/重做) → withReact (React绑定)
+  const editor = useMemo(() => withAndroid(withCustom(withHistory(withReact(createEditor())))), []);
   
   // 初始化内容
   const [value, setValue] = useState<Descendant[]>(() => {

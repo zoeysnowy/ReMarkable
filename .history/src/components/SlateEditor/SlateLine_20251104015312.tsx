@@ -8,7 +8,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createEditor, Descendant, Editor, Transforms, Range, Element as SlateElement } from 'slate';
 import { Slate, Editable, withReact, RenderElementProps, RenderLeafProps } from 'slate-react';
 import { withHistory } from 'slate-history';
-import { useAndroidPlugin } from 'slate-android-plugin';
+import { withAndroid } from 'slate-android-plugin';
 import { TagElementComponent } from './elements/TagElement';
 import { DateMentionElementComponent } from './elements/DateMentionElement';
 import { deserializeFromHtml, serializeToHtml, isInlineElement, createEmptyParagraph } from './utils';
@@ -72,11 +72,8 @@ export const SlateLine: React.FC<SlateLineProps> = ({
   onDelete,
   className = '',
 }) => {
-  // 创建编辑器实例 - 应用插件链：withCustom (自定义配置) → withHistory (撤销/重做) → withReact (React绑定)
-  const baseEditor = useMemo(() => withCustom(withHistory(withReact(createEditor()))), []);
-  
-  // 应用 Android 插件（使用 Hook，确保移动端兼容性）
-  const editor = useAndroidPlugin(baseEditor);
+  // 创建编辑器实例
+  const editor = useMemo(() => withCustom(withHistory(withReact(createEditor()))), []);
   
   // 初始化内容
   const [value, setValue] = useState<Descendant[]>(() => {

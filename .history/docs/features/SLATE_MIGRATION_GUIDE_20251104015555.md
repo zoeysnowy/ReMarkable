@@ -276,24 +276,15 @@ npm install slate-android-plugin --save --legacy-peer-deps
 在 `src/components/SlateEditor/SlateLine.tsx` 中：
 
 ```typescript
-import { useAndroidPlugin } from 'slate-android-plugin';
+import { withAndroid } from 'slate-android-plugin';
 
-// 创建基础编辑器（应用插件链）
-const baseEditor = useMemo(() => 
-  withCustom(withHistory(withReact(createEditor()))), 
+// 插件应用顺序（从右到左）：
+// createEditor() → withReact() → withHistory() → withCustom() → withAndroid()
+const editor = useMemo(() => 
+  withAndroid(withCustom(withHistory(withReact(createEditor())))), 
   []
 );
-
-// 应用 Android 插件（使用 Hook）
-const editor = useAndroidPlugin(baseEditor);
 ```
-
-#### 使用说明
-
-`useAndroidPlugin` 是一个 React Hook，必须在组件内部使用：
-- **输入**: 接收一个 Slate 编辑器实例
-- **输出**: 返回增强后的编辑器，支持 Android 特性
-- **应用时机**: 在所有其他插件（withReact, withHistory, withCustom）之后
 
 #### 解决的问题
 
@@ -302,30 +293,23 @@ const editor = useAndroidPlugin(baseEditor);
 3. **选区管理**：优化文本选择和编辑体验
 4. **键盘事件**：处理 Android 特有的键盘事件
 
-#### 插件应用顺序
+#### 插件顺序说明
 
-插件按以下顺序应用：
-1. `createEditor()`: 创建基础 Slate 编辑器
-2. `withReact()`: 提供 React 绑定
-3. `withHistory()`: 提供撤销/重做功能
-4. `withCustom()`: 自定义配置（inline、void 元素）
-5. `useAndroidPlugin()`: Android 设备兼容性（最后应用，作为 Hook）
+插件按以下顺序应用（从内到外）：
+1. `withReact`: 提供 React 绑定
+2. `withHistory`: 提供撤销/重做功能
+3. `withCustom`: 自定义配置（inline、void 元素）
+4. `withAndroid`: Android 设备兼容性（最外层，最先处理输入）
 
-这个顺序确保 Android 相关的输入处理在编辑器准备好后才应用。
+这个顺序确保 Android 相关的输入处理在其他插件之前执行。
 
 #### 测试建议
 
 在以下设备上测试编辑器功能：
-- ✅ Android 手机（使用中文输入法、日文输入法、韩文输入法）
-- ✅ Android 平板
-- ✅ iOS 设备（作为对照）
-- ✅ 桌面浏览器（Chrome、Firefox、Edge、Safari）
-
-特别关注：
-- 中文拼音输入过程中的组合字符显示
-- 输入法候选词选择后的光标位置
-- 文本选择和复制粘贴
-- 表情符号输入
+- Android 手机（使用中文输入法）
+- Android 平板
+- iOS 设备（作为对照）
+- 桌面浏览器
 
 ## 下一步
 
