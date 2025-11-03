@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Reverted
+- **Tiptap Phase 2 Integration**: Rolled back due to runtime Schema conflicts
+  - Error: "No node type or group 'paragraph' found"
+  - Impact: Persistent runtime error despite multiple fix attempts
+  - Resolution: Reverted to original `FreeFormEditor` (contentEditable)
+  - Files disabled: PlanEditor, EventTitle, EventDescription (renamed to .backup)
+  - Documentation: `TIPTAP_PHASE2_FAILURE_ANALYSIS.md`
+  - **User Impact**: LocalStorage data lost during cache clearing
+  - **Lesson**: Tiptap requires complete isolation testing before production integration
+
+### Added
+- **Tiptap Phase 2 Integration** (Code Complete, Runtime Failed):
+  - `TiptapLine`: Single-line Tiptap wrapper component (179 lines)
+  - `TiptapFreeFormEditor`: Tiptap-powered FreeFormEditor replacement (299 lines)
+  - Tab/Shift+Tab keyboard shortcuts for indentation
+  - ArrowUp/ArrowDown navigation between lines
+  - Documentation: `TIPTAP_PHASE2_INTEGRATION.md`, `TIPTAP_PHASE2_QUICKSTART.md`
+  - Status: Code preserved for future v2.0 integration
+
 ### Changed
 - **FloatingToolbar**: 快捷键从 Ctrl+/ 改为 Alt+1-5
   - Alt+1: 标签功能
@@ -15,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Alt+4: 优先级功能
   - Alt+5: 颜色功能
   - 快捷键仅在编辑器内激活（有焦点）时生效
+- **PlanManager**: Now uses `TiptapFreeFormEditor` instead of `FreeFormEditor`
 - Updated documentation in `docs/FLOATING_TOOLBAR_GUIDE.md`
 
 ## [1.1.0] - 2025-10-20
