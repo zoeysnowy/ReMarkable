@@ -25,12 +25,12 @@ import { TimeHub } from '../services/TimeHub';
 import './PlanManager.css';
 import { dbg, warn, error } from '../utils/debugLogger';
 
-// 时间显示组件，订阅 TimeHub 更新
+// 时间显示组件，订�?TimeHub 更新
 const PlanItemTimeDisplay: React.FC<{
   item: PlanItem;
   onEditClick: (anchor: HTMLElement) => void;
 }> = ({ item, onEditClick }) => {
-  // 如果有 eventId，订阅 TimeHub；否则直接使用 PlanItem 的时间字段
+  // 如果�?eventId，订�?TimeHub；否则直接使�?PlanItem 的时间字�?
   const eventTime = useEventTime(item.eventId);
 
   const startTime = eventTime.start ? new Date(eventTime.start) : (item.startTime ? new Date(item.startTime) : null);
@@ -39,7 +39,7 @@ const PlanItemTimeDisplay: React.FC<{
   const isAllDay = eventTime.timeSpec?.allDay ?? item.isAllDay;
   // 观察订阅的时间变化，输出调试日志
   useEffect(() => {
-    dbg('ui', '🖼️ PlanItemTimeDisplay 快照更新', {
+    dbg('ui', '🖼�?PlanItemTimeDisplay 快照更新', {
       itemId: item.id,
       eventId: item.eventId,
       TimeHub快照start: eventTime.start,
@@ -54,13 +54,13 @@ const PlanItemTimeDisplay: React.FC<{
 
   if (!startTime && !dueDate) return null;
 
-  // 任务（仅截止日期）
+  // 任务（仅截止日期�?
   if (!startTime && dueDate) {
     const month = dueDate.getMonth() + 1;
     const day = dueDate.getDate();
     return (
       <span style={{ color: '#6b7280', whiteSpace: 'nowrap' }}>
-        截止 {month}月{day}日
+        截止 {month}月{day}�?
       </span>
     );
   }
@@ -71,7 +71,7 @@ const PlanItemTimeDisplay: React.FC<{
     const dsStart = dayjs(startTime);
     const dsEnd = dayjs(endTime);
 
-    const dateStr = dsStart.format('YYYY-MM-DD（ddd）');
+    const dateStr = dsStart.format('YYYY-MM-DD（ddd�?);
     const startTimeStr = `${pad2(startTime.getHours())}:${pad2(startTime.getMinutes())}`;
     const endTimeStr = `${pad2(endTime.getHours())}:${pad2(endTime.getMinutes())}`;
 
@@ -95,7 +95,7 @@ const PlanItemTimeDisplay: React.FC<{
 
     // 多天全天
     if (isAllDay && !isSingleDay) {
-      const endDateStr = dsEnd.format('YYYY-MM-DD（ddd）');
+      const endDateStr = dsEnd.format('YYYY-MM-DD（ddd�?);
       return (
         <div
           style={{ display: 'flex', alignItems: 'center', gap: 0, cursor: 'pointer' }}
@@ -113,7 +113,7 @@ const PlanItemTimeDisplay: React.FC<{
       );
     }
 
-    // 正常时间段
+    // 正常时间�?
     const diffMinutes = Math.max(0, Math.floor((endTime.getTime() - startTime.getTime()) / 60000));
     const hours = Math.floor(diffMinutes / 60);
     const minutes = diffMinutes % 60;
@@ -151,7 +151,7 @@ const PlanItemTimeDisplay: React.FC<{
   return null;
 };
 
-// 计划项接口
+// 计划项接�?
 export interface PlanItem {
   id: string;
   title: string;
@@ -161,9 +161,9 @@ export interface PlanItem {
   emoji?: string;
   
   // 时间字段 - 决定类型
-  dueDate?: string;      // 截止日期 → Task
-  startTime?: string;    // 开始时间 → Event  
-  endTime?: string;      // 结束时间 → Event
+  dueDate?: string;      // 截止日期 �?Task
+  startTime?: string;    // 开始时�?�?Event  
+  endTime?: string;      // 结束时间 �?Event
   isAllDay?: boolean;    // 全天
   
   isCompleted?: boolean;
@@ -177,9 +177,9 @@ export interface PlanItem {
   // 层级缩进
   level?: number;
   
-  // 🆕 双模式支持
+  // 🆕 双模式支�?
   mode?: 'title' | 'description';
-  description?: string; // HTML 格式的描述内容
+  description?: string; // HTML 格式的描述内�?
 }
 
 export interface PlanManagerProps {
@@ -203,18 +203,18 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   const [editingItem, setEditingItem] = useState<PlanItem | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   
-  // 当前选中的标签（用于 FloatingToolbar）
+  // 当前选中的标签（用于 FloatingToolbar�?
   const [currentSelectedTags, setCurrentSelectedTags] = useState<string[]>([]);
-  // 使用 ref 追踪最新的选中标签，避免闭包问题
+  // 使用 ref 追踪最新的选中标签，避免闭包问�?
   const currentSelectedTagsRef = useRef<string[]>([]);
   
   // 保存当前聚焦的行 ID，用于添加标签等操作
   const [currentFocusedLineId, setCurrentFocusedLineId] = useState<string | null>(null);
   
-  // 🆕 保存当前聚焦行的模式（title 或 description）
+  // 🆕 保存当前聚焦行的模式（title �?description�?
   const [currentFocusedMode, setCurrentFocusedMode] = useState<'title' | 'description'>('title');
   
-  // 🆕 保存当前聚焦行的 isTask 状态
+  // 🆕 保存当前聚焦行的 isTask 状�?
   const [currentIsTask, setCurrentIsTask] = useState<boolean>(false);
   // 避免重复插入同一标签的防抖标记（同一行同一标签在短时间内仅插入一次）
   const lastTagInsertRef = useRef<{ lineId: string; tagId: string; time: number } | null>(null);
@@ -224,13 +224,13 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   // 日期提及弹窗
   const [showDateMention, setShowDateMention] = useState(false);
   const [showUnifiedPicker, setShowUnifiedPicker] = useState(false);
-  // 仅保存真实 DOM 锚点（span 或可点击预览元素）
+  // 仅保存真�?DOM 锚点（span 或可点击预览元素�?
   const dateAnchorRef = useRef<HTMLElement | null>(null);
-  // 保存键盘触发时的光标矩形，供 Tippy 使用虚拟定位，避免参考元素被编辑器重绘移除
+  // 保存键盘触发时的光标矩形，供 Tippy 使用虚拟定位，避免参考元素被编辑器重绘移�?
   const caretRectRef = useRef<DOMRect | null>(null);
   const pickerTargetItemIdRef = useRef<string | null>(null);
 
-  // 设置 dayjs 语言环境为中文，确保与 UnifiedDateTimePicker 的展示一致
+  // 设置 dayjs 语言环境为中文，确保�?UnifiedDateTimePicker 的展示一�?
   dayjs.locale('zh-cn');
   
   // 标签替换
@@ -240,25 +240,44 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   // FloatingToolbar 配置
   const toolbarConfig: ToolbarConfig = {
     mode: 'quick-action',
-    features: [], // 🆕 features 由 HeadlessFloatingToolbar 根据 mode 自动决定
+    features: [], // 🆕 不再在这里指�?features，由 HeadlessFloatingToolbar 根据 mode 自动决定
   };
   
-  // FloatingToolbar Hook - 自动管理模式切换
+  // FloatingToolbar Hook - 自动管理 mode 状�?
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const [activePickerIndex, setActivePickerIndex] = useState<number | null>(null);
   
   const floatingToolbar = useFloatingToolbar({
     editorRef: editorContainerRef as React.RefObject<HTMLElement>,
     enabled: true,
-    menuItemCount: 6, // menu_floatingbar 有 6 个菜单项：tag, emoji, dateRange, priority, color, addTask
+    menuItemCount: 6, // menu_floatingbar �?6 个菜单项：tag, emoji, dateRange, priority, color, addTask
     onMenuSelect: (menuIndex: number) => {
       setActivePickerIndex(menuIndex);
-      // 延迟重置，确保 HeadlessFloatingToolbar 能接收到变化
+      // 延迟重置，确�?HeadlessFloatingToolbar 能接收到变化
       setTimeout(() => setActivePickerIndex(null), 100);
     },
   });
 
-  // 将文本格式命令路由到当前 Slate 编辑器
+  // 监听选区变化，仅当选区在编辑容器内时，切换为“文本格式”菜�?
+  useEffect(() => {
+    const handler = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) {
+        setHasTextSelection(false);
+        return;
+      }
+      const range = sel.getRangeAt(0);
+      const common = range.commonAncestorContainer as Node;
+      const container = editorContainerRef.current;
+      const inEditor = container ? container.contains(common.nodeType === 1 ? (common as Element) : (common.parentElement || container)) : false;
+      const has = !!sel.toString().trim();
+      setHasTextSelection(inEditor && has);
+    };
+    document.addEventListener('selectionchange', handler);
+    return () => document.removeEventListener('selectionchange', handler);
+  }, []);
+
+  // 将文本格式命令路由到当前 Tiptap 编辑器，而不是使�?execCommand
   const handleTextFormat = useCallback((command: string) => {
     if (!currentFocusedLineId) return;
     const editor = editorRegistryRef.current.get(currentFocusedLineId);
@@ -313,7 +332,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     }
   }, [currentFocusedLineId]);
 
-  // 监听编辑器内的 focus 事件，保存当前聚焦的行 ID
+  // 监听编辑器内�?focus 事件，保存当前聚焦的�?ID
   useEffect(() => {
     const container = editorContainerRef.current;
     if (!container) return;
@@ -326,11 +345,11 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           // 更新当前聚焦的行 ID
           setCurrentFocusedLineId(lineId);
           
-          // 🆕 检测当前行的模式
+          // 🆕 检测当前行的模�?
           const isDescriptionLine = lineId.includes('-desc') || target.classList.contains('description-mode');
           setCurrentFocusedMode(isDescriptionLine ? 'description' : 'title');
           
-          // 找到对应的 PlanItem，更新当前选中的标签和 isTask 状态
+          // 找到对应�?PlanItem，更新当前选中的标签和 isTask 状�?
           const actualItemId = lineId.replace('-desc', ''); // 移除 -desc 后缀获取真实 item id
           const item = items.find(i => i.id === actualItemId);
           if (item) {
@@ -349,7 +368,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
               currentSelectedTagsRef.current = [];
             }
             
-            // 🆕 更新 isTask 状态
+            // 🆕 更新 isTask 状�?
             setCurrentIsTask(item.isTask || false);
           } else {
             setCurrentSelectedTags([]);
@@ -360,19 +379,19 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       }
     };
     
-    // 监听 @ 键触发日期输入，Ctrl+; 触发统一日期时间选择器
+    // 监听 @ 键触发日期输入，Ctrl+; 触发统一日期时间选择�?
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (!target.hasAttribute('contenteditable')) return;
       
-      // 检测 @ 键（Shift+2）
+      // 检�?@ 键（Shift+2�?
       if (e.key === '@' || (e.shiftKey && e.key === '2')) {
         e.preventDefault(); // 阻止 @ 字符输入
         
         const selection = window.getSelection();
         if (selection && selection.rangeCount > 0) {
           const range = selection.getRangeAt(0);
-          // 记录当前光标矩形（用于 getReferenceClientRect）
+          // 记录当前光标矩形（用�?getReferenceClientRect�?
           try {
             const rect = range.getBoundingClientRect();
             if (rect) caretRectRef.current = rect;
@@ -388,19 +407,19 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           selection.addRange(range);
           dateAnchorRef.current = anchor;
           
-          // 显示日期选择器
+          // 显示日期选择�?
           setShowDateMention(true);
         }
         return;
        }
 
-      // 检测 Ctrl+; 打开统一日期时间选择器（UnifiedDateTimePicker）
+      // 检�?Ctrl+; 打开统一日期时间选择器（UnifiedDateTimePicker�?
       if (e.ctrlKey && (e.key === ';')) {
         e.preventDefault();
         const selection = window.getSelection();
         if (selection && selection.rangeCount > 0) {
           const range = selection.getRangeAt(0);
-          // 记录当前光标矩形（用于 getReferenceClientRect）
+          // 记录当前光标矩形（用�?getReferenceClientRect�?
           try {
             const rect = range.getBoundingClientRect();
             if (rect) caretRectRef.current = rect;
@@ -462,7 +481,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     
     TagService.addListener(listener);
     
-    // 初始加载时检查一次
+    // 初始加载时检查一�?
     const tags = TagService.getFlatTags();
     if (tags.length > 0) {
     } else {
@@ -471,7 +490,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     return () => TagService.removeListener(listener);
   }, []);
 
-  // 获取所有已使用的标签
+  // 获取所有已使用的标�?
   const existingTags = useMemo(() => {
     const allTags = TagService.getFlatTags();
     if (allTags.length > 0) {
@@ -483,11 +502,11 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       item.tags?.forEach(tag => usedTagNames.add(tag));
     });
     
-    // 返回所有标签，优先显示正在使用的标签
+    // 返回所有标签，优先显示正在使用的标�?
     return allTags;
   }, [items, tagServiceVersion]);
 
-  // 将 PlanItem[] 转换为 FreeFormLine<PlanItem>[]
+  // �?PlanItem[] 转换�?FreeFormLine<PlanItem>[]
   const editorLines = useMemo<FreeFormLine<PlanItem>[]>(() => {
     const lines: FreeFormLine<PlanItem>[] = [];
 
@@ -499,18 +518,18 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     });
 
   sortedItems.forEach((item) => {
-      // 🔴 安全检查：跳过没有 id 的 item
+      // 🔴 安全检查：跳过没有 id �?item
       if (!item.id) {
         console.warn('[PlanManager] Skipping item without id:', item);
         return;
       }
       
-      // Title 行
+      // Title �?
       lines.push({
         id: item.id,
         content: item.content || item.title,
         level: item.level || 0,
-        // 强制 Title 行始终是 title 模式，避免 Shift+Enter 后把现有行变成 description
+        // 强制 Title 行始终是 title 模式，避�?Shift+Enter 后把现有行变�?description
         data: { ...item, mode: 'title' },
       });
       
@@ -519,7 +538,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         lines.push({
           id: `${item.id}-desc`,
           content: item.description || '',
-          level: (item.level || 0) + 1, // 缩进一级
+          level: (item.level || 0) + 1, // 缩进一�?
           data: { ...item, mode: 'description' },
         });
       }
@@ -528,12 +547,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     return lines;
   }, [items]);
 
-  // 处理编辑器内容变化
+  // 处理编辑器内容变�?
   const handleLinesChange = (newLines: FreeFormLine<PlanItem>[]) => {
     // 记录新顺序中每个 title 行的 itemId 顺序
     const orderedItemIds: string[] = [];
 
-    // 按 item id 分组（title + description），同时保留顺序
+    // �?item id 分组（title + description），同时保留顺序
     const itemGroups = new Map<string, { title?: FreeFormLine<PlanItem>, description?: FreeFormLine<PlanItem> }>();
 
     newLines.forEach((line) => {
@@ -543,7 +562,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
 
       if (!itemGroups.has(itemId)) {
         itemGroups.set(itemId, {});
-        // 第一次遇到某个 itemId 的 title 行时，记录其顺序
+        // 第一次遇到某�?itemId �?title 行时，记录其顺序
         if (!isDescription) orderedItemIds.push(itemId);
       }
 
@@ -561,7 +580,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     const deletedIds = currentItemIds.filter(id => !newItemIds.includes(id));
     deletedIds.forEach(id => onDelete(id));
 
-    // 保存/更新每个 item（带 position）
+    // 保存/更新每个 item（带 position�?
     itemGroups.forEach((group, itemId) => {
       const titleLine = group.title;
       const descLine = group.description;
@@ -594,8 +613,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           ...(Number.isFinite(position) ? { position } : {}),
         } as any;
         
-        // 🔍 诊断日志：检查 eventId 来源
-        dbg('picker', '📊 handleLinesChange: 检查 eventId', {
+        // 🔍 诊断日志：检�?eventId 来源
+        dbg('picker', '📊 handleLinesChange: 检�?eventId', {
           itemId: updatedItem.id,
           'titleLine.data.eventId': (titleLine.data as any)?.eventId,
           'updatedItem.eventId': updatedItem.eventId,
@@ -605,10 +624,10 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         onSave(updatedItem);
         // 🆕 更新时也同步到日历（但如果有 eventId，时间由 TimeHub 管理，跳过时间同步）
         if (!updatedItem.eventId) {
-          dbg('picker', '🔄 handleLinesChange: 调用 syncToUnifiedTimeline (无 eventId)', { itemId: updatedItem.id });
+          dbg('picker', '🔄 handleLinesChange: 调用 syncToUnifiedTimeline (�?eventId)', { itemId: updatedItem.id });
           syncToUnifiedTimeline(updatedItem);
         } else {
-          dbg('picker', '⏭️ handleLinesChange: 跳过 syncToUnifiedTimeline (item 有 eventId，时间由 TimeHub 管理)', { itemId: updatedItem.id, eventId: updatedItem.eventId });
+          dbg('picker', '⏭️ handleLinesChange: 跳过 syncToUnifiedTimeline (item �?eventId，时间由 TimeHub 管理)', { itemId: updatedItem.id, eventId: updatedItem.eventId });
         }
       } else {
         const newItem: PlanItem = {
@@ -625,15 +644,15 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           ...(Number.isFinite(position) ? { position } : {}),
         } as any;
         onSave(newItem);
-        // 新 item 没有 eventId，正常同步
+        // �?item 没有 eventId，正常同�?
         syncToUnifiedTimeline(newItem);
       }
     });
   };
 
-  // 将 PlanItem 转换为 Event（用于 EventEditModal）
+  // �?PlanItem 转换�?Event（用�?EventEditModal�?
   const convertPlanItemToEvent = (item: PlanItem): Event => {
-    // 清理描述中的内联HTML（如标签/日期）
+    // 清理描述中的内联HTML（如标签/日期�?
     const sanitize = (html?: string): string => {
       if (!html) return '';
       const div = document.createElement('div');
@@ -651,7 +670,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       description: item.notes || sanitize(item.description || item.content || ''),
       startTime: item.startTime || item.dueDate || new Date().toISOString(),
       endTime: item.endTime || item.dueDate || new Date().toISOString(),
-      location: '', // PlanItem 没有 location 字段，保留空值
+      location: '', // PlanItem 没有 location 字段，保留空�?
       isAllDay: !item.startTime && !!item.dueDate,
       tags: mappedTags,
       tagId: mappedTags.length > 0 ? mappedTags[0] : undefined,
@@ -665,26 +684,26 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     };
   };
 
-  // 将 HTML 内容清洗为纯文本（移除标签/日期等内联元素的HTML）
+  // �?HTML 内容清洗为纯文本（移除标�?日期等内联元素的HTML�?
   const sanitizeHtmlToPlainText = (html?: string): string => {
     if (!html) return '';
     const container = document.createElement('div');
     container.innerHTML = html;
-    // 移除我们内联的标签/日期标记，保留其文本（若有）
+    // 移除我们内联的标�?日期标记，保留其文本（若有）
     container.querySelectorAll('.inline-tag, .inline-date').forEach(el => el.remove());
     return container.textContent || '';
   };
 
   // 同步到UnifiedTimeline
   const syncToUnifiedTimeline = (item: PlanItem) => {
-    // 🔍 诊断：强制输出日志（不经过 dbg 检查）
-    console.log('%c[🔴 SYNC] syncToUnifiedTimeline 被调用', 'color: red; font-size: 16px; font-weight: bold', {
+    // 🔍 诊断：强制输出日志（不经�?dbg 检查）
+    console.log('%c[🔴 SYNC] syncToUnifiedTimeline 被调�?, 'color: red; font-size: 16px; font-weight: bold', {
       itemId: item.id,
       eventId: item.eventId,
       startTime: item.startTime,
       endTime: item.endTime,
       dueDate: item.dueDate,
-      调用栈: new Error().stack?.split('\n').slice(1, 5).join('\n')
+      调用�? new Error().stack?.split('\n').slice(1, 5).join('\n')
     });
     
     // 🆕 确定最终时间和 isTask 标志
@@ -696,21 +715,21 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     const hasEnd = !!item.endTime;
     
     if (item.eventId) {
-      // 如果有 eventId，从 TimeHub 读取最新时间
+      // 如果�?eventId，从 TimeHub 读取最新时�?
       const snapshot = TimeHub.getSnapshot(item.eventId);
       if (snapshot.start && snapshot.end) {
         finalStartTime = snapshot.start;
         finalEndTime = snapshot.end;
         // 根据时间判断 isTask
         isTask = !(hasStart && hasEnd) && !item.isAllDay;
-        console.log('%c[🔴 SYNC] ✅ 使用 TimeHub 的最新时间', 'color: green; font-size: 14px', {
+        console.log('%c[🔴 SYNC] �?使用 TimeHub 的最新时�?, 'color: green; font-size: 14px', {
           eventId: item.eventId,
-          TimeHub最新: { start: snapshot.start, end: snapshot.end },
-          item旧字段: { start: item.startTime, end: item.endTime },
+          TimeHub最�? { start: snapshot.start, end: snapshot.end },
+          item旧字�? { start: item.startTime, end: item.endTime },
           isTask
         });
       } else {
-        // TimeHub 无数据，使用 item 字段（fallback）
+        // TimeHub 无数据，使用 item 字段（fallback�?
         const now = new Date().toISOString();
         finalStartTime = item.startTime || item.dueDate || now;
         finalEndTime = item.endTime || item.dueDate || now;
@@ -723,32 +742,32 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         });
       }
     } else {
-      // 没有 eventId，根据时间字段判断
+      // 没有 eventId，根据时间字段判�?
       if (hasStart && hasEnd) {
-        // 有开始和结束 → event (time/allday)
+        // 有开始和结束 �?event (time/allday)
         finalStartTime = item.startTime!;
         finalEndTime = item.endTime!;
         isTask = false;
-        console.log('%c[🔴 SYNC] 📅 Event: 有完整时间', 'color: green; font-size: 14px', { start: finalStartTime, end: finalEndTime });
+        console.log('%c[🔴 SYNC] 📅 Event: 有完整时�?, 'color: green; font-size: 14px', { start: finalStartTime, end: finalEndTime });
       } else if (hasStart && !hasEnd) {
-        // 只有开始时间 → task (日期=开始日期)
+        // 只有开始时�?�?task (日期=开始日�?
         finalStartTime = item.startTime!;
         finalEndTime = item.startTime!;
         isTask = true;
-        console.log('%c[🔴 SYNC] 📋 Task: 只有开始时间', 'color: blue; font-size: 14px', { date: finalStartTime });
+        console.log('%c[🔴 SYNC] 📋 Task: 只有开始时�?, 'color: blue; font-size: 14px', { date: finalStartTime });
       } else if (!hasStart && hasEnd) {
-        // 只有结束时间 → task (日期=结束日期)
+        // 只有结束时间 �?task (日期=结束日期)
         finalStartTime = item.endTime!;
         finalEndTime = item.endTime!;
         isTask = true;
         console.log('%c[🔴 SYNC] 📋 Task: 只有结束时间', 'color: blue; font-size: 14px', { date: finalEndTime });
       } else {
-        // 完全没有时间 → task (日期=创建日期)
-        // 从 item.id 提取创建时间戳（格式: line-{timestamp}）
+        // 完全没有时间 �?task (日期=创建日期)
+        // �?item.id 提取创建时间戳（格式: line-{timestamp}�?
         const timestampMatch = item.id.match(/line-(\d+)/);
         const createdDate = timestampMatch 
           ? new Date(parseInt(timestampMatch[1])).toISOString()
-          : new Date().toISOString(); // fallback 到今天
+          : new Date().toISOString(); // fallback 到今�?
         finalStartTime = createdDate;
         finalEndTime = createdDate;
         isTask = true;
@@ -762,7 +781,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     const event: Event = {
       id: item.eventId || `event-${Date.now()}`,
       title: `${item.emoji || ''}${item.title}`.trim(),
-      // 避免在描述中出现一堆 HTML，将其清洗为纯文本
+      // 避免在描述中出现一�?HTML，将其清洗为纯文�?
       description: sanitizeHtmlToPlainText(item.description || item.content || item.notes || ''),
       startTime: finalStartTime,
       endTime: finalEndTime,
@@ -779,9 +798,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         }
         return false;
       })(),
-      // 确保事件标签为 tagId 列表；若历史数据为名称，尝试映射
+      // 确保事件标签�?tagId 列表；若历史数据为名称，尝试映射
       tags: (item.tags || []).map(t => {
-        // 如果是有效的ID，直接返回；否则尝试按名称映射
+        // 如果是有效的ID，直接返回；否则尝试按名称映�?
         const tag = TagService.getFlatTags().find(x => x.id === t || x.name === t);
         return tag ? tag.id : t;
       }),
@@ -812,10 +831,10 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     } else if (hasStart || hasEnd || item.dueDate) {
       return '📋'; // task
     }
-    return ''; // 无时间
+    return ''; // 无时�?
   };
 
-  // 渲染左侧前缀（Checkbox + Emoji，无类型图标）
+  // 渲染左侧前缀（Checkbox + Emoji，无类型图标�?
   const renderLinePrefix = (line: FreeFormLine<PlanItem>) => {
     const item = line.data;
     if (!item) return null;
@@ -838,18 +857,18 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     );
   };
 
-  // 渲染右侧后缀（时间 + More 图标）
+  // 渲染右侧后缀（时�?+ More 图标�?
   const renderLineSuffix = (line: FreeFormLine<PlanItem>) => {
     const item = line.data;
     if (!item) return null;
 
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 0, fontSize: '14px', justifyContent: 'flex-end' }}>
-        {/* 时间显示（使用订阅 TimeHub 的组件） */}
+        {/* 时间显示（使用订�?TimeHub 的组件） */}
         <PlanItemTimeDisplay
           item={item}
           onEditClick={(anchor) => {
-            dbg('ui', '🖱️ 点击右侧时间区域，打开 UnifiedDateTimePicker', { eventId: item.eventId, itemId: item.id });
+            dbg('ui', '🖱�?点击右侧时间区域，打开 UnifiedDateTimePicker', { eventId: item.eventId, itemId: item.id });
             dateAnchorRef.current = anchor;
             pickerTargetItemIdRef.current = item.id;
             setShowUnifiedPicker(true);
@@ -879,7 +898,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     );
   };
 
-  // 渲染内容样式（不需要自己实现 contentEditable，只提供样式）
+  // 渲染内容样式（不需要自己实�?contentEditable，只提供样式�?
   const getContentStyle = (item: PlanItem) => ({
     color: item.color || '#111827',
     textDecoration: item.isCompleted ? 'line-through' : 'none',
@@ -915,7 +934,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             onLinesChange={handleLinesChange}
             renderLinePrefix={renderLinePrefix}
             renderLineSuffix={renderLineSuffix}
-            placeholder="✨ Enter 创建新事件 | Shift+Enter 切换描述模式 | Tab 调整层级 | ↑↓ 导航"
+            placeholder="�?Enter 创建新事�?| Shift+Enter 切换描述模式 | Tab 调整层级 | ↑↓ 导航"
           />
       </div>
 
@@ -929,7 +948,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             setEditingItem(null);
           }}
           onSave={(updatedEvent) => {
-            // 将 Event 转回 PlanItem
+            // �?Event 转回 PlanItem
             const updatedPlanItem: PlanItem = {
               ...editingItem,
               title: updatedEvent.title,
@@ -953,7 +972,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             setEditingItem(null);
           }}
           hierarchicalTags={existingTags}
-          availableCalendars={[]} // 可以从 props 传入
+          availableCalendars={[]} // 可以�?props 传入
           draggable={true}
           resizable={true}
         />
@@ -977,16 +996,21 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         </div>
       )}
 
-      {/* Headless FloatingToolbar V3 - 支持双模式 */}
+      {/* Headless FloatingToolbar V3 */}
       <HeadlessFloatingToolbar
         position={floatingToolbar.position}
-        mode={floatingToolbar.mode}
-        config={toolbarConfig}
+        config={{
+          ...toolbarConfig,
+          // 根据是否有文本选区切换菜单组合：选区时显示文本格式菜单，否则显示 quick-action
+          features: hasTextSelection
+            ? ['bold', 'italic', 'underline', 'strikethrough', 'clearFormat', 'bullet', 'indent', 'outdent', 'collapse', 'expand']
+            : toolbarConfig.features,
+        }}
         activePickerIndex={activePickerIndex}
         eventId={currentFocusedLineId ? (items.find(i => i.id === currentFocusedLineId.replace('-desc',''))?.eventId) : undefined}
         useTimeHub={true}
         onTimeApplied={(startIso, endIso) => {
-          dbg('picker', '📌 HeadlessFloatingToolbar.onTimeApplied 被调用 (TimeHub已更新)', { 
+          dbg('picker', '📌 HeadlessFloatingToolbar.onTimeApplied 被调�?(TimeHub已更�?', { 
             startIso, 
             endIso, 
             focusedLineId: currentFocusedLineId,
@@ -994,7 +1018,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           });
           const targetId = currentFocusedLineId || '';
           if (!targetId) {
-            warn('picker', '⚠️ onTimeApplied: 没有 focusedLineId，跳过');
+            warn('picker', '⚠️ onTimeApplied: 没有 focusedLineId，跳�?);
             return;
           }
           const actualItemId = targetId.replace('-desc','');
@@ -1011,7 +1035,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             return;
           }
 
-          // 保存（外层只更新非时间字段；时间由 TimeHub 维护）
+          // 保存（外层只更新非时间字段；时间�?TimeHub 维护�?
           const updatedHTML = editor.getHTML();
           const updatedItem: PlanItem = {
             ...item,
@@ -1027,14 +1051,14 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             内容长度: updatedHTML.length
           });
           onSave(updatedItem);
-          // ⚠️ 不要调用 syncToUnifiedTimeline，因为它会用 item 的旧时间覆盖 TimeHub 刚写入的新时间
+          // ⚠️ 不要调用 syncToUnifiedTimeline，因为它会用 item 的旧时间覆盖 TimeHub 刚写入的新时�?
           // syncToUnifiedTimeline(updatedItem);
 
-          // 统一到 Event：若已有 eventId 则更新时间+非时间字段；若没有则先创建 Event 再写入 TimeHub
+          // 统一�?Event：若已有 eventId 则更新时�?非时间字段；若没有则先创�?Event 再写�?TimeHub
           (async () => {
             try {
               if (updatedItem.eventId) {
-                // 已有 Event：只更新非时间字段（时间已由 TimeHub 更新）
+                // 已有 Event：只更新非时间字段（时间已由 TimeHub 更新�?
                 dbg('picker', '📝 更新现有 Event (仅非时间字段)', { eventId: updatedItem.eventId });
                 await EventService.updateEvent(updatedItem.eventId, {
                   title: updatedItem.title,
@@ -1042,14 +1066,14 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                   tags: updatedItem.tags,
                   isTask: updatedItem.isTask,
                 });
-                dbg('picker', '✅ Event 更新成功 (仅非时间字段)', { eventId: updatedItem.eventId });
+                dbg('picker', '�?Event 更新成功 (仅非时间字段)', { eventId: updatedItem.eventId });
               } else if (startIso) {
-                // 没有 Event：先创建 Event，再写入 TimeHub，最后回写 eventId 到 item
-                dbg('picker', '🆕 创建新 Event (item 没有 eventId)', { startIso, endIso });
+                // 没有 Event：先创建 Event，再写入 TimeHub，最后回�?eventId �?item
+                dbg('picker', '🆕 创建�?Event (item 没有 eventId)', { startIso, endIso });
                 const newId = generateEventId();
                 const createRes = await EventService.createEvent({
                   id: newId,
-                  title: updatedItem.title || '未命名',
+                  title: updatedItem.title || '未命�?,
                   description: updatedItem.description || updatedItem.content,
                   startTime: startIso,
                   endTime: endIso || startIso,
@@ -1060,7 +1084,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                   remarkableSource: true,
                 } as any);
                 if (createRes.success && createRes.event) {
-                  dbg('picker', '✅ 新 Event 创建成功，准备写入 TimeHub', { eventId: newId });
+                  dbg('picker', '�?�?Event 创建成功，准备写�?TimeHub', { eventId: newId });
                   // 写入 TimeHub
                   const { TimeHub } = await import('../services/TimeHub');
                   await TimeHub.setEventTime(newId, {
@@ -1070,18 +1094,18 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                     allDay: false,
                     source: 'picker',
                   });
-                  dbg('picker', '✅ TimeHub 写入成功，回写 eventId 到 item', { eventId: newId });
+                  dbg('picker', '�?TimeHub 写入成功，回�?eventId �?item', { eventId: newId });
                   // 回写 eventId
                   const withEvent: PlanItem = { ...updatedItem, eventId: newId };
                   onSave(withEvent);
-                  // ⚠️ 不要调用 syncToUnifiedTimeline，Event 已创建且 TimeHub 已写入时间
+                  // ⚠️ 不要调用 syncToUnifiedTimeline，Event 已创建且 TimeHub 已写入时�?
                   // syncToUnifiedTimeline(withEvent);
                 } else {
-                  error('picker', '❌ 创建 Event 失败', { createRes });
+                  error('picker', '�?创建 Event 失败', { createRes });
                 }
               }
             } catch (err) {
-              error('picker', '❌ Event 更新/创建异常', { error: err });
+              error('picker', '�?Event 更新/创建异常', { error: err });
             }
           })();
         }}
@@ -1090,7 +1114,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           // 计算新增标签（与上一次所选差集）
           const addedIds = tagIds.filter(id => !currentSelectedTagsRef.current.includes(id));
 
-          // 先更新当前所选标签状态（避免后续 diff 再次重复）
+          // 先更新当前所选标签状态（避免后续 diff 再次重复�?
           currentSelectedTagsRef.current = tagIds;
           setCurrentSelectedTags(tagIds);
 
@@ -1098,7 +1122,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           if (!currentFocusedLineId || addedIds.length === 0) return;
           const insertId = addedIds[addedIds.length - 1];
 
-          // 防抖：避免同一行同一标签在极短时间内被多次处理
+          // 防抖：避免同一行同一标签在极短时间内被多次处�?
           const now = Date.now();
           const last = lastTagInsertRef.current;
           if (last && last.lineId === currentFocusedLineId && last.tagId === insertId && (now - last.time) < 500) {
@@ -1113,7 +1137,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           const editor = editorRegistryRef.current.get(currentFocusedLineId);
           if (!editor) return;
 
-          // 使用 Tiptap 命令在当前光标处插入，确保光标位置正确恢复
+          // 使用 Tiptap 命令在当前光标处插入，确保光标位置正确恢�?
           editor.chain().focus().run();
 
           const isDescriptionMode = currentFocusedMode === 'description';
@@ -1131,7 +1155,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           const tagEmoji = tag.emoji || '';
           const displayName = tagEmoji ? `${tagEmoji}${tag.name}` : tag.name;
 
-          // 通过自定义 TagNode 在正确位置插入，并追加空格
+          // 通过自定�?TagNode 在正确位置插入，并追加空�?
           editor
             .chain()
             .focus()
@@ -1148,7 +1172,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             .insertContent(' ')
             .run();
 
-          // 保存（Title: 提取标签并更新元数据；Description: 仅更新 description HTML）
+          // 保存（Title: 提取标签并更新元数据；Description: 仅更�?description HTML�?
           const updatedContent = editor.getHTML();
           if (isDescriptionMode) {
             const updatedItem = { ...item, description: updatedContent };
@@ -1192,12 +1216,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           }
         }}
         onDateRangeSelect={(start: Date, end: Date) => {
-          dbg('picker', '⚠️ onDateRangeSelect 被调用 (旧的非TimeHub路径!)', { 
+          dbg('picker', '⚠️ onDateRangeSelect 被调�?(旧的非TimeHub路径!)', { 
             start: start.toISOString(), 
             end: end.toISOString(),
             currentFocusedLineId,
             对应的eventId: currentFocusedLineId ? (items.find(i => i.id === currentFocusedLineId.replace('-desc',''))?.eventId) : undefined,
-            警告: '这个回调会插入📅 mention，应该走 onTimeApplied 路径！'
+            警告: '这个回调会插入�?mention，应该走 onTimeApplied 路径�?
           });
           // 🆕 根据模式决定行为
           if (currentFocusedLineId) {
@@ -1208,7 +1232,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             if (item && editor) {
               const isDescriptionMode = currentFocusedMode === 'description';
               
-              // 构建日期 HTML（使用 Tiptap editor.insertContent）
+              // 构建日期 HTML（使�?Tiptap editor.insertContent�?
               const dateText = `📅 ${formatDateDisplay(start, true)}${end && end.getTime() !== start.getTime() ? ' - ' + formatDateDisplay(end, true) : ''}`;
               const dateHTML = `<span contenteditable="false" class="${isDescriptionMode ? 'inline-date mention-only' : 'inline-date'}" data-start-date="${start.toISOString()}"${end && end.getTime() !== start.getTime() ? ` data-end-date="${end.toISOString()}"` : ''} style="display: inline-block; padding: 2px 8px; margin: 0 2px; border-radius: 4px; background-color: rgba(59, 130, 246, 0.1); color: #3b82f6; font-size: 13px; font-weight: 500; cursor: default; user-select: none;">${dateText}</span> `;
               
@@ -1225,7 +1249,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                 };
                 onSave(updatedItem);
                 syncToUnifiedTimeline(updatedItem);
-                // 若已关联事件，统一同步非时间字段
+                // 若已关联事件，统一同步非时间字�?
                 if (updatedItem.eventId) {
                   EventService.updateEvent(updatedItem.eventId, {
                     description: updatedItem.description,
@@ -1234,17 +1258,17 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                   });
                 }
               } else {
-                // Title 模式：更新 content 并关联时间到元数据
+                // Title 模式：更�?content 并关联时间到元数�?
                 const updatedItem = {
                   ...item,
                   content: updatedContent,
-                  startTime: start.toISOString(), // 🎯 关联到 Event 元数据
+                  startTime: start.toISOString(), // 🎯 关联�?Event 元数�?
                   endTime: (end && end.getTime() !== start.getTime()) ? end.toISOString() : start.toISOString(),
                 };
                 onSave(updatedItem);
                 syncToUnifiedTimeline(updatedItem);
 
-                // 统一到 Event：创建或更新事件
+                // 统一�?Event：创建或更新事件
                 (async () => {
                   try {
                     const startIso = formatTimeForStorage(start);
@@ -1263,7 +1287,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                       const newId = generateEventId();
                       const createRes = await EventService.createEvent({
                         id: newId,
-                        title: updatedItem.title || '未命名',
+                        title: updatedItem.title || '未命�?,
                         description: updatedItem.description || updatedItem.content,
                         startTime: startIso,
                         endTime: endIso,
@@ -1286,16 +1310,16 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           }
         }}
         onPrioritySelect={(priority: 'low' | 'medium' | 'high' | 'urgent') => {
-          // TODO: 应用优先级到当前选中的项目
+          // TODO: 应用优先级到当前选中的项�?
         }}
         onColorSelect={(color: string) => {
-          // TODO: 应用颜色到当前选中的项目
+          // TODO: 应用颜色到当前选中的项�?
         }}
         availableTags={existingTags}
         currentTags={currentSelectedTags}
         currentIsTask={currentIsTask}
         onTaskToggle={(isTask: boolean) => {
-          // 🆕 切换任务状态
+          // 🆕 切换任务状�?
           if (currentFocusedLineId && currentFocusedMode === 'title') {
             const actualItemId = currentFocusedLineId.replace('-desc', '');
             const item = items.find(i => i.id === actualItemId);
@@ -1305,7 +1329,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                 isTask,
               };
               onSave(updatedItem);
-              setCurrentIsTask(isTask); // 更新本地状态
+              setCurrentIsTask(isTask); // 更新本地状�?
             }
           }
         }}
@@ -1358,20 +1382,20 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                     end: endDate?.toISOString?.(),
                     rawText,
                   });
-                  // 在 anchor 位置插入日期 mention
+                  // �?anchor 位置插入日期 mention
                   if (dateAnchorRef.current) {
                     const targetId = pickerTargetItemIdRef.current || currentFocusedLineId || '';
                     const item = items.find(i => i.id === targetId || i.id === targetId.replace('-desc',''));
                     const editor = editorRegistryRef.current.get(targetId);
                     
                     if (editor && item) {
-                      // 通过 Tiptap 在当前光标处插入原始自然语言文本（如“明天”），再补一个空格
-                      // 插入一个带样式的 mention（📅 + 原始文本）
+                      // 通过 Tiptap 在当前光标处插入原始自然语言文本（如“明天”），再补一个空�?
+                      // 插入一个带样式�?mention（�?+ 原始文本�?
                       const html = `<span class="time-mention">📅 ${rawText}</span>&nbsp;`;
                       editor.chain().focus().insertContent(html).run();
                       // 清理定位锚点（如果存在）
                       try { dateAnchorRef.current?.remove?.(); } catch {}
-                      // 更新 PlanItem，并统一到 Event
+                      // 更新 PlanItem，并统一�?Event
                       const updatedHTML = editor.getHTML();
                       const updatedItem = {
                         ...item,
@@ -1382,7 +1406,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                       onSave(updatedItem);
                       syncToUnifiedTimeline(updatedItem);
 
-                      // 同步到 Event：若已有 eventId，仅更新非时间字段；若没有，则创建 Event 并回写 eventId
+                      // 同步�?Event：若已有 eventId，仅更新非时间字段；若没有，则创�?Event 并回�?eventId
                       (async () => {
                         try {
                           if (updatedItem.eventId) {
@@ -1397,7 +1421,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                             const newId = generateEventId();
                             const createRes = await EventService.createEvent({
                               id: newId,
-                              title: updatedItem.title || '未命名',
+                              title: updatedItem.title || '未命�?,
                               description: updatedItem.description || updatedItem.content,
                               startTime: formatTimeForStorage(startDate),
                               endTime: formatTimeForStorage(endDate || startDate),
@@ -1448,7 +1472,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         />
       )}
 
-      {/* 统一日期时间选择器 - 键盘快捷键 Ctrl+; 呼出 */}
+      {/* 统一日期时间选择�?- 键盘快捷�?Ctrl+; 呼出 */}
       {dateAnchorRef.current && (
         <Tippy
           visible={showUnifiedPicker}
@@ -1497,7 +1521,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                   ) as HTMLElement | null;
                   const isDescriptionMode = currentFocusedMode === 'description';
 
-                  // 仅保存当前编辑的HTML，时间由 TimeHub 已更新
+                  // 仅保存当前编辑的HTML，时间由 TimeHub 已更�?
                   if (item) {
                     const updatedItem: PlanItem = {
                       ...item,
@@ -1528,7 +1552,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         />
       )}
       
-      {/* 标签替换弹窗 - 点击标签时显示 */}
+      {/* 标签替换弹窗 - 点击标签时显�?*/}
       {replacingTagElement && (
         <Tippy
           visible={showTagReplace}
@@ -1546,12 +1570,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           content={
             <div
               style={{
-                  // 仅保存当前编辑的HTML，时间由 TimeHub 已更新（不插入 📅 mention）
+                  // 仅保存当前编辑的HTML，时间由 TimeHub 已更新（不插�?📅 mention�?
                 overflow: 'auto',
               }}
             >
               <div style={{ padding: '8px 12px', fontSize: '13px', color: '#6b7280', borderBottom: '1px solid #e5e7eb' }}>
-                选择新标签替换
+                选择新标签替�?
               </div>
               {existingTags.map((tag) => {
                 const tagColor = tag.color || '#666';
@@ -1654,3 +1678,4 @@ const PlanManager: React.FC<PlanManagerProps> = ({
 };
 
 export default PlanManager;
+

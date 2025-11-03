@@ -142,7 +142,7 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
         
         // 双击检测：两次按键间隔小于 500ms
         if (timeSinceLastPress < 500) {
-          FloatingToolbarLogger.log('🎯 [FloatingToolbar] 双击 Alt 检测成功 - 切换 menu_floatingbar 模式');
+          FloatingToolbarLogger.log('🎯 [FloatingToolbar] 双击 Alt 检测成功');
           
           // 显示工具栏 - 优先在光标位置显示
           const selection = window.getSelection();
@@ -202,9 +202,8 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
               }
             }
             
-            setMode('menu_floatingbar'); // 🆕 切换为菜单模式
             setToolbarActive(true);
-            FloatingToolbarLogger.log('✅ [FloatingToolbar] 工具栏已呼出 (menu_floatingbar)，等待数字键选择');
+            FloatingToolbarLogger.log('✅ [FloatingToolbar] 工具栏已呼出，等待数字键选择');
           } else {
             FloatingToolbarLogger.warn('⚠️ [FloatingToolbar] 无法获取光标位置');
           }
@@ -320,8 +319,7 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
 
   return {
     position,
-    mode,               // 🆕 当前显示模式 (hidden | menu_floatingbar | text_floatingbar)
-    toolbarActive,      // 工具栏是否已激活（等待数字键选择）
+    toolbarActive, // 工具栏是否已激活（等待数字键选择）
     showToolbar,
     hideToolbar,
     getSelectedText,

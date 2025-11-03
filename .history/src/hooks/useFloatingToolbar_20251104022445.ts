@@ -320,8 +320,7 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
 
   return {
     position,
-    mode,               // 🆕 当前显示模式 (hidden | menu_floatingbar | text_floatingbar)
-    toolbarActive,      // 工具栏是否已激活（等待数字键选择）
+    toolbarActive, // 工具栏是否已激活（等待数字键选择）
     showToolbar,
     hideToolbar,
     getSelectedText,

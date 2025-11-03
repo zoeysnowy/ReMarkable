@@ -100,7 +100,6 @@ export const SlateLine: React.FC<SlateLineProps> = ({
   // 🆕 使用 ref 跟踪上一次的 content，检测是否需要重新初始化
   const prevContentRef = React.useRef(content);
   const isUserChangeRef = React.useRef(false);
-  const isComposingRef = React.useRef(false); // 🆕 跟踪输入法组字状态
 
   // 当外部 content 发生重大变化时，重新初始化编辑器
   useEffect(() => {
@@ -176,10 +175,7 @@ export const SlateLine: React.FC<SlateLineProps> = ({
     
     // 🆕 标记这是用户操作引起的变化
     isUserChangeRef.current = true;
-
-    // 🆕 组字期间不向父层回调，避免外层 rerender 打断 IME
-    if (isComposingRef.current) return;
-
+    
     // 序列化并通知父组件
     const html = serializeToHtml(newValue);
     onUpdate(html);
@@ -187,12 +183,6 @@ export const SlateLine: React.FC<SlateLineProps> = ({
 
   // 处理键盘事件
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
-    // 🆕 关键修复：如果输入法正在组字，不要处理任何快捷键
-    // @ts-ignore - isComposing 属性存在于 React.KeyboardEvent 中
-    if (event.nativeEvent?.isComposing || event.isComposing) {
-      return; // 输入法组字中，让浏览器处理
-    }
-
     const { selection } = editor;
 
     // 格式化快捷键
@@ -318,13 +308,6 @@ export const SlateLine: React.FC<SlateLineProps> = ({
           renderElement={renderElement}
           renderLeaf={renderLeaf}
           onKeyDown={handleKeyDown}
-          onCompositionStart={() => { isComposingRef.current = true; }}
-          onCompositionEnd={() => {
-            isComposingRef.current = false;
-            // 组字结束后补发一次更新，确保父层拿到完整文本
-            const html = serializeToHtml(value);
-            onUpdate(html);
-          }}
           onFocus={onFocus}
           onBlur={onBlur}
           placeholder={placeholder}

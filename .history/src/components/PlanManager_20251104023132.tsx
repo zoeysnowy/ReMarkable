@@ -977,11 +977,16 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         </div>
       )}
 
-      {/* Headless FloatingToolbar V3 - 支持双模式 */}
+      {/* Headless FloatingToolbar V3 */}
       <HeadlessFloatingToolbar
         position={floatingToolbar.position}
-        mode={floatingToolbar.mode}
-        config={toolbarConfig}
+        config={{
+          ...toolbarConfig,
+          // 根据是否有文本选区切换菜单组合：选区时显示文本格式菜单，否则显示 quick-action
+          features: hasTextSelection
+            ? ['bold', 'italic', 'underline', 'strikethrough', 'clearFormat', 'bullet', 'indent', 'outdent', 'collapse', 'expand']
+            : toolbarConfig.features,
+        }}
         activePickerIndex={activePickerIndex}
         eventId={currentFocusedLineId ? (items.find(i => i.id === currentFocusedLineId.replace('-desc',''))?.eventId) : undefined}
         useTimeHub={true}

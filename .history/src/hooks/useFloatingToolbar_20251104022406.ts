@@ -97,7 +97,7 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
     setMode('hidden'); // 🆕 隐藏时重置模式
   }, []);
 
-  // 监听鼠标选中 - 触发 text_floatingbar 模式
+  // 监听鼠标选中
   const handleMouseUp = useCallback(() => {
     if (!enabled) return;
 
@@ -108,18 +108,11 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
 
       if (selectedText) {
         showToolbar();
-        setMode('text_floatingbar'); // 🆕 选中文字时切换为文本格式模式
-        FloatingToolbarLogger.log('📝 [FloatingToolbar] 文本选中，切换为 text_floatingbar 模式');
       } else {
-        // 只有在不是 menu_floatingbar 模式时才隐藏
-        // （避免双击 Alt 后，鼠标点击导致工具栏消失）
-        setMode((prev) => prev === 'menu_floatingbar' ? prev : 'hidden');
-        if (mode !== 'menu_floatingbar') {
-          hideToolbar();
-        }
+        hideToolbar();
       }
     }, 10);
-  }, [enabled, showToolbar, hideToolbar, mode]);
+  }, [enabled, showToolbar, hideToolbar]);
 
   // 监听快捷键：双击 Alt 呼出工具栏，按数字键 1-9 选择菜单
   const handleKeyDown = useCallback(
@@ -142,7 +135,7 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
         
         // 双击检测：两次按键间隔小于 500ms
         if (timeSinceLastPress < 500) {
-          FloatingToolbarLogger.log('🎯 [FloatingToolbar] 双击 Alt 检测成功 - 切换 menu_floatingbar 模式');
+          FloatingToolbarLogger.log('🎯 [FloatingToolbar] 双击 Alt 检测成功');
           
           // 显示工具栏 - 优先在光标位置显示
           const selection = window.getSelection();
@@ -202,9 +195,8 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
               }
             }
             
-            setMode('menu_floatingbar'); // 🆕 切换为菜单模式
             setToolbarActive(true);
-            FloatingToolbarLogger.log('✅ [FloatingToolbar] 工具栏已呼出 (menu_floatingbar)，等待数字键选择');
+            FloatingToolbarLogger.log('✅ [FloatingToolbar] 工具栏已呼出，等待数字键选择');
           } else {
             FloatingToolbarLogger.warn('⚠️ [FloatingToolbar] 无法获取光标位置');
           }
@@ -320,8 +312,7 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
 
   return {
     position,
-    mode,               // 🆕 当前显示模式 (hidden | menu_floatingbar | text_floatingbar)
-    toolbarActive,      // 工具栏是否已激活（等待数字键选择）
+    toolbarActive, // 工具栏是否已激活（等待数字键选择）
     showToolbar,
     hideToolbar,
     getSelectedText,

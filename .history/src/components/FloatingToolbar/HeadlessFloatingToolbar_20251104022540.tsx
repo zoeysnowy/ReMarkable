@@ -331,7 +331,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
     >
       <div className="headless-toolbar-container">
         <div className="headless-toolbar-main">
-          {effectiveFeatures.map((feature) => {
+          {config.features.map((feature) => {
             // 文本格式化功能
             if (['bold', 'italic', 'underline', 'strikethrough', 'clearFormat', 'bullet', 'indent', 'outdent', 'collapse', 'expand'].includes(feature)) {
               return renderTextFormatButton(feature);

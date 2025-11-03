@@ -56,15 +56,6 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
 
   if (!position.show) return null;
 
-  // 🆕 根据 mode 决定显示的功能集合
-  const menuFloatingbarFeatures: ToolbarFeatureType[] = ['tag', 'emoji', 'dateRange', 'priority', 'color', 'addTask'];
-  const textFloatingbarFeatures: ToolbarFeatureType[] = ['bold', 'italic', 'underline', 'strikethrough', 'clearFormat', 'bullet', 'indent', 'outdent', 'collapse', 'expand'];
-  
-  // 根据 mode 覆盖 config.features（如果外层没有提供）
-  const effectiveFeatures = mode === 'text_floatingbar' 
-    ? (config.features.some(f => textFloatingbarFeatures.includes(f)) ? config.features : textFloatingbarFeatures)
-    : (config.features.some(f => menuFloatingbarFeatures.includes(f)) ? config.features : menuFloatingbarFeatures);
-
   // 功能按钮配置
   const textFeatureConfig = {
     bold: { icon: '𝐁', label: '粗体', command: 'bold' },
@@ -331,7 +322,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
     >
       <div className="headless-toolbar-container">
         <div className="headless-toolbar-main">
-          {effectiveFeatures.map((feature) => {
+          {config.features.map((feature) => {
             // 文本格式化功能
             if (['bold', 'italic', 'underline', 'strikethrough', 'clearFormat', 'bullet', 'indent', 'outdent', 'collapse', 'expand'].includes(feature)) {
               return renderTextFormatButton(feature);

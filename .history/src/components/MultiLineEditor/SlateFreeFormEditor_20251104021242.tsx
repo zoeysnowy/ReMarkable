@@ -224,38 +224,19 @@ export const SlateFreeFormEditor = <T,>({
     const currentIndex = lines.findIndex(l => l.id === lineId);
     if (currentIndex === -1 || lines.length === 1) return;
     
-    const currentLine = lines[currentIndex];
-    const isDescriptionLine = lineId.includes('-desc') || currentLine.level > 0;
-    
     // 删除当前行
     const newLines = lines.filter(l => l.id !== lineId);
     onLinesChange(newLines);
     
-    // 聚焦策略：
-    // 1. 如果是 description 行，聚焦到对应的 title 行（上一行）
-    // 2. 否则聚焦到上一行，如果没有上一行则聚焦下一行
-    let targetIndex: number;
-    if (isDescriptionLine && currentIndex > 0) {
-      targetIndex = currentIndex - 1; // 聚焦到 title 行
-    } else {
-      targetIndex = currentIndex > 0 ? currentIndex - 1 : 0;
-    }
-    
+    // 聚焦上一行或下一行
+    const targetIndex = currentIndex > 0 ? currentIndex - 1 : 0;
     const targetLine = newLines[targetIndex];
     if (targetLine) {
       requestAnimationFrame(() => {
-        setTimeout(() => {
-          const element = document.querySelector(`[data-line-id="${targetLine.id}"] [data-slate-editor]`) as HTMLElement;
-          if (element) {
-            element.focus();
-            // 将光标移到末尾
-            const selection = window.getSelection();
-            if (selection) {
-              selection.selectAllChildren(element);
-              selection.collapseToEnd();
-            }
-          }
-        }, 50);
+        const element = document.querySelector(`[data-line-id="${targetLine.id}"] [data-slate-editor]`) as HTMLElement;
+        if (element) {
+          element.focus();
+        }
       });
     }
   }, [lines, onLinesChange]);

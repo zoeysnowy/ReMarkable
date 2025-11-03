@@ -237,28 +237,18 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   const [replacingTagElement, setReplacingTagElement] = useState<HTMLElement | null>(null);
   const [showTagReplace, setShowTagReplace] = useState(false);
   
-  // FloatingToolbar 配置
+  // FloatingToolbarV2 配置 - quick-action 模式
   const toolbarConfig: ToolbarConfig = {
     mode: 'quick-action',
-    features: [], // 🆕 features 由 HeadlessFloatingToolbar 根据 mode 自动决定
+    features: ['tag', 'emoji', 'dateRange', 'priority', 'color', 'addTask'],
   };
   
-  // FloatingToolbar Hook - 自动管理模式切换
+  // FloatingToolbar
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const [activePickerIndex, setActivePickerIndex] = useState<number | null>(null);
   
-  const floatingToolbar = useFloatingToolbar({
-    editorRef: editorContainerRef as React.RefObject<HTMLElement>,
-    enabled: true,
-    menuItemCount: 6, // menu_floatingbar 有 6 个菜单项：tag, emoji, dateRange, priority, color, addTask
-    onMenuSelect: (menuIndex: number) => {
-      setActivePickerIndex(menuIndex);
-      // 延迟重置，确保 HeadlessFloatingToolbar 能接收到变化
-      setTimeout(() => setActivePickerIndex(null), 100);
-    },
-  });
 
-  // 将文本格式命令路由到当前 Slate 编辑器
+  // 将文本格式命令路由到当前 Tiptap 编辑器，而不是使用 execCommand
   const handleTextFormat = useCallback((command: string) => {
     if (!currentFocusedLineId) return;
     const editor = editorRegistryRef.current.get(currentFocusedLineId);
@@ -977,11 +967,16 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         </div>
       )}
 
-      {/* Headless FloatingToolbar V3 - 支持双模式 */}
+      {/* Headless FloatingToolbar V3 */}
       <HeadlessFloatingToolbar
         position={floatingToolbar.position}
-        mode={floatingToolbar.mode}
-        config={toolbarConfig}
+        config={{
+          ...toolbarConfig,
+          // 根据是否有文本选区切换菜单组合：选区时显示文本格式菜单，否则显示 quick-action
+          features: hasTextSelection
+            ? ['bold', 'italic', 'underline', 'strikethrough', 'clearFormat', 'bullet', 'indent', 'outdent', 'collapse', 'expand']
+            : toolbarConfig.features,
+        }}
         activePickerIndex={activePickerIndex}
         eventId={currentFocusedLineId ? (items.find(i => i.id === currentFocusedLineId.replace('-desc',''))?.eventId) : undefined}
         useTimeHub={true}

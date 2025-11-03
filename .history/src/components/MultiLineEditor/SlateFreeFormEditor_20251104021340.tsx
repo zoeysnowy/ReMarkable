@@ -259,6 +259,8 @@ export const SlateFreeFormEditor = <T,>({
       });
     }
   }, [lines, onLinesChange]);
+    }
+  }, [lines, onLinesChange]);
   
   /**
    * 处理行点击（用于多选）

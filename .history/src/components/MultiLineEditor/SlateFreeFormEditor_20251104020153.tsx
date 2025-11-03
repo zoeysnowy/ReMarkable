@@ -136,26 +136,14 @@ export const SlateFreeFormEditor = <T,>({
   }, [lines, onLinesChange]);
   
   /**
-   * 处理 Tab - 增加缩进（检查层级连续性）
+   * 处理 Tab - 增加缩进
    */
   const handleLineTab = useCallback((lineId: string) => {
-    const currentIndex = lines.findIndex(l => l.id === lineId);
-    if (currentIndex === -1) return;
-    
-    const currentLine = lines[currentIndex];
-    const prevLine = currentIndex > 0 ? lines[currentIndex - 1] : null;
-    
-    // 计算允许的最大层级：上一行的层级 + 1
-    const maxAllowedLevel = prevLine ? prevLine.level + 1 : 0;
-    
     const updatedLines = lines.map(line => {
       if (selectedLineIds.size > 0 && selectedLineIds.has(line.id)) {
-        const lineIndex = lines.findIndex(l => l.id === line.id);
-        const linePrev = lineIndex > 0 ? lines[lineIndex - 1] : null;
-        const lineMaxLevel = linePrev ? linePrev.level + 1 : 0;
-        return { ...line, level: Math.min(line.level + 1, lineMaxLevel, 5) };
+        return { ...line, level: Math.min(line.level + 1, 5) };
       } else if (line.id === lineId) {
-        return { ...line, level: Math.min(currentLine.level + 1, maxAllowedLevel, 5) };
+        return { ...line, level: Math.min(line.level + 1, 5) };
       }
       return line;
     });
@@ -224,38 +212,19 @@ export const SlateFreeFormEditor = <T,>({
     const currentIndex = lines.findIndex(l => l.id === lineId);
     if (currentIndex === -1 || lines.length === 1) return;
     
-    const currentLine = lines[currentIndex];
-    const isDescriptionLine = lineId.includes('-desc') || currentLine.level > 0;
-    
     // 删除当前行
     const newLines = lines.filter(l => l.id !== lineId);
     onLinesChange(newLines);
     
-    // 聚焦策略：
-    // 1. 如果是 description 行，聚焦到对应的 title 行（上一行）
-    // 2. 否则聚焦到上一行，如果没有上一行则聚焦下一行
-    let targetIndex: number;
-    if (isDescriptionLine && currentIndex > 0) {
-      targetIndex = currentIndex - 1; // 聚焦到 title 行
-    } else {
-      targetIndex = currentIndex > 0 ? currentIndex - 1 : 0;
-    }
-    
+    // 聚焦上一行或下一行
+    const targetIndex = currentIndex > 0 ? currentIndex - 1 : 0;
     const targetLine = newLines[targetIndex];
     if (targetLine) {
       requestAnimationFrame(() => {
-        setTimeout(() => {
-          const element = document.querySelector(`[data-line-id="${targetLine.id}"] [data-slate-editor]`) as HTMLElement;
-          if (element) {
-            element.focus();
-            // 将光标移到末尾
-            const selection = window.getSelection();
-            if (selection) {
-              selection.selectAllChildren(element);
-              selection.collapseToEnd();
-            }
-          }
-        }, 50);
+        const element = document.querySelector(`[data-line-id="${targetLine.id}"] [data-slate-editor]`) as HTMLElement;
+        if (element) {
+          element.focus();
+        }
       });
     }
   }, [lines, onLinesChange]);
