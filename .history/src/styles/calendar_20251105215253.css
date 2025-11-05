@@ -853,11 +853,16 @@
   padding-bottom: 0 !important;
   padding-left: 0 !important;
   padding-right: 0 !important;
-  height: 17px !important; /* 事件块高度 */
-  min-height: 17px !important; /* 最小高度 */
-  max-height: 17px !important; /* 最大高度，防止被撑开 */
-  line-height: 17px !important; /* 行高匹配 */
-  /* 不要覆盖 top 属性，让 TUI Calendar 自动计算事件位置 */
+}
+
+/* 强制控制 task 事件块的顶部位置和间距 */
+.toastui-calendar-weekday-event-block:has(.toastui-calendar-template-task) {
+  top: 0 !important; /* 强制从顶部开始 */
+}
+
+/* 如果有多个 task 事件，减小它们之间的间距 */
+.toastui-calendar-weekday-event-block:has(.toastui-calendar-template-task) + .toastui-calendar-weekday-event-block:has(.toastui-calendar-template-task) {
+  margin-top: -2px !important; /* 负边距让事件更紧凑 */
 }
 
 /* 更通用的选择器：所有包含 task 模板的事件 */
@@ -886,18 +891,18 @@
 /* 勾选框样式 */
 .remarkable-task-checkbox {
   flex-shrink: 0 !important;
-  font-size: 13px !important; /* 恢复到 13px */
+  font-size: 12px !important; /* 进一步减小勾选框大小 */
   line-height: 1 !important;
   color: #666 !important;
-  margin: 0 !important;
+  margin: 0 !important; /* 移除所有外边距 */
   padding: 0 !important;
 }
 
 /* Task 内容（时间+标题）样式 */
 .remarkable-task-content {
   flex: 1 !important;
-  font-size: 12px !important; /* 恢复到 12px */
-  line-height: 16px !important;
+  font-size: 11px !important; /* 进一步减小字体 */
+  line-height: 14px !important; /* 减小行高 */
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
@@ -907,7 +912,7 @@
 
 .remarkable-task-content strong {
   font-weight: 600 !important;
-  font-size: 12px !important; /* 恢复到 12px */
+  font-size: 11px !important;
   margin: 0 !important;
   padding: 0 !important;
 }

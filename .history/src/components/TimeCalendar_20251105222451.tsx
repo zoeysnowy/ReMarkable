@@ -290,7 +290,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       showTask: true,
       showAllDay: true,
       milestoneHeight: 24,
-      taskHeight: 24,
+      taskHeight: 17, // 🎨 调整为 17px 更紧凑
       allDayHeight: 24
     };
     console.log('🔍 [初始化] 使用默认设置:', defaultSettings);

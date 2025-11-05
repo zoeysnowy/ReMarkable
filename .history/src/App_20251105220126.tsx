@@ -27,7 +27,6 @@ import './App.css';
 import TagManager from './components/TagManager';
 import TimeCalendar from './components/TimeCalendar';
 import PlanManager from './components/PlanManager';
-import { AIDemo } from './components/AIDemo';
 
 import { logger } from './utils/logger';
 
@@ -1482,14 +1481,6 @@ function App() {
               syncManager={syncManager}
               onSettingsChange={handleSettingsChange}
             />
-          </PageContainer>
-        );
-        break;
-
-      case 'ai-demo':
-        content = (
-          <PageContainer title="AI Demo" subtitle="测试 AI 事件提取功能">
-            <AIDemo />
           </PageContainer>
         );
         break;

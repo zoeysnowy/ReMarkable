@@ -2414,33 +2414,23 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
               // 其他日期只显示日期数字
               return `<span class="toastui-calendar-template-weekDayName ${todayClass}">${date}</span>`;
             },
-            // 🎯 Task 事件自定义模板（待办样式：勾选框 + 时间提示 + 标题）
+            // 🎯 Task 事件自定义模板（使用月视图样式）
             task(event: any) {
               // 获取事件的开始和结束时间
               const start = event.start;
               const end = event.end;
               const title = event.title || '';
-              const textColor = event.backgroundColor || event.borderColor || 'rgba(59, 130, 246, 0.8)';
+              const backgroundColor = event.backgroundColor || event.borderColor || 'rgba(59, 130, 246, 0.6)';
               
-              // 格式化时间显示（带开始/结束提示）
+              // 格式化时间显示
               let timeDisplay = '';
-              if (start && end) {
-                // 如果有开始和结束时间，优先显示开始时间
+              if (start) {
                 const startTime = `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`;
-                timeDisplay = `${startTime}开始`;
-              } else if (start) {
-                // 只有开始时间
-                const startTime = `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`;
-                timeDisplay = `${startTime}开始`;
-              } else if (end) {
-                // 只有结束时间
-                const endTime = `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`;
-                timeDisplay = `${endTime}结束`;
+                timeDisplay = startTime;
               }
               
-              // 返回待办样式的 HTML（勾选框 + 时间 + 标题，文字使用标签颜色）
-              const timeText = timeDisplay ? `<strong>${timeDisplay}</strong>&nbsp;` : '';
-              return `<span class="remarkable-task-checkbox">☐</span><span class="remarkable-task-content" style="color: ${textColor}">${timeText}${title}</span>`;
+              // 返回月视图风格的 HTML（带圆点、时间和标题）
+              return `<span class="toastui-calendar-template-time"><strong>${timeDisplay}</strong>&nbsp;<span>${title}</span></span>`;
             },
             // 🎯 Time 事件自定义模板（保持一致的样式）
             time(event: any) {

@@ -1486,14 +1486,6 @@ function App() {
         );
         break;
 
-      case 'ai-demo':
-        content = (
-          <PageContainer title="AI Demo" subtitle="测试 AI 事件提取功能">
-            <AIDemo />
-          </PageContainer>
-        );
-        break;
-
       default:
         content = (
           <PageContainer title="首页">

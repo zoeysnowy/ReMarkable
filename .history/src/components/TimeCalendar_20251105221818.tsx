@@ -272,7 +272,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           showTask: settings.showTask !== false,
           showAllDay: settings.showAllDay !== false,
           milestoneHeight: settings.milestoneHeight || 24,
-          taskHeight: settings.taskHeight || 24,
+          taskHeight: settings.taskHeight || 17, // 🎨 调整为 17px 更紧凑
           allDayHeight: settings.allDayHeight || 24
         };
         // console.log('🔍 [初始化] 最终使用的设置:', initialSettings); // 🔇 注释掉以减少内存占用

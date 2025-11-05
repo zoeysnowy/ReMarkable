@@ -853,10 +853,7 @@
   padding-bottom: 0 !important;
   padding-left: 0 !important;
   padding-right: 0 !important;
-  height: 17px !important; /* 事件块高度 */
-  min-height: 17px !important; /* 最小高度 */
-  max-height: 17px !important; /* 最大高度，防止被撑开 */
-  line-height: 17px !important; /* 行高匹配 */
+  height: 18px !important; /* 控制事件块高度，这决定了事件之间的间距 */
   /* 不要覆盖 top 属性，让 TUI Calendar 自动计算事件位置 */
 }
 
