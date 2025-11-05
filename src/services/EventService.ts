@@ -76,7 +76,10 @@ export class EventService {
       });
 
       // 验证必填字段
-      if (!event.id || !event.title || !event.startTime || !event.endTime) {
+      // ✅ 修复：允许 startTime/endTime 为空字符串（表示无时间的 Task）
+      if (!event.id || !event.title || 
+          event.startTime === undefined || event.startTime === null ||
+          event.endTime === undefined || event.endTime === null) {
         const error = 'Event missing required fields';
         eventLogger.error('❌ [EventService]', error, event);
         return { success: false, error };
