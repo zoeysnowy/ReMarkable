@@ -617,13 +617,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         } else {
           // 不在 pending 中，正常保存
           onSave(updatedItem);
-          // 🆕 更新时也同步到日历（但如果有 eventId，时间由 TimeHub 管理，跳过时间同步）
-          if (!updatedItem.id) {
-            dbg('picker', '🔄 handleLinesChange: 调用 syncToUnifiedTimeline (无 eventId)', { itemId: updatedItem.id });
-            syncToUnifiedTimeline(updatedItem);
-          } else {
-            dbg('picker', '⏭️ handleLinesChange: 跳过 syncToUnifiedTimeline (item 有 eventId，时间由 TimeHub 管理)', { itemId: updatedItem.id, eventId: updatedItem.id });
-          }
+          // 🆕 更新时也同步到日历
+          syncToUnifiedTimeline(updatedItem);
         }
       } else {
         // 🔧 新行：可能是空行（刚点击graytext）或有内容的新item
