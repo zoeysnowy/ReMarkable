@@ -230,11 +230,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     console.log('🎧 [TIMER] Setting up storage event listener');
     
     const handleStorageChange = (e: StorageEvent) => {
-      // console.log('📡 [TIMER] Storage event detected:', {
-      //   key: e.key,
-      //   newValue: e.newValue,
-      //   oldValue: e.oldValue
-      // });
       
       if (e.key === 'remarkable-global-timer') {
         console.log('🔄 [TIMER] Timer storage changed via event, triggering recalculation');
@@ -334,112 +329,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         // 🔍 调试：查找timer事件
         // const timerEvents = parsedEvents.filter((e: any) => e.id && e.id.includes('timer-'));
         // if (timerEvents.length > 0) {
-        //   console.log('🔍 [TIMER EVENTS] Found timer events:', timerEvents.map((e: any) => ({ 
-        //     id: e.id, 
-        //     title: e.title, 
-        //     syncStatus: e.syncStatus,
-        //     isTimer: e.isTimer 
-        //   })));
-        // } else {
-        //   console.log('⚠️ [TIMER EVENTS] No timer events found in localStorage');
-        // }
-        
-        setEvents(parsedEvents);
-      }
-    } catch (error) {
-      console.error('❌ [LOAD] Failed to load events:', error);
-    }
-  }, []);
-
-  // 🏷️ 从 localStorage 加载标签数据
-  const loadHierarchicalTags = useCallback(() => {
-    try {
-      const savedTags = PersistentStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS, PERSISTENT_OPTIONS.TAGS);
-      if (savedTags && Array.isArray(savedTags)) {
-        setHierarchicalTags(savedTags);
-        console.log(`📥 [LOAD] Loading ${savedTags.length} tags`);
-      }
-    } catch (error) {
-      console.error('❌ [LOAD] Failed to load tags:', error);
-    }
-  }, []);
-
-  // ⚙️ 验证并清理筛选设置
-  const validateAndCleanSettings = useCallback((settings: CalendarSettings) => {
-    // 获取当前有效的标签ID和日历ID
-    const validTagIds = new Set(flattenTags(hierarchicalTags).map(tag => tag.id));
-    const validCalendarIds = new Set<string>();
-    
-    // ✅ 添加特殊选项ID到有效集合中
-    validTagIds.add('no-tag'); // 特殊标签：未定义标签
-    
-    try {
-      const calendarsCache = localStorage.getItem(STORAGE_KEYS.CALENDARS_CACHE);
-      if (calendarsCache) {
-        const calendars = JSON.parse(calendarsCache);
-        calendars.forEach((cal: any) => validCalendarIds.add(cal.id));
-      }
-    } catch (error) {
-      console.warn('⚠️ Failed to load calendar cache:', error);
-    }
-    
-    // ✅ 添加特殊日历选项ID到有效集合中
-    validCalendarIds.add('local-created'); // 特殊日历：创建自本地
-    validCalendarIds.add('not-synced');    // 特殊日历：未同步至日历
-
-    // 过滤出有效的标签和日历ID
-    let validVisibleTags = (settings.visibleTags || []).filter(id => validTagIds.has(id));
-    let validVisibleCalendars = (settings.visibleCalendars || []).filter(id => validCalendarIds.has(id));
-
-    // 检查是否有无效的ID被移除
-    const invalidTagsRemoved = (settings.visibleTags?.length || 0) - validVisibleTags.length;
-    const invalidCalendarsRemoved = (settings.visibleCalendars?.length || 0) - validVisibleCalendars.length;
-
-    if (invalidTagsRemoved > 0 || invalidCalendarsRemoved > 0) {
-      console.warn(`🧹 [TimeCalendar] Cleaned invalid filters: ${invalidTagsRemoved} tags, ${invalidCalendarsRemoved} calendars`);
-      
-      // ✅ 核心修复：如果清理后有效标签太少（< 2个），直接清空筛选，避免无意义的筛选
-      if (validVisibleTags.length > 0 && validVisibleTags.length < 2) {
-        console.log('✅ [TimeCalendar] Too few valid tags after cleanup, clearing tag filter');
-        validVisibleTags = [];
-      }
-      
-      // 如果清理后筛选列表为空，说明所有之前保存的ID都无效了
-      if (settings.visibleTags && settings.visibleTags.length > 0 && validVisibleTags.length === 0) {
-        console.log('✅ [TimeCalendar] All saved tag filters are invalid, clearing tag filter');
-      }
-      if (settings.visibleCalendars && settings.visibleCalendars.length > 0 && validVisibleCalendars.length === 0) {
-        console.log('✅ [TimeCalendar] All saved calendar filters are invalid, clearing calendar filter');
-      }
-    }
-
-    return {
-      ...settings,
-      visibleTags: validVisibleTags,
-      visibleCalendars: validVisibleCalendars
-    };
-  }, [hierarchicalTags]);
-
-  // ⚙️ 验证并清理已加载的设置（只在标签加载完成后执行一次）
-  const validateSettings = useCallback(() => {
-    try {
-      const saved = localStorage.getItem('remarkable-calendar-settings');
-      if (saved) {
-        const settings = JSON.parse(saved);
-        
-        // 验证并清理筛选设置
-        const cleanedSettings = validateAndCleanSettings(settings);
-        
-        // 如果设置被清理过，更新state并保存
-        if (cleanedSettings.visibleTags.length !== settings.visibleTags?.length || 
-            cleanedSettings.visibleCalendars.length !== settings.visibleCalendars?.length) {
-          console.log('🧹 [TimeCalendar] Cleaning invalid filters');
-          setCalendarSettings(prev => ({
-            ...prev,
-            visibleTags: cleanedSettings.visibleTags,
-            visibleCalendars: cleanedSettings.visibleCalendars
-          }));
-          saveSettings({...calendarSettings, ...cleanedSettings});
         }
       }
     } catch (error) {
@@ -1269,10 +1158,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           const latestPrefixedTimer = prefixedTimerEvents
             .sort((a: any, b: any) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())[0];
           
-          // console.log('✅ [WIDGET TIMER] Found prefixed timer event:', {
-          //   id: latestPrefixedTimer.id,
-          //   title: latestPrefixedTimer.title
-          // });
           
           return latestPrefixedTimer.id;
         }
@@ -1468,22 +1353,9 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     // 🔍 额外调试：检查实时timer事件和currentRunningTimerEventId的匹配
     // const realtimeTimer = generateRealtimeTimerEvent();
     // if (realtimeTimer) {
-    //   console.log('🔍 [专注中 MATCH DEBUG] ID comparison:', {
-    //     realtimeTimerEventId: realtimeTimer.id,
-    //     currentRunningTimerEventId: currentRunningTimerEventId,
-    //     idsMatch: realtimeTimer.id === currentRunningTimerEventId
-    //   });
     // }
     
     // 🔍 添加调试信息
-    // console.log('🔍 [WIDGET DEBUG] Timer state:', {
-    //   isWidgetMode,
-    //   globalTimer: !!globalTimer,
-    //   localStorageTimerTrigger,
-    //   currentRunningTimerEventId,
-    //   eventsCount: uniqueFiltered.length,
-    //   timerEvents: uniqueFiltered.filter(e => e.id.includes('timer-')).map(e => ({ id: e.id, title: e.title }))
-    // });
     
     // 🔧 优化：预计算透明度hex值，避免重复计算
     const opacity = eventOpacity / 100;

@@ -1296,24 +1296,10 @@ export class ActionBasedSyncManager {
             
             // 🔍 调试：打印前 3 个更新的详细信息
             if (updateActionCount < 3) {
-              // console.log(`🔍 [Sync] Update reason for "${event.subject}":`, {
-              //   reason,
-              //   titleChanged,
-              //   descriptionChanged,
-              //   significantTimeChange,
-              //   timeDiffMinutes: timeDiffMinutes?.toFixed(2)
-              // });
               
               // 如果是描述更改，输出详细的内容对比
               if (descriptionChanged) {
-      // console.log(`🔍 [Sync] Description comparison:`, {
-                  remoteCoreLength: remoteCoreContent.length,
-                  localCoreLength: localCoreContent.length,
-                  remoteCorePreview: remoteCoreContent.substring(0, 100),
-                  localCorePreview: localCoreContent.substring(0, 100),
-                  remoteFullDescription: remoteRawDescription,
-                  localFullDescription: localRawDescription
-                });
+                // console.log(`🔍 [Sync] Description comparison:`, { remoteCoreLength, localCoreLength, remoteCorePreview, localCorePreview });
               }
             }
             
@@ -1679,14 +1665,6 @@ private getUserSettings(): any {
     let syncTargetCalendarId: string | undefined; // 🔧 重命名变量避免潜在冲突
     
     try {
-      // console.log('🔍 [SYNC] applyLocalActionToRemote called:', {
-        actionType: action.type,
-        entityId: action.entityId,
-        hasSource: action.source,
-        hasMicrosoftService: !!this.microsoftService,
-        isSignedIn: this.microsoftService?.isSignedIn(),
-        simulationMode: (this.microsoftService as any)?.simulationMode
-      });
       
       if (action.source !== 'local') {
         return false;
@@ -1829,14 +1807,6 @@ private getUserSettings(): any {
           // 1️⃣ 编辑锁定检查 - 对于UPDATE操作，清除之前的锁定以允许远程同步
           const lockStatus = this.editLocks.get(action.entityId);
           const currentTime = Date.now();
-      // console.log('🔍 [LOCK DEBUG] Edit lock status:', {
-            entityId: action.entityId.substring(0, 20) + '...',
-            hasLock: !!lockStatus,
-            lockExpiry: lockStatus,
-            currentTime: currentTime,
-            isExpired: lockStatus ? currentTime > lockStatus : 'N/A',
-            timeToExpiry: lockStatus ? (lockStatus - currentTime) / 1000 + 's' : 'N/A'
-          });
           
           if (this.isEditLocked(action.entityId)) {
             this.clearEditLock(action.entityId);
@@ -1973,20 +1943,11 @@ private getUserSettings(): any {
             if (originalTagToCheck) {
               originalMappedCalendarId = this.getCalendarIdForTag(originalTagToCheck) || currentCalendarId;
             }
-            });
             
             // ✅ 智能迁移检测：只有当新旧映射的日历真的不同时才迁移
             if (mappedCalendarId && mappedCalendarId !== originalMappedCalendarId) {
               needsCalendarMigration = true;
               syncTargetCalendarId = mappedCalendarId;
-      // console.log('🔄 [PRIORITY 2] Smart migration required (calendar actually changed):', {
-                from: originalMappedCalendarId || 'Default',
-                to: mappedCalendarId,
-                eventTitle: action.data.title,
-                tagId: tagToCheck,
-                externalId: cleanExternalId,
-                reason: 'Tag changed AND calendar mapping changed'
-              });
               
               try {
                 // 删除原日历中的事件
@@ -2044,13 +2005,6 @@ private getUserSettings(): any {
               }
             } else if (mappedCalendarId && mappedCalendarId === originalMappedCalendarId) {
               // ✅ 标签变了，但映射的日历没变，不需要迁移
-      // console.log('✅ [PRIORITY 2] No migration needed (calendar mapping unchanged):', {
-                originalTag: originalTagToCheck,
-                newTag: tagToCheck,
-                sameCalendar: mappedCalendarId,
-                eventTitle: action.data.title,
-                reason: 'Tag changed but both tags map to same calendar'
-              });
               syncTargetCalendarId = mappedCalendarId;
             } else if (mappedCalendarId && !cleanExternalId) {
               // 如果事件还没有同步到 Outlook，只更新本地的 calendarId
@@ -2120,11 +2074,6 @@ private getUserSettings(): any {
           }
           
           // 🎯 [PRIORITY 4] 标准优先级：执行更新操作
-      // console.log('🎯 Sending update to Outlook:', {
-            externalId: cleanExternalId,
-            fieldsToUpdate: Object.keys(updateData),
-            updateData: JSON.stringify(updateData, null, 2)
-          });
           
           try {
             const updateResult = await this.microsoftService.updateEvent(cleanExternalId, updateData);
@@ -2378,13 +2327,6 @@ private getUserSettings(): any {
           }
         } else {
           // ✅ 找到现有事件（如 Timer 事件），更新而不是创建
-      // console.log('🎯 [RemoteToLocal CREATE] Found existing event, updating instead of creating:', {
-            existingId: existingEvent.id,
-            newEventId: newEvent.id,
-            externalId: newEvent.externalId,
-            title: newEvent.title,
-            existingInArray: events.some((e: any) => e.id === existingEvent.id)
-          });
           
           const eventIndex = events.findIndex((e: any) => e.id === existingEvent.id);
           if (eventIndex !== -1) {
@@ -2831,11 +2773,6 @@ private getUserSettings(): any {
             
             // 🔧 [IndexMap 优化] 更新事件索引
             this.updateEventInIndex(updatedEvent, oldEvent);
-      // console.log('✅ [updateLocalEventExternalId] Updated event (after removing duplicate) with incremental index update:', {
-              eventId: localEventId,
-              externalId,
-              eventTitle: events[adjustedIndex].title
-            });
           } else {
             const updatedEvent = {
               ...events[eventIndex],

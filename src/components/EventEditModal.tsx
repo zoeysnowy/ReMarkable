@@ -221,13 +221,6 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
   useEffect(() => {
     if (event && isOpen) {
       // 🔍 调试：记录收到的 event.description
-      // console.log('🔍 [EventEditModal] 初始化表单，event.description:', {
-      //   eventId: event.id,
-      //   descriptionType: typeof event.description,
-      //   descriptionLength: event.description ? event.description.length : 0,
-      //   descriptionValue: event.description,
-      //   descriptionPreview: event.description ? event.description.substring(0, 100) : '(空)'
-      // });
       
       const startStr = eventTime?.start || event.startTime || '';
       const endStr = eventTime?.end || event.endTime || '';
@@ -553,11 +546,7 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
     if (globalTimer.isRunning && hasOriginalStartTime && globalTimer.originalStartTime) {
       // 使用简单直观的计算：当前时间 - 用户设定的开始时间
       totalElapsed = now - globalTimer.originalStartTime;
-      // console.log('📊 [EventEditModal] 使用简化计算:', {
-        当前时间: new Date(now).toLocaleString(),
-        原始开始时间: new Date(globalTimer.originalStartTime).toLocaleString(),
-        计算时长分钟: Math.round(totalElapsed / 60000)
-      });
+      // console.log('📊 [EventEditModal] 使用简化计算:', { 当前时间, 原始开始时间, 计算时长分钟 });
     } else if (globalTimer.isRunning) {
       // 回退到旧逻辑（兼容性）
       const currentRunTime = now - globalTimer.startTime;
