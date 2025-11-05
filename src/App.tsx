@@ -3,7 +3,7 @@ import { MicrosoftCalendarService } from './services/MicrosoftCalendarService';
 import { ActionBasedSyncManager } from './services/ActionBasedSyncManager';
 import { EventManager } from './components/EventManager';
 import TaskManager from './components/TaskManager';
-import CalendarSync from './components/CalendarSync';
+import CalendarSync from './features/Calendar/components/CalendarSync';
 // import UnifiedTimeline from './components/UnifiedTimeline'; // 暂时未使用
 import AppLayout, { PageType } from './components/AppLayout';
 import PageContainer from './components/PageContainer';
@@ -25,7 +25,7 @@ import './App.css';
 
 // 🔧 暂时禁用懒加载，测试性能
 import TagManager from './components/TagManager';
-import TimeCalendar from './components/TimeCalendar';
+import TimeCalendar from './features/Calendar/TimeCalendar';
 import PlanManager from './components/PlanManager';
 import { AIDemo } from './components/AIDemo';
 
@@ -318,8 +318,9 @@ function App() {
     setAvailableTagsForEdit(flatTags);
   };
 
-  // 全局计时器管理函✅
-  const handleTimerStart = (tagId: string) => {
+  // 🔧 Issue #12: 支持从 Plan 事件启动计时
+  // 全局计时器管理函数
+  const handleTimerStart = (tagId: string, planEventId?: string) => {
     const tag = TagService.getFlatTags().find(t => t.id === tagId);
     if (!tag) {
       AppLogger.error('标签未找到', tagId);
@@ -330,7 +331,8 @@ function App() {
       id: tag.id,
       name: tag.name,
       emoji: tag.emoji,
-      color: tag.color
+      color: tag.color,
+      planEventId // 🆕 关联的 Plan 事件 ID
     });
 
       const startTime = Date.now();
@@ -341,14 +343,15 @@ function App() {
         tagEmoji: tag.emoji, // 传递标签emoji
         tagColor: tag.color, // 传递标签颜色
         startTime: startTime,
-        originalStartTime: startTime, // 保存真正的开始时间:
+        originalStartTime: startTime, // 保存真正的开始时间
         elapsedTime: 0,
-        isPaused: false
+        isPaused: false,
+        planEventId // 🆕 保存关联的 Plan 事件 ID
       };
       setGlobalTimer(timerState);
       // 💾 持久化到 localStorage，供 Widget 读取
       localStorage.setItem('remarkable-global-timer', JSON.stringify(timerState));
-      AppLogger.log('✅ 开始计时', tag.name);
+      AppLogger.log('✅ 开始计时', tag.name, planEventId ? `(关联 Plan: ${planEventId})` : '');
   };
 
   const handleTimerPause = () => {
@@ -499,14 +502,15 @@ function App() {
       tagName: globalTimer.tagName,
       startTime: startTime,
       endTime: endTime,
-      duration: totalElapsed
+      duration: totalElapsed,
+      planEventId: globalTimer.planEventId // 🆕 关联的 Plan 事件 ID
     });
 
     // 🎯 自动创建日历事件
     try {
       const tag = TagService.getFlatTags().find(t => t.id === globalTimer.tagId);
       if (!tag) {
-        AppLogger.error('✅标签未找到', globalTimer.tagId);
+        AppLogger.error('标签未找到', globalTimer.tagId);
         return;
       }
 
@@ -518,7 +522,7 @@ function App() {
       const existingEvents: Event[] = saved ? JSON.parse(saved) : [];
       const existingEvent = existingEvents.find((e: Event) => e.id === timerEventId);
       
-      // 创建或更新事件，使用用户自定义的标题和emoji（如果有✅
+      // 创建或更新事件，使用用户自定义的标题和emoji（如果有）
       const eventTitle = globalTimer.eventTitle || (tag.emoji ? `${tag.emoji} ${tag.name}` : tag.name);
       const eventEmoji = globalTimer.eventEmoji || tag.emoji;
       
@@ -552,16 +556,47 @@ function App() {
         remarkableSource: true, // 🔧 标记为本地创建的事件
         syncStatus: 'pending' as const, // 🔧 标记为待同步
         isTimer: true,
+        // 🆕 Issue #12: 关联父事件
+        parentEventId: globalTimer.planEventId,
         createdAt: existingEvent?.createdAt || formatTimeForStorage(startTime),
         updatedAt: formatTimeForStorage(new Date())
       };
 
-      // 🔧 使用 EventService 统一管理事件创建和同✅
-      AppLogger.log('💾 [Timer Stop] Using EventService to create/update event');
-      const result = await EventService.updateEvent(timerEventId, finalEvent);
+      // 🔧 Issue #10 修复：如果是 Plan Item，只更新 duration，不覆盖 startTime/endTime
+      // 如果存在已有事件且标记为 isPlan，则只更新特定字段
+      const updateData: Partial<Event> = existingEvent?.isPlan ? {
+        // Plan Item：只更新 duration 和描述，保留原有的计划时间
+        description: finalDescription,
+        syncStatus: 'pending' as const,
+        updatedAt: formatTimeForStorage(new Date())
+      } : finalEvent; // Timer 事件：更新完整数据
+
+      // 🔧 使用 EventService 统一管理事件创建和同步
+      AppLogger.log('💾 [Timer Stop] Using EventService to create/update event', {
+        isPlan: existingEvent?.isPlan,
+        updateFields: Object.keys(updateData),
+        parentEventId: globalTimer.planEventId
+      });
+      const result = await EventService.updateEvent(timerEventId, updateData as Event);
       
       if (result.success) {
         AppLogger.log('💾 [Timer Stop] Event saved via EventService:', timerEventId);
+        
+        // 🆕 Issue #12: 更新父事件的 timerLogs
+        if (globalTimer.planEventId) {
+          const parentEvent = existingEvents.find((e: Event) => e.id === globalTimer.planEventId);
+          if (parentEvent) {
+            const updatedTimerLogs = [...(parentEvent.timerLogs || []), timerEventId];
+            await EventService.updateEvent(globalTimer.planEventId, {
+              timerLogs: updatedTimerLogs,
+              updatedAt: formatTimeForStorage(new Date())
+            } as Partial<Event>);
+            AppLogger.log('📝 [Timer Stop] Updated parent event timerLogs:', {
+              parentId: globalTimer.planEventId,
+              timerLogs: updatedTimerLogs
+            });
+          }
+        }
         
         // ✅ 不需要手动 setAllEvents，storage 监听器会自动更新
         // EventService.updateEvent 内部会触发 storage 变化事件
@@ -569,15 +604,15 @@ function App() {
         AppLogger.error('💾 [Timer Stop] EventService failed:', result.error);
       }
 
-      // ✅立即切换到时间:页✅
+      // ✅立即切换到时间页面
       setCurrentPage('time');
     } catch (error) {
       AppLogger.error('💾 [Timer Stop] 保存事件失败:', error);
     }
     
-    // 清除计时器状✅
+    // 清除计时器状态
     setGlobalTimer(null);
-    // 💾 清除 localStorage 中的 timer 状✅
+    // 💾 清除 localStorage 中的 timer 状态
     localStorage.removeItem('remarkable-global-timer');
   };
 
@@ -997,7 +1032,20 @@ function App() {
       updatedAt: new Date().toISOString(),
     };
     
-    const result = await EventService.updateEvent(item.id, planEvent);
+    // 🔧 [BUG FIX] 空行（刚点击graytext创建的行）不保存到EventService
+    // 只保存到本地状态（items数组），等用户输入内容后再真正创建event
+    if (!item.title || !item.title.trim()) {
+      // 空标题，只更新本地状态，不调用EventService
+      AppLogger.log('⏭️ [App] 跳过空行保存（等待用户输入）', item.id);
+      return;
+    }
+    
+    // 🔧 [BUG FIX] 检查事件是否已存在，新事件用 createEvent，已有事件用 updateEvent
+    const existingEvent = EventService.getEventById(item.id);
+    const result = existingEvent 
+      ? await EventService.updateEvent(item.id, planEvent)
+      : await EventService.createEvent(planEvent);
+    
     if (result.success) {
       setAllEvents(EventService.getAllEvents());
       AppLogger.log('💾 [App] 保存 Plan 事件', item.title);
@@ -1030,7 +1078,12 @@ function App() {
 
   // 更新 UnifiedTimeline Event
   const handleUpdateEvent = useCallback(async (eventId: string, updates: Partial<Event>) => {
-    const result = await EventService.updateEvent(eventId, updates);
+    // 🔧 [BUG FIX] 检查事件是否存在，不存在则创建
+    const existingEvent = EventService.getEventById(eventId);
+    const result = existingEvent
+      ? await EventService.updateEvent(eventId, updates)
+      : await EventService.createEvent({ ...updates, id: eventId } as Event);
+    
     if (result.success) {
       setAllEvents(EventService.getAllEvents());
       AppLogger.log('🔧 [App] Event updated via EventService:', eventId);
@@ -1446,18 +1499,25 @@ function App() {
       case 'plan':
         // 🔧 过滤 Plan 页面事件：
         // 1. 显示标记为 isPlan=true 的事件
-        // 2. TimeCalendar 创建的 event（remarkableSource=true）只显示未过期的
+        // 2. TimeCalendar 创建的事件（isTimeCalendar=true）只显示未过期的
+        // 3. 非 TimeCalendar 创建的事件不受时间限制，全部显示
+        // 4. 🆕 Issue #12: 排除 Timer 子事件（有 parentEventId 的事件）
         const now = new Date();
         const filteredPlanItems = allEvents.filter((event: Event) => {
           // 只显示标记为 isPlan 的事件
           if (!event.isPlan) return false;
           
-          // 非 TimeCalendar 创建的 event：全部显示
-          if (event.remarkableSource !== true) return true;
+          // 🆕 Issue #12: 排除 Timer 子事件（这些只在 TimeCalendar 显示）
+          if (event.parentEventId) return false;
           
-          // TimeCalendar 创建的 event：只显示未过期的
-          const endTime = new Date(event.endTime);
-          return now < endTime;
+          // TimeCalendar 创建的事件：只显示未过期的
+          if (event.isTimeCalendar) {
+            const endTime = new Date(event.endTime);
+            return now < endTime;
+          }
+          
+          // Task/Plan 创建的事件：不受时间限制，全部显示
+          return true;
         });
 
         content = (

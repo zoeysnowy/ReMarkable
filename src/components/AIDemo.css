@@ -21,6 +21,7 @@
   text-align: center;
   color: white;
   margin-bottom: 40px;
+  position: relative;
 }
 
 .ai-demo-header h1 {
@@ -34,6 +35,384 @@
   font-size: 16px;
   opacity: 0.9;
   font-weight: 400;
+  margin-bottom: 16px;
+}
+
+.btn-config {
+  padding: 10px 24px;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+.btn-config:hover {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.8);
+  transform: translateY(-2px);
+}
+
+/* 配置面板 */
+.config-panel {
+  background: white;
+  border-radius: 16px;
+  padding: 30px;
+  margin-bottom: 24px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+}
+
+.config-panel h3 {
+  color: #1f2937;
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 24px;
+}
+
+.config-group {
+  margin-bottom: 24px;
+}
+
+.config-group label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 12px;
+}
+
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.radio-label:hover {
+  border-color: #667eea;
+  background: #f0f4ff;
+}
+
+.radio-label input[type="radio"] {
+  margin-right: 12px;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.radio-label input[type="radio"]:checked + span {
+  color: #667eea;
+  font-weight: 600;
+}
+
+.radio-label span:first-of-type {
+  flex: 1;
+  font-size: 16px;
+  color: #1f2937;
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background: #ecfdf5;
+  color: #059669;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge-warning {
+  display: inline-block;
+  padding: 4px 12px;
+  background: #fef3c7;
+  color: #d97706;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.api-key-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: 'Courier New', monospace;
+  transition: all 0.2s ease;
+}
+
+.api-key-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.help-text {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f0f9ff;
+  border-left: 4px solid #0ea5e9;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #0c4a6e;
+}
+
+.help-text.warning {
+  background: #fef3c7;
+  border-left-color: #d97706;
+  color: #78350f;
+}
+
+.help-text p {
+  margin: 8px 0;
+  font-weight: 600;
+}
+
+.help-text a {
+  color: #0ea5e9;
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+.help-text ul {
+  margin: 8px 0 0 20px;
+  line-height: 1.8;
+}
+
+.hint {
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  opacity: 0.8;
+}
+
+.config-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.btn-save {
+  flex: 1;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-save:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}
+
+.btn-cancel-config {
+  padding: 12px 24px;
+  background: #f3f4f6;
+  color: #6b7280;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-cancel-config:hover {
+  background: #e5e7eb;
+}
+
+/* 预设管理按钮 */
+.btn-save-preset {
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-save-preset:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(245, 87, 108, 0.4);
+}
+
+/* 预设列表样式 */
+.presets-section {
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 2px solid #e5e7eb;
+}
+
+.presets-section h4 {
+  margin: 0 0 15px 0;
+  font-size: 16px;
+  color: #374151;
+}
+
+.presets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.preset-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s ease;
+}
+
+.preset-item:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.preset-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.preset-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.preset-provider {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.preset-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-apply-preset, .btn-delete-preset {
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.btn-apply-preset {
+  background: #10b981;
+  color: white;
+}
+
+.btn-apply-preset:hover {
+  background: #059669;
+  transform: translateY(-1px);
+}
+
+.btn-delete-preset {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-delete-preset:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
+}
+
+/* 预设对话框样式 */
+.preset-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.preset-dialog {
+  background: white;
+  padding: 30px;
+  border-radius: 16px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+  width: 90%;
+  max-width: 500px;
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.preset-dialog h3 {
+  margin: 0 0 10px 0;
+  font-size: 20px;
+  color: #1f2937;
+}
+
+.dialog-hint {
+  margin: 0 0 20px 0;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.preset-name-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 15px;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.preset-name-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 20px;
 }
 
 /* 通用卡片 */

@@ -13,15 +13,30 @@
  * @version 1.0.0
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { AIService } from '../services/ai/AIService';
-import { AIConfigManager } from '../services/ai/AIConfig';
+import { AIConfigManager, APIPreset } from '../services/ai/AIConfig';
 import { ExtractedEventInfo } from '../services/ai/AIProvider.interface';
 import { EventService } from '../services/EventService';
 import { Event } from '../types';
 import './AIDemo.css';
 
 export const AIDemo: React.FC = () => {
+  // 配置状态
+  const [config, setConfig] = useState(() => AIConfigManager.getConfig());
+  const [showConfig, setShowConfig] = useState(false);
+  const [apiKey, setApiKey] = useState(config.dashscopeApiKey || '');
+  const [hunyuanSecretId, setHunyuanSecretId] = useState(config.hunyuanSecretId || '');
+  const [hunyuanSecretKey, setHunyuanSecretKey] = useState(config.hunyuanSecretKey || '');
+  const [provider, setProvider] = useState<'ollama' | 'dashscope' | 'hunyuan'>(
+    config.provider as 'ollama' | 'dashscope' | 'hunyuan'
+  );
+  
+  // 预设管理
+  const [presets, setPresets] = useState<APIPreset[]>(() => AIConfigManager.getPresets());
+  const [showPresetDialog, setShowPresetDialog] = useState(false);
+  const [presetName, setPresetName] = useState('');
+  
   // 状态管理
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -37,6 +52,115 @@ export const AIDemo: React.FC = () => {
   const [editedAgenda, setEditedAgenda] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // 加载配置时同步到表单
+  useEffect(() => {
+    const currentConfig = AIConfigManager.getConfig();
+    setProvider(currentConfig.provider as any);
+    setApiKey(currentConfig.dashscopeApiKey || '');
+    setHunyuanSecretId(currentConfig.hunyuanSecretId || '');
+    setHunyuanSecretKey(currentConfig.hunyuanSecretKey || '');
+  }, [config]);
+
+  // 保存配置
+  const handleSaveConfig = () => {
+    try {
+      const updateConfig: any = { provider };
+      
+      if (provider === 'dashscope') {
+        updateConfig.dashscopeApiKey = apiKey;
+      } else if (provider === 'hunyuan') {
+        updateConfig.hunyuanSecretId = hunyuanSecretId;
+        updateConfig.hunyuanSecretKey = hunyuanSecretKey;
+      }
+      
+      AIConfigManager.saveConfig(updateConfig);
+      setConfig(AIConfigManager.getConfig());
+      setShowConfig(false);
+      alert('✅ 配置保存成功！请重新检测 AI 可用性。');
+    } catch (err: any) {
+      alert('❌ 配置保存失败: ' + err.message);
+    }
+  };
+  
+  // 保存为预设
+  const handleSavePreset = () => {
+    try {
+      if (!presetName.trim()) {
+        alert('❌ 请输入预设名称');
+        return;
+      }
+      
+      if (provider === 'ollama') {
+        alert('❌ Ollama 本地模式无需保存预设');
+        return;
+      }
+      
+      const presetData: any = {
+        name: presetName.trim(),
+        provider
+      };
+      
+      if (provider === 'dashscope') {
+        if (!apiKey) {
+          alert('❌ 请先输入 API Key');
+          return;
+        }
+        presetData.dashscopeApiKey = apiKey;
+        presetData.dashscopeModel = 'qwen-plus';
+      } else if (provider === 'hunyuan') {
+        if (!hunyuanSecretId || !hunyuanSecretKey) {
+          alert('❌ 请先输入 SecretId 和 SecretKey');
+          return;
+        }
+        presetData.hunyuanSecretId = hunyuanSecretId;
+        presetData.hunyuanSecretKey = hunyuanSecretKey;
+        presetData.hunyuanModel = 'hunyuan-lite';
+      }
+      
+      AIConfigManager.savePreset(presetData);
+      setPresets(AIConfigManager.getPresets());
+      setShowPresetDialog(false);
+      setPresetName('');
+      alert('✅ 预设保存成功！');
+    } catch (err: any) {
+      alert('❌ 保存失败: ' + err.message);
+    }
+  };
+  
+  // 应用预设
+  const handleApplyPreset = (preset: APIPreset) => {
+    try {
+      AIConfigManager.applyPreset(preset);
+      const newConfig = AIConfigManager.getConfig();
+      setConfig(newConfig);
+      setProvider(newConfig.provider as any);
+      
+      if (preset.provider === 'dashscope') {
+        setApiKey(preset.dashscopeApiKey || '');
+      } else if (preset.provider === 'hunyuan') {
+        setHunyuanSecretId(preset.hunyuanSecretId || '');
+        setHunyuanSecretKey(preset.hunyuanSecretKey || '');
+      }
+      
+      alert(`✅ 已应用预设: ${preset.name}`);
+    } catch (err: any) {
+      alert('❌ 应用失败: ' + err.message);
+    }
+  };
+  
+  // 删除预设
+  const handleDeletePreset = (id: string, name: string) => {
+    if (confirm(`确定删除预设 "${name}" 吗？`)) {
+      try {
+        AIConfigManager.deletePreset(id);
+        setPresets(AIConfigManager.getPresets());
+        alert('✅ 预设已删除');
+      } catch (err: any) {
+        alert('❌ 删除失败: ' + err.message);
+      }
+    }
+  };
 
   // 检测 AI 可用性
   const checkAIAvailability = async () => {
@@ -163,9 +287,6 @@ export const AIDemo: React.FC = () => {
     }
   };
 
-  // 获取配置信息
-  const config = AIConfigManager.getConfig();
-
   return (
     <div className="ai-demo-page">
       <div className="ai-demo-container">
@@ -173,24 +294,320 @@ export const AIDemo: React.FC = () => {
         <div className="ai-demo-header">
           <h1>🤖 AI 事件提取 Demo</h1>
           <p className="subtitle">测试 AI 从文档中自动提取事件信息的功能</p>
+          <button 
+            className="btn-config"
+            onClick={() => setShowConfig(!showConfig)}
+          >
+            ⚙️ {showConfig ? '关闭配置' : '配置 API'}
+          </button>
         </div>
+
+        {/* API 配置面板 */}
+        {showConfig && (
+          <div className="config-panel">
+            <h3>🔧 API 配置</h3>
+            
+            <div className="config-group">
+              <label>选择服务商：</label>
+              <div className="radio-group">
+                <label className="radio-label">
+                  <input
+                    type="radio"
+                    value="dashscope"
+                    checked={provider === 'dashscope'}
+                    onChange={(e) => setProvider(e.target.value as any)}
+                  />
+                  <span>DashScope 云端</span>
+                  <span className="badge">免费额度 100万 tokens</span>
+                </label>
+                <label className="radio-label">
+                  <input
+                    type="radio"
+                    value="hunyuan"
+                    checked={provider === 'hunyuan'}
+                    onChange={(e) => setProvider(e.target.value as any)}
+                  />
+                  <span>腾讯混元云端（需代理）</span>
+                  <span className="badge">10万 tokens/月</span>
+                </label>
+                <label className="radio-label">
+                  <input
+                    type="radio"
+                    value="ollama"
+                    checked={provider === 'ollama'}
+                    onChange={(e) => setProvider(e.target.value as any)}
+                  />
+                  <span>Ollama 本地</span>
+                  <span className="badge-warning">需下载 4.7GB 模型</span>
+                </label>
+              </div>
+            </div>
+
+            {provider === 'dashscope' && (
+              <div className="config-group">
+                <label>DashScope API Key：</label>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="sk-xxxxxxxxxxxxxxxx"
+                  className="api-key-input"
+                />
+                <div className="help-text">
+                  <p>💡 获取 API Key：</p>
+                  <a 
+                    href="https://dashscope.console.aliyun.com/apiKey" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                  >
+                    https://dashscope.console.aliyun.com/apiKey
+                  </a>
+                  <p className="hint">新用户免费赠送 100 万 tokens（约 1000-2000 次调用）</p>
+                </div>
+              </div>
+            )}
+
+            {provider === 'hunyuan' && (
+              <div className="config-group">
+                <div className="help-text" style={{ marginBottom: '16px', background: '#eff6ff', borderLeft: '4px solid #3b82f6' }}>
+                  <p>💡 <strong>使用代理服务器（已为你准备好）</strong></p>
+                  <p>由于浏览器 CORS 限制，需要启动本地代理：</p>
+                  <ol style={{ marginLeft: '20px', marginTop: '8px' }}>
+                    <li>打开新终端: <code>cd ai-proxy</code></li>
+                    <li>安装依赖: <code>npm install</code></li>
+                    <li>配置密钥: 复制 <code>.env.example</code> 为 <code>.env</code></li>
+                    <li>启动代理: <code>npm start</code></li>
+                  </ol>
+                  <p style={{ marginTop: '8px' }}>
+                    详细说明: <code>ai-proxy/README.md</code>
+                  </p>
+                </div>
+                
+                <label>腾讯云 SecretId：</label>
+                <input
+                  type="text"
+                  value={hunyuanSecretId}
+                  onChange={(e) => setHunyuanSecretId(e.target.value)}
+                  placeholder="AKIDxxxxxxxxxxxxxxxx"
+                  className="api-key-input"
+                />
+                <label>腾讯云 SecretKey：</label>
+                <input
+                  type="password"
+                  value={hunyuanSecretKey}
+                  onChange={(e) => setHunyuanSecretKey(e.target.value)}
+                  placeholder="xxxxxxxxxxxxxxxx"
+                  className="api-key-input"
+                />
+                <div className="help-text">
+                  <p>� 此功能需要后端代理服务器支持。</p>
+                  <p>如需使用，请参考：<a 
+                    href="https://cloud.tencent.com/document/api/1729/106050" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                  >
+                    腾讯云 API 文档
+                  </a></p>
+                </div>
+              </div>
+            )}
+
+            {provider === 'ollama' && (
+              <div className="config-group">
+                <div className="help-text warning">
+                  <p>⚠️ 使用 Ollama 本地模型需要：</p>
+                  <ul>
+                    <li>下载 Qwen 2.5 模型（约 4.7GB）</li>
+                    <li>占用 4-6GB 内存运行</li>
+                    <li>首次加载需要 2-5 秒</li>
+                  </ul>
+                  <p>💡 推荐使用云端服务（零安装、更快、中文优化）</p>
+                </div>
+              </div>
+            )}
+
+            <div className="config-actions">
+              <button className="btn-save" onClick={handleSaveConfig}>
+                💾 保存配置
+              </button>
+              {provider !== 'ollama' && (
+                <button className="btn-save-preset" onClick={() => setShowPresetDialog(true)}>
+                  ⭐ 保存为预设
+                </button>
+              )}
+              <button className="btn-cancel-config" onClick={() => setShowConfig(false)}>
+                取消
+              </button>
+            </div>
+            
+            {/* 预设列表 */}
+            {presets.length > 0 && (
+              <div className="presets-section">
+                <h4>📋 已保存的预设</h4>
+                <div className="presets-list">
+                  {presets.map(preset => (
+                    <div key={preset.id} className="preset-item">
+                      <div className="preset-info">
+                        <span className="preset-name">{preset.name}</span>
+                        <span className="preset-provider">
+                          {preset.provider === 'dashscope' ? 'DashScope' : '腾讯混元'}
+                        </span>
+                      </div>
+                      <div className="preset-actions">
+                        <button 
+                          className="btn-apply-preset"
+                          onClick={() => handleApplyPreset(preset)}
+                        >
+                          应用
+                        </button>
+                        <button 
+                          className="btn-delete-preset"
+                          onClick={() => handleDeletePreset(preset.id, preset.name)}
+                        >
+                          删除
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* 保存预设对话框 */}
+        {showPresetDialog && (
+          <div className="preset-dialog-overlay" onClick={() => setShowPresetDialog(false)}>
+            <div className="preset-dialog" onClick={(e) => e.stopPropagation()}>
+              <h3>💾 保存为预设</h3>
+              <p className="dialog-hint">
+                保存当前 API 配置，方便下次快速切换
+              </p>
+              <input
+                type="text"
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                placeholder="输入预设名称（例如：工作账号、个人账号）"
+                className="preset-name-input"
+                autoFocus
+              />
+              <div className="dialog-actions">
+                <button className="btn-save" onClick={handleSavePreset}>
+                  保存
+                </button>
+                <button className="btn-cancel-config" onClick={() => {
+                  setShowPresetDialog(false);
+                  setPresetName('');
+                }}>
+                  取消
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* 保存预设对话框 */}
+        {showPresetDialog && (
+          <div className="preset-dialog-overlay" onClick={() => setShowPresetDialog(false)}>
+            <div className="preset-dialog" onClick={(e) => e.stopPropagation()}>
+              <h3>💾 保存为预设</h3>
+              <p className="dialog-hint">
+                保存当前 API 配置，方便下次快速切换
+              </p>
+              <input
+                type="text"
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                placeholder="输入预设名称（例如：工作账号、个人账号）"
+                className="preset-name-input"
+                autoFocus
+              />
+              <div className="dialog-actions">
+                <button className="btn-save" onClick={handleSavePreset}>
+                  保存
+                </button>
+                <button className="btn-cancel-config" onClick={() => {
+                  setShowPresetDialog(false);
+                  setPresetName('');
+                }}>
+                  取消
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* AI 状态检测 */}
         <div className="ai-status-section">
           <h2>1️⃣ AI 服务状态</h2>
           <div className="status-card">
             <div className="status-row">
-              <span className="label">当前模型：</span>
-              <span className="value">{config.currentModel === 'qwen' ? 'Qwen 2.5' : 'Gemma 2'}</span>
+              <span className="label">服务商：</span>
+              <span className="value">
+                {config.provider === 'dashscope' ? '☁️ DashScope 云端' : 
+                 config.provider === 'hunyuan' ? '☁️ 腾讯混元云端' : '💻 Ollama 本地'}
+              </span>
             </div>
-            <div className="status-row">
-              <span className="label">模型版本：</span>
-              <span className="value">{AIConfigManager.getCurrentModelName()}</span>
-            </div>
-            <div className="status-row">
-              <span className="label">服务地址：</span>
-              <span className="value">{config.ollamaBaseUrl}</span>
-            </div>
+            
+            {config.provider === 'dashscope' && (
+              <>
+                <div className="status-row">
+                  <span className="label">模型版本：</span>
+                  <span className="value">{config.dashscopeModel || 'qwen-plus'}</span>
+                </div>
+                <div className="status-row">
+                  <span className="label">API Key：</span>
+                  <span className="value">
+                    {config.dashscopeApiKey 
+                      ? '••••••••' + config.dashscopeApiKey.slice(-4) 
+                      : '未配置'}
+                  </span>
+                </div>
+              </>
+            )}
+            
+            {config.provider === 'hunyuan' && (
+              <>
+                <div className="status-row">
+                  <span className="label">模型版本：</span>
+                  <span className="value">{config.hunyuanModel || 'hunyuan-lite'}</span>
+                </div>
+                <div className="status-row">
+                  <span className="label">SecretId：</span>
+                  <span className="value">
+                    {config.hunyuanSecretId 
+                      ? config.hunyuanSecretId.slice(0, 8) + '••••••••' 
+                      : '未配置'}
+                  </span>
+                </div>
+                <div className="status-row">
+                  <span className="label">SecretKey：</span>
+                  <span className="value">
+                    {config.hunyuanSecretKey 
+                      ? '••••••••' + config.hunyuanSecretKey.slice(-4) 
+                      : '未配置'}
+                  </span>
+                </div>
+              </>
+            )}
+            
+            {config.provider === 'ollama' && (
+              <>
+                <div className="status-row">
+                  <span className="label">当前模型：</span>
+                  <span className="value">{config.currentModel === 'qwen' ? 'Qwen 2.5' : 'Gemma 2'}</span>
+                </div>
+                <div className="status-row">
+                  <span className="label">模型版本：</span>
+                  <span className="value">{AIConfigManager.getCurrentModelName()}</span>
+                </div>
+                <div className="status-row">
+                  <span className="label">服务地址：</span>
+                  <span className="value">{config.ollamaBaseUrl}</span>
+                </div>
+              </>
+            )}
+            
             <div className="status-row">
               <span className="label">状态：</span>
               <span className="value">{aiStatus}</span>
@@ -210,11 +627,35 @@ export const AIDemo: React.FC = () => {
                 <pre>{error}</pre>
                 <div className="help-links">
                   <p>💡 解决方案：</p>
-                  <ol>
-                    <li>安装 Ollama: <a href="https://ollama.ai/download" target="_blank" rel="noopener">点击下载</a></li>
-                    <li>启动服务: <code>ollama serve</code></li>
-                    <li>下载模型: <code>ollama pull {config.currentModel === 'qwen' ? 'qwen2.5:7b' : 'gemma2:9b'}</code></li>
-                  </ol>
+                  {config.provider === 'dashscope' ? (
+                    <ol>
+                      <li>确认 API Key 正确</li>
+                      <li>检查网络连接</li>
+                      <li>
+                        获取 API Key: 
+                        <a href="https://dashscope.console.aliyun.com/apiKey" target="_blank" rel="noopener noreferrer">
+                          点击获取
+                        </a>
+                      </li>
+                    </ol>
+                  ) : config.provider === 'hunyuan' ? (
+                    <ol>
+                      <li>确认 SecretId 和 SecretKey 正确</li>
+                      <li>检查网络连接</li>
+                      <li>
+                        获取密钥: 
+                        <a href="https://console.cloud.tencent.com/cam/capi" target="_blank" rel="noopener noreferrer">
+                          点击获取
+                        </a>
+                      </li>
+                    </ol>
+                  ) : (
+                    <ol>
+                      <li>安装 Ollama: <a href="https://ollama.ai/download" target="_blank" rel="noopener noreferrer">点击下载</a></li>
+                      <li>启动服务: <code>ollama serve</code></li>
+                      <li>下载模型: <code>ollama pull {config.currentModel === 'qwen' ? 'qwen2.5:7b' : 'gemma2:9b'}</code></li>
+                    </ol>
+                  )}
                 </div>
               </div>
             )}

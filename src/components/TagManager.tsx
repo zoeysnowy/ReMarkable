@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
 import ColorPicker from './ColorPicker';
-import CalendarMappingPicker from './CalendarMappingPicker';
+import CalendarMappingPicker from '../features/Calendar/components/CalendarMappingPicker';
 import { STORAGE_KEYS } from '../constants/storage';
 import { PersistentStorage, PERSISTENT_OPTIONS } from '../utils/persistentStorage';
 import { icons } from '../assets/icons';
@@ -1971,7 +1971,6 @@ const TagManager: React.FC<TagManagerProps> = ({
                       return tag.emoji;
                     } else {
                       if (tag.emoji) {
-                        console.log(`[TagManager] Tag "${tag.name}" has corrupted emoji: "${tag.emoji}", showing placeholder`);
                       }
                       return <img src={icons.emoji} alt="emoji" width="24" height="24" style={{ opacity: 0.5 }} />;
                     }

@@ -9,6 +9,28 @@ export interface TimerSession {
   tags?: string[];      // 🆕 添加：标签支持
 }
 
+/**
+ * 同步状态枚举
+ * 用于标识事件的同步状态
+ */
+export enum SyncStatus {
+  /** 本地创建，仅存储在本地，不同步到云端（如运行中的Timer） */
+  LOCAL_ONLY = 'local-only',
+  /** 等待同步到云端 */
+  PENDING = 'pending',
+  /** 已成功同步到 Outlook */
+  SYNCED = 'synced',
+  /** 同步冲突（本地和云端都有修改） */
+  CONFLICT = 'conflict',
+  /** 同步失败 */
+  ERROR = 'error'
+}
+
+/**
+ * 同步状态类型（向后兼容）
+ */
+export type SyncStatusType = 'pending' | 'synced' | 'error' | 'local-only' | 'conflict';
+
 export interface Event {
   id: string;
   title: string;
@@ -32,7 +54,7 @@ export interface Event {
   calendarId?: string;
   calendarIds?: string[]; // 🆕 添加：多日历分组支持
   source?: 'local' | 'outlook' | 'google' | 'icloud'; // 🆕 事件来源
-  syncStatus?: 'pending' | 'synced' | 'error' | 'local-only'; // 🔧 unified: 'pending' 表示所有待同步状态（新建或更新）
+  syncStatus?: SyncStatusType; // 🔧 unified: 'pending' 表示所有待同步状态（新建或更新）
   lastSyncTime?: string; // 🔧 修改：使用字符串存储本地时间
   createdAt: string;     // 🔧 修改：使用字符串存储本地时间
   updatedAt: string;     // 🔧 修改：使用字符串存储本地时间
@@ -48,6 +70,7 @@ export interface Event {
   isMilestone?: boolean; // 🆕 添加：标记为里程碑事件
   isTask?: boolean;      // 🆕 添加：标记为任务事件
   isPlan?: boolean;      // 🆕 添加：标记为计划页面事件
+  isTimeCalendar?: boolean; // 🆕 添加：标记为 TimeCalendar 页面创建的事件
   // 🆕 统一时间规范（不破坏现有 startTime/endTime，作为"意图+解析"来源）
   timeSpec?: import('./types/time').TimeSpec;
   
@@ -62,6 +85,10 @@ export interface Event {
   level?: number;        // 层级缩进（用于 Plan 页面显示）
   mode?: 'title' | 'description'; // 显示模式（title或description行）
   type?: 'todo' | 'task' | 'event'; // 事件类型（向后兼容）
+  
+  // 🆕 Issue #12: Timer ↔ Plan 集成
+  parentEventId?: string;   // 父事件 ID（用于 Timer 子事件关联）
+  timerLogs?: string[];     // 计时日志（子 Timer 事件 ID 列表）
 }
 
 export interface Task {
@@ -89,6 +116,7 @@ export interface GlobalTimer {
   taskTitle?: string;
   eventTitle?: string;   // 事件标题
   tagId?: string;        // 标签ID
+  planEventId?: string;  // 🆕 Issue #12: 关联的 Plan 事件 ID
   startTime: number;     // Unix timestamp
   originalStartTime?: number; // 原始开始时间
   elapsedTime: number;   // 已经过的时间（秒）

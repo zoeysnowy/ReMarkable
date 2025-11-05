@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import './CalendarPicker.css';
+import '../styles/CalendarPicker.css';
 
 interface Calendar {
   id: string;

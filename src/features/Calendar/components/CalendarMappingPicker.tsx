@@ -112,7 +112,6 @@ const CalendarMappingPicker: React.FC<CalendarMappingPickerProps> = ({
           const cachedCalendars = microsoftService.getCachedCalendars();
           
           if (cachedCalendars && cachedCalendars.length > 0) {
-            console.log('📋 [CalendarMappingPicker] Using cached calendars:', cachedCalendars.length);
             const mappedCalendars = cachedCalendars.map((cal: any) => ({
               calendarId: cal.id,
               calendarName: `${providerName}: ${cal.name}`,
@@ -121,7 +120,6 @@ const CalendarMappingPicker: React.FC<CalendarMappingPickerProps> = ({
             allCalendars.push(...mappedCalendars);
           } else {
             // 缓存为空，尝试从远程获取并缓存
-            console.log('📋 [CalendarMappingPicker] No cache found, fetching from remote...');
             try {
               const { calendars } = await microsoftService.getAllCalendarData();
               const mappedCalendars = calendars.map((cal: any) => ({
@@ -178,7 +176,6 @@ const CalendarMappingPicker: React.FC<CalendarMappingPickerProps> = ({
     setError(null);
     
     try {
-      console.log('🔄 [CalendarMappingPicker] Manual refresh requested');
       const { calendars } = await microsoftService.syncCalendarGroupsFromRemote();
       
       const providerName = getCalendarProviderName(microsoftService);
@@ -189,8 +186,6 @@ const CalendarMappingPicker: React.FC<CalendarMappingPickerProps> = ({
       }));
       
       setAvailableCalendars([...mappedCalendars, ...defaultOptions]);
-      console.log('✅ [CalendarMappingPicker] Manual refresh completed');
-      
     } catch (error) {
       console.error('❌ [CalendarMappingPicker] Manual refresh failed:', error);
       setError('同步失败，请检查网络连接');

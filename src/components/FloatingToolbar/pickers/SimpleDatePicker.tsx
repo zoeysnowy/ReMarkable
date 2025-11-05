@@ -17,8 +17,6 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
   onSelect,
   onClose,
 }) => {
-  console.log('🆕 SimpleDatePicker rendered');
-
   return (
     <div style={{ 
       padding: '20px', 
@@ -33,28 +31,20 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
         <RangePicker
           placeholder={['开始日期', '结束日期']}
           onChange={(dates) => {
-            console.log('🆕 Simple picker dates changed:', dates);
             if (dates && dates[0] && dates[1]) {
               onSelect(dates[0].toDate(), dates[1].toDate());
             }
           }}
           onOpenChange={(open) => {
-            console.log('🆕 Simple picker open changed:', open);
-            
             if (open) {
               setTimeout(() => {
                 // 检查输入框内部
                 const inputs = document.querySelectorAll('.ant-picker-input input');
-                console.log('🔍 Found inputs:', inputs.length);
-                
                 inputs.forEach((input, index) => {
                   const rect = input.getBoundingClientRect();
-                  console.log(`🔍 Input ${index} rect:`, rect);
-                  
                   // 检查输入框的父容器
                   const parent = input.parentElement;
-                  if (parent) {
-                    console.log(`🔍 Input ${index} parent styles:`, {
+                  if (parent) {      // console.log(`🔍 Input ${index} parent styles:`, {
                       overflow: window.getComputedStyle(parent).overflow,
                       position: window.getComputedStyle(parent).position,
                       zIndex: window.getComputedStyle(parent).zIndex,
@@ -67,7 +57,6 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
                 // 强制让日历弹出到 body
                 const dropdown = document.querySelector('.ant-picker-dropdown');
                 if (dropdown) {
-                  console.log('🔍 Moving dropdown to body...');
                   document.body.appendChild(dropdown);
                   
                   const dropdownElement = dropdown as HTMLElement;

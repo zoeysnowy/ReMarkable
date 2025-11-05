@@ -71,6 +71,7 @@ class TimeHubImpl {
   }
 
   getSnapshot(eventId: string): TimeGetResult {
+    this.init(); // 🔧 Issue #11 修复：确保初始化监听器
     const cached = this.cache.get(eventId);
     if (cached) {
       dbg('timehub', '📦 返回缓存的快照', { eventId, start: cached.start, end: cached.end });
@@ -104,11 +105,6 @@ class TimeHubImpl {
     const { skipSync = false } = options;
     
     // 🔍 [DEBUG-TIMER] 额外日志
-    console.log('🔍 [DEBUG-TIMER] TimeHub.setEventTime 调用');
-    console.log('🔍 [DEBUG-TIMER] eventId:', eventId);
-    console.log('🔍 [DEBUG-TIMER] skipSync:', skipSync);
-    console.log('🔍 [DEBUG-TIMER] input:', input);
-    
     dbg('timehub', '📥 收到 setEventTime 调用', { 
       eventId, 
       输入start: input.start, 
@@ -192,7 +188,13 @@ class TimeHubImpl {
         allDay: timeSpec?.allDay,
         订阅者数量: this.listeners.get(eventId)?.size ?? 0
       });
-      this.emit(eventId);
+      
+      // 🔧 Issue #11 修复：使用 queueMicrotask 确保订阅者在下一个微任务中收到通知
+      // 这样可以避免 React 18 的批量更新导致的延迟
+      queueMicrotask(() => {
+        this.emit(eventId);
+      });
+      
       // Broadcast a generic timeChanged event for any external listeners
       try {
         window.dispatchEvent(new CustomEvent('timeChanged', {
@@ -229,7 +231,12 @@ class TimeHubImpl {
         end: result.event.endTime,
       };
       this.cache.set(eventId, snapshot);
-      this.emit(eventId);
+      
+      // 🔧 Issue #11 修复：使用 queueMicrotask 确保订阅者及时收到通知
+      queueMicrotask(() => {
+        this.emit(eventId);
+      });
+      
       try {
         window.dispatchEvent(new CustomEvent('timeChanged', {
           detail: { eventId, timeSpec, start: snapshot.start, end: snapshot.end }
@@ -283,7 +290,12 @@ class TimeHubImpl {
     if (result.success && result.event) {
       const snapshot: TimeGetResult = { timeSpec, start: result.event.startTime, end: result.event.endTime };
       this.cache.set(eventId, snapshot);
-      this.emit(eventId);
+      
+      // 🔧 Issue #11 修复：使用 queueMicrotask 确保订阅者及时收到通知
+      queueMicrotask(() => {
+        this.emit(eventId);
+      });
+      
       try {
         window.dispatchEvent(new CustomEvent('timeChanged', {
           detail: { eventId, timeSpec, start: snapshot.start, end: snapshot.end }

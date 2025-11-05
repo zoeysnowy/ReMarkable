@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { formatDisplayDateTime, formatTimeForStorage } from '../utils/timeUtils';
+import { formatDisplayDateTime, formatTimeForStorage } from '../../../utils/timeUtils';
 import CalendarGroupManager from './CalendarGroupManager';
 
 interface CalendarSyncProps {
@@ -34,8 +34,6 @@ const CalendarSync: React.FC<CalendarSyncProps> = ({
   useEffect(() => {
     const handleAuthExpired = (event: Event) => {
       const customEvent = event as CustomEvent;
-      console.log('🚨 [CalendarSync] 认证已过期:', customEvent.detail);
-      
       // 清除用户信息
       setUserInfo(null);
       
@@ -121,8 +119,6 @@ const CalendarSync: React.FC<CalendarSyncProps> = ({
         `redirect_uri=${encodeURIComponent(redirectUri)}&` +
         `scope=${encodeURIComponent(scopes.join(' '))}&` +
         `response_mode=query`;
-      
-      console.log('🪟 [Electron] 打开认证窗口...');
       setSyncMessage('正在打开登录窗口...');
       
       const result = await (window as any).electronAPI.microsoftLoginWindow(authUrl);
@@ -130,8 +126,6 @@ const CalendarSync: React.FC<CalendarSyncProps> = ({
       if (!result.success) {
         throw new Error(result.error || '登录失败');
       }
-      
-      console.log('✅ [Electron] 获取到授权码');
       setSyncMessage('登录成功，正在获取访问令牌...');
       
       // 用授权码交换访问令牌
@@ -154,8 +148,6 @@ const CalendarSync: React.FC<CalendarSyncProps> = ({
       }
       
       const tokens = await tokenResponse.json();
-      console.log('✅ [Electron] 获取到访问令牌');
-      
       // 保存令牌到localStorage
       const expiresAt = Date.now() + (tokens.expires_in * 1000);
       localStorage.setItem('ms-access-token', tokens.access_token);

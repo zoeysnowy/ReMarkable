@@ -65,12 +65,10 @@ export const EventManager: React.FC<EventManagerProps> = ({
   // 根据事件的标签获取目标日历ID
   const getTargetCalendarId = (event: any): string | undefined => {
     if (!event.tagId) {
-      console.log(`🔍 [getTargetCalendarId] Event "${event.title}" has no tagId`);
       return undefined;
     }
     
-    const tag = eventTags.find(t => t.id === event.tagId);
-    console.log(`🔍 [getTargetCalendarId] Event "${event.title}" with tagId "${event.tagId}"`, {
+    const tag = eventTags.find(t => t.id === event.tagId);      // console.log(`🔍 [getTargetCalendarId] Event "${event.title}" with tagId "${event.tagId}"`, {
       foundTag: tag,
       calendarId: tag?.outlookCalendarId,
       availableTags: eventTags.map(t => ({ id: t.id, name: t.name, calendarId: t.outlookCalendarId }))
@@ -88,10 +86,8 @@ export const EventManager: React.FC<EventManagerProps> = ({
     const targetCalendarId = getTargetCalendarId(event);
     
     if (targetCalendarId) {
-      console.log(`🎯 [EventManager] Syncing event "${event.title}" to calendar:`, targetCalendarId);
       return await microsoftService.syncEventToCalendar(event, targetCalendarId);
     } else {
-      console.log(`🎯 [EventManager] Syncing event "${event.title}" to default calendar`);
       return await microsoftService.createEvent(event);
     }
   };
@@ -115,7 +111,6 @@ export const EventManager: React.FC<EventManagerProps> = ({
       if (savedEvents) {
         const parsedEvents = JSON.parse(savedEvents);
         setEvents(parsedEvents);
-        console.log('📅 [EventManager] Loaded events:', parsedEvents.length);
       } else {
         setEvents([]);
       }
@@ -133,12 +128,10 @@ export const EventManager: React.FC<EventManagerProps> = ({
   // 监听事件更新
   useEffect(() => {
     const handleOngoingEventsUpdate = (event: CustomEvent) => {
-      console.log('📥 [EventManager] Received ongoing events update');
       loadEvents();
     };
 
     const handleOutlookEventsUpdate = (event: CustomEvent) => {
-      console.log('📥 [EventManager] Received Outlook events update');
       loadEvents();
     };
 
@@ -402,10 +395,8 @@ export const EventManager: React.FC<EventManagerProps> = ({
 
       // 触发 ActionBasedSyncManager 同步到 Outlook
       if (syncManager && isNewEvent) {
-        console.log('📅 [EventManager] Recording new event for sync:', updatedEvent.title);
         syncManager.recordLocalAction('create', 'event', updatedEvent.id, updatedEvent);
       } else if (syncManager && !isNewEvent) {
-        console.log('📅 [EventManager] Recording event update for sync:', updatedEvent.title);
         const originalEvent = events.find(e => e.id === updatedEvent.id);
         syncManager.recordLocalAction('update', 'event', updatedEvent.id, updatedEvent, originalEvent);
       }
@@ -479,7 +470,6 @@ export const EventManager: React.FC<EventManagerProps> = ({
 
       // 🔧 [NEW] 使用 ActionBasedSyncManager 进行智能同步（支持标签映射）
       if (syncManager) {
-        console.log('📅 [EventManager] Recording event update for sync:', updatedEvent.title, 'with tag:', updatedEvent.tagId);
         syncManager.recordLocalAction('update', 'event', updatedEvent.id, updatedEvent, editingEvent);
       }
 
@@ -561,7 +551,6 @@ export const EventManager: React.FC<EventManagerProps> = ({
       
       // 触发同步到 Outlook（会根据标签映射路由到正确的日历）
       if (syncManager) {
-        console.log('📅 [EventManager] Recording new event for sync:', event.title, 'with tag:', event.tagId);
         syncManager.recordLocalAction('create', 'event', event.id, event);
       }
       
@@ -603,8 +592,6 @@ export const EventManager: React.FC<EventManagerProps> = ({
     }
 
     try {
-      console.log('🔄 Re-syncing event to Outlook:', event.title);
-      
       let updatedEvent: any;
       
       if ((event as any).externalId && (event as any).calendarId === 'microsoft') {
@@ -659,9 +646,7 @@ export const EventManager: React.FC<EventManagerProps> = ({
   // 渲染事件项
   const renderEventItem = (event: Event) => {
     const eventTag = getEventTag(event);
-    const isFromTimer = isTimerEvent(event);
-    
-    console.log('Rendering event:', {
+    const isFromTimer = isTimerEvent(event);      // console.log('Rendering event:', {
       id: event.id,
       title: event.title,
       isFromTimer,
@@ -688,7 +673,6 @@ export const EventManager: React.FC<EventManagerProps> = ({
           <div className="log-actions">
             <button
               onClick={() => {
-                console.log('🔥 [EDIT BUTTON CLICKED] This is the EventManager.tsx edit button!');
                 openEventEditModal(event);
               }}
               className="btn-edit-mini"

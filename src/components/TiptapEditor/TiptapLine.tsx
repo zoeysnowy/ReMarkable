@@ -98,10 +98,8 @@ export const TiptapLine: React.FC<TiptapLineProps> = ({
       handleKeyDown: (view, event) => {
         // Enter: Title 模式创建新行，Description 模式换行
         if (event.key === 'Enter' && !event.shiftKey) {
-          console.log('[TiptapLine] Enter pressed, mode:', mode);
           if (mode === 'title') {
             event.preventDefault();
-            console.log('[TiptapLine] Calling onEnter, lineId:', lineId);
             onEnter?.();
             return true;
           }
@@ -111,9 +109,7 @@ export const TiptapLine: React.FC<TiptapLineProps> = ({
 
         // Shift+Enter: 模式切换
         if (event.key === 'Enter' && event.shiftKey) {
-          console.log('[TiptapLine] Shift+Enter pressed, lineId:', lineId);
           event.preventDefault();
-          console.log('[TiptapLine] Calling onShiftEnter');
           onShiftEnter?.();
           return true;
         }
@@ -188,10 +184,8 @@ export const TiptapLine: React.FC<TiptapLineProps> = ({
         if (event.key === 'ArrowUp') {
           const { selection } = view.state;
           const isAtStart = selection.$anchor.pos === 1; // 光标在开头
-          console.log('[TiptapLine] ArrowUp, isAtStart:', isAtStart, 'pos:', selection.$anchor.pos, 'lineId:', lineId);
           if (isAtStart) {
             event.preventDefault();
-            console.log('[TiptapLine] Calling onArrowUp');
             onArrowUp?.();
             return true;
           }
@@ -201,10 +195,8 @@ export const TiptapLine: React.FC<TiptapLineProps> = ({
           const { selection } = view.state;
           const docSize = view.state.doc.content.size;
           const isAtEnd = selection.$anchor.pos >= docSize - 1; // 光标在末尾
-          console.log('[TiptapLine] ArrowDown, isAtEnd:', isAtEnd, 'pos:', selection.$anchor.pos, 'docSize:', docSize, 'lineId:', lineId);
           if (isAtEnd) {
             event.preventDefault();
-            console.log('[TiptapLine] Calling onArrowDown');
             onArrowDown?.();
             return true;
           }

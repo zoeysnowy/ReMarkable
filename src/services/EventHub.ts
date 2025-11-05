@@ -82,12 +82,6 @@ class EventHubClass {
     });
     
     // 🔍 [DEBUG-TIMER] 额外日志
-    console.log('🔍 [DEBUG-TIMER] EventHub.updateFields 调用');
-    console.log('🔍 [DEBUG-TIMER] eventId:', eventId);
-    console.log('🔍 [DEBUG-TIMER] skipSync:', skipSync);
-    console.log('🔍 [DEBUG-TIMER] source:', source);
-    console.log('🔍 [DEBUG-TIMER] updates:', updates);
-
     // 1. 获取当前快照
     const currentSnapshot = this.getSnapshot(eventId);
     if (!currentSnapshot) {
@@ -176,6 +170,35 @@ class EventHubClass {
     }
 
     return { success: true, event: updatedEvent };
+  }
+
+  /**
+   * 保存事件（创建或更新）
+   * 自动判断是新建还是更新
+   * 
+   * @param eventData 事件数据
+   * @returns 保存后的完整 Event 对象
+   */
+  async saveEvent(eventData: Event): Promise<Event> {
+    dbg('💾 [EventHub] 保存事件', { id: eventData.id, title: eventData.title });
+
+    let result;
+    
+    // 判断是创建还是更新
+    if (eventData.id.startsWith('temp-') || eventData.id.startsWith('timer-')) {
+      // 临时ID或Timer ID，需要创建
+      result = await this.createEvent(eventData);
+    } else {
+      // 已有ID，更新现有事件
+      result = await this.updateFields(eventData.id, eventData);
+    }
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to save event');
+    }
+
+    // 返回保存后的完整事件对象
+    return result.event!;
   }
 
   /**

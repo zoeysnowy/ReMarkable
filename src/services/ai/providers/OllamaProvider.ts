@@ -68,7 +68,6 @@ export class OllamaProvider implements AIProvider {
 
       if (!modelExists) {
         console.warn(`[OllamaProvider] 模型 ${this.model} 未安装`);
-        console.log(`[OllamaProvider] 请运行: ollama pull ${this.model}`);
       }
 
       return modelExists;
@@ -87,9 +86,6 @@ export class OllamaProvider implements AIProvider {
    * @throws Error 如果 API 调用失败或返回格式错误
    */
   async extractEventInfo(text: string, prompt: string): Promise<ExtractedEventInfo> {
-    console.log(`🤖 [OllamaProvider] 使用模型: ${this.model}`);
-    console.log(`📝 [OllamaProvider] 文本长度: ${text.length} 字符`);
-    
     const startTime = Date.now();
 
     try {
@@ -117,8 +113,6 @@ export class OllamaProvider implements AIProvider {
 
       const data = await response.json();
       const elapsed = Date.now() - startTime;
-      console.log(`⏱️ [OllamaProvider] AI 处理耗时: ${elapsed}ms`);
-
       // 解析 JSON 响应
       let parsed: any;
       try {
@@ -150,12 +144,6 @@ export class OllamaProvider implements AIProvider {
         agenda: parsed.agenda || '',
         confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.85
       };
-
-      console.log('✅ [OllamaProvider] 提取成功:', {
-        title: result.title,
-        confidence: result.confidence
-      });
-
       return result;
     } catch (error) {
       console.error('[OllamaProvider] 提取失败:', error);

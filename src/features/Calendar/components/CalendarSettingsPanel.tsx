@@ -11,7 +11,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import './CalendarSettingsPanel.css';
+import '../styles/CalendarSettingsPanel.css';
 
 export interface CalendarSettings {
   eventOpacity: number; // 0-100

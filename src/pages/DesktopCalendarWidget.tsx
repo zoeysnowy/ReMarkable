@@ -5,11 +5,11 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
-import TimeCalendar from '../components/TimeCalendar'; // �?使用原始 TimeCalendar
+import TimeCalendar from '../features/Calendar/TimeCalendar'; // Calendar 模块
 import { MicrosoftCalendarService } from '../services/MicrosoftCalendarService';
 import { ActionBasedSyncManager } from '../services/ActionBasedSyncManager';
 import { logger } from '../utils/logger';
-import '../components/DesktopCalendarWidget.css'; // 导入桌面日历 CSS
+import '../features/Calendar/styles/DesktopCalendarWidget.css'; // Desktop Widget 样式
 import SyncIcon from '../assets/icons/Sync.svg';
 import OutlookIcon from '../assets/icons/Outlook.svg';
 

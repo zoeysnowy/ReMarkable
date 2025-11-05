@@ -70,7 +70,6 @@ export const TiptapFreeFormEditor = <T,>({
    * 处理 Enter 键 - 创建新 Event（title 模式）
    */
   const handleLineEnter = useCallback((lineId: string) => {
-    console.log('[TiptapFreeFormEditor] handleLineEnter called:', lineId);
     const currentIndex = lines.findIndex(l => l.id === lineId);
     if (currentIndex === -1) return;
     const currentLine = lines[currentIndex];
@@ -100,9 +99,7 @@ export const TiptapFreeFormEditor = <T,>({
         const element = document.querySelector(`[data-line-id="${newLine.id}"] .ProseMirror`) as HTMLElement;
         if (element) {
           element.focus();
-          console.log('[TiptapFreeFormEditor] Focused new line successfully');
-        } else {
-          console.error('[TiptapFreeFormEditor] Cannot find element for:', newLine.id);
+        } else {      // console.error('[TiptapFreeFormEditor] Cannot find element for:', newLine.id);
         }
       }, 100);
     });
@@ -112,7 +109,6 @@ export const TiptapFreeFormEditor = <T,>({
    * 处理 Shift+Enter - Title ↔ Description 模式切换
    */
   const handleLineShiftEnter = useCallback((lineId: string) => {
-    console.log('[TiptapFreeFormEditor] handleLineShiftEnter called:', lineId);
     const currentIndex = lines.findIndex(l => l.id === lineId);
     if (currentIndex === -1) return;
     
@@ -142,7 +138,6 @@ export const TiptapFreeFormEditor = <T,>({
           const element = document.querySelector(`[data-line-id="${descLine.id}"] .ProseMirror`) as HTMLElement;
           if (element) {
             element.focus();
-            console.log('[TiptapFreeFormEditor] Focused description line successfully');
           }
         }, 100);
       });
@@ -375,12 +370,10 @@ export const TiptapFreeFormEditor = <T,>({
    * 处理 ArrowUp - 聚焦上一行
    */
   const handleArrowUp = useCallback((lineId: string) => {
-    console.log('[TiptapFreeFormEditor] handleArrowUp called:', lineId);
     const currentIndex = lines.findIndex(l => l.id === lineId);
     if (currentIndex > 0) {
       const prevLineId = lines[currentIndex - 1].id;
       const prevElement = document.querySelector(`[data-line-id="${prevLineId}"] .ProseMirror`) as HTMLElement;
-      console.log('[TiptapFreeFormEditor] Found prev element:', prevElement);
       prevElement?.focus();
     }
   }, [lines]);

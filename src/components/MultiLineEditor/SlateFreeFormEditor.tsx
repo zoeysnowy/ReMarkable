@@ -10,7 +10,7 @@
  * 4. 使用 Tippy.js 实现浮动工具�?
  */
 
-import React, { useCallback, useState, useRef, useEffect } from 'react';
+import React, { useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import { Editor } from 'slate';
 import { SlateLine } from '../SlateEditor/SlateLine';
 import './FreeFormEditor.css';
@@ -58,26 +58,69 @@ export const SlateFreeFormEditor = <T,>({
   const [lastClickedLineId, setLastClickedLineId] = useState<string | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
   
+  // 🆕 本地状态：暂存编辑中的行内容（key: lineId, value: html）
+  const [localLineContents, setLocalLineContents] = useState<Map<string, string>>(new Map());
+  
+  // 🆕 合并 props.lines 和本地编辑状态
+  const displayLines = useMemo(() => {
+    return lines.map(line => {
+      const localContent = localLineContents.get(line.id);
+      return localContent !== undefined ? { ...line, content: localContent } : line;
+    });
+  }, [lines, localLineContents]);
+  
   // ==================== 行操作回�?====================
   
   /**
-   * 处理行内容更�?
+   * 处理行内容更新（实时，不触发保存）
    */
   const handleLineUpdate = useCallback((lineId: string, html: string) => {
-    const updatedLines = lines.map(line =>
-      line.id === lineId ? { ...line, content: html } : line
-    );
-    onLinesChange(updatedLines);
-  }, [lines, onLinesChange]);
+    setLocalLineContents(prev => new Map(prev).set(lineId, html));
+  }, []);
+  
+  /**
+   * 处理行失焦（提交保存）
+   */
+  const handleLineBlur = useCallback((lineId: string) => {
+    const localContent = localLineContents.get(lineId);
+    if (localContent !== undefined) {
+      // 有本地修改，提交到父组件
+      const updatedLines = lines.map(line =>
+        line.id === lineId ? { ...line, content: localContent } : line
+      );
+      onLinesChange(updatedLines);
+      
+      // 清除本地缓存
+      setLocalLineContents(prev => {
+        const next = new Map(prev);
+        next.delete(lineId);
+        return next;
+      });
+    }
+  }, [lines, localLineContents, onLinesChange]);
   
   /**
    * 处理 Enter �?- 创建新行
    */
   const handleLineEnter = useCallback((lineId: string) => {
-    console.log('[SlateFreeFormEditor] handleLineEnter called:', lineId);
     const currentIndex = lines.findIndex(l => l.id === lineId);
     if (currentIndex === -1) return;
     const currentLine = lines[currentIndex];
+    
+    // 🆕 先提交当前行的本地修改
+    let updatedLines = lines;
+    const localContent = localLineContents.get(lineId);
+    if (localContent !== undefined) {
+      updatedLines = lines.map(line =>
+        line.id === lineId ? { ...line, content: localContent } : line
+      );
+      // 清除本地缓存
+      setLocalLineContents(prev => {
+        const next = new Map(prev);
+        next.delete(lineId);
+        return next;
+      });
+    }
     
     const newLine: FreeFormLine<T> = {
       id: `line-${Date.now()}`,
@@ -89,9 +132,9 @@ export const SlateFreeFormEditor = <T,>({
     const insertIndex = currentIndex + 1;
     
     const newLines = [
-      ...lines.slice(0, insertIndex),
+      ...updatedLines.slice(0, insertIndex),
       newLine,
-      ...lines.slice(insertIndex),
+      ...updatedLines.slice(insertIndex),
     ];
     
     onLinesChange(newLines);
@@ -105,13 +148,12 @@ export const SlateFreeFormEditor = <T,>({
         }
       }, 50);
     });
-  }, [lines, onLinesChange]);
+  }, [lines, localLineContents, onLinesChange]);
   
   /**
    * 处理 Shift+Enter - Title �?Description 模式切换
    */
   const handleLineShiftEnter = useCallback((lineId: string) => {
-    console.log('[SlateFreeFormEditor] handleLineShiftEnter called:', lineId);
     const currentIndex = lines.findIndex(l => l.id === lineId);
     if (currentIndex === -1) return;
     
@@ -141,7 +183,6 @@ export const SlateFreeFormEditor = <T,>({
           const element = document.querySelector(`[data-line-id="${descLine.id}"] [data-slate-editor]`) as HTMLElement;
           if (element) {
             element.focus();
-            console.log('[SlateFreeFormEditor] Focused description line successfully');
           }
         }, 50);
       });
@@ -530,7 +571,7 @@ export const SlateFreeFormEditor = <T,>({
   
   return (
     <div className={`slate-freeform-editor ${className}`} style={style}>
-      {lines.map((line, index) => {
+      {displayLines.map((line: FreeFormLine<T>, index: number) => {
         const isDescriptionMode = (line.data as any)?.mode === 'description';
         const isSelected = selectedLineIds.has(line.id);
         
@@ -573,6 +614,7 @@ export const SlateFreeFormEditor = <T,>({
               onArrowUp={() => handleLineArrowUp(line.id)}
               onArrowDown={() => handleLineArrowDown(line.id)}
               onDelete={() => handleLineDelete(line.id)}
+              onBlur={() => handleLineBlur(line.id)}
               onFocus={() => {
                 // console.log('[SlateFreeFormEditor] Line focused', line.id);
                 onLineFocus?.(line.id);

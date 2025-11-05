@@ -349,6 +349,54 @@ class TagServiceClass {
     const paths = tagIds.map(id => this.getTagPath(id)).filter(p => p);
     return paths.join(' ');
   }
+
+  /**
+   * 解析标签为ID（支持混合输入）
+   * 输入可以是标签ID或标签名称，统一转换为ID
+   * 
+   * @param tags 标签数组（可能包含ID或名称）
+   * @returns 标签ID数组
+   */
+  resolveTagIds(tags: string[]): string[] {
+    const flatTags = this.getFlatTags();
+    return tags.map(t => {
+      // 先尝试按ID查找
+      const tagById = flatTags.find(x => x.id === t);
+      if (tagById) return tagById.id;
+      
+      // 再尝试按名称查找
+      const tagByName = flatTags.find(x => x.name === t);
+      if (tagByName) return tagByName.id;
+      
+      // 都找不到，返回原值
+      return t;
+    });
+  }
+
+  /**
+   * 解析标签为名称
+   * 输入标签ID，返回标签名称
+   * 
+   * @param tagIds 标签ID数组
+   * @returns 标签名称数组
+   */
+  resolveTagNames(tagIds: string[]): string[] {
+    return tagIds.map(id => {
+      const tag = this.getTagById(id);
+      return tag ? tag.name : id;
+    });
+  }
+
+  /**
+   * 解析标签为显示名称（包含父级路径）
+   * 输入标签ID，返回完整路径名称
+   * 
+   * @param tagIds 标签ID数组
+   * @returns 标签显示名称数组
+   */
+  resolveTagDisplayNames(tagIds: string[]): string[] {
+    return tagIds.map(id => this.getTagDisplayName(id));
+  }
 }
 
 // 创建单例实例

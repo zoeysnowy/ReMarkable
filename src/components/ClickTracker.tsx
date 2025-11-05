@@ -50,7 +50,6 @@ const ClickTracker: React.FC<ClickTrackerProps> = ({
 ⏰ Time: ${new Date(event.timestamp).toLocaleTimeString()}`;
 
     navigator.clipboard.writeText(eventText).then(() => {
-      console.log('📋 Event copied to clipboard!');
     }).catch(err => {
       console.error('❌ Failed to copy event:', err);
     });
@@ -59,7 +58,6 @@ const ClickTracker: React.FC<ClickTrackerProps> = ({
   // 复制所有事件到剪贴板
   const copyAllEvents = () => {
     if (clickEvents.length === 0) {
-      console.log('❌ No events to copy');
       return;
     }
 
@@ -79,7 +77,6 @@ Time: ${new Date(event.timestamp).toLocaleTimeString()}
 --- End Report ---`;
 
     navigator.clipboard.writeText(allEventsText).then(() => {
-      console.log('📋 All events copied to clipboard!');
     }).catch(err => {
       console.error('❌ Failed to copy all events:', err);
     });
@@ -154,16 +151,7 @@ Time: ${new Date(event.timestamp).toLocaleTimeString()}
       };
 
       // 控制台输出详细信息
-      console.group(`🖱️ CLICK DETECTED #${clickEvent.id}`);
-      console.log('📍 Position:', `(${clickEvent.x}, ${clickEvent.y})`);
-      console.log('🎯 Target Element:', {
-        tagName: clickEvent.elementInfo?.tagName,
-        className: clickEvent.elementInfo?.className,
-        id: clickEvent.elementInfo?.id,
-        textContent: clickEvent.elementInfo?.textContent
-      });
-      console.log('📐 Element Bounds:', clickEvent.elementBounds);
-      console.log('🔍 Raw Element:', target);
+      console.group(`🖱️ CLICK DETECTED #${clickEvent.id}`);      // console.log('📍 Position:', `(${clickEvent.x}, ${clickEvent.y})`);
       console.groupEnd();
 
       // 更新点击事件列表

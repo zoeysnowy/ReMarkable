@@ -9,10 +9,10 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 
-// 配置 PDF.js Worker（必需，否则无法解析）
+// 配置 PDF.js Worker（使用本地文件，避免 CDN 加载失败）
 if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 
-    'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.js';
+  // 使用 public 目录下的本地 worker 文件（.js 后缀兼容性更好）
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 }
 
 /**
@@ -36,9 +36,7 @@ export class PDFParserService {
    * @returns 提取的文本内容
    * @throws Error 如果文件不是 PDF 或解析失败
    */
-  static async extractText(file: File): Promise<string> {
-    console.log('[PDFParser] 📄 开始解析 PDF:', file.name);
-    console.log('[PDFParser] 文件大小:', (file.size / 1024).toFixed(2), 'KB');
+  static async extractText(file: File): Promise<string> {      // console.log('[PDFParser] 文件大小:', (file.size / 1024).toFixed(2), 'KB');
 
     try {
       // 1. 验证文件类型
@@ -51,8 +49,6 @@ export class PDFParserService {
       
       // 3. 加载 PDF 文档
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      console.log(`[PDFParser] PDF 页数: ${pdf.numPages}`);
-
       // 4. 逐页提取文本
       let fullText = '';
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
@@ -68,12 +64,9 @@ export class PDFParserService {
           .join(' ');
         
         fullText += pageText + '\n\n';
-        console.log(`[PDFParser] 第 ${pageNum}/${pdf.numPages} 页提取完成，字符数: ${pageText.length}`);
       }
 
       const trimmedText = fullText.trim();
-      console.log(`[PDFParser] ✅ 提取完成，总字符数: ${trimmedText.length}`);
-
       // 验证提取结果
       if (trimmedText.length < 10) {
         throw new Error('PDF 内容为空或无法识别，可能是扫描版 PDF');

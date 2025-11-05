@@ -74,13 +74,6 @@ class ToastUIReactCalendarClass extends React.Component<Props> {
     const { height, events = [], view, ...options } = this.props;
     const container = this.containerElementRef.current;
 
-    console.log('🔧 [TUI] componentDidMount:', { 
-      hasContainer: !!container, 
-      view, 
-      height,
-      eventsCount: events.length 
-    });
-
     if (container) {
       // Extract only the options that belong to TUI Calendar
       const calendarOptions = optionsProps.reduce((acc, prop) => {
@@ -98,8 +91,7 @@ class ToastUIReactCalendarClass extends React.Component<Props> {
       // 添加 class 标记，方便调试
       container.classList.add('toastui-calendar');
       container.style.height = height;
-      
-      console.log('✅ [TUI] Calendar instance created:', this.calendarInstance);
+
     } else {
       console.error('❌ [TUI] Container ref is null!');
     }
@@ -145,7 +137,7 @@ class ToastUIReactCalendarClass extends React.Component<Props> {
     }
 
     if (view !== nextView && nextView) {
-      console.log('🔄 [TUI] Changing view:', view, '→', nextView);
+
       this.calendarInstance?.changeView(nextView);
     }
 

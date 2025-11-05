@@ -2,9 +2,33 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Event } from '../types';
 // import { STORAGE_KEYS } from '../constants/storage';
 import { formatTimeForStorage, parseLocalTimeString, formatDateForInput } from '../utils/timeUtils';
-import { CalendarPicker } from './CalendarPicker';
+import { CalendarPicker } from '../features/Calendar/components/CalendarPicker';
 import './EventEditModal.css';
 import { useEventTime } from '../hooks/useEventTime';
+
+/**
+ * 简单的防抖函数实现
+ */
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout | null = null;
+  
+  const debouncedFunc = (...args: Parameters<T>) => {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => {
+      func(...args);
+    }, wait);
+  };
+  
+  // 添加 cancel 方法用于清理
+  (debouncedFunc as any).cancel = () => {
+    if (timeout) clearTimeout(timeout);
+  };
+  
+  return debouncedFunc;
+}
 
 // interface EventTag {
 //   id: string;
@@ -197,13 +221,13 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
   useEffect(() => {
     if (event && isOpen) {
       // 🔍 调试：记录收到的 event.description
-      console.log('🔍 [EventEditModal] 初始化表单，event.description:', {
-        eventId: event.id,
-        descriptionType: typeof event.description,
-        descriptionLength: event.description ? event.description.length : 0,
-        descriptionValue: event.description,
-        descriptionPreview: event.description ? event.description.substring(0, 100) : '(空)'
-      });
+      // console.log('🔍 [EventEditModal] 初始化表单，event.description:', {
+      //   eventId: event.id,
+      //   descriptionType: typeof event.description,
+      //   descriptionLength: event.description ? event.description.length : 0,
+      //   descriptionValue: event.description,
+      //   descriptionPreview: event.description ? event.description.substring(0, 100) : '(空)'
+      // });
       
       const startStr = eventTime?.start || event.startTime || '';
       const endStr = eventTime?.end || event.endTime || '';
@@ -277,18 +301,46 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
   const handleSave = () => {
     if (!event) return;
 
+    // 🔧 Issue #15 修复：表单验证
+    const errors: string[] = [];
+    
+    // 验证标题（如果没有标签则必须有标题）
+    if (!formData.title?.trim() && formData.tags.length === 0) {
+      errors.push('请输入标题或选择标签');
+    }
+    
+    // 验证时间范围
+    if (formData.startTime && formData.endTime) {
+      const startDate = new Date(formData.startTime);
+      const endDate = new Date(formData.endTime);
+      if (startDate > endDate) {
+        errors.push('开始时间不能晚于结束时间');
+      }
+    }
+    
+    // 验证全天事件时间
+    if (formData.isAllDay && formData.startTime) {
+      const startDate = new Date(formData.startTime);
+      if (startDate.getHours() !== 0 || startDate.getMinutes() !== 0) {
+        // 自动修正为 00:00
+        const correctedStart = new Date(startDate);
+        correctedStart.setHours(0, 0, 0, 0);
+        formData.startTime = formatDateForInput(correctedStart);
+      }
+    }
+    
+    // 如果有错误，显示提示并阻止保存
+    if (errors.length > 0) {
+      alert(errors.join('\n'));
+      return;
+    }
+
     // 如果没有输入标题，但选择了标签，使用第一个标签的emoji和名称作为标题
     let finalTitle = formData.title;
     if (!finalTitle.trim() && formData.tags.length > 0) {
       const firstTag = getTagById(formData.tags[0]);
       if (firstTag) {
         finalTitle = `${firstTag.emoji || ''}${firstTag.name}`;
-        console.log('📝 [EventEditModal] Auto-filling title from tag:', {
-          tagId: firstTag.id,
-          tagName: firstTag.name,
-          emoji: firstTag.emoji,
-          generatedTitle: finalTitle
-        });
       }
     }
 
@@ -319,8 +371,6 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
 
           if (isNewEvent) {
             // ✨ 新建事件：先创建完整事件对象，再保存
-            console.log('✨ [EventEditModal] Creating new event:', event.id);
-            
             const newEvent: Event = {
               ...event,
               title: finalTitle,
@@ -349,20 +399,10 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
             }
           } else {
             // 📝 编辑现有事件：增量更新
-            console.log('📝 [EventEditModal] Updating existing event:', event.id);
-            
             // 🎯 [BUG FIX] 检查是否是运行中的Timer，如果是则跳过同步
             const isRunningTimer = event.syncStatus === 'local-only';
             const shouldSkipSync = isRunningTimer;
-            
-            console.log('🔍 [DEBUG-TIMER] EventEditModal 更新事件');
-            console.log('🔍 [DEBUG-TIMER] event.id:', event.id);
-            console.log('🔍 [DEBUG-TIMER] event.syncStatus:', event.syncStatus);
-            console.log('🔍 [DEBUG-TIMER] isRunningTimer:', isRunningTimer);
-            console.log('🔍 [DEBUG-TIMER] shouldSkipSync:', shouldSkipSync);
-            
             if (isRunningTimer) {
-              console.log('⏱️ [EventEditModal] Detected running timer, skipSync=true');
             }
             
             // 1. 先更新时间字段
@@ -440,10 +480,29 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
     return flatTags.find(tag => tag.id === tagId);
   };
 
+  // 🆕 创建防抖的 onStartTimeChange 回调（300ms 延迟）
+  const debouncedStartTimeChange = useMemo(() => {
+    if (!onStartTimeChange) return null;
+    return debounce((newStartTime: number) => {
+      onStartTimeChange(newStartTime);
+    }, 300);
+  }, [onStartTimeChange]);
+
+  // 🆕 清理防抖函数
+  useEffect(() => {
+    return () => {
+      if (debouncedStartTimeChange) {
+        (debouncedStartTimeChange as any).cancel?.();
+      }
+    };
+  }, [debouncedStartTimeChange]);
+
   const handleStartTimeEdit = (newStartTimeStr: string) => {
+    // 立即更新 UI 显示
     setFormData({ ...formData, startTime: newStartTimeStr });
     
-    if (onStartTimeChange && globalTimer) {
+    // 🔧 使用防抖回调通知父组件
+    if (debouncedStartTimeChange && globalTimer) {
       let newStartTime: number;
       
       try {
@@ -457,7 +516,7 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
         }
         
         if (!isNaN(newStartTime) && newStartTime > 0) {
-          onStartTimeChange(newStartTime);
+          debouncedStartTimeChange(newStartTime); // 🔧 使用防抖版本
         } else {
           console.error('❌ 时间解析失败:', newStartTimeStr);
         }
@@ -494,7 +553,7 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
     if (globalTimer.isRunning && hasOriginalStartTime && globalTimer.originalStartTime) {
       // 使用简单直观的计算：当前时间 - 用户设定的开始时间
       totalElapsed = now - globalTimer.originalStartTime;
-      console.log('📊 [EventEditModal] 使用简化计算:', {
+      // console.log('📊 [EventEditModal] 使用简化计算:', {
         当前时间: new Date(now).toLocaleString(),
         原始开始时间: new Date(globalTimer.originalStartTime).toLocaleString(),
         计算时长分钟: Math.round(totalElapsed / 60000)
@@ -747,7 +806,6 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
                     {filteredTags.length > 0 ? (
                       (() => {
                         console.group('� [EventEditModal] 标签层级诊断 - Step 3: UI 渲染');
-                        console.log('filteredTags 总数:', filteredTags.length);
                         console.table(filteredTags.map(tag => ({
                           name: tag.name,
                           level: tag.level,

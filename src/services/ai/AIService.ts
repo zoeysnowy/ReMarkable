@@ -9,6 +9,8 @@
 
 import { AIProvider, ExtractedEventInfo } from './AIProvider.interface';
 import { OllamaProvider } from './providers/OllamaProvider';
+import { DashScopeProvider } from './providers/DashScopeProvider';
+import { HunyuanProvider } from './providers/HunyuanProvider';
 import { AIConfigManager } from './AIConfig';
 import { PDFParserService } from '../PDFParserService';
 import { EVENT_EXTRACTION_PROMPT } from '../../constants/ai/prompts';
@@ -43,39 +45,66 @@ export class AIService {
     if (this.provider) {
       return this.provider;
     }
-
-    console.log('[AIService] 🚀 初始化 AI Provider...');
-
     // 1. 读取配置
     const config = AIConfigManager.getConfig();
     
-    // 2. 获取推荐模型（基于地区）
-    const recommendedModel = await AIConfigManager.getRecommendedModel();
-    console.log(`[AIService] 推荐模型: ${recommendedModel}`);
+    // 2. 根据 provider 类型创建实例
+    if (config.provider === 'dashscope') {
+      // 使用 DashScope 云端 API
+      if (!config.dashscopeApiKey) {
+        throw new Error(
+          'DashScope API Key 未配置。\n\n' +
+          '请访问：https://dashscope.console.aliyun.com/apiKey\n' +
+          '获取 API Key 后，在 AI Demo 页面的配置中填入。'
+        );
+      }
 
-    // 3. 创建 Provider
-    const modelName = recommendedModel === 'qwen' ? config.qwenModel : config.gemmaModel;
-    
-    this.provider = new OllamaProvider({
-      baseUrl: config.ollamaBaseUrl,
-      model: modelName,
-      name: `Ollama (${modelName})`
-    });
+      this.provider = new DashScopeProvider({
+        apiKey: config.dashscopeApiKey,
+        model: config.dashscopeModel || 'qwen-plus'
+      });
+    } else if (config.provider === 'hunyuan') {
+      // 使用腾讯混元云端 API
+      if (!config.hunyuanSecretId || !config.hunyuanSecretKey) {
+        throw new Error(
+          '腾讯混元密钥未配置。\n\n' +
+          '请访问：https://console.cloud.tencent.com/cam/capi\n' +
+          '获取 SecretId 和 SecretKey 后，在 AI Demo 页面的配置中填入。'
+        );
+      }
 
-    // 4. 检查可用性
-    const available = await this.provider.isAvailable();
-    if (!available) {
-      const errorMessage = 
-        `模型 ${modelName} 不可用。请按以下步骤操作：\n\n` +
-        `1. 安装 Ollama: https://ollama.ai/download\n` +
-        `2. 启动服务: ollama serve\n` +
-        `3. 下载模型: ollama pull ${modelName}\n\n` +
-        `当前配置: ${config.ollamaBaseUrl}`;
+      this.provider = new HunyuanProvider({
+        secretId: config.hunyuanSecretId,
+        secretKey: config.hunyuanSecretKey,
+        model: config.hunyuanModel || 'hunyuan-lite'
+      });
+    } else {
+      // 使用 Ollama 本地服务
+      const modelName = config.currentModel === 'qwen' 
+        ? config.ollamaQwenModel 
+        : config.ollamaGemmaModel;
       
-      throw new Error(errorMessage);
+      this.provider = new OllamaProvider({
+        baseUrl: config.ollamaBaseUrl,
+        model: modelName,
+        name: `Ollama (${modelName})`
+      });
+
+      // 检查本地模型可用性
+      const available = await this.provider.isAvailable();
+      if (!available) {
+        const errorMessage = 
+          `模型 ${modelName} 不可用。请按以下步骤操作：\n\n` +
+          `1. 安装 Ollama: https://ollama.ai/download\n` +
+          `2. 启动服务: ollama serve\n` +
+          `3. 下载模型: ollama pull ${modelName}\n\n` +
+          `当前配置: ${config.ollamaBaseUrl}\n\n` +
+          `💡 提示：如果不想下载模型，可以在配置中切换到云端服务（DashScope 或腾讯混元）。`;
+        
+        throw new Error(errorMessage);
+      }
     }
 
-    console.log(`[AIService] ✅ Provider 初始化成功:`, this.provider.name);
     return this.provider;
   }
 
@@ -86,19 +115,14 @@ export class AIService {
    * @returns 提取的事件信息
    * @throws Error 如果文件类型不支持或处理失败
    */
-  async extractEventFromDocument(file: File): Promise<ExtractedEventInfo> {
-    console.log('[AIService] 📎 开始处理文件:', file.name);
-    console.log('[AIService] 文件类型:', file.type);
-    console.log('[AIService] 文件大小:', (file.size / 1024).toFixed(2), 'KB');
+  async extractEventFromDocument(file: File): Promise<ExtractedEventInfo> {      // console.log('[AIService] 文件大小:', (file.size / 1024).toFixed(2), 'KB');
 
     // 1. 解析文件内容
     let text: string;
     try {
       if (PDFParserService.isPDF(file)) {
-        console.log('[AIService] 使用 PDF 解析器');
         text = await PDFParserService.extractText(file);
       } else if (PDFParserService.isTextFile(file)) {
-        console.log('[AIService] 使用文本读取');
         text = await file.text();
       } else {
         throw new Error(
@@ -116,9 +140,6 @@ export class AIService {
     if (trimmedText.length < 10) {
       throw new Error('文件内容为空或过短（少于10个字符），无法提取有效信息');
     }
-
-    console.log('[AIService] ✅ 文本提取成功，长度:', trimmedText.length);
-
     // 3. 初始化 AI Provider
     let provider: AIProvider;
     try {
@@ -129,20 +150,11 @@ export class AIService {
     }
 
     // 4. 调用 AI 提取信息
-    console.log('[AIService] 🤖 开始 AI 提取...');
     const startTime = Date.now();
 
     try {
       const result = await provider.extractEventInfo(trimmedText, EVENT_EXTRACTION_PROMPT);
       const elapsed = Date.now() - startTime;
-      
-      console.log(`[AIService] ✅ AI 提取成功，耗时: ${elapsed}ms`);
-      console.log(`[AIService] 提取结果:`, {
-        title: result.title,
-        startTime: result.startTime,
-        confidence: result.confidence
-      });
-
       return result;
     } catch (error) {
       console.error('[AIService] ❌ AI 提取失败:', error);
@@ -180,7 +192,6 @@ export class AIService {
    */
   resetProvider(): void {
     this.provider = null;
-    console.log('[AIService] Provider 已重置');
   }
 
   /**
