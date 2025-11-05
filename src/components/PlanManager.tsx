@@ -49,8 +49,8 @@ const PlanItemTimeDisplay: React.FC<{
       TimeHub快照allDay: eventTime.timeSpec?.allDay,
       item本地startTime: item.startTime,
       item本地endTime: item.endTime,
-      最终渲染的start: startTime?.toISOString(),
-      最终渲染的end: endTime?.toISOString(),
+      最终渲染的start: startTime,
+      最终渲染的end: endTime,
     });
   }, [item.id, eventTime.start, eventTime.end, eventTime.timeSpec?.allDay, item.startTime, item.endTime]);
 
@@ -703,8 +703,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       id: item.id || `event-${Date.now()}`,
       title: item.title,
       description: item.notes || sanitize(item.description || item.content || ''),
-      startTime: item.startTime || item.dueDate || new Date().toISOString(),
-      endTime: item.endTime || item.dueDate || new Date().toISOString(),
+      startTime: item.startTime || item.dueDate || formatTimeForStorage(new Date()),
+      endTime: item.endTime || item.dueDate || formatTimeForStorage(new Date()),
       location: '', // Event 没有 location 字段，保留空值
       isAllDay: !item.startTime && !!item.dueDate,
       tags: mappedTags,
@@ -713,8 +713,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       calendarIds: [],
       source: 'local',
       syncStatus: 'local-only',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: formatTimeForStorage(new Date()),
+      updatedAt: formatTimeForStorage(new Date()),
       remarkableSource: true,
     };
   };
@@ -765,7 +765,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         });
       } else {
         // TimeHub 无数据，使用 item 字段（fallback）
-        const now = new Date().toISOString();
+        const now = formatTimeForStorage(new Date());
         finalStartTime = item.startTime || item.dueDate || now;
         finalEndTime = item.endTime || item.dueDate || now;
         isTask = !(hasStart && hasEnd) && !item.isAllDay;
@@ -801,8 +801,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         // 从 item.id 提取创建时间戳（格式: line-{timestamp}）
         const timestampMatch = item.id.match(/line-(\d+)/);
         const createdDate = timestampMatch 
-          ? new Date(parseInt(timestampMatch[1])).toISOString()
-          : new Date().toISOString(); // fallback 到今天
+          ? formatTimeForStorage(new Date(parseInt(timestampMatch[1])))
+          : formatTimeForStorage(new Date()); // fallback 到今天
         finalStartTime = createdDate;
         finalEndTime = createdDate;
         isTask = true;
@@ -841,8 +841,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       }),
       source: 'local',
       syncStatus: 'local-only',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: formatTimeForStorage(new Date()),
+      updatedAt: formatTimeForStorage(new Date()),
       isTask: isTask,
       category: `priority-${item.priority}`,
       remarkableSource: true,
@@ -1249,8 +1249,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         }}
         onDateRangeSelect={(start: Date, end: Date) => {
           dbg('picker', '⚠️ onDateRangeSelect 被调用 (旧的非TimeHub路径!)', { 
-            start: start.toISOString(), 
-            end: end.toISOString(),
+            start: formatTimeForStorage(start), 
+            end: formatTimeForStorage(end),
             currentFocusedLineId,
             对应的eventId: currentFocusedLineId ? (items.find(i => i.id === currentFocusedLineId.replace('-desc',''))?.id) : undefined,
             警告: '这个回调会插入📅 mention，应该走 onTimeApplied 路径！'
@@ -1266,7 +1266,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
               
               // 构建日期 HTML（使用 Tiptap editor.insertContent）
               const dateText = `📅 ${formatDateDisplay(start, true)}${end && end.getTime() !== start.getTime() ? ' - ' + formatDateDisplay(end, true) : ''}`;
-              const dateHTML = `<span contenteditable="false" class="${isDescriptionMode ? 'inline-date mention-only' : 'inline-date'}" data-start-date="${start.toISOString()}"${end && end.getTime() !== start.getTime() ? ` data-end-date="${end.toISOString()}"` : ''} style="display: inline-block; padding: 2px 8px; margin: 0 2px; border-radius: 4px; background-color: rgba(59, 130, 246, 0.1); color: #3b82f6; font-size: 13px; font-weight: 500; cursor: default; user-select: none;">${dateText}</span> `;
+              const dateHTML = `<span contenteditable="false" class="${isDescriptionMode ? 'inline-date mention-only' : 'inline-date'}" data-start-date="${formatTimeForStorage(start)}"${end && end.getTime() !== start.getTime() ? ` data-end-date="${formatTimeForStorage(end)}"` : ''} style="display: inline-block; padding: 2px 8px; margin: 0 2px; border-radius: 4px; background-color: rgba(59, 130, 246, 0.1); color: #3b82f6; font-size: 13px; font-weight: 500; cursor: default; user-select: none;">${dateText}</span> `;
               
               editor.chain().focus().insertContent(dateHTML).run();
               
@@ -1294,8 +1294,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                 const updatedItem = {
                   ...item,
                   content: updatedContent,
-                  startTime: start.toISOString(), // 🎯 关联到 Event 元数据
-                  endTime: (end && end.getTime() !== start.getTime()) ? end.toISOString() : start.toISOString(),
+                  startTime: formatTimeForStorage(start), // 🎯 关联到 Event 元数据
+                  endTime: formatTimeForStorage(end && end.getTime() !== start.getTime() ? end : start),
                 };
                 onSave(updatedItem);
                 syncToUnifiedTimeline(updatedItem);
@@ -1411,8 +1411,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                   dbg('mention', 'DateMentionPicker onDateSelect', {
                     targetItemId: pickerTargetItemIdRef.current || currentFocusedLineId,
                     eventId: (pickerTargetItemIdRef.current || currentFocusedLineId) ? (items.find(i => i.id === (pickerTargetItemIdRef.current || currentFocusedLineId)!.replace('-desc',''))?.id) : undefined,
-                    start: startDate?.toISOString?.(),
-                    end: endDate?.toISOString?.(),
+                    start: startDate ? formatTimeForStorage(startDate) : undefined,
+                    end: endDate ? formatTimeForStorage(endDate) : undefined,
                     rawText,
                   });
                   // 在 anchor 位置插入日期 mention
@@ -1432,8 +1432,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                       const updatedHTML = editor.getHTML();
                       const updatedItem = {
                         ...item,
-                        startTime: startDate.toISOString(),
-                        endTime: endDate?.toISOString() || startDate.toISOString(),
+                        startTime: formatTimeForStorage(startDate),
+                        endTime: formatTimeForStorage(endDate || startDate),
                         content: updatedHTML,
                       } as Event;
                       onSave(updatedItem);
