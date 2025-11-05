@@ -811,7 +811,7 @@
 }
 
 /* ============================================
-   Task 事件自定义样式（月视图风格）
+   Task 事件自定义样式（待办样式：紧凑+勾选框）
    ============================================ */
 
 /* 隐藏默认的 ## 前缀 */
@@ -819,36 +819,59 @@
   content: none !important;
 }
 
-/* Task 事件容器 - 使用月视图的样式 */
+/* Task 事件容器 - 紧凑样式，无背景色 */
+.toastui-calendar-weekday-event.toastui-calendar-weekday-event-dot-task {
+  background-color: transparent !important;
+  border: none !important;
+  padding: 1px 4px !important; /* 紧凑的上下左右边距 */
+  margin: 1px 0 !important; /* 减小上下间距 */
+  height: 20px !important; /* 减小高度 */
+  line-height: 20px !important;
+  overflow: visible !important;
+}
+
+/* Task 事件标题容器 */
 .toastui-calendar-template-task {
   display: flex !important;
   align-items: center !important;
   padding: 0 !important;
   margin: 0 !important;
-  line-height: 24px !important;
+  gap: 4px !important; /* 勾选框和内容之间的间距 */
 }
 
-/* Task 事件的时间和标题样式 */
-.toastui-calendar-template-task .toastui-calendar-template-time {
-  display: flex !important;
-  align-items: center !important;
-  gap: 4px !important;
+/* 勾选框样式 */
+.remarkable-task-checkbox {
+  flex-shrink: 0 !important;
+  font-size: 14px !important;
+  line-height: 1 !important;
+  color: #666 !important;
+  margin-right: 2px !important;
 }
 
-.toastui-calendar-template-task .toastui-calendar-template-time strong {
-  font-weight: 600 !important;
-  font-size: 13px !important;
-}
-
-.toastui-calendar-template-task .toastui-calendar-template-time span {
-  font-size: 13px !important;
+/* Task 内容（时间+标题）样式 */
+.remarkable-task-content {
+  flex: 1 !important;
+  font-size: 12px !important;
+  line-height: 18px !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
 }
 
-/* 移除默认的 task 图标 */
+.remarkable-task-content strong {
+  font-weight: 600 !important;
+  font-size: 12px !important;
+}
+
+/* 移除默认的 task 图标和圆点 */
 .toastui-calendar-weekday-event.toastui-calendar-weekday-event-dot-task::before {
   content: none !important;
+  display: none !important;
+}
+
+/* 移除 task 的左侧边距（原本为圆点预留的空间） */
+.toastui-calendar-weekday-event.toastui-calendar-weekday-event-dot-task .toastui-calendar-weekday-event-title {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
 }
 
