@@ -257,6 +257,9 @@ function App() {
 
   // 页面状态管✅
   const [currentPage, setCurrentPage] = useState<PageType>('home');
+
+  // PlanItem 状态管✅
+  const [planItems, setPlanItems] = useState<PlanItem[]>([]);
   
   // 🔧 优化：移除不必要的依赖，避免频繁重新创建函数
   const handlePageChange = useCallback((page: PageType) => {
@@ -952,38 +955,139 @@ function App() {
     setSeconds(0);
   };
 
-  // ==================== Plan 相关事件管理 ====================
+  // ==================== PlanItem 管理函数 ====================
   
-  // 🔧 Plan页面直接使用Event，通过isPlan标记过滤
-  // 不再需要单独的PlanItem状态
-  
-  // 保存 Plan Event
-  const handleSavePlanItem = useCallback(async (item: Event) => {
-    // 标记为 Plan 事件
-    const planEvent: Event = {
-      ...item,
-      isPlan: true,
-      updatedAt: new Date().toISOString(),
+  // 加载 PlanItems
+  useEffect(() => {
+    const loadPlanItems = () => {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEYS.PLAN_ITEMS);
+        if (saved) {
+          const items = JSON.parse(saved);
+          setPlanItems(items);
+          AppLogger.log('📋 [App] 加载计划项', items.length);
+        }
+      } catch (error) {
+        AppLogger.error('🔧 [App] 加载计划项失败', error);
+      }
+    };
+
+    loadPlanItems();
+    
+    // 🆕 监听 eventsUpdated 事件，实现双向同步
+    const handleEventsUpdated = (e: any) => {
+      const { eventId, isNewEvent, deleted } = e.detail || {};
+      AppLogger.log('🔔 [App] 收到 eventsUpdated 事件', { eventId, isNewEvent, deleted });
+      
+      // 重新加载所有事件到 React 状态
+      setAllEvents(EventService.getAllEvents());
+      
+      // 🆕 双向同步：Event ↔ PlanItem
+      if (isNewEvent && eventId) {
+        // TimeCalendar 创建了新 Event，同步创建 PlanItem
+        const event = EventService.getEventById(eventId);
+        if (event && event.remarkableSource) {
+          // 检查是否已有对应的 PlanItem
+          setPlanItems(prev => {
+            const exists = prev.find(p => p.eventId === eventId);
+            if (exists) {
+              AppLogger.log('⏭️ [App] PlanItem 已存在，跳过创建', eventId);
+              return prev;
+            }
+            
+            // 创建新 PlanItem
+            const newPlanItem: PlanItem = {
+              id: `line-${Date.now()}`,
+              title: event.title,
+              content: event.title,
+              tags: event.tags || [],
+              startTime: event.startTime,
+              endTime: event.endTime,
+              isAllDay: event.isAllDay,
+              eventId: event.id,
+              isTask: event.isTask,
+              priority: 'medium',
+              isCompleted: false,
+              level: 0,
+              mode: 'title',
+            };
+            
+            const updated = [...prev, newPlanItem];
+            localStorage.setItem(STORAGE_KEYS.PLAN_ITEMS, JSON.stringify(updated));
+            AppLogger.log('🆕 [App] 从 Event 创建 PlanItem', { eventId, planItemId: newPlanItem.id });
+            
+            return updated;
+          });
+        }
+      } else if (deleted && eventId) {
+        // Event 被删除，同步删除 PlanItem
+        setPlanItems(prev => {
+          const updated = prev.filter(item => item.eventId !== eventId);
+          if (updated.length !== prev.length) {
+            localStorage.setItem(STORAGE_KEYS.PLAN_ITEMS, JSON.stringify(updated));
+            AppLogger.log('🗑️ [App] 同步删除 PlanItem', eventId);
+          }
+          return updated;
+        });
+      } else if (eventId && !isNewEvent && !deleted) {
+        // Event 被更新，同步更新 PlanItem
+        const event = EventService.getEventById(eventId);
+        if (event) {
+          setPlanItems(prev => {
+            const itemIndex = prev.findIndex(p => p.eventId === eventId);
+            if (itemIndex === -1) return prev;
+            
+            const updated = [...prev];
+            updated[itemIndex] = {
+              ...updated[itemIndex],
+              title: event.title,
+              startTime: event.startTime,
+              endTime: event.endTime,
+              isAllDay: event.isAllDay,
+              tags: event.tags || [],
+              isTask: event.isTask,
+            };
+            
+            localStorage.setItem(STORAGE_KEYS.PLAN_ITEMS, JSON.stringify(updated));
+            AppLogger.log('📝 [App] 同步更新 PlanItem', eventId);
+            
+            return updated;
+          });
+        }
+      }
     };
     
-    const result = await EventService.updateEvent(item.id, planEvent);
-    if (result.success) {
-      setAllEvents(EventService.getAllEvents());
-      AppLogger.log('💾 [App] 保存 Plan 事件', item.title);
-    } else {
-      AppLogger.error('� [App] 保存 Plan 事件失败', result.error);
-    }
+    window.addEventListener('eventsUpdated', handleEventsUpdated);
+    
+    return () => {
+      window.removeEventListener('eventsUpdated', handleEventsUpdated);
+    };
   }, []);
 
-  // 删除 Plan Event
-  const handleDeletePlanItem = useCallback(async (id: string) => {
-    const result = await EventService.deleteEvent(id);
-    if (result.success) {
-      setAllEvents(EventService.getAllEvents());
-      AppLogger.log('�️ [App] 删除 Plan 事件', id);
-    } else {
-      AppLogger.error('� [App] 删除 Plan 事件失败', result.error);
-    }
+  // 保存 PlanItem
+  const handleSavePlanItem = useCallback((item: PlanItem) => {
+    setPlanItems(prev => {
+      const exists = prev.find(p => p.id === item.id);
+      const updated = exists
+        ? prev.map(p => p.id === item.id ? item : p)
+        : [...prev, item];
+      
+      // 持久✅
+      localStorage.setItem(STORAGE_KEYS.PLAN_ITEMS, JSON.stringify(updated));
+      AppLogger.log('💾 [App] 保存计划项', item.title);
+      
+      return updated;
+    });
+  }, []);
+
+  // 删除 PlanItem
+  const handleDeletePlanItem = useCallback((id: string) => {
+    setPlanItems(prev => {
+      const updated = prev.filter(item => item.id !== id);
+      localStorage.setItem(STORAGE_KEYS.PLAN_ITEMS, JSON.stringify(updated));
+      AppLogger.log('🗑️ [App] 删除计划项', id);
+      return updated;
+    });
   }, []);
 
   // 创建 UnifiedTimeline Event
@@ -1008,7 +1112,7 @@ function App() {
     }
   }, []);
 
-  // ==================== End Plan 管理 ====================
+  // ==================== End PlanItem 管理 ====================
 
   const stopTimer = () => {
     if (currentTask) {
@@ -1417,9 +1521,13 @@ function App() {
         // 1. 显示标记为 isPlan=true 的事件
         // 2. TimeCalendar 创建的 event（remarkableSource=true）只显示未过期的
         const now = new Date();
-        const filteredPlanItems = allEvents.filter((event: Event) => {
-          // 只显示标记为 isPlan 的事件
-          if (!event.isPlan) return false;
+        const filteredPlanItems = planItems.filter(item => {
+          // 没有 eventId 则不显示
+          if (!item.eventId) return false;
+          
+          // 获取关联的 Event
+          const event = EventService.getEventById(item.eventId);
+          if (!event) return false; // Event 不存在则不显示
           
           // 非 TimeCalendar 创建的 event：全部显示
           if (event.remarkableSource !== true) return true;

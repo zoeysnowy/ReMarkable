@@ -1035,11 +1035,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                     allDay: false,
                     source: 'picker',
                   });
-                  dbg('picker', '✅ TimeHub 写入成功', { eventId: newId });
-                  // Event 已创建，直接保存 updatedItem（id已经是newId）
-                  onSave(updatedItem);
+                  dbg('picker', '✅ TimeHub 写入成功，回写 eventId 到 item', { eventId: newId });
+                  // 回写 eventId
+                  const withEvent: Event = { ...updatedItem, eventId: newId };
+                  onSave(withEvent);
                   // ⚠️ 不要调用 syncToUnifiedTimeline，Event 已创建且 TimeHub 已写入时间
-                  // syncToUnifiedTimeline(updatedItem);
+                  // syncToUnifiedTimeline(withEvent);
                 } else {
                   error('picker', '❌ 创建 Event 失败', { createRes });
                 }
@@ -1238,9 +1239,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                         remarkableSource: true,
                       } as any);
                       if (createRes.success && createRes.event) {
-                        // Event 已创建，直接保存（id已经是newId）
-                        onSave(updatedItem);
-                        syncToUnifiedTimeline(updatedItem);
+                        const withEvent: Event = { ...updatedItem, eventId: newId };
+                        onSave(withEvent);
+                        syncToUnifiedTimeline(withEvent);
                       }
                     }
                   } catch {}
@@ -1372,9 +1373,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                               remarkableSource: true,
                             } as any);
                             if (createRes.success && createRes.event) {
-                              // Event 已创建，直接保存（id已经是newId）
-                              onSave(updatedItem);
-                              syncToUnifiedTimeline(updatedItem);
+                              const withEvent: Event = { ...updatedItem, eventId: newId };
+                              onSave(withEvent);
+                              syncToUnifiedTimeline(withEvent);
                               dbg('mention', 'Created new event from mention insert', { eventId: newId });
                             }
                           }

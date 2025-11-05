@@ -1417,9 +1417,13 @@ function App() {
         // 1. 显示标记为 isPlan=true 的事件
         // 2. TimeCalendar 创建的 event（remarkableSource=true）只显示未过期的
         const now = new Date();
-        const filteredPlanItems = allEvents.filter((event: Event) => {
-          // 只显示标记为 isPlan 的事件
-          if (!event.isPlan) return false;
+        const filteredPlanItems = planItems.filter(item => {
+          // 没有 eventId 则不显示
+          if (!item.eventId) return false;
+          
+          // 获取关联的 Event
+          const event = EventService.getEventById(item.eventId);
+          if (!event) return false; // Event 不存在则不显示
           
           // 非 TimeCalendar 创建的 event：全部显示
           if (event.remarkableSource !== true) return true;

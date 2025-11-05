@@ -1238,9 +1238,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                         remarkableSource: true,
                       } as any);
                       if (createRes.success && createRes.event) {
-                        // Event 已创建，直接保存（id已经是newId）
-                        onSave(updatedItem);
-                        syncToUnifiedTimeline(updatedItem);
+                        const withEvent: Event = { ...updatedItem, eventId: newId };
+                        onSave(withEvent);
+                        syncToUnifiedTimeline(withEvent);
                       }
                     }
                   } catch {}
@@ -1372,9 +1372,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                               remarkableSource: true,
                             } as any);
                             if (createRes.success && createRes.event) {
-                              // Event 已创建，直接保存（id已经是newId）
-                              onSave(updatedItem);
-                              syncToUnifiedTimeline(updatedItem);
+                              const withEvent: Event = { ...updatedItem, eventId: newId };
+                              onSave(withEvent);
+                              syncToUnifiedTimeline(withEvent);
                               dbg('mention', 'Created new event from mention insert', { eventId: newId });
                             }
                           }
