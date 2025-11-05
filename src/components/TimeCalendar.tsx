@@ -1153,6 +1153,54 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     return () => clearTimeout(timer);
   }, [isCalendarReady, currentView]); // 只在初始化和视图切换时应用，避免与 MutationObserver 冲突
 
+  // 🎯 强制修改 Task 事件的内联样式（覆盖 TUI Calendar 的默认 22px）
+  useEffect(() => {
+    if (!isCalendarReady) return;
+
+    const forceTaskEventHeight = () => {
+      const taskEvents = document.querySelectorAll('.toastui-calendar-weekday-event:has(.toastui-calendar-template-task)');
+      let modifiedCount = 0;
+      
+      taskEvents.forEach((event: Element) => {
+        const htmlEvent = event as HTMLElement;
+        if (htmlEvent.style.height !== '17px') {
+          htmlEvent.style.height = '17px';
+          htmlEvent.style.lineHeight = '17px';
+          htmlEvent.style.marginLeft = '0';
+          htmlEvent.style.marginRight = '0';
+          modifiedCount++;
+        }
+      });
+      
+      if (modifiedCount > 0) {
+        console.log(`🎯 [Task样式] 强制修改了 ${modifiedCount} 个 Task 事件的内联样式`);
+      }
+    };
+
+    // 初始修改
+    const timer = setTimeout(forceTaskEventHeight, 150);
+    
+    // 设置 MutationObserver 监听 DOM 变化
+    const observer = new MutationObserver(() => {
+      forceTaskEventHeight();
+    });
+    
+    const calendarContainer = document.querySelector('.toastui-calendar');
+    if (calendarContainer) {
+      observer.observe(calendarContainer, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['style']
+      });
+    }
+    
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [isCalendarReady, events]); // 依赖 events 变化时重新应用
+
   // 👁️ 监听用户拖动改变面板高度，自动保存到localStorage
   useEffect(() => {
     if (!isCalendarReady) return;
