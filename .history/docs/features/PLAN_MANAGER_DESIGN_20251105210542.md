@@ -73,58 +73,51 @@ src/services/
 ├── EventHub.ts           # Event 状态管理
 └── TimeHub.ts            # 时间字段处理（EventHub 依赖）
 ```
+- ❌ `FloatingButton` 使用（暂时移除，未来可能作为格式化工具栏）
 
 ## 🔧 技术实现
 
-### ♻️ 数据流（2025-11-05 更新）
-
-```
-用户操作 → PlanManager → EventHub → TimeHub → EventService → localStorage
-                              ↓
-                          缓存管理
-                              ↓
-                         React 状态更新
-```
-
-### App.tsx 过滤逻辑
+### PlanItem 接口（简化版）
 ```typescript
-// Plan 页面：过滤 isPlan=true 的事件
-const filteredPlanItems = allEvents.filter((event: Event) => {
-  if (!event.isPlan) return false;
+export interface PlanItem {
+  id: string;
+  title: string;
+  content?: string;
+  tags: string[];
+  color?: string;
+  emoji?: string;
   
-  // TimeCalendar 创建的事件：只显示未过期的
-  if (event.remarkableSource === true) {
-    const endTime = new Date(event.endTime);
-    return new Date() < endTime;
-  }
+  // 时间字段 - 决定类型
+  dueDate?: string;      // 截止日期 → Task
+  startTime?: string;    // 开始时间 → Event  
+  endTime?: string;      // 结束时间 → Event
   
-  return true;
-});
-```
-
-### PlanManager 组件接口
-```typescript
-export interface PlanManagerProps {
-  items: Event[];  // 🔧 直接使用 Event[]，不再是 PlanItem[]
-  onSave: (item: Event) => void;
-  onDelete: (id: string) => void;
-  availableTags?: string[];
-  onCreateEvent?: (event: Event) => void;
-  onUpdateEvent?: (eventId: string, updates: Partial<Event>) => void;
+  isCompleted?: boolean;
+  priority?: 'low' | 'medium' | 'high' | 'urgent';
+  duration?: number;
+  notes?: string;
+  eventId?: string;
+  type?: 'todo' | 'task' | 'event';  // 自动计算
 }
 ```
 
-### Event 同步到 TimeCalendar
+### 类型判断逻辑
 ```typescript
-const syncToUnifiedTimeline = (event: Event) => {
-  // 所有 Plan 事件都会同步到 EventService
-  // 通过 isPlan 标记区分显示位置
-  EventService.updateEvent(event.id, {
-    ...event,
-    isPlan: true,  // 标记为 Plan 事件
-  });
+const getItemType = (item: PlanItem): 'todo' | 'task' | 'event' => {
+  if (item.startTime && item.endTime) return 'event';
+  if (item.dueDate) return 'task';
+  return 'todo';
 };
 ```
+
+### UnifiedTimeline 同步
+```typescript
+const syncToUnifiedTimeline = (item: PlanItem) => {
+  const type = getItemType(item);
+  if (type === 'todo') return;  // 纯待办不同步
+
+  const event: Event = {
+    id: item.eventId || `event-${Date.now()}`,
     title: `${item.emoji || ''}${item.title}`.trim(),
     startTime: item.startTime || item.dueDate || ...,
     endTime: item.endTime || item.dueDate || ...,
