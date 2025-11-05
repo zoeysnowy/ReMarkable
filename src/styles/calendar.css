@@ -823,11 +823,24 @@
 .toastui-calendar-weekday-event.toastui-calendar-weekday-event-dot-task {
   background-color: transparent !important;
   border: none !important;
+  border-left: none !important; /* 移除左侧边框 */
   padding: 1px 4px !important; /* 紧凑的上下左右边距 */
   margin: 1px 0 !important; /* 减小上下间距 */
   height: 20px !important; /* 减小高度 */
   line-height: 20px !important;
   overflow: visible !important;
+}
+
+/* 强制移除 Task 事件块的背景色（覆盖内联样式） */
+.toastui-calendar-weekday-event-block[data-testid*="default-event"] .toastui-calendar-weekday-event {
+  background-color: transparent !important;
+  border-left: none !important;
+}
+
+/* 更通用的选择器：所有包含 task 模板的事件 */
+.toastui-calendar-weekday-event:has(.toastui-calendar-template-task) {
+  background-color: transparent !important;
+  border-left: none !important;
 }
 
 /* Task 事件标题容器 */
