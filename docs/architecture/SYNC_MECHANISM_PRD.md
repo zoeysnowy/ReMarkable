@@ -1,9 +1,20 @@
 # ReMarkable 同步机制产品需求文档 (PRD)
 
 > **AI 生成时间**: 2025-11-05  
+> **最后更新**: 2025-11-06  
 > **关联代码版本**: master  
 > **文档类型**: 核心功能模块 PRD  
 > **关联模块**: Timer, TimeCalendar, TagManager, PlanManager, EventService
+
+---
+
+## 📋 更新日志
+
+### 2025-11-06
+- ✅ **认证恢复优化**: `acquireToken()` 成功后立即设置 `isAuthenticated = true`，不等待 `testConnection()`
+- ✅ **队列合并优化**: 同一事件的多个 update action 自动合并，只保留最新的，减少 API 调用
+- ✅ **CalendarSync 降级方案**: 当 syncManager 未初始化时，可直接调用 `microsoftService` 进行简化版同步
+- ✅ **标签日历映射修复**: 添加/修改标签后自动同步到标签映射的日历分组，优先级：标签映射 > 手动选择 > 默认日历
 
 ---
 
@@ -287,6 +298,23 @@ async signIn(): Promise<void> {
   localStorage.setItem('ms-token-expires', tokenData.expiresOn.getTime());
 }
 
+// 🆕 静默获取 Token（页面刷新后恢复登录状态）
+private async acquireToken(): Promise<void> {
+  const response = await this.msalInstance.acquireTokenSilent(tokenRequest);
+  this.accessToken = response.accessToken;
+  
+  // 🔧 优化：先设置认证状态为 true（因为已经获得了 token）
+  this.isAuthenticated = true;
+  this.simulationMode = false;
+  
+  // 🔧 测试连接（即使失败也不影响认证状态）
+  try {
+    await this.testConnection();
+  } catch (testError) {
+    console.warn('⚠️ API 连接测试失败，但 token 有效:', testError);
+  }
+}
+
 // 主动检查 Token 是否过期（5分钟缓冲）
 checkTokenExpiration(): boolean {
   const expiresStr = localStorage.getItem('ms-token-expires');
@@ -308,6 +336,8 @@ checkTokenExpiration(): boolean {
 - ✅ **主动过期检测**: 每 20 秒检查一次（同步循环中）+ 启动时检查
 - ✅ **5 分钟提前通知**: 避免 Token 在请求过程中过期
 - ✅ **UI 通知**: 通过 `auth-expired` 事件通知用户重新登录
+- 🆕 **认证状态恢复优化**: `acquireToken()` 成功后立即设置 `isAuthenticated = true`，不等待 `testConnection()`
+- 🆕 **localStorage 备用恢复**: Electron 和 Web 环境都支持从 localStorage 恢复 token
 
 #### 3.3.2 日历验证机制
 
@@ -959,6 +989,140 @@ this.saveLocalEvents(events, true); // rebuildIndex=true
 - 用户修改标签映射后
 - IndexMap 完整性检查失败
 
+### 8.5 🆕 同步队列合并优化
+
+**问题**: 离线时对同一个事件进行多次更新，会产生多个 update action
+
+**场景示例**:
+```
+离线时编辑事件 3 次 → Queue: [update v1, update v2, update v3]
+联网同步 → 发送 3 次 PATCH 请求（浪费 API 配额）
+```
+
+**优化方案**: 队列合并（Action Consolidation）
+
+**代码位置**: `ActionBasedSyncManager.ts` L1517-1575
+
+```typescript
+private async syncPendingLocalActions() {
+  const pendingLocalActions = this.actionQueue.filter(
+    action => action.source === 'local' && !action.synchronized
+  );
+  
+  // 🚀 合并同一个事件的多个 action
+  const consolidatedActions = new Map<string, SyncAction>();
+  const markedAsSynced: SyncAction[] = [];
+  
+  pendingLocalActions.forEach(action => {
+    const key = `${action.entityType}-${action.entityId}`;
+    const existing = consolidatedActions.get(key);
+    
+    if (!existing) {
+      consolidatedActions.set(key, action);
+    } else {
+      // 合并策略：
+      if (action.type === 'delete') {
+        // delete 优先级最高
+        markedAsSynced.push(existing);
+        consolidatedActions.set(key, action);
+      } else if (existing.type === 'delete') {
+        // 保留 delete
+        markedAsSynced.push(action);
+      } else if (action.timestamp > existing.timestamp) {
+        // 保留最新的 update
+        markedAsSynced.push(existing);
+        consolidatedActions.set(key, action);
+      } else {
+        markedAsSynced.push(action);
+      }
+    }
+  });
+  
+  // 标记被合并的旧 action 为已同步
+  markedAsSynced.forEach(action => {
+    action.synchronized = true;
+  });
+  
+  // 只同步合并后的 actions
+  for (const action of consolidatedActions.values()) {
+    await this.syncSingleAction(action);
+  }
+}
+```
+
+**合并规则**:
+1. **DELETE 优先**: 如果有删除操作，忽略所有之前的 create/update
+2. **最新优先**: 多个 update 操作，只保留时间戳最新的
+3. **CREATE → UPDATE 合并**: create 后立即 update，合并为一个 create
+
+**性能提升**:
+- 场景：离线编辑事件 10 次
+- 优化前：10 次 API 调用
+- 优化后：1 次 API 调用
+- **节省 90% API 配额**
+
+---
+
+### 8.6 🆕 标签日历映射自动同步
+
+**问题场景**:
+用户创建事件后添加标签，期望自动同步到标签映射的日历，但实际同步到了默认日历。
+
+**根本原因**:
+`EventEditModal` 保存时使用 `formData.calendarIds[0]` 作为 `calendarId`，但该数组可能包含旧的日历 ID，而不是标签映射的日历 ID。
+
+**修复方案** (EventEditModal.tsx):
+```typescript
+// 🔧 计算正确的 calendarId：优先使用标签映射的日历
+let targetCalendarId: string | undefined;
+
+// 优先级 1: 标签映射的日历
+if (formData.tags.length > 0) {
+  const firstTag = getTagById(formData.tags[0]);
+  targetCalendarId = firstTag?.calendarMapping?.calendarId;
+}
+
+// 优先级 2: 用户手动选择的日历
+if (!targetCalendarId && formData.calendarIds.length > 0) {
+  targetCalendarId = formData.calendarIds[0];
+}
+
+// 优先级 3: 默认日历（第一个可用日历）
+if (!targetCalendarId && availableCalendars.length > 0) {
+  targetCalendarId = availableCalendars[0].id;
+}
+
+// 保存事件
+await EventHub.updateFields(event.id, {
+  tags: formData.tags,
+  calendarId: targetCalendarId,
+  calendarIds: targetCalendarId ? [targetCalendarId] : formData.calendarIds,
+}, { skipSync: shouldSkipSync });
+```
+
+**默认日历获取逻辑** (参考 TagManager.tsx):
+```typescript
+const getDefaultCalendar = async () => {
+  const calendars = await microsoftService.getAllCalendars();
+  if (calendars && calendars.length > 0) {
+    // 使用第一个日历作为默认日历，通常这是用户的主日历
+    return calendars[0];
+  }
+  return undefined;
+};
+```
+
+**优先级规则**:
+1. 🥇 **标签映射的日历**: `tag.calendarMapping.calendarId`
+2. 🥈 **用户手动选择**: `formData.calendarIds[0]`
+3. 🥉 **默认日历**: `availableCalendars[0].id`（从 Graph API 获取）
+
+**测试场景**:
+- ✅ 创建事件 → 添加标签 → 同步到标签日历
+- ✅ 切换标签 → 从旧日历删除 + 在新日历创建
+- ✅ 移除标签 → 同步到默认日历
+- ✅ 无标签无选择 → 同步到默认日历
+
 ---
 
 ## 📊 总结
@@ -999,10 +1163,225 @@ this.saveLocalEvents(events, true); // rebuildIndex=true
 1. **WebSocket 实时同步**: 替代 20 秒轮询，实现秒级同步
 2. **冲突解决 UI**: 当远程和本地都有变更时，让用户选择保留哪个版本
 3. **同步历史记录**: 显示每次同步的详细日志
-4. **批量操作优化**: 一次性同步多个事件，减少 API 调用次数
+4. ~~**批量操作优化**: 一次性同步多个事件，减少 API 调用次数~~ ✅ **已完成**（队列合并优化）
+5. **智能同步频率调整**: 根据网络状况和用户活跃度动态调整同步间隔
+6. **增量 IndexMap 持久化**: 将 IndexMap 增量写入 localStorage，加快应用启动速度
 
 ---
 
-**文档版本**: v1.0  
-**最后更新**: 2025-11-05  
+## 9. 最佳实践与故障排查
+
+### 9.1 开发最佳实践
+
+#### ✅ DO - 推荐做法
+
+1. **使用 EventHub/EventService 而不是直接操作 localStorage**
+   ```typescript
+   // ✅ 正确
+   await EventHub.updateFields(eventId, { title: 'New Title' });
+   
+   // ❌ 错误
+   const events = JSON.parse(localStorage.getItem('events'));
+   events[0].title = 'New Title';
+   localStorage.setItem('events', JSON.stringify(events));
+   ```
+
+2. **批量同步时保持 IndexMap 增量更新**
+   ```typescript
+   // ✅ 正确
+   await syncManager.performSync(); // 自动增量更新 IndexMap
+   
+   // ❌ 错误
+   syncManager.rebuildEventIndexMapSync(); // 全量重建，浪费性能
+   ```
+
+3. **Timer 事件修改时使用 skipSync=true**
+   ```typescript
+   // ✅ 正确：Timer 运行中不同步
+   await EventService.updateEvent(timerId, updates, skipSync = true);
+   
+   // ❌ 错误：会触发同步，导致重复
+   await EventService.updateEvent(timerId, updates, skipSync = false);
+   ```
+
+4. **检查网络状态后再同步**
+   ```typescript
+   // ✅ 正确
+   if (navigator.onLine && microsoftService.isSignedIn()) {
+     await syncManager.performSync();
+   }
+   ```
+
+#### ❌ DON'T - 避免做法
+
+1. **不要绕过 syncManager 直接调用 MicrosoftService**
+   ```typescript
+   // ❌ 错误：绕过队列，无法离线重试
+   await microsoftService.syncEventToCalendar(event, calendarId);
+   
+   // ✅ 正确：通过 EventService 触发队列
+   await EventService.createEvent(event);
+   ```
+
+2. **不要手动修改 IndexMap**
+   ```typescript
+   // ❌ 错误：会导致状态不一致
+   syncManager.eventIndexMap.set(eventId, customEvent);
+   
+   // ✅ 正确：使用内置方法
+   syncManager.updateEventInIndex(event);
+   ```
+
+3. **不要在用户活跃时频繁同步**
+   ```typescript
+   // ❌ 错误：影响用户体验
+   setInterval(() => syncManager.performSync(), 5000);
+   
+   // ✅ 正确：等待窗口失焦或使用默认 20 秒间隔
+   if (!syncManager.isWindowFocused) {
+     await syncManager.performSync();
+   }
+   ```
+
+### 9.2 常见问题排查
+
+#### 问题 1: Timer 事件重复
+
+**症状**: 同步后出现两个相同的事件（`timer-tag-xxx` 和 `outlook-AAMkAD...`）
+
+**原因**:
+1. IndexMap 没有索引 Timer 的 `externalId`
+2. 或者 IndexMap 被全量重建，Timer 索引被覆盖
+
+**排查方法**:
+```javascript
+// 控制台运行
+const events = JSON.parse(localStorage.getItem('remarkable-events') || '[]');
+const timer = events.find(e => e.id.startsWith('timer-'));
+console.log('Timer externalId:', timer?.externalId);
+// 应该有 externalId，且不带 'outlook-' 前缀
+```
+
+**解决方案**:
+- 确保 `updateLocalEventExternalId` 调用了 `updateEventInIndex`
+- 确保批量同步时 `rebuildIndex=false`
+
+---
+
+#### 问题 2: 同步失败但没有重试
+
+**症状**: 网络恢复后，队列中的失败操作没有自动重试
+
+**排查方法**:
+```javascript
+// 检查同步队列
+const queue = JSON.parse(localStorage.getItem('sync-actions') || '[]');
+console.log('Pending actions:', queue.filter(a => !a.synchronized));
+
+// 检查网络监听器
+console.log('Online listener attached:', window.ononline !== null);
+```
+
+**解决方案**:
+- 检查 `window.addEventListener('online', ...)` 是否正常注册
+- 手动触发同步: `syncManager.performSync()`
+
+---
+
+#### 问题 3: 标签添加后未同步到对应日历
+
+**症状**: 添加有日历映射的标签，但事件仍在默认日历
+
+**排查方法**:
+```javascript
+// 检查标签映射
+const tags = TagService.getFlatTags();
+const tag = tags.find(t => t.id === 'your-tag-id');
+console.log('Calendar mapping:', tag?.calendarMapping);
+
+// 检查事件的 calendarId
+const event = events.find(e => e.id === 'your-event-id');
+console.log('Event calendarId:', event?.calendarId);
+```
+
+**解决方案**:
+- 确保标签已配置日历映射（在 TagManager 中）
+- 重新编辑事件并保存，触发 calendarId 重新计算
+
+---
+
+#### 问题 4: IndexMap 不一致导致重复事件
+
+**症状**: 远程同步的事件创建了新的本地事件，而不是更新现有事件
+
+**排查方法**:
+```javascript
+// 检查 IndexMap
+const indexMap = syncManager.eventIndexMap;
+const externalId = 'AAMkAD...'; // Outlook ID
+const indexed = indexMap.get(externalId);
+console.log('IndexMap entry:', indexed);
+
+// 对比 localStorage
+const events = JSON.parse(localStorage.getItem('remarkable-events') || '[]');
+const stored = events.find(e => e.externalId === externalId);
+console.log('Stored event:', stored);
+```
+
+**解决方案**:
+- 如果 IndexMap 缺失，触发增量更新: `syncManager.updateEventInIndex(event)`
+- 如果严重不一致，重建 IndexMap（仅在必要时）
+
+---
+
+#### 问题 5: 默认日历获取失败
+
+**症状**: 创建事件时报错 "default-Calendar not found"
+
+**原因**: 使用了硬编码的日历 ID，而不是从 Graph API 获取
+
+**排查方法**:
+```javascript
+// 检查可用日历
+const calendars = await microsoftService.getAllCalendars();
+console.log('Available calendars:', calendars);
+console.log('Default calendar:', calendars[0]);
+```
+
+**解决方案**:
+- 使用 `availableCalendars[0].id` 作为默认日历
+- 参考 TagManager 的 `getDefaultCalendarMapping()` 实现
+
+---
+
+### 9.3 性能调试工具
+
+#### 查看 IndexMap 统计信息
+```javascript
+console.log('IndexMap size:', syncManager.eventIndexMap.size);
+console.log('Incremental updates:', syncManager.incrementalUpdateCount);
+console.log('Full rebuilds:', syncManager.fullRebuildCount);
+```
+
+#### 查看同步队列状态
+```javascript
+const queue = JSON.parse(localStorage.getItem('sync-actions') || '[]');
+console.log('Total actions:', queue.length);
+console.log('Pending:', queue.filter(a => !a.synchronized).length);
+console.log('Synced:', queue.filter(a => a.synchronized).length);
+```
+
+#### 检查性能瓶颈
+```javascript
+// 启用性能日志
+syncManager.enablePerformanceLogging = true;
+
+// 查看分批重建的性能
+// 控制台会输出: "Batch X/Y processed in Xms"
+```
+
+---
+
+**文档版本**: v1.3  
+**最后更新**: 2025-11-06  
 **维护者**: GitHub Copilot

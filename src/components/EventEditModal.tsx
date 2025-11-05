@@ -364,6 +364,23 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
 
           if (isNewEvent) {
             // ✨ 新建事件：先创建完整事件对象，再保存
+            
+            // 🔧 计算正确的 calendarId：优先使用标签映射的日历
+            let targetCalendarId: string | undefined;
+            if (formData.tags.length > 0) {
+              // 如果有标签，尝试获取第一个标签的日历映射
+              const firstTag = getTagById(formData.tags[0]);
+              targetCalendarId = firstTag?.calendarMapping?.calendarId;
+            }
+            // 如果没有标签映射，使用用户手动选择的日历
+            if (!targetCalendarId && formData.calendarIds.length > 0) {
+              targetCalendarId = formData.calendarIds[0];
+            }
+            // 如果都没有，使用默认日历（第一个可用日历）
+            if (!targetCalendarId && availableCalendars.length > 0) {
+              targetCalendarId = availableCalendars[0].id;
+            }
+            
             const newEvent: Event = {
               ...event,
               title: finalTitle,
@@ -374,8 +391,8 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
               isAllDay: formData.isAllDay,
               tags: formData.tags,
               tagId: formData.tags.length > 0 ? formData.tags[0] : undefined,
-              calendarId: formData.calendarIds.length > 0 ? formData.calendarIds[0] : undefined,
-              calendarIds: formData.calendarIds,
+              calendarId: targetCalendarId, // 🔧 使用计算后的 calendarId
+              calendarIds: targetCalendarId ? [targetCalendarId] : formData.calendarIds, // 🔧 更新 calendarIds 数组
               createdAt: event.createdAt || formatTimeForStorage(new Date()),
               updatedAt: formatTimeForStorage(new Date()),
               remarkableSource: true,
@@ -398,6 +415,22 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
             if (isRunningTimer) {
             }
             
+            // 🔧 计算正确的 calendarId：优先使用标签映射的日历
+            let targetCalendarId: string | undefined;
+            if (formData.tags.length > 0) {
+              // 如果有标签，尝试获取第一个标签的日历映射
+              const firstTag = getTagById(formData.tags[0]);
+              targetCalendarId = firstTag?.calendarMapping?.calendarId;
+            }
+            // 如果没有标签映射，使用用户手动选择的日历
+            if (!targetCalendarId && formData.calendarIds.length > 0) {
+              targetCalendarId = formData.calendarIds[0];
+            }
+            // 如果都没有，使用默认日历（第一个可用日历）
+            if (!targetCalendarId && availableCalendars.length > 0) {
+              targetCalendarId = availableCalendars[0].id;
+            }
+            
             // 1. 先更新时间字段
             await EventHub.setEventTime(event.id, {
               start: startISO,
@@ -414,8 +447,8 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
               isAllDay: formData.isAllDay,
               tags: formData.tags,
               tagId: formData.tags.length > 0 ? formData.tags[0] : undefined,
-              calendarId: formData.calendarIds.length > 0 ? formData.calendarIds[0] : undefined,
-              calendarIds: formData.calendarIds,
+              calendarId: targetCalendarId, // 🔧 使用计算后的 calendarId
+              calendarIds: targetCalendarId ? [targetCalendarId] : formData.calendarIds, // 🔧 更新 calendarIds 数组
             }, { source: 'EventEditModal', skipSync: shouldSkipSync });
 
             // 3. 获取最终的完整事件（包含更新后的时间）
@@ -432,7 +465,24 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
         onClose();
       });
     } else {
-      // 兜底：没有 eventId 的情况下维持旧逻辑
+      // 兜底：没有 eventId 的情况
+      
+      // 🔧 计算正确的 calendarId：优先使用标签映射的日历
+      let targetCalendarId: string | undefined;
+      if (formData.tags.length > 0) {
+        // 如果有标签，尝试获取第一个标签的日历映射
+        const firstTag = getTagById(formData.tags[0]);
+        targetCalendarId = firstTag?.calendarMapping?.calendarId;
+      }
+      // 如果没有标签映射，使用用户手动选择的日历
+      if (!targetCalendarId && formData.calendarIds.length > 0) {
+        targetCalendarId = formData.calendarIds[0];
+      }
+      // 如果都没有，使用默认日历（第一个可用日历）
+      if (!targetCalendarId && availableCalendars.length > 0) {
+        targetCalendarId = availableCalendars[0].id;
+      }
+      
       const updatedEvent: Event = {
         ...event,
         title: finalTitle,
@@ -443,8 +493,8 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
         isAllDay: formData.isAllDay,
         tags: formData.tags,
         tagId: formData.tags.length > 0 ? formData.tags[0] : undefined,
-        calendarId: formData.calendarIds.length > 0 ? formData.calendarIds[0] : undefined,
-        calendarIds: formData.calendarIds,
+        calendarId: targetCalendarId, // 🔧 使用计算后的 calendarId
+        calendarIds: targetCalendarId ? [targetCalendarId] : formData.calendarIds, // 🔧 更新 calendarIds 数组
         updatedAt: formatTimeForStorage(new Date()),
       } as Event;
       onSave(updatedEvent);
