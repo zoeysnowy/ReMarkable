@@ -596,31 +596,58 @@ const updatedPlanItem: Event = {
 
 ### 6.2 同步到统一时间线
 
-**位置**: L666-724
+**位置**: L747-858
 
+**核心逻辑**：
 ```typescript
-const syncToUnifiedTimeline = useCallback((planItem: Event) => {
-  if (!onUpdateEvent) return;
+const syncToUnifiedTimeline = useCallback((item: Event) => {
+  // 1. 判断 event 是否已存在于 EventService
+  const existsInEventService = EventService.getEventById(item.id);
   
-  // 如果 Plan Item 有起止时间，同步到 Event
-  if (planItem.start && planItem.end) {
-    onUpdateEvent(planItem.id, {
-      start: planItem.start,
-      end: planItem.end,
-      title: planItem.content || planItem.title,
-      tags: planItem.tags,
-      description: planItem.description,
-      allDay: planItem.allDay,
-      // ... 其他字段
-    });
+  // 2. 根据是否存在决定时间来源
+  if (existsInEventService) {
+    // Event 已存在 → 从 TimeHub 读取最新时间（TimeHub 是时间的唯一数据源）
+    const snapshot = TimeHub.getSnapshot(item.id);
+    if (snapshot.start && snapshot.end) {
+      finalStartTime = snapshot.start;
+      finalEndTime = snapshot.end;
+    } else {
+      // TimeHub 无数据，使用 item 字段（fallback）
+      finalStartTime = item.startTime || item.dueDate || now;
+      finalEndTime = item.endTime || item.dueDate || now;
+    }
+  } else {
+    // Event 未创建 → 根据 item 的时间字段判断类型和时间
+    // 4 种场景判断（详见 Section 8.2）
   }
-}, [onUpdateEvent]);
+  
+  // 3. 构建 Event 对象并决定调用 create 还是 update
+  const event: Event = { /* ... */ };
+  
+  const existingEvent = EventService.getEventById(event.id);
+  if (existingEvent) {
+    onUpdateEvent(event.id, event);  // 更新已存在的 event
+  } else {
+    onCreateEvent(event);             // 创建新 event
+  }
+}, [onUpdateEvent, onCreateEvent]);
 ```
+
+**重要修复（2025-11-06）**：
+- ❌ **错误逻辑**：原代码用 `if (item.id)` 判断是否调用 create/update
+  - 问题：所有 event 都必定有 ID（`line-${timestamp}`），导致 `onCreateEvent` 永远不会被调用
+  - 结果：所有操作都走 `onUpdateEvent`，依赖 App.tsx 的 fallback 机制
+  
+- ✅ **正确逻辑**：改用 `EventService.getEventById(item.id)` 判断
+  - 存在于 EventService → 调用 `onUpdateEvent`（更新）
+  - 不存在于 EventService → 调用 `onCreateEvent`（创建）
+  - 清晰区分「有 ID」和「已存在于系统中」两个概念
 
 **触发时机**：
 - 用户在 SlateFreeFormEditor 中设置了时间
-- 用户点击"添加到日历"按钮
-- 用户通过 UnifiedDateTimePicker 设置了时间
+- 用户通过 FloatingBar 的 UnifiedDateTimePicker 设置了时间
+- 用户通过 @chrono 自然语言输入时间
+- handleLinesChange 检测到 item 从空变为有内容
 
 **数据流**：
 ```mermaid
@@ -628,8 +655,13 @@ graph LR
     A[PlanManager] -->|convertPlanItemToEvent| B[SlateFreeFormEditor]
     B -->|onSave| C[updatedEvent]
     C -->|合并| D[updatedPlanItem]
-    D -->|onSave 回调| E[父组件]
-    D -->|syncToUnifiedTimeline| F[TimeCalendar]
+    D -->|onSave 回调| E[App.tsx]
+    D -->|syncToUnifiedTimeline| F[判断是否存在]
+    F -->|存在| G[onUpdateEvent]
+    F -->|不存在| H[onCreateEvent]
+    G --> I[EventService]
+    H --> I
+    I --> J[TimeCalendar 显示]
 ```
 
 ---
@@ -965,14 +997,66 @@ const getContentStyle = (item: Event) => ({
 
 ### 10.1 已发现的代码问题
 
-| 问题 | 严重程度 | 位置 | 建议修复方案 |
-|------|----------|------|--------------|
-| **❌ 标签名 vs 标签ID 混用** | 🔴 高 | L320-330 | 统一使用标签 ID，在 TagService 中维护 ID ↔ 名称映射 |
-| **⚠️ syncToUnifiedTimeline 判断逻辑复杂** | 🟡 中 | L666-820 | 提取为独立的 `determineEventTime()` 函数 |
-| **⚠️ 缺少 Error Boundary** | 🟡 中 | 全局 | 添加 `<ErrorBoundary>` 包裹 PlanManager |
-| **⚠️ editorLines 转换未处理循环引用** | 🟡 中 | L467-515 | 添加 `visitedIds` Set 检测循环 |
-| **ℹ️ 魔法数字** | 🟢 低 | L487 | `level + 1` 应提取为常量 `DESCRIPTION_INDENT_OFFSET` |
-| **ℹ️ console.warn 未使用 debugLogger** | 🟢 低 | L479 | 改用 `warn('plan', '...')` |
+| 问题 | 严重程度 | 位置 | 状态 | 修复日期 |
+|------|----------|------|------|----------|
+| **❌ 标签名 vs 标签ID 混用** | 🔴 高 | L320-330 | ⏳ 待修复 | - |
+| **❌ syncToUnifiedTimeline ID判断错误** | 🔴 高 | L847-858 | ✅ 已修复 | 2025-11-06 |
+| **❌ syncToUnifiedTimeline 时间判断复杂** | � 高 | L747-820 | ✅ 已优化 | 2025-11-06 |
+| **❌ handleLinesChange 同步逻辑错误** | 🔴 高 | L621-627 | ✅ 已修复 | 2025-11-06 |
+| **❌ 时区问题：使用 toISOString()** | 🔴 高 | 多处 | ✅ 已修复 | 2025-11-06 |
+| **⚠️ 缺少 Error Boundary** | 🟡 中 | 全局 | ⏳ 待修复 | - |
+| **⚠️ editorLines 转换未处理循环引用** | 🟡 中 | L467-515 | ⏳ 待修复 | - |
+| **ℹ️ 魔法数字** | 🟢 低 | L487 | ⏳ 待修复 | - |
+| **ℹ️ console.warn 未使用 debugLogger** | 🟢 低 | L479 | ⏳ 待修复 | - |
+
+**已修复问题详情**：
+
+#### ✅ syncToUnifiedTimeline ID判断错误（2025-11-06）
+- **问题**：原代码用 `if (item.id)` 判断是否调用 create/update
+  - 所有 event 都必定有 ID（`line-${timestamp}`）
+  - 导致 `onCreateEvent` 永远不会被调用
+  - 所有操作都走 `onUpdateEvent`，逻辑混乱
+  
+- **修复**：改用 `EventService.getEventById(item.id)` 判断
+  - 存在 → 调用 `onUpdateEvent`（更新）
+  - 不存在 → 调用 `onCreateEvent`（创建）
+  - Commit: `66d1259`
+
+#### ✅ syncToUnifiedTimeline 时间判断复杂（2025-11-06）
+- **问题**：判断 event 是否已存在时使用 `if (item.id)`，注释误导
+  
+- **优化**：
+  - 改用 `EventService.getEventById(item.id)` 明确判断
+  - 优化注释：「已存在」指在 EventService 中存在，而非有无 ID
+  - Commit: `66d1259`
+
+#### ✅ handleLinesChange 同步逻辑错误（2025-11-06）
+- **问题**：L621-627 的逻辑写反了
+  ```typescript
+  if (!updatedItem.id) {  // ❌ 条件反了
+    syncToUnifiedTimeline(updatedItem);
+  }
+  ```
+  - 只有**新创建**的 item（没有 ID）才会同步
+  - **已存在**的 event 按 Enter 后不会同步，导致"消失"
+  
+- **修复**：移除错误的条件判断，所有 event 都同步
+  - Commit: `c5eaad2`
+
+#### ✅ 时区问题：使用 toISOString()（2025-11-06）
+- **问题**：PlanManager 中 20+ 处使用 `toISOString()`
+  - 生成 `2025-11-05T15:45:48.906Z` 格式（UTC 时间）
+  - 导致时区转换错误：18:06 显示为 10:06
+  
+- **修复**：批量替换为 `formatTimeForStorage()`
+  - convertPlanItemToEvent: 4 处
+  - syncToUnifiedTimeline: 5 处
+  - onDateRangeSelect: 6 处
+  - DateMentionPicker onDateSelect: 3 处
+  - Debug 日志: 2 处
+  - Commit: `3bfa0b8`
+
+**未修复问题的修复建议**：详见 Section 10.2
 
 ### 10.2 架构优化建议
 
@@ -1139,10 +1223,15 @@ import { FixedSizeList } from 'react-window';
 
 **最终统计**：
 - 📄 **字数**：~10,000 words
-- 📊 **代码覆盖**：1648/1648 lines (100%)
+- 📊 **代码覆盖**：1714/1714 lines (100%)
 - ⏱️ **编写耗时**：~2 小时
-- 🔍 **发现问题**：6 个（高 1 + 中 3 + 低 2）
+- 🔍 **发现问题**：9 个（高 5 + 中 2 + 低 2）
+- ✅ **已修复**：5 个重大问题（2025-11-06）
 - 💡 **优化建议**：3 个方案（时间判断逻辑提取、统一标签格式、虚拟滚动）
+
+**更新历史**：
+- **v1.0** (2025-11-05): 初始版本
+- **v1.1** (2025-11-06): 修复 5 个重大 bug，更新 Section 6.2 和 10.1
 
 ---
 
