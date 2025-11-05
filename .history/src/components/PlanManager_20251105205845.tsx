@@ -900,11 +900,17 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             setEditingItem(null);
           }}
           onSave={(updatedEvent) => {
-            // 更新 Event
+            // 将 Event 转回 Event
             const updatedPlanItem: Event = {
               ...editingItem,
-              ...updatedEvent, // 直接合并所有字段
+              title: updatedEvent.title,
               content: updatedEvent.description || editingItem.content,
+              tags: updatedEvent.tags || [],
+              startTime: updatedEvent.startTime,
+              endTime: updatedEvent.endTime,
+              isAllDay: updatedEvent.isAllDay,
+              notes: updatedEvent.description,
+              eventId: updatedEvent.id,
             };
             
             onSave(updatedPlanItem);

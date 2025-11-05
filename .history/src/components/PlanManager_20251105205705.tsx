@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect } from 'react';
 import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
 import Tippy from '@tippyjs/react';
@@ -150,7 +150,7 @@ const PlanItemTimeDisplay: React.FC<{
   return null;
 };
 
-// 🔧 PlanManager 不再使用 Event，直接使用 Event
+// 🔧 PlanManager 不再使用 PlanItem，直接使用 Event
 // Event 中已包含所有 Plan 相关字段（content, level, mode, emoji, color, priority, isCompleted 等）
 
 export interface PlanManagerProps {
@@ -171,7 +171,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   onUpdateEvent,
 }) => {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [editingItem, setEditingItem] = useState<Event | null>(null);
+  const [editingItem, setEditingItem] = useState<PlanItem | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   
   // 当前选中的标签（用于 FloatingToolbar）
@@ -301,7 +301,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           const isDescriptionLine = lineId.includes('-desc') || target.classList.contains('description-mode');
           setCurrentFocusedMode(isDescriptionLine ? 'description' : 'title');
           
-          // 找到对应的 Event，更新当前选中的标签和 isTask 状态
+          // 找到对应的 PlanItem，更新当前选中的标签和 isTask 状态
           const actualItemId = lineId.replace('-desc', ''); // 移除 -desc 后缀获取真实 item id
           const item = items.find(i => i.id === actualItemId);
           if (item) {
@@ -458,9 +458,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     return allTags;
   }, [items, tagServiceVersion]);
 
-  // 将 Event[] 转换为 FreeFormLine<Event>[]
-  const editorLines = useMemo<FreeFormLine<Event>[]>(() => {
-    const lines: FreeFormLine<Event>[] = [];
+  // 将 PlanItem[] 转换为 FreeFormLine<PlanItem>[]
+  const editorLines = useMemo<FreeFormLine<PlanItem>[]>(() => {
+    const lines: FreeFormLine<PlanItem>[] = [];
 
     // 根据 position（若无则按原数组索引）进行排序，确保新建行按期望顺序显示
     const sortedItems = [...items].sort((a: any, b: any) => {
@@ -500,12 +500,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   }, [items]);
 
   // 处理编辑器内容变化
-  const handleLinesChange = (newLines: FreeFormLine<Event>[]) => {
+  const handleLinesChange = (newLines: FreeFormLine<PlanItem>[]) => {
     // 记录新顺序中每个 title 行的 itemId 顺序
     const orderedItemIds: string[] = [];
 
     // 按 item id 分组（title + description），同时保留顺序
-    const itemGroups = new Map<string, { title?: FreeFormLine<Event>, description?: FreeFormLine<Event> }>();
+    const itemGroups = new Map<string, { title?: FreeFormLine<PlanItem>, description?: FreeFormLine<PlanItem> }>();
 
     newLines.forEach((line) => {
       if (!line.id) return;
@@ -553,7 +553,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       const position = orderedItemIds.indexOf(itemId);
 
       if (titleLine.data) {
-        const updatedItem: Event = {
+        const updatedItem: PlanItem = {
           ...(titleLine.data as any),
           id: (titleLine.data as any)?.id ?? itemId,
           title: plainText,
@@ -568,21 +568,21 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         // 🔍 诊断日志：检查 eventId 来源
         dbg('picker', '📊 handleLinesChange: 检查 eventId', {
           itemId: updatedItem.id,
-          'titleLine.data.id': (titleLine.data as any)?.id,
-          'updatedItem.id': updatedItem.id,
-          '从items数组查找': items.find(i => i.id === updatedItem.id)?.id,
+          'titleLine.data.eventId': (titleLine.data as any)?.eventId,
+          'updatedItem.eventId': updatedItem.eventId,
+          '从items数组查找': items.find(i => i.id === updatedItem.id)?.eventId,
         });
         
         onSave(updatedItem);
         // 🆕 更新时也同步到日历（但如果有 eventId，时间由 TimeHub 管理，跳过时间同步）
-        if (!updatedItem.id) {
+        if (!updatedItem.eventId) {
           dbg('picker', '🔄 handleLinesChange: 调用 syncToUnifiedTimeline (无 eventId)', { itemId: updatedItem.id });
           syncToUnifiedTimeline(updatedItem);
         } else {
-          dbg('picker', '⏭️ handleLinesChange: 跳过 syncToUnifiedTimeline (item 有 eventId，时间由 TimeHub 管理)', { itemId: updatedItem.id, eventId: updatedItem.id });
+          dbg('picker', '⏭️ handleLinesChange: 跳过 syncToUnifiedTimeline (item 有 eventId，时间由 TimeHub 管理)', { itemId: updatedItem.id, eventId: updatedItem.eventId });
         }
       } else {
-        const newItem: Event = {
+        const newItem: PlanItem = {
           id: titleLine.id,
           title: plainText,
           content: titleLine.content,
@@ -602,8 +602,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     });
   };
 
-  // 将 Event 转换为 Event（用于 EventEditModal）
-  const convertPlanItemToEvent = (item: Event): Event => {
+  // 将 PlanItem 转换为 Event（用于 EventEditModal）
+  const convertPlanItemToEvent = (item: PlanItem): Event => {
     // 清理描述中的内联HTML（如标签/日期）
     const sanitize = (html?: string): string => {
       if (!html) return '';
@@ -617,12 +617,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       return tag ? tag.id : t;
     });
     return {
-      id: item.id || `event-${Date.now()}`,
+      id: item.eventId || `event-${Date.now()}`,
       title: item.title,
       description: item.notes || sanitize(item.description || item.content || ''),
       startTime: item.startTime || item.dueDate || new Date().toISOString(),
       endTime: item.endTime || item.dueDate || new Date().toISOString(),
-      location: '', // Event 没有 location 字段，保留空值
+      location: '', // PlanItem 没有 location 字段，保留空值
       isAllDay: !item.startTime && !!item.dueDate,
       tags: mappedTags,
       tagId: mappedTags.length > 0 ? mappedTags[0] : undefined,
@@ -647,11 +647,11 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   };
 
   // 同步到UnifiedTimeline
-  const syncToUnifiedTimeline = (item: Event) => {
+  const syncToUnifiedTimeline = (item: PlanItem) => {
     // 🔍 诊断：强制输出日志（不经过 dbg 检查）
     console.log('%c[🔴 SYNC] syncToUnifiedTimeline 被调用', 'color: red; font-size: 16px; font-weight: bold', {
       itemId: item.id,
-      eventId: item.id,
+      eventId: item.eventId,
       startTime: item.startTime,
       endTime: item.endTime,
       dueDate: item.dueDate,
@@ -666,16 +666,16 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     const hasStart = !!item.startTime;
     const hasEnd = !!item.endTime;
     
-    if (item.id) {
+    if (item.eventId) {
       // 如果有 eventId，从 TimeHub 读取最新时间
-      const snapshot = TimeHub.getSnapshot(item.id);
+      const snapshot = TimeHub.getSnapshot(item.eventId);
       if (snapshot.start && snapshot.end) {
         finalStartTime = snapshot.start;
         finalEndTime = snapshot.end;
         // 根据时间判断 isTask
         isTask = !(hasStart && hasEnd) && !item.isAllDay;
         console.log('%c[🔴 SYNC] ✅ 使用 TimeHub 的最新时间', 'color: green; font-size: 14px', {
-          eventId: item.id,
+          eventId: item.eventId,
           TimeHub最新: { start: snapshot.start, end: snapshot.end },
           item旧字段: { start: item.startTime, end: item.endTime },
           isTask
@@ -687,7 +687,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         finalEndTime = item.endTime || item.dueDate || now;
         isTask = !(hasStart && hasEnd) && !item.isAllDay;
         console.log('%c[🔴 SYNC] ⚠️ TimeHub 无时间数据，使用 item 字段', 'color: orange; font-size: 14px', {
-          eventId: item.id,
+          eventId: item.eventId,
           snapshot,
           fallback: { start: finalStartTime, end: finalEndTime },
           isTask
@@ -731,7 +731,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     }
 
     const event: Event = {
-      id: item.id || `event-${Date.now()}`,
+      id: item.eventId || `event-${Date.now()}`,
       title: `${item.emoji || ''}${item.title}`.trim(),
       // 避免在描述中出现一堆 HTML，将其清洗为纯文本
       description: sanitizeHtmlToPlainText(item.description || item.content || item.notes || ''),
@@ -765,15 +765,15 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       remarkableSource: true,
     };
 
-    if (item.id && onUpdateEvent) {
-      onUpdateEvent(item.id, event);
+    if (item.eventId && onUpdateEvent) {
+      onUpdateEvent(item.eventId, event);
     } else if (onCreateEvent) {
       onCreateEvent(event);
-      item.id = event.id;
+      item.eventId = event.id;
     }
   };
 
-  const getTypeIcon = (item: Event) => {
+  const getTypeIcon = (item: PlanItem) => {
     // 根据时间字段判断图标
     const hasStart = !!item.startTime;
     const hasEnd = !!item.endTime;
@@ -787,7 +787,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   };
 
   // 渲染左侧前缀（Checkbox + Emoji，无类型图标）
-  const renderLinePrefix = (line: FreeFormLine<Event>) => {
+  const renderLinePrefix = (line: FreeFormLine<PlanItem>) => {
     const item = line.data;
     if (!item) return null;
 
@@ -810,7 +810,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   };
 
   // 渲染右侧后缀（时间 + More 图标）
-  const renderLineSuffix = (line: FreeFormLine<Event>) => {
+  const renderLineSuffix = (line: FreeFormLine<PlanItem>) => {
     const item = line.data;
     if (!item) return null;
 
@@ -820,7 +820,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         <PlanItemTimeDisplay
           item={item}
           onEditClick={(anchor) => {
-            dbg('ui', '🖱️ 点击右侧时间区域，打开 UnifiedDateTimePicker', { eventId: item.id, itemId: item.id });
+            dbg('ui', '🖱️ 点击右侧时间区域，打开 UnifiedDateTimePicker', { eventId: item.eventId, itemId: item.id });
             dateAnchorRef.current = anchor;
             pickerTargetItemIdRef.current = item.id;
             setShowUnifiedPicker(true);
@@ -851,7 +851,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   };
 
   // 渲染内容样式（不需要自己实现 contentEditable，只提供样式）
-  const getContentStyle = (item: Event) => ({
+  const getContentStyle = (item: PlanItem) => ({
     color: item.color || '#111827',
     textDecoration: item.isCompleted ? 'line-through' : 'none',
     opacity: item.isCompleted ? 0.6 : 1,
@@ -900,11 +900,17 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             setEditingItem(null);
           }}
           onSave={(updatedEvent) => {
-            // 更新 Event
-            const updatedPlanItem: Event = {
+            // 将 Event 转回 PlanItem
+            const updatedPlanItem: PlanItem = {
               ...editingItem,
-              ...updatedEvent, // 直接合并所有字段
+              title: updatedEvent.title,
               content: updatedEvent.description || editingItem.content,
+              tags: updatedEvent.tags || [],
+              startTime: updatedEvent.startTime,
+              endTime: updatedEvent.endTime,
+              isAllDay: updatedEvent.isAllDay,
+              notes: updatedEvent.description,
+              eventId: updatedEvent.id,
             };
             
             onSave(updatedPlanItem);
@@ -948,14 +954,14 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         mode={floatingToolbar.mode}
         config={toolbarConfig}
         activePickerIndex={activePickerIndex}
-        eventId={currentFocusedLineId ? (items.find(i => i.id === currentFocusedLineId.replace('-desc',''))?.id) : undefined}
+        eventId={currentFocusedLineId ? (items.find(i => i.id === currentFocusedLineId.replace('-desc',''))?.eventId) : undefined}
         useTimeHub={true}
         onTimeApplied={(startIso, endIso) => {
           dbg('picker', '📌 HeadlessFloatingToolbar.onTimeApplied 被调用 (TimeHub已更新)', { 
             startIso, 
             endIso, 
             focusedLineId: currentFocusedLineId,
-            对应的eventId: currentFocusedLineId ? (items.find(i => i.id === currentFocusedLineId.replace('-desc',''))?.id) : undefined
+            对应的eventId: currentFocusedLineId ? (items.find(i => i.id === currentFocusedLineId.replace('-desc',''))?.eventId) : undefined
           });
           const targetId = currentFocusedLineId || '';
           if (!targetId) {
@@ -978,7 +984,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
 
           // 保存（外层只更新非时间字段；时间由 TimeHub 维护）
           const updatedHTML = editor.getHTML();
-          const updatedItem: Event = {
+          const updatedItem: PlanItem = {
             ...item,
             ...(isDescriptionMode
               ? { description: updatedHTML }
@@ -987,7 +993,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           };
           dbg('picker', '💾 onTimeApplied: 保存 item (仅非时间字段)', { 
             itemId: updatedItem.id, 
-            eventId: updatedItem.id,
+            eventId: updatedItem.eventId,
             isDescriptionMode,
             内容长度: updatedHTML.length
           });
@@ -998,16 +1004,16 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           // 统一到 Event：若已有 eventId 则更新时间+非时间字段；若没有则先创建 Event 再写入 TimeHub
           (async () => {
             try {
-              if (updatedItem.id) {
+              if (updatedItem.eventId) {
                 // 已有 Event：只更新非时间字段（时间已由 TimeHub 更新）
-                dbg('picker', '📝 更新现有 Event (仅非时间字段)', { eventId: updatedItem.id });
-                await EventService.updateEvent(updatedItem.id, {
+                dbg('picker', '📝 更新现有 Event (仅非时间字段)', { eventId: updatedItem.eventId });
+                await EventService.updateEvent(updatedItem.eventId, {
                   title: updatedItem.title,
                   description: updatedItem.description || updatedItem.content,
                   tags: updatedItem.tags,
                   isTask: updatedItem.isTask,
                 });
-                dbg('picker', '✅ Event 更新成功 (仅非时间字段)', { eventId: updatedItem.id });
+                dbg('picker', '✅ Event 更新成功 (仅非时间字段)', { eventId: updatedItem.eventId });
               } else if (startIso) {
                 // 没有 Event：先创建 Event，再写入 TimeHub，最后回写 eventId 到 item
                 dbg('picker', '🆕 创建新 Event (item 没有 eventId)', { startIso, endIso });
@@ -1037,7 +1043,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                   });
                   dbg('picker', '✅ TimeHub 写入成功，回写 eventId 到 item', { eventId: newId });
                   // 回写 eventId
-                  const withEvent: Event = { ...updatedItem, eventId: newId };
+                  const withEvent: PlanItem = { ...updatedItem, eventId: newId };
                   onSave(withEvent);
                   // ⚠️ 不要调用 syncToUnifiedTimeline，Event 已创建且 TimeHub 已写入时间
                   // syncToUnifiedTimeline(withEvent);
@@ -1161,7 +1167,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             start: start.toISOString(), 
             end: end.toISOString(),
             currentFocusedLineId,
-            对应的eventId: currentFocusedLineId ? (items.find(i => i.id === currentFocusedLineId.replace('-desc',''))?.id) : undefined,
+            对应的eventId: currentFocusedLineId ? (items.find(i => i.id === currentFocusedLineId.replace('-desc',''))?.eventId) : undefined,
             警告: '这个回调会插入📅 mention，应该走 onTimeApplied 路径！'
           });
           // 🆕 根据模式决定行为
@@ -1191,8 +1197,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                 onSave(updatedItem);
                 syncToUnifiedTimeline(updatedItem);
                 // 若已关联事件，统一同步非时间字段
-                if (updatedItem.id) {
-                  EventService.updateEvent(updatedItem.id, {
+                if (updatedItem.eventId) {
+                  EventService.updateEvent(updatedItem.eventId, {
                     description: updatedItem.description,
                     tags: updatedItem.tags,
                     isTask: updatedItem.isTask,
@@ -1214,8 +1220,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                   try {
                     const startIso = formatTimeForStorage(start);
                     const endIso = formatTimeForStorage(end && end.getTime() !== start.getTime() ? end : start);
-                    if (updatedItem.id) {
-                      await EventService.updateEvent(updatedItem.id, {
+                    if (updatedItem.eventId) {
+                      await EventService.updateEvent(updatedItem.eventId, {
                         title: updatedItem.title,
                         description: updatedItem.description || updatedItem.content,
                         startTime: startIso,
@@ -1239,7 +1245,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                         remarkableSource: true,
                       } as any);
                       if (createRes.success && createRes.event) {
-                        const withEvent: Event = { ...updatedItem, eventId: newId };
+                        const withEvent: PlanItem = { ...updatedItem, eventId: newId };
                         onSave(withEvent);
                         syncToUnifiedTimeline(withEvent);
                       }
@@ -1265,7 +1271,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             const actualItemId = currentFocusedLineId.replace('-desc', '');
             const item = items.find(i => i.id === actualItemId);
             if (item) {
-              const updatedItem: Event = {
+              const updatedItem: PlanItem = {
                 ...item,
                 isTask,
               };
@@ -1313,12 +1319,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           }}
           content={
             <DateMentionPicker
-                eventId={(pickerTargetItemIdRef.current || currentFocusedLineId) ? (items.find(i => i.id === (pickerTargetItemIdRef.current || currentFocusedLineId)!.replace('-desc',''))?.id) : undefined}
+                eventId={(pickerTargetItemIdRef.current || currentFocusedLineId) ? (items.find(i => i.id === (pickerTargetItemIdRef.current || currentFocusedLineId)!.replace('-desc',''))?.eventId) : undefined}
                 useTimeHub={true}
                 onDateSelect={(startDate, endDate, rawText) => {
                   dbg('mention', 'DateMentionPicker onDateSelect', {
                     targetItemId: pickerTargetItemIdRef.current || currentFocusedLineId,
-                    eventId: (pickerTargetItemIdRef.current || currentFocusedLineId) ? (items.find(i => i.id === (pickerTargetItemIdRef.current || currentFocusedLineId)!.replace('-desc',''))?.id) : undefined,
+                    eventId: (pickerTargetItemIdRef.current || currentFocusedLineId) ? (items.find(i => i.id === (pickerTargetItemIdRef.current || currentFocusedLineId)!.replace('-desc',''))?.eventId) : undefined,
                     start: startDate?.toISOString?.(),
                     end: endDate?.toISOString?.(),
                     rawText,
@@ -1336,28 +1342,28 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                       editor.chain().focus().insertContent(html).run();
                       // 清理定位锚点（如果存在）
                       try { dateAnchorRef.current?.remove?.(); } catch {}
-                      // 更新 Event，并统一到 Event
+                      // 更新 PlanItem，并统一到 Event
                       const updatedHTML = editor.getHTML();
                       const updatedItem = {
                         ...item,
                         startTime: startDate.toISOString(),
                         endTime: endDate?.toISOString() || startDate.toISOString(),
                         content: updatedHTML,
-                      } as Event;
+                      } as PlanItem;
                       onSave(updatedItem);
                       syncToUnifiedTimeline(updatedItem);
 
                       // 同步到 Event：若已有 eventId，仅更新非时间字段；若没有，则创建 Event 并回写 eventId
                       (async () => {
                         try {
-                          if (updatedItem.id) {
-                            await EventService.updateEvent(updatedItem.id, {
+                          if (updatedItem.eventId) {
+                            await EventService.updateEvent(updatedItem.eventId, {
                               title: updatedItem.title,
                               description: updatedItem.description || updatedItem.content,
                               tags: updatedItem.tags,
                               isTask: updatedItem.isTask,
                             });
-                            dbg('mention', 'Updated existing event (non-time fields) after mention insert', { eventId: updatedItem.id });
+                            dbg('mention', 'Updated existing event (non-time fields) after mention insert', { eventId: updatedItem.eventId });
                           } else {
                             const newId = generateEventId();
                             const createRes = await EventService.createEvent({
@@ -1373,7 +1379,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                               remarkableSource: true,
                             } as any);
                             if (createRes.success && createRes.event) {
-                              const withEvent: Event = { ...updatedItem, eventId: newId };
+                              const withEvent: PlanItem = { ...updatedItem, eventId: newId };
                               onSave(withEvent);
                               syncToUnifiedTimeline(withEvent);
                               dbg('mention', 'Created new event from mention insert', { eventId: newId });
@@ -1449,7 +1455,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           content={
             <div style={{ padding: 0 }}>
               <UnifiedDateTimePicker
-                eventId={(items.find(i => i.id === (pickerTargetItemIdRef.current || currentFocusedLineId || '').replace('-desc',''))?.id) || undefined}
+                eventId={(items.find(i => i.id === (pickerTargetItemIdRef.current || currentFocusedLineId || '').replace('-desc',''))?.eventId) || undefined}
                 useTimeHub={true}
                 initialStart={(items.find(i => i.id === (pickerTargetItemIdRef.current || currentFocusedLineId || '').replace('-desc',''))?.startTime) || undefined}
                 initialEnd={(items.find(i => i.id === (pickerTargetItemIdRef.current || currentFocusedLineId || '').replace('-desc',''))?.endTime) || undefined}
@@ -1464,7 +1470,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
 
                   // 仅保存当前编辑的HTML，时间由 TimeHub 已更新
                   if (item) {
-                    const updatedItem: Event = {
+                    const updatedItem: PlanItem = {
                       ...item,
                       ...(isDescriptionMode
                         ? { description: editableElement?.innerHTML || item.description }
@@ -1619,4 +1625,3 @@ const PlanManager: React.FC<PlanManagerProps> = ({
 };
 
 export default PlanManager;
-
