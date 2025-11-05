@@ -248,8 +248,22 @@ export function convertToCalendarEvent(
   runningTimerEventId: string | null = null,
   isWidgetMode: boolean = false
 ): Partial<EventObject> {
-  const startDate = parseLocalTimeString(event.startTime);
-  const endDate = parseLocalTimeString(event.endTime);
+  // 🔧 修复：对于无时间的 Task，使用 createdAt 作为日期，但不设置具体时间
+  // 适用场景：Plan 页面创建的待办事项，用户未设置时间
+  let startDate: Date;
+  let endDate: Date;
+  
+  if ((!event.startTime || !event.endTime) && event.isTask) {
+    // 📋 Task 类型且无时间：只使用 createdAt 的日期部分
+    const createdDate = parseLocalTimeString(event.createdAt);
+    startDate = new Date(createdDate);
+    startDate.setHours(0, 0, 0, 0); // 只保留日期，时间设为 00:00
+    endDate = new Date(startDate); // Task 的 end 等于 start
+  } else {
+    // ⏰ 有时间的事件：使用实际的 startTime/endTime
+    startDate = parseLocalTimeString(event.startTime || event.createdAt);
+    endDate = parseLocalTimeString(event.endTime || event.createdAt);
+  }
   
   // 🎨 使用getEventColor获取正确的颜色（支持多标签和日历颜色）
   const eventColor = getEventColor(event, tags);

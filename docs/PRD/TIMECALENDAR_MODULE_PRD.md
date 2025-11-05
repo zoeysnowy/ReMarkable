@@ -2,9 +2,25 @@
 
 > **文档版本**: v0.1 (Draft - 持续迭代中)  
 > **创建日期**: 2025-11-05  
-> **最后更新**: 2025-11-05  
-> **文档状态**: 🚧 正在编写 - 第一部分完成  
+> **最后更新**: 2025-11-06  
+> **文档状态**: 🚧 正在编写 - 持续更新中  
 > **参考框架**: Copilot PRD Reverse Engineering Framework v1.0
+
+---
+
+## ⚠️ 时间字段规范
+
+**严禁使用 ISO 8601 标准时间格式（带 Z 或时区偏移）！**
+
+所有时间字段必须使用 `timeUtils.ts` 中的工具函数处理：
+- ✅ **存储时间**: 使用 `formatTimeForStorage(date)` - 返回本地时间字符串（如 `2025-11-06T14:30:00`）
+- ✅ **解析时间**: 使用 `parseLocalTimeString(timeString)` - 将字符串解析为 Date 对象
+- ❌ **禁止**: 直接使用 `new Date().toISOString()` 或 `date.toISOString()`
+- ❌ **禁止**: 时间字符串包含 `Z` 后缀或 `+08:00` 等时区标记
+
+**原因**: ISO 格式会导致时区转换问题，18:06 的事件可能在同步后显示为 10:06（UTC 时间）。
+
+**参考文件**: `src/utils/timeUtils.ts`
 
 ---
 
@@ -1812,13 +1828,17 @@ export interface Event {
   duration: number;
   description: string;
   
-  // 业务类型标记（互斥）
-  isTimer?: boolean;      // Timer 事件
-  isPlan?: boolean;       // 计划项
-  isTask?: boolean;       // 任务项（未来扩展）
-  isMilestone?: boolean;  // 里程碑（未来扩展）
+  // 🎯 业务类型标记（可组合）
+  isTimer?: boolean;        // Timer 事件（运行中的计时器）
+  isPlan?: boolean;         // 显示在 Plan 页面
+  isTimeCalendar?: boolean; // TimeCalendar 创建的事件（用于过期过滤）
+  isTask?: boolean;         // 待办事项/任务（缺少完整时间段，在日历中显示为 task 条）
+  isMilestone?: boolean;    // 里程碑事件（在日历中显示为 milestone 标记）
   
-  // Outlook 同步字段
+  // 🔄 同步标识
+  remarkableSource?: boolean; // 标识所有 ReMarkable 创建的事件（用于同步）
+  
+  // 📅 Outlook 同步字段
   outlookEventId?: string;
   outlookCalendarId?: string;
   
@@ -1946,13 +1966,212 @@ graph TB
 | 标记 | 识别条件 | 显示位置 | 特殊行为 |
 |------|----------|----------|----------|
 | `isTimer: true` | Timer 启动后自动创建 | TimeCalendar（实时更新 duration） | 随 Timer 运行实时刷新 |
-| `isPlan: true` | 用户在 PlanManager 中创建 | TimeCalendar + PlanManager | 支持 Plan → Event 转换 |
-| `isTask: true` | 未来扩展（待办事项） | TimeCalendar + TaskManager | 支持完成状态切换 |
-| `isMilestone: true` | 未来扩展（项目里程碑） | TimeCalendar（特殊样式） | 显示进度百分比 |
+| `isPlan: true` | 标记为在 Plan 页面显示的事件 | TimeCalendar + PlanManager | 控制 Plan 页面显示 |
+| `isTimeCalendar: true` | 用户在 TimeCalendar 中拖拽创建 | TimeCalendar + PlanManager（过期自动过滤） | 基于时间的日程事件 |
+| `isAllDay: true` | 全天事件（不占据具体时间轴） | TimeCalendar（显示为全天事件条） | 强制 isTask=false，即使缺少完整时间段 |
+| `isTask: true` | 待办事项（无完整时间段且不是全天事件） | TimeCalendar（显示为 task 条） | 在日历中显示为任务条而非时间块 |
+| `isMilestone: true` | 项目里程碑事件 | TimeCalendar（特殊样式） | 显示为里程碑标记 |
 
-**标记互斥原则**：
-- 一个 Event 只能有一个业务标记为 `true`
-- 未标记或全为 `false` 表示**普通日程事件**
+**标记组合原则**：
+- ⚠️ **可组合字段**: `isPlan`、`isTimeCalendar`、`isTask` 可以同时为 `true`
+  - 示例：`isPlan: true` + `isTask: true` = 在 Plan 页面显示的待办事项（无固定时间）
+  - 示例：`isPlan: true` + `isTimeCalendar: true` = 在 Plan 页面显示的日历事件（有固定时间）
+- ⚠️ **显示类型互斥**: `isTask` 和 `isMilestone` 互斥（决定在 TUI Calendar 中的显示类型）
+- ⚠️ **来源标记**: `isTimer` 通常不与其他标记组合（Timer 专属）
+- ✅ **isAllDay 与 isTask 的关系**: `isAllDay: true` 会强制 `isTask: false`（全天事件始终显示为 Event，即使缺少完整时间段）
+  - 示例：`isAllDay: true` + 缺少 startTime/endTime → `isTask: false`（显示为全天事件条）
+  - 示例：`isAllDay: false/undefined` + 缺少完整时间段 → `isTask: true`（显示为任务条）
+
+#### isTask 字段详解
+
+**字段定义**：
+```typescript
+interface Event {
+  // ...
+  isTask?: boolean; // 标记为待办事项/任务（无完整时间段的事件）
+}
+```
+
+**核心作用**：
+
+1. **TUI Calendar 显示类型**：
+   ```typescript
+   // 位置：calendarUtils.ts L271-276
+   let category: 'milestone' | 'task' | 'allday' | 'time' = 'time';
+   
+   if (event.isMilestone) {
+     category = 'milestone';
+   } else if (event.isTask) {
+     category = 'task'; // ✅ 在日历中显示为任务条（task bar）
+   }
+   ```
+   - `isTask: true` → 在日历中显示为**任务条**（无时间轴，只显示日期）
+   - `isTask: false` → 在日历中显示为**时间块**（占据时间轴的特定时段）
+
+2. **自动判断逻辑**（PlanManager.tsx L747-819）：
+   ```typescript
+   // 判断规则：只有同时满足两个条件才是 Task
+   // 1. 没有完整时间段（缺少 startTime 或 endTime）
+   // 2. 不是全天事件
+   isTask = !(hasStart && hasEnd) && !item.isAllDay;
+   
+   // 具体分支：
+   if (hasStart && hasEnd) {
+     // 有开始和结束时间 → Event（无论是否全天）
+     isTask = false;
+   } else if (item.isAllDay) {
+     // 全天事件 → Event（即使缺少完整时间段）
+     isTask = false;
+   } else if (hasStart && !hasEnd) {
+     // 只有开始时间，且不是全天 → Task（设置 endTime = startTime）
+     isTask = true;
+   } else if (!hasStart && hasEnd) {
+     // 只有结束时间，且不是全天 → Task（设置 startTime = endTime）
+     isTask = true;
+   } else {
+     // 完全没有时间，且不是全天 → Task（使用创建日期）
+     isTask = true;
+   }
+   ```
+
+3. **与 isPlan 的区别**：
+   - `isPlan`: 控制**是否在 Plan 页面显示**（页面级别的过滤标记）
+   - `isTask`: 控制**在日历中的显示方式**（UI 渲染类型）
+   - 两者可以同时为 `true`：在 Plan 页面显示的任务，同时在 TimeCalendar 中显示为 task 条
+
+**设置时机**：
+
+- **PlanManager 创建事件时**（L654）：
+  ```typescript
+  const newItem: Event = {
+    // ...
+    isTask: true, // ✅ 默认创建为 Task 类型（待办事项）
+    isPlan: true, // ✅ 显示在 Plan 页面
+    // 注意：此时没有设置 startTime/endTime，或设置为明天的默认时间
+  };
+  ```
+
+- **syncToUnifiedTimeline 同步时**（L747-819）：
+  ```typescript
+  // 根据事件的时间字段自动判断 isTask
+  // 同时有 startTime 和 endTime → isTask: false (Event)
+  // 缺少完整时间段 → isTask: true (Task)
+  ```
+
+**典型场景**：
+
+| 场景 | startTime | endTime | isAllDay | isTask | 日历显示 |
+|------|-----------|---------|----------|--------|----------|
+| 会议（14:00-15:00） | ✅ | ✅ | ❌ | `false` | 时间块（占据 14:00-15:00） |
+| 全天活动 | ✅ | ✅ | ✅ | `false` | 全天事件条 |
+| 全天活动（简化） | ❌ | ❌ | ✅ | `false` | 全天事件条 |
+| 待办事项（无时间） | ❌ | ❌ | ❌ | `true` | 任务条（根据 `createdAt` 显示在创建日期） |
+| 截止日期（11月6日前） | ❌ | ✅ | ❌ | `true` | 任务条（显示在截止日期） |
+| 开始日期（11月6日起） | ✅ | ❌ | ❌ | `true` | 任务条（显示在开始日期） |
+
+**关键理解**：
+- ✅ **Task（待办事项）**：缺少完整时间段 **且不是全天事件**，在日历中显示为任务条（只占据日期，不占据具体时间轴）
+- ✅ **Event（日程事件）**：有完整时间段 **或者是全天事件**，在日历中显示为时间块或全天事件条
+- ⚠️ **全天事件的特殊性**：即使没有设置具体的 startTime/endTime，只要标记为 `isAllDay: true`，就会被视为 Event 而非 Task
+
+#### 无时间 Task 的日期定位逻辑
+
+**适用场景**：Plan 页面创建的待办事项，用户未通过 FloatingBar 或 @chrono 设置时间
+
+**显示逻辑**（calendarUtils.ts L245-270）：
+```typescript
+// 对于无时间的 Task，使用 createdAt 作为日期
+if ((!event.startTime || !event.endTime) && event.isTask) {
+  // 📋 Task 类型且无时间：只使用 createdAt 的日期部分
+  const createdDate = parseLocalTimeString(event.createdAt);
+  startDate = new Date(createdDate);
+  startDate.setHours(0, 0, 0, 0); // 只保留日期，时间设为 00:00
+  endDate = new Date(startDate); // Task 的 end 等于 start
+} else {
+  // ⏰ 有时间的事件：使用实际的 startTime/endTime
+  startDate = parseLocalTimeString(event.startTime || event.createdAt);
+  endDate = parseLocalTimeString(event.endTime || event.createdAt);
+}
+```
+
+**关键点**：
+1. ✅ **createdAt 永远存在**：所有事件创建时自动设置 `createdAt` 字段
+2. ✅ **不伪造具体时间**：startDate 和 endDate 都设为 00:00，保持 `isTask` 判断条件成立
+3. ✅ **在 TimeCalendar 中显示**：无时间的 Task 显示在 `createdAt` 对应日期的 Task Bar 上
+4. ✅ **在 Plan 页面不显示时间**：只显示标题、标签、描述等内容
+5. ✅ **时间可后续添加**：用户通过 FloatingBar 或 @chrono 添加时间后，`isTask` 变为 `false`，自动转换为 Event（时间块）
+
+**代码位置**：`src/utils/calendarUtils.ts` L245-270
+
+#### isTimeCalendar 字段详解
+
+**字段定义**：
+```typescript
+interface Event {
+  // ...
+  isTimeCalendar?: boolean; // 标记为 TimeCalendar 页面创建的事件
+}
+```
+
+**设置时机**：
+- **TimeCalendar 创建事件时**：用户在日历上拖拽创建事件，`handleSelectDateTime()` 中设置
+  ```typescript
+  // 位置：TimeCalendar.tsx L1715
+  const newEvent: Event = {
+    // ...
+    isTimeCalendar: true, // ✅ 标记为 TimeCalendar 创建的事件
+    isPlan: true,         // ✅ 允许在 Plan 页面显示
+    remarkableSource: true // ✅ 用于同步识别
+  };
+  ```
+
+- **PlanManager 创建事件时**：用户在 Plan 页面创建待办事项，设置为 `false`
+  ```typescript
+  // 位置：PlanManager.tsx L645
+  const newItem: Event = {
+    // ...
+    isTimeCalendar: false, // ✅ 不是 TimeCalendar 创建
+    isPlan: true,          // ✅ 显示在 Plan 页面
+    isTask: true,          // ✅ 标记为待办事项
+  };
+  ```
+
+**核心用途**：
+
+1. **Plan 页面过期过滤**：
+   ```typescript
+   // 位置：App.tsx L1469-1480
+   const filteredPlanItems = allEvents.filter((event: Event) => {
+     if (!event.isPlan) return false;
+     
+     // TimeCalendar 创建的事件：只显示未过期的
+     if (event.isTimeCalendar) {
+       const endTime = new Date(event.endTime);
+       return now < endTime; // ✅ 过期则不显示
+     }
+     
+     // Task/Plan 创建的事件：不受时间限制
+     return true; // ✅ 永久显示
+   });
+   ```
+
+2. **区分事件来源**：
+   - `isTimeCalendar: true` → 基于时间的日程事件（会议、活动）
+   - `isTimeCalendar: false` 且 `isTask: true` → 基于任务的待办事项（无固定时间）
+
+3. **同步策略差异**：
+   - TimeCalendar 事件：优先同步到 Outlook，保持时间精确
+   - Plan 事件：可选同步，主要用于本地任务管理
+
+**与 remarkableSource 的关系**：
+- `remarkableSource: true`：标识所有 ReMarkable 创建的事件（用于 localStorage → Outlook 同步识别）
+- `isTimeCalendar: true`：标识具体来源页面（用于业务逻辑区分，如过期过滤）
+- 两者配合使用：
+  ```
+  remarkableSource: true  + isTimeCalendar: true  → TimeCalendar 创建的日程
+  remarkableSource: true  + isTimeCalendar: false → PlanManager 创建的待办
+  remarkableSource: false + isTimeCalendar: false → Outlook 同步来的事件
+  ```
 
 ---
 

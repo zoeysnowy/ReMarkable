@@ -6,6 +6,24 @@
 > **依赖模块**: EventHub, TimeHub, TagManager, CalendarPicker  
 > **关联文档**: [Timer 模块 PRD](./TIMER_MODULE_PRD.md), [TimeCalendar 模块 PRD](./TIMECALENDAR_MODULE_PRD.md)
 
+---
+
+## ⚠️ 时间字段规范
+
+**严禁使用 ISO 8601 标准时间格式（带 Z 或时区偏移）！**
+
+所有时间字段必须使用 `timeUtils.ts` 中的工具函数处理：
+- ✅ **存储时间**: 使用 `formatTimeForStorage(date)` - 返回本地时间字符串（如 `2025-11-06T14:30:00`）
+- ✅ **解析时间**: 使用 `parseLocalTimeString(timeString)` - 将字符串解析为 Date 对象
+- ❌ **禁止**: 直接使用 `new Date().toISOString()` 或 `date.toISOString()`
+- ❌ **禁止**: 时间字符串包含 `Z` 后缀或 `+08:00` 等时区标记
+
+**原因**: ISO 格式会导致时区转换问题，18:06 的事件可能在同步后显示为 10:06（UTC 时间）。
+
+**参考文件**: `src/utils/timeUtils.ts`
+
+---
+
 **关键点**：
 - ✅ 记录初始尺寸（`resizeStart.width/height`）
 - ✅ 计算增量（`deltaX/deltaY`）并应用最小值限制

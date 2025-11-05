@@ -25,6 +25,9 @@ import { TimeHub } from '../services/TimeHub';
 import './PlanManager.css';
 import { dbg, warn, error } from '../utils/debugLogger';
 
+// 🔧 常量定义
+const DESCRIPTION_INDENT_OFFSET = 1; // Description 行相对于 Title 行的缩进增量
+
 // 时间显示组件，订阅 TimeHub 更新
 const PlanItemTimeDisplay: React.FC<{
   item: Event;
@@ -173,6 +176,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<Event | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  
+  // 🆕 本地临时状态：管理尚未保存到EventService的空行（graytext点击创建的）
+  const [pendingEmptyItems, setPendingEmptyItems] = useState<Map<string, Event>>(new Map());
   
   // 当前选中的标签（用于 FloatingToolbar）
   const [currentSelectedTags, setCurrentSelectedTags] = useState<string[]>([]);
@@ -461,20 +467,31 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   // 将 Event[] 转换为 FreeFormLine<Event>[]
   const editorLines = useMemo<FreeFormLine<Event>[]>(() => {
     const lines: FreeFormLine<Event>[] = [];
+    const visitedIds = new Set<string>(); // 🆕 检测循环引用/重复ID
+
+    // 🆕 合并 items 和 pendingEmptyItems
+    const allItems = [...items, ...Array.from(pendingEmptyItems.values())];
 
     // 根据 position（若无则按原数组索引）进行排序，确保新建行按期望顺序显示
-    const sortedItems = [...items].sort((a: any, b: any) => {
-      const pa = (a as any).position ?? items.indexOf(a);
-      const pb = (b as any).position ?? items.indexOf(b);
+    const sortedItems = [...allItems].sort((a: any, b: any) => {
+      const pa = (a as any).position ?? allItems.indexOf(a);
+      const pb = (b as any).position ?? allItems.indexOf(b);
       return pa - pb;
     });
 
   sortedItems.forEach((item) => {
       // 🔴 安全检查：跳过没有 id 的 item
       if (!item.id) {
-        console.warn('[PlanManager] Skipping item without id:', item);
+        warn('plan', 'Skipping item without id:', item);
         return;
       }
+      
+      // 🆕 检测重复 ID
+      if (visitedIds.has(item.id)) {
+        warn('plan', 'Duplicate item id detected:', item.id);
+        return;
+      }
+      visitedIds.add(item.id);
       
       // Title 行
       lines.push({
@@ -490,14 +507,14 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         lines.push({
           id: `${item.id}-desc`,
           content: item.description || '',
-          level: (item.level || 0) + 1, // 缩进一级
+          level: (item.level || 0) + DESCRIPTION_INDENT_OFFSET, // 🔧 使用常量
           data: { ...item, mode: 'description' },
         });
       }
     });
     
     return lines;
-  }, [items]);
+  }, [items, pendingEmptyItems]); // 🆕 添加 pendingEmptyItems 依赖
 
   // 处理编辑器内容变化
   const handleLinesChange = (newLines: FreeFormLine<Event>[]) => {
@@ -528,9 +545,24 @@ const PlanManager: React.FC<PlanManagerProps> = ({
 
     // 删除检测：找出被移除的标题行对应的 itemId
     const currentItemIds = items.map(i => i.id);
+    const pendingItemIds = Array.from(pendingEmptyItems.keys());
+    const allCurrentIds = [...currentItemIds, ...pendingItemIds];
+    
     const newItemIds = Array.from(itemGroups.keys());
-    const deletedIds = currentItemIds.filter(id => !newItemIds.includes(id));
-    deletedIds.forEach(id => onDelete(id));
+    const deletedIds = allCurrentIds.filter(id => !newItemIds.includes(id));
+    
+    deletedIds.forEach(id => {
+      // 从 pendingEmptyItems 中移除
+      setPendingEmptyItems(prev => {
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
+      // 如果在 items 中，也调用 onDelete
+      if (currentItemIds.includes(id)) {
+        onDelete(id);
+      }
+    });
 
     // 保存/更新每个 item（带 position）
     itemGroups.forEach((group, itemId) => {
@@ -553,10 +585,13 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       const position = orderedItemIds.indexOf(itemId);
 
       if (titleLine.data) {
+        // 更新现有item
+        const hasContent = plainText.trim() || descLine?.content?.trim();
+        
         const updatedItem: Event = {
           ...(titleLine.data as any),
           id: (titleLine.data as any)?.id ?? itemId,
-          title: plainText,
+          title: hasContent ? plainText : '', // 保持空标题检查
           content: titleLine.content,
           tags: extractedTags,
           level: titleLine.level,
@@ -565,26 +600,42 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           ...(Number.isFinite(position) ? { position } : {}),
         } as any;
         
-        // 🔍 诊断日志：检查 eventId 来源
-        dbg('picker', '📊 handleLinesChange: 检查 eventId', {
-          itemId: updatedItem.id,
-          'titleLine.data.id': (titleLine.data as any)?.id,
-          'updatedItem.id': updatedItem.id,
-          '从items数组查找': items.find(i => i.id === updatedItem.id)?.id,
-        });
-        
-        onSave(updatedItem);
-        // 🆕 更新时也同步到日历（但如果有 eventId，时间由 TimeHub 管理，跳过时间同步）
-        if (!updatedItem.id) {
-          dbg('picker', '🔄 handleLinesChange: 调用 syncToUnifiedTimeline (无 eventId)', { itemId: updatedItem.id });
+        // 🆕 如果这是一个之前为空、现在有内容的item
+        const wasPending = pendingEmptyItems.has(itemId);
+        if (wasPending && hasContent) {
+          // 从 pendingEmptyItems 移除，并保存到EventService
+          setPendingEmptyItems(prev => {
+            const next = new Map(prev);
+            next.delete(itemId);
+            return next;
+          });
+          onSave(updatedItem);
           syncToUnifiedTimeline(updatedItem);
+        } else if (wasPending && !hasContent) {
+          // 还是空的，保持在 pendingEmptyItems
+          setPendingEmptyItems(prev => new Map(prev).set(itemId, updatedItem));
         } else {
-          dbg('picker', '⏭️ handleLinesChange: 跳过 syncToUnifiedTimeline (item 有 eventId，时间由 TimeHub 管理)', { itemId: updatedItem.id, eventId: updatedItem.id });
+          // 不在 pending 中，正常保存
+          onSave(updatedItem);
+          // 🆕 更新时也同步到日历（但如果有 eventId，时间由 TimeHub 管理，跳过时间同步）
+          if (!updatedItem.id) {
+            dbg('picker', '🔄 handleLinesChange: 调用 syncToUnifiedTimeline (无 eventId)', { itemId: updatedItem.id });
+            syncToUnifiedTimeline(updatedItem);
+          } else {
+            dbg('picker', '⏭️ handleLinesChange: 跳过 syncToUnifiedTimeline (item 有 eventId，时间由 TimeHub 管理)', { itemId: updatedItem.id, eventId: updatedItem.id });
+          }
         }
       } else {
+        // 🔧 新行：可能是空行（刚点击graytext）或有内容的新item
+        const hasContent = plainText.trim() || descLine?.content?.trim();
+        const wasPending = pendingEmptyItems.has(titleLine.id);
+        
+        const now = new Date();
+        const nowISO = formatTimeForStorage(now);
+        
         const newItem: Event = {
           id: titleLine.id,
-          title: plainText,
+          title: hasContent ? (plainText || '(无标题)') : '', // 空行保持空标题
           content: titleLine.content,
           tags: extractedTags,
           priority: 'medium',
@@ -594,10 +645,42 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           mode: descLine ? 'description' : 'title',
           description: descLine?.content || undefined,
           ...(Number.isFinite(position) ? { position } : {}),
+          // 🆕 Plan 页面创建的 item 配置：
+          isPlan: true, // ✅ 显示在 Plan 页面
+          isTask: true, // ✅ 标记为待办事项
+          isTimeCalendar: false, // ✅ 不是 TimeCalendar 创建的事件
+          remarkableSource: true, // ✅ 标识事件来源（用于同步识别）
+          // ✅ 默认不设置时间，用户通过 FloatingBar 或 @chrono 自行定义
+          startTime: '', // ✅ 空字符串表示无时间
+          endTime: '',   // ✅ 空字符串表示无时间
+          dueDate: undefined, // ✅ 不预设截止日期
+          isAllDay: false,
+          createdAt: nowISO, // ✅ 使用 timeUtils 格式化，避免时区问题
+          updatedAt: nowISO,
+          source: 'local',
+          syncStatus: 'local-only',
         } as any;
-        onSave(newItem);
-        // 新 item 没有 eventId，正常同步
-        syncToUnifiedTimeline(newItem);
+        
+        if (wasPending && hasContent) {
+          // 从 pending 转为正式：移除 pending，保存到 EventService（只保存一次）
+          setPendingEmptyItems(prev => {
+            const next = new Map(prev);
+            next.delete(titleLine.id);
+            return next;
+          });
+          onSave(newItem);
+          syncToUnifiedTimeline(newItem);
+        } else if (wasPending && !hasContent) {
+          // 仍然是空行：保持在 pending
+          setPendingEmptyItems(prev => new Map(prev).set(titleLine.id, newItem));
+        } else if (!wasPending && hasContent) {
+          // 直接创建有内容的新 item（比如粘贴文本）
+          onSave(newItem);
+          syncToUnifiedTimeline(newItem);
+        } else {
+          // 新空行：添加到 pending
+          setPendingEmptyItems(prev => new Map(prev).set(titleLine.id, newItem));
+        }
       }
     });
   };
@@ -765,11 +848,19 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       remarkableSource: true,
     };
 
-    if (item.id && onUpdateEvent) {
-      onUpdateEvent(item.id, event);
-    } else if (onCreateEvent) {
-      onCreateEvent(event);
-      item.id = event.id;
+    // 🔧 [BUG FIX] 检查事件是否存在，决定调用 create 还是 update
+    if (item.id) {
+      // 如果有 ID，检查该 ID 的事件是否存在于系统中
+      // 通过 onUpdateEvent 尝试更新；如果事件不存在，回退到创建
+      if (onUpdateEvent) {
+        onUpdateEvent(item.id, event);
+      }
+    } else {
+      // 没有 ID，直接创建新事件
+      if (onCreateEvent) {
+        onCreateEvent(event);
+        item.id = event.id;
+      }
     }
   };
 
@@ -1023,6 +1114,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                   createdAt: formatTimeForStorage(new Date()),
                   updatedAt: formatTimeForStorage(new Date()),
                   remarkableSource: true,
+                  isPlan: true, // 🆕 标记为 Plan 事件
                 } as any);
                 if (createRes.success && createRes.event) {
                   dbg('picker', '✅ 新 Event 创建成功，准备写入 TimeHub', { eventId: newId });
@@ -1236,6 +1328,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                         createdAt: formatTimeForStorage(new Date()),
                         updatedAt: formatTimeForStorage(new Date()),
                         remarkableSource: true,
+                        isPlan: true, // 🆕 标记为 Plan 事件
                       } as any);
                       if (createRes.success && createRes.event) {
                         // Event 已创建，直接保存（id已经是newId）
@@ -1370,6 +1463,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                               createdAt: formatTimeForStorage(new Date()),
                               updatedAt: formatTimeForStorage(new Date()),
                               remarkableSource: true,
+                              isPlan: true, // 🆕 标记为 Plan 事件
                             } as any);
                             if (createRes.success && createRes.event) {
                               // Event 已创建，直接保存（id已经是newId）

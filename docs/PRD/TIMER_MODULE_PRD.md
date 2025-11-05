@@ -8,6 +8,22 @@
 
 ---
 
+## ⚠️ 时间字段规范
+
+**严禁使用 ISO 8601 标准时间格式（带 Z 或时区偏移）！**
+
+所有时间字段必须使用 `timeUtils.ts` 中的工具函数处理：
+- ✅ **存储时间**: 使用 `formatTimeForStorage(date)` - 返回本地时间字符串（如 `2025-11-06T14:30:00`）
+- ✅ **解析时间**: 使用 `parseLocalTimeString(timeString)` - 将字符串解析为 Date 对象
+- ❌ **禁止**: 直接使用 `new Date().toISOString()` 或 `date.toISOString()`
+- ❌ **禁止**: 时间字符串包含 `Z` 后缀或 `+08:00` 等时区标记
+
+**原因**: ISO 格式会导致时区转换问题，18:06 的事件可能在同步后显示为 10:06（UTC 时间）。
+
+**参考文件**: `src/utils/timeUtils.ts`
+
+---
+
 ## 📋 目录
 
 1. [模块概述](#1-模块概述)
@@ -1294,13 +1310,293 @@ EventService.updateEvent (skipSync=false)
 
 ---
 
-**文档版本**: v1.1  
+## 9. 与 PlanManager 的集成
+
+### 9.1 Plan Item 启动 Timer
+
+**场景**: 用户在 PlanManager 中点击 Plan Item 的"开始计时"按钮
+
+**数据流**:
+```
+用户点击 Plan Item 的"开始计时"按钮
+    ↓
+PlanManager 调用 TimerService.startTimer(planItemId)
+    ↓
+Timer 查找对应的 Event（通过 planItemId）
+    ↓
+创建 Timer 事件：
+  - eventId: planItemId（关联原 Plan Item）
+  - title: Plan Item 的 content/title
+  - tags: Plan Item 的 tags
+  - startTime: Date.now()
+    ↓
+保存到 localStorage.currentTimer
+    ↓
+触发 EventHub 'timer-updated' 事件
+    ↓
+PlanManager 和 TimeCalendar 监听并更新 UI
+```
+
+**关键代码位置**（推测，需要在 PlanManager 中实现）:
+```typescript
+// PlanManager.tsx（待实现）
+const handleStartTimer = (planItem: Event) => {
+  TimerService.startTimer(planItem.id);
+};
+```
+
+**Timer 端处理**（TimerService.ts）:
+```typescript
+// 支持传入 eventId 参数
+static startTimer(eventId?: string) {
+  if (this.isRunning) {
+    throw new Error('Timer is already running');
+  }
+  
+  // 如果传入 eventId，查找对应的 Event
+  let initialTitle = '';
+  let initialTags: string[] = [];
+  if (eventId) {
+    const event = EventService.getEventById(eventId);
+    if (event) {
+      initialTitle = event.title || event.content || '';
+      initialTags = event.tags || [];
+    }
+  }
+  
+  const timer: Timer = {
+    eventId: eventId || `timer-${Date.now()}`,
+    title: initialTitle,
+    tags: initialTags,
+    startTime: Date.now(),
+    duration: 0,
+    status: 'running'
+  };
+  
+  this.saveTimer(timer);
+  this.startInterval();
+  EventHub.emit('timer-updated', timer);
+}
+```
+
+### 9.2 Timer 结束后更新 Plan Item
+
+**场景**: 用户停止 Timer 后，需要更新原 Plan Item 的 `duration` 字段
+
+**数据流**:
+```
+用户停止 Timer
+    ↓
+TimerService.stopTimer()
+    ↓
+计算总时长：currentDuration + (Date.now() - startTime)
+    ↓
+更新 Event 的 duration 字段
+    ↓
+如果 eventId 是 Plan Item ID，同时更新 Plan Item
+    ↓
+触发 'local-events-changed' 事件
+    ↓
+PlanManager 重新加载数据，显示更新后的 duration
+```
+
+**关键实现**（TimerService.ts）:
+```typescript
+static stopTimer() {
+  if (!this.isRunning) return;
+  
+  const timer = this.getCurrentTimer();
+  if (!timer) return;
+  
+  // 计算总时长
+  const finalDuration = timer.duration + Math.floor((Date.now() - timer.startTime) / 1000);
+  
+  // 更新事件
+  const event = EventService.getEventById(timer.eventId);
+  if (event) {
+    EventService.updateEvent(timer.eventId, {
+      ...event,
+      duration: finalDuration,
+      syncStatus: 'pending' // 标记为待同步
+    });
+  }
+  
+  // 触发事件变更通知
+  EventHub.emit('local-events-changed');
+  
+  // 清除 Timer
+  localStorage.removeItem('currentTimer');
+  this.stopInterval();
+  EventHub.emit('timer-updated', null);
+}
+```
+
+### 9.3 Plan Item 与 Timer 事件的关系
+
+**数据结构对比**:
+
+| 字段 | Plan Item | Timer 事件 | 说明 |
+|------|-----------|-----------|------|
+| `id` | `line-{timestamp}` | `line-{timestamp}` | 相同（Timer 使用 Plan Item 的 ID） |
+| `title/content` | Plan 内容 | Timer 标题 | Timer 继承自 Plan |
+| `tags` | Plan 标签 | Timer 标签 | Timer 继承自 Plan |
+| `duration` | 累计时长 | 实时时长 | Timer 停止后更新 Plan 的 duration |
+| `startTime` | Plan 的计划开始时间 | Timer 的实际开始时间 | **不同**：Timer 记录实际计时开始时间 |
+| `endTime` | Plan 的计划结束时间 | Timer 的实际结束时间 | **不同**：Timer 记录实际计时结束时间 |
+| `mode` | `'title'` or `'description'` | N/A | Plan 特有字段 |
+| `level` | 层级深度 | N/A | Plan 特有字段 |
+
+**关键区别**:
+- **Plan Item 的 `startTime`/`endTime`**: 用户计划的时间
+- **Timer 事件的 `startTime`/`endTime`**: 实际计时的时间
+- **`duration` 字段**: Timer 停止后，累加到 Plan Item 的 duration
+
+### 9.4 双向数据流
+
+```mermaid
+graph LR
+    A[PlanManager] -->|1. 启动 Timer| B[TimerService]
+    B -->|2. 创建 Timer 事件| C[localStorage]
+    C -->|3. 触发 timer-updated| D[TimeCalendar]
+    D -->|4. 显示实时时长| E[用户]
+    E -->|5. 停止 Timer| B
+    B -->|6. 更新 duration| F[Plan Item]
+    F -->|7. 触发 local-events-changed| A
+    A -->|8. 重新渲染| E
+```
+
+**关键事件**:
+1. `timer-updated`: Timer 启动/停止时触发，TimeCalendar 监听并更新 UI
+2. `local-events-changed`: Plan Item 的 duration 更新后触发，PlanManager 监听并重新加载
+
+### 9.5 已知问题与注意事项
+
+#### Issue #1: Plan Item 与 Timer 事件的 ID 冲突
+
+**问题**: 如果 Timer 使用 Plan Item 的 ID，可能导致以下问题：
+- TimeCalendar 中同时显示 Plan Item 和 Timer 事件，导致重复
+- Timer 事件覆盖 Plan Item 的原始数据
+
+**解决方案**（推荐）:
+```typescript
+// 方案 A: Timer 使用独立 ID
+const timerId = `timer-${planItemId}-${Date.now()}`;
+
+// 方案 B: Timer 事件添加 sourceType 字段
+const timerEvent = {
+  id: planItemId,
+  sourceType: 'timer', // 🆕 标识来源
+  originalPlanItem: planItemId, // 🆕 关联原始 Plan Item
+  // ...
+};
+
+// TimeCalendar 过滤逻辑
+const events = allEvents.filter(e => {
+  // 如果是 Timer 事件，且对应的 Plan Item 存在，则隐藏 Plan Item
+  if (e.sourceType === 'plan') {
+    const hasRunningTimer = allEvents.some(t => 
+      t.sourceType === 'timer' && t.originalPlanItem === e.id
+    );
+    return !hasRunningTimer;
+  }
+  return true;
+});
+```
+
+#### Issue #2: Timer 停止后 Plan Item 的 startTime 被覆盖
+
+**问题**: Timer 停止时，如果直接更新 Event，可能覆盖 Plan Item 的计划时间
+
+**解决方案**:
+```typescript
+// Timer 停止时，只更新特定字段
+EventService.updateEvent(timer.eventId, {
+  duration: finalDuration, // ✅ 更新时长
+  // ❌ 不更新 startTime/endTime，保留 Plan Item 的计划时间
+});
+```
+
+---
+
+## 10. EventHub API 规范补充
+
+### 10.1 EventHub.saveEvent() 返回值
+
+**类型定义**:
+```typescript
+/**
+ * 保存事件（创建或更新）
+ * @param eventData 事件数据
+ * @returns 保存后的完整 Event 对象（包含生成的 ID）
+ */
+async saveEvent(eventData: Event): Promise<Event>
+```
+
+**返回值说明**:
+- 如果 `eventData.id` 以 `temp-` 或 `timer-` 开头，调用 `EventService.createEvent()`，返回生成的 UUID
+- 否则调用 `EventService.updateEvent()`，返回更新后的 Event 对象
+- 返回值包含所有字段，包括 `outlookEventId`、`outlookCalendarId`（如果已同步）
+
+**使用示例**（TimeCalendar PRD L1645）:
+```typescript
+const savedEvent = await EventHub.saveEvent(eventData);
+
+// 如果是 Outlook 事件，触发同步
+if (savedEvent.outlookCalendarId) {
+  await ActionBasedSyncManager.getInstance().syncSpecificCalendar(
+    savedEvent.outlookCalendarId
+  );
+}
+```
+
+### 10.2 syncStatus 枚举定义
+
+**类型定义**:
+```typescript
+type SyncStatus = 
+  | 'local-only'    // 本地创建，未同步
+  | 'synced'        // 已同步到 Outlook
+  | 'pending'       // 等待同步
+  | 'conflict'      // 同步冲突
+  | 'error';        // 同步失败
+```
+
+**状态转换**:
+```mermaid
+graph LR
+    A[local-only] -->|用户请求同步| B[pending]
+    B -->|同步成功| C[synced]
+    B -->|同步失败| D[error]
+    B -->|检测到冲突| E[conflict]
+    C -->|本地修改| B
+    D -->|重试| B
+    E -->|用户解决冲突| B
+```
+
+**各状态说明**:
+
+| 状态 | 触发时机 | UI 显示 | 用户操作 |
+|------|----------|---------|---------|
+| `local-only` | 创建事件、Timer 启动 | 无同步图标 | 可点击"同步到 Outlook" |
+| `pending` | Timer 停止、用户修改事件 | 同步中图标（旋转） | 等待同步完成 |
+| `synced` | 同步成功 | 对勾图标 | 可继续编辑（会重新进入 pending） |
+| `error` | 网络错误、API 限流 | 错误图标 | 点击重试 |
+| `conflict` | 本地和远程版本不一致 | 警告图标 | 打开冲突解决界面 |
+
+---
+
+**文档版本**: v1.2  
 **最后更新**: 2025-11-05  
 **维护者**: GitHub Copilot  
 **更新日志**:
+- v1.2 (2025-11-05): **新增 Section 9**（与 PlanManager 的集成）和 **Section 10**（EventHub API 规范补充）
+- v1.2 (2025-11-05): 补充 `EventHub.saveEvent()` 返回值定义和 `syncStatus` 枚举
 - v1.1 (2025-11-05): 添加"已知问题与修复历史"章节，记录 description 覆盖 bug 的修复
 - v1.1 (2025-11-05): 完善 6.2 节，详细说明 `handleTimerEditSave` 的双重更新机制
 - v1.1 (2025-11-05): 更新 5.2 节，说明 `saveTimerEvent` 如何配合用户编辑保存
 - v1.0 (2025-11-05): 初始版本，完整记录 Timer 模块的设计与实现
 
-**下一步**: 编写 TimeCalendar 模块 PRD，并回顾更新本文档中与 TimeCalendar 的交互部分
+**相关文档**:
+- [PlanManager PRD](./PLANMANAGER_MODULE_PRD.md)
+- [TimeCalendar PRD](./TIMECALENDAR_MODULE_PRD.md)
+- [EventEditModal PRD](./EVENTEDITMODAL_MODULE_PRD.md)
