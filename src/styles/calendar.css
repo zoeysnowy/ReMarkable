@@ -860,9 +860,9 @@
   top: 0 !important; /* 强制从顶部开始 */
 }
 
-/* 如果有多个 task 事件，减小它们之间的间距 */
+/* 如果有多个 task 事件，设置它们之间的小间距 */
 .toastui-calendar-weekday-event-block:has(.toastui-calendar-template-task) + .toastui-calendar-weekday-event-block:has(.toastui-calendar-template-task) {
-  margin-top: -2px !important; /* 负边距让事件更紧凑 */
+  margin-top: 2px !important; /* 小间距避免重叠 */
 }
 
 /* 更通用的选择器：所有包含 task 模板的事件 */
