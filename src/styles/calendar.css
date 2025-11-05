@@ -824,10 +824,12 @@
   background-color: transparent !important;
   border: none !important;
   border-left: none !important; /* 移除左侧边框 */
-  padding: 0 2px !important; /* 极小的左右边距 */
-  margin: 0 !important; /* 完全移除上下间距 */
-  height: 18px !important; /* 进一步减小高度 */
-  line-height: 18px !important;
+  padding: 0 !important; /* 完全移除内边距 */
+  margin: 0 !important; /* 完全移除外边距 */
+  margin-left: 0 !important; /* 强制覆盖内联样式的 margin-left: 8px */
+  margin-right: 0 !important; /* 强制覆盖内联样式的 margin-right: 8px */
+  height: 16px !important; /* 进一步减小高度到 16px */
+  line-height: 16px !important; /* 匹配高度 */
   overflow: visible !important;
 }
 
@@ -837,6 +839,10 @@
   border-left: none !important;
   padding: 0 !important; /* 移除所有内边距 */
   margin: 0 !important; /* 移除所有外边距 */
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  height: 16px !important;
+  line-height: 16px !important;
 }
 
 /* Task 事件块本身的间距控制 */
@@ -851,8 +857,12 @@
 .toastui-calendar-weekday-event:has(.toastui-calendar-template-task) {
   background-color: transparent !important;
   border-left: none !important;
-  padding: 0 2px !important;
+  padding: 0 !important;
   margin: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  height: 16px !important;
+  line-height: 16px !important;
 }
 
 /* Task 事件标题容器 */
@@ -862,13 +872,14 @@
   padding: 0 !important;
   margin: 0 !important;
   gap: 2px !important; /* 减小勾选框和内容之间的间距 */
-  line-height: 18px !important;
+  line-height: 16px !important;
+  height: 16px !important;
 }
 
 /* 勾选框样式 */
 .remarkable-task-checkbox {
   flex-shrink: 0 !important;
-  font-size: 13px !important; /* 略微减小勾选框大小 */
+  font-size: 12px !important; /* 进一步减小勾选框大小 */
   line-height: 1 !important;
   color: #666 !important;
   margin: 0 !important; /* 移除所有外边距 */
@@ -878,8 +889,8 @@
 /* Task 内容（时间+标题）样式 */
 .remarkable-task-content {
   flex: 1 !important;
-  font-size: 12px !important;
-  line-height: 16px !important; /* 减小行高 */
+  font-size: 11px !important; /* 进一步减小字体 */
+  line-height: 14px !important; /* 减小行高 */
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
@@ -889,7 +900,7 @@
 
 .remarkable-task-content strong {
   font-weight: 600 !important;
-  font-size: 12px !important;
+  font-size: 11px !important;
   margin: 0 !important;
   padding: 0 !important;
 }
