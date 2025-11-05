@@ -924,9 +924,54 @@
   padding-left: 0 !important;
 }
 
-/* ✅ CSS Transform 规则已移除
- * 原因：已修改 TUI Calendar 源码 (EVENT_HEIGHT, WEEK_EVENT_HEIGHT, MONTH_EVENT_HEIGHT = 17px)
- * TUI Calendar 现在直接使用 17px 计算事件位置，不再需要 CSS transform 调整
- * 验证日期：2025-11-06 - Web 端测试通过，显示正常
+/* 🔥 CSS-only 解决方案：调整 Task 事件的 top 位置从 24px 间距到 17px 间距
+ * 原理：TUI Calendar 动态设置 top: 0/24/48/72/96...px
+ * 目标：通过 transform 将位置调整为 0/17/34/51/68...px
+ * 计算：transform: translateY(-7 * rowIndex px)
  */
+
+/* 第2行：top: 24px → 17px (差值 -7px) */
+.toastui-calendar-weekday-event-block:has(.toastui-calendar-template-task)[style*="top: 24px"] {
+  transform: translateY(-7px) !important;
+}
+
+/* 第3行：top: 48px → 34px (差值 -14px) */
+.toastui-calendar-weekday-event-block:has(.toastui-calendar-template-task)[style*="top: 48px"] {
+  transform: translateY(-14px) !important;
+}
+
+/* 第4行：top: 72px → 51px (差值 -21px) */
+.toastui-calendar-weekday-event-block:has(.toastui-calendar-template-task)[style*="top: 72px"] {
+  transform: translateY(-21px) !important;
+}
+
+/* 第5行：top: 96px → 68px (差值 -28px) */
+.toastui-calendar-weekday-event-block:has(.toastui-calendar-template-task)[style*="top: 96px"] {
+  transform: translateY(-28px) !important;
+}
+
+/* 第6行：top: 120px → 85px (差值 -35px) */
+.toastui-calendar-weekday-event-block:has(.toastui-calendar-template-task)[style*="top: 120px"] {
+  transform: translateY(-35px) !important;
+}
+
+/* 第7行：top: 144px → 102px (差值 -42px) */
+.toastui-calendar-weekday-event-block:has(.toastui-calendar-template-task)[style*="top: 144px"] {
+  transform: translateY(-42px) !important;
+}
+
+/* 第8行：top: 168px → 119px (差值 -49px) */
+.toastui-calendar-weekday-event-block:has(.toastui-calendar-template-task)[style*="top: 168px"] {
+  transform: translateY(-49px) !important;
+}
+
+/* 第9行：top: 192px → 136px (差值 -56px) */
+.toastui-calendar-weekday-event-block:has(.toastui-calendar-template-task)[style*="top: 192px"] {
+  transform: translateY(-56px) !important;
+}
+
+/* 第10行：top: 216px → 153px (差值 -63px) */
+.toastui-calendar-weekday-event-block:has(.toastui-calendar-template-task)[style*="top: 216px"] {
+  transform: translateY(-63px) !important;
+}
 
