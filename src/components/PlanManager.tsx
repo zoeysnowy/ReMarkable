@@ -744,8 +744,11 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     const hasStart = !!item.startTime;
     const hasEnd = !!item.endTime;
     
-    if (item.id) {
-      // 如果有 eventId，从 TimeHub 读取最新时间
+    // 检查 event 是否已经在 EventService 中
+    const existsInEventService = EventService.getEventById(item.id);
+    
+    if (existsInEventService) {
+      // Event 已存在 → 从 TimeHub 读取最新时间（TimeHub 是时间的唯一数据源）
       const snapshot = TimeHub.getSnapshot(item.id);
       if (snapshot.start && snapshot.end) {
         finalStartTime = snapshot.start;
@@ -772,7 +775,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         });
       }
     } else {
-      // 没有 eventId，根据时间字段判断
+      // Event 未创建 → 根据 item 的时间字段判断类型和时间
       if (hasStart && hasEnd) {
         // 有开始和结束 → event (time/allday)
         finalStartTime = item.startTime!;
@@ -843,18 +846,18 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       remarkableSource: true,
     };
 
-    // 🔧 [BUG FIX] 检查事件是否存在，决定调用 create 还是 update
-    if (item.id) {
-      // 如果有 ID，检查该 ID 的事件是否存在于系统中
-      // 通过 onUpdateEvent 尝试更新；如果事件不存在，回退到创建
+    // 检查事件是否已存在于 EventService，决定调用 create 还是 update
+    const existingEvent = EventService.getEventById(event.id);
+    
+    if (existingEvent) {
+      // 事件已存在 → 更新
       if (onUpdateEvent) {
-        onUpdateEvent(item.id, event);
+        onUpdateEvent(event.id, event);
       }
     } else {
-      // 没有 ID，直接创建新事件
+      // 事件不存在 → 创建
       if (onCreateEvent) {
         onCreateEvent(event);
-        item.id = event.id;
       }
     }
   };
