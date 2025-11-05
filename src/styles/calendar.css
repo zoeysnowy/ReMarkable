@@ -824,10 +824,10 @@
   background-color: transparent !important;
   border: none !important;
   border-left: none !important; /* 移除左侧边框 */
-  padding: 1px 4px !important; /* 紧凑的上下左右边距 */
-  margin: 1px 0 !important; /* 减小上下间距 */
-  height: 20px !important; /* 减小高度 */
-  line-height: 20px !important;
+  padding: 0 2px !important; /* 极小的左右边距 */
+  margin: 0 !important; /* 完全移除上下间距 */
+  height: 18px !important; /* 进一步减小高度 */
+  line-height: 18px !important;
   overflow: visible !important;
 }
 
@@ -835,12 +835,24 @@
 .toastui-calendar-weekday-event-block[data-testid*="default-event"] .toastui-calendar-weekday-event {
   background-color: transparent !important;
   border-left: none !important;
+  padding: 0 !important; /* 移除所有内边距 */
+  margin: 0 !important; /* 移除所有外边距 */
+}
+
+/* Task 事件块本身的间距控制 */
+.toastui-calendar-weekday-event-block:has(.toastui-calendar-template-task) {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
 }
 
 /* 更通用的选择器：所有包含 task 模板的事件 */
 .toastui-calendar-weekday-event:has(.toastui-calendar-template-task) {
   background-color: transparent !important;
   border-left: none !important;
+  padding: 0 2px !important;
+  margin: 0 !important;
 }
 
 /* Task 事件标题容器 */
@@ -849,31 +861,37 @@
   align-items: center !important;
   padding: 0 !important;
   margin: 0 !important;
-  gap: 4px !important; /* 勾选框和内容之间的间距 */
+  gap: 2px !important; /* 减小勾选框和内容之间的间距 */
+  line-height: 18px !important;
 }
 
 /* 勾选框样式 */
 .remarkable-task-checkbox {
   flex-shrink: 0 !important;
-  font-size: 14px !important;
+  font-size: 13px !important; /* 略微减小勾选框大小 */
   line-height: 1 !important;
   color: #666 !important;
-  margin-right: 2px !important;
+  margin: 0 !important; /* 移除所有外边距 */
+  padding: 0 !important;
 }
 
 /* Task 内容（时间+标题）样式 */
 .remarkable-task-content {
   flex: 1 !important;
   font-size: 12px !important;
-  line-height: 18px !important;
+  line-height: 16px !important; /* 减小行高 */
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 .remarkable-task-content strong {
   font-weight: 600 !important;
   font-size: 12px !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 /* 移除默认的 task 图标和圆点 */
