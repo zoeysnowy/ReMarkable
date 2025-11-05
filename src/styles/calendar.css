@@ -853,16 +853,7 @@
   padding-bottom: 0 !important;
   padding-left: 0 !important;
   padding-right: 0 !important;
-}
-
-/* 强制控制 task 事件块的顶部位置和间距 */
-.toastui-calendar-weekday-event-block:has(.toastui-calendar-template-task) {
-  top: 0 !important; /* 强制从顶部开始 */
-}
-
-/* 如果有多个 task 事件，设置它们之间的小间距 */
-.toastui-calendar-weekday-event-block:has(.toastui-calendar-template-task) + .toastui-calendar-weekday-event-block:has(.toastui-calendar-template-task) {
-  margin-top: 2px !important; /* 小间距避免重叠 */
+  /* 不要覆盖 top 属性，让 TUI Calendar 自动计算事件位置 */
 }
 
 /* 更通用的选择器：所有包含 task 模板的事件 */
