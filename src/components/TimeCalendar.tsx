@@ -2413,6 +2413,40 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
               
               // 其他日期只显示日期数字
               return `<span class="toastui-calendar-template-weekDayName ${todayClass}">${date}</span>`;
+            },
+            // 🎯 Task 事件自定义模板（使用月视图样式）
+            task(event: any) {
+              // 获取事件的开始和结束时间
+              const start = event.start;
+              const end = event.end;
+              const title = event.title || '';
+              const backgroundColor = event.backgroundColor || event.borderColor || 'rgba(59, 130, 246, 0.6)';
+              
+              // 格式化时间显示
+              let timeDisplay = '';
+              if (start) {
+                const startTime = `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`;
+                timeDisplay = startTime;
+              }
+              
+              // 返回月视图风格的 HTML（带圆点、时间和标题）
+              return `<span class="toastui-calendar-template-time"><strong>${timeDisplay}</strong>&nbsp;<span>${title}</span></span>`;
+            },
+            // 🎯 Time 事件自定义模板（保持一致的样式）
+            time(event: any) {
+              // 获取事件的开始和结束时间
+              const start = event.start;
+              const title = event.title || '';
+              
+              // 格式化时间显示
+              let timeDisplay = '';
+              if (start) {
+                const startTime = `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`;
+                timeDisplay = startTime;
+              }
+              
+              // 返回月视图风格的 HTML
+              return `<span class="toastui-calendar-template-time"><strong>${timeDisplay}</strong>&nbsp;<span>${title}</span></span>`;
             }
           }}
           theme={{

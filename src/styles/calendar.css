@@ -809,3 +809,46 @@
   height: 1px !important;
   margin: 0 !important;
 }
+
+/* ============================================
+   Task 事件自定义样式（月视图风格）
+   ============================================ */
+
+/* 隐藏默认的 ## 前缀 */
+.toastui-calendar-template-task::before {
+  content: none !important;
+}
+
+/* Task 事件容器 - 使用月视图的样式 */
+.toastui-calendar-template-task {
+  display: flex !important;
+  align-items: center !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  line-height: 24px !important;
+}
+
+/* Task 事件的时间和标题样式 */
+.toastui-calendar-template-task .toastui-calendar-template-time {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+
+.toastui-calendar-template-task .toastui-calendar-template-time strong {
+  font-weight: 600 !important;
+  font-size: 13px !important;
+}
+
+.toastui-calendar-template-task .toastui-calendar-template-time span {
+  font-size: 13px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+/* 移除默认的 task 图标 */
+.toastui-calendar-weekday-event.toastui-calendar-weekday-event-dot-task::before {
+  content: none !important;
+}
+
