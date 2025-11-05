@@ -58,7 +58,8 @@
     "electron-dev": "cd electron && npm run electron-dev",
     "electron-pack": "cd electron && npm run pack",
     "ed": "cd electron && npm run electron-dev",
-    "e": "cd electron && npm run electron-dev"
+    "e": "cd electron && npm run electron-dev",
+    "postinstall": "node copy-pdf-worker.js"
   },
   "eslintConfig": {
     "extends": [

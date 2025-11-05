@@ -10,18 +10,18 @@
  */
 
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
-import ToastUIReactCalendar, { ToastUIReactCalendarType } from './components/ToastUIReactCalendar';
-import { EventEditModal } from '../../components/EventEditModal';
-import CalendarSettingsPanel, { CalendarSettings } from './components/CalendarSettingsPanel';
+import ToastUIReactCalendar, { ToastUIReactCalendarType } from './ToastUIReactCalendar';
+import { EventEditModal } from './EventEditModal';
+import CalendarSettingsPanel, { CalendarSettings } from './CalendarSettingsPanel';
 import type { EventObject } from '@toast-ui/calendar';
 import '@toast-ui/calendar/dist/toastui-calendar.css';
-import '../../styles/calendar.css'; // 🎨 ReMarkable 自定义样式
-import { Event } from '../../types';
-import { TagService } from '../../services/TagService';
-import { MicrosoftCalendarService } from '../../services/MicrosoftCalendarService';
-import { STORAGE_KEYS } from '../../constants/storage';
-import { PersistentStorage, PERSISTENT_OPTIONS } from '../../utils/persistentStorage';
-import { formatTimeForStorage, parseLocalTimeString } from '../../utils/timeUtils';
+import '../styles/calendar.css'; // 🎨 ReMarkable 自定义样式
+import { Event } from '../types';
+import { TagService } from '../services/TagService';
+import { MicrosoftCalendarService } from '../services/MicrosoftCalendarService';
+import { STORAGE_KEYS } from '../constants/storage';
+import { PersistentStorage, PERSISTENT_OPTIONS } from '../utils/persistentStorage';
+import { formatTimeForStorage, parseLocalTimeString } from '../utils/timeUtils';
 import { 
   convertToCalendarEvent, 
   convertFromCalendarEvent,
@@ -31,7 +31,7 @@ import {
   mergeEventUpdates,
   getCalendarGroupColor,
   getAvailableCalendarsForSettings
-} from '../../utils/calendarUtils';
+} from '../utils/calendarUtils';
 
 interface TimeCalendarProps {
   onStartTimer: (taskTitle: string) => void;
@@ -1160,6 +1160,8 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   useEffect(() => {
     if (!isCalendarReady) return;
     
+    console.log('🔍 [MutationObserver] 开始设置监听');
+    
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
@@ -1167,6 +1169,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           
           // 检测到用户拖动，移除 !important 以允许拖动生效
           if (isInitialLoad) {
+            console.log('🔍 [拖动检测] 用户开始拖动，移除 !important');
             setIsInitialLoad(false);
           }
           
@@ -1175,9 +1178,10 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
               target.classList.contains('toastui-calendar-panel-task')) {
             const newHeight = parseInt(target.style.height);
             if (!isNaN(newHeight)) {
+              console.log('🔍 [拖动检测] Task 面板高度变化:', newHeight);
               setCalendarSettings(prev => {
                 if (newHeight !== prev.taskHeight) {
-                  console.log('📏 [拖动] Task高度:', prev.taskHeight, '→', newHeight);
+                  console.log('📏 [拖动] Task高度从', prev.taskHeight, '变为', newHeight);
                   return { ...prev, taskHeight: newHeight };
                 }
                 return prev;
@@ -1186,9 +1190,10 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           } else if (target.classList.contains('toastui-calendar-panel-allday')) {
             const newHeight = parseInt(target.style.height);
             if (!isNaN(newHeight)) {
+              console.log('🔍 [拖动检测] AllDay 面板高度变化:', newHeight);
               setCalendarSettings(prev => {
                 if (newHeight !== prev.allDayHeight) {
-                  console.log('📏 [拖动] AllDay高度:', prev.allDayHeight, '→', newHeight);
+                  console.log('📏 [拖动] AllDay高度从', prev.allDayHeight, '变为', newHeight);
                   return { ...prev, allDayHeight: newHeight };
                 }
                 return prev;
@@ -1198,9 +1203,10 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
                      target.classList.contains('toastui-calendar-panel-milestone')) {
             const newHeight = parseInt(target.style.height);
             if (!isNaN(newHeight)) {
+              console.log('🔍 [拖动检测] Milestone 面板高度变化:', newHeight);
               setCalendarSettings(prev => {
                 if (newHeight !== prev.milestoneHeight) {
-                  console.log('📏 [拖动] Milestone高度:', prev.milestoneHeight, '→', newHeight);
+                  console.log('📏 [拖动] Milestone高度从', prev.milestoneHeight, '变为', newHeight);
                   return { ...prev, milestoneHeight: newHeight };
                 }
                 return prev;
@@ -1222,9 +1228,13 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       panels.forEach(panel => {
         observer.observe(panel, { attributes: true, attributeFilter: ['style'] });
       });
+      
+      console.log('� [MutationObserver] 开始监听', panels.length, '个面板的高度变化');
+      console.log('🔍 [MutationObserver] 监听的面板:', Array.from(panels).map(p => p.className));
     }, 200);
     
     return () => {
+      console.log('🔍 [MutationObserver] 清理监听');
       clearTimeout(observeTimer);
       observer.disconnect();
     };
@@ -1771,7 +1781,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
             console.log('🏷️ [TimeCalendar] Using tag name as title:', updatedEvent.title);
             
             // 更新标题
-            const { EventHub } = await import('../../services/EventHub');
+            const { EventHub } = await import('../services/EventHub');
             await EventHub.updateFields(updatedEvent.id, { title: updatedEvent.title });
           }
         }
