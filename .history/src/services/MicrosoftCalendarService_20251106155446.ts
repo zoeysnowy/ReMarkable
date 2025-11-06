@@ -977,36 +977,24 @@ export class MicrosoftCalendarService {
         const rawDescription = outlookEvent.body?.content || `${outlookEvent.subject} - 来自 Outlook 的日程`;
         
         // 🆕 处理组织者信息
-        let organizer = outlookEvent.organizer?.emailAddress ? {
+        const organizer = outlookEvent.organizer?.emailAddress ? {
           name: outlookEvent.organizer.emailAddress.name || outlookEvent.organizer.emailAddress.address,
-          email: outlookEvent.organizer.emailAddress.address,
-          isOutlook: true
+          email: outlookEvent.organizer.emailAddress.address
         } : null;
         
         // 🆕 处理与会者信息
-        let attendees = outlookEvent.attendees ? outlookEvent.attendees.map((attendee: any) => ({
+        const attendees = outlookEvent.attendees ? outlookEvent.attendees.map((attendee: any) => ({
           name: attendee.emailAddress?.name || attendee.emailAddress?.address,
           email: attendee.emailAddress?.address,
           type: attendee.type || 'required',
-          status: attendee.status?.response || 'none',
-          isOutlook: true
+          status: attendee.status?.response || 'none'
         })).filter((a: any) => a.email) : [];
-        
-        // 🔍 从描述中提取 ReMarkable 联系人信息
-        const extractedContacts = this.extractContactsFromDescription(rawDescription);
-        if (extractedContacts.organizer) {
-          organizer = extractedContacts.organizer;
-        }
-        if (extractedContacts.attendees.length > 0) {
-          attendees = extractedContacts.attendees;
-        }
-        const cleanDescription = extractedContacts.cleanDescription || rawDescription;
         
         return {
           id: `outlook-${outlookEvent.id}`,
           title: outlookEvent.subject || 'Untitled Event',
           subject: outlookEvent.subject || 'Untitled Event',
-          description: cleanDescription,
+          description: rawDescription,
           bodyPreview: outlookEvent.bodyPreview || outlookEvent.body?.content?.substring(0, 100) || `${outlookEvent.subject} - 来自 Outlook 的日程`,
           startTime: startTime,
           endTime: endTime,
@@ -1149,36 +1137,24 @@ export class MicrosoftCalendarService {
         const rawDescription = outlookEvent.body?.content || `${outlookEvent.subject} - 来自 Outlook 的日程`;
         
         // 🆕 处理组织者信息
-        let organizer = outlookEvent.organizer?.emailAddress ? {
+        const organizer = outlookEvent.organizer?.emailAddress ? {
           name: outlookEvent.organizer.emailAddress.name || outlookEvent.organizer.emailAddress.address,
-          email: outlookEvent.organizer.emailAddress.address,
-          isOutlook: true
+          email: outlookEvent.organizer.emailAddress.address
         } : null;
         
         // 🆕 处理与会者信息
-        let attendees = outlookEvent.attendees ? outlookEvent.attendees.map((attendee: any) => ({
+        const attendees = outlookEvent.attendees ? outlookEvent.attendees.map((attendee: any) => ({
           name: attendee.emailAddress?.name || attendee.emailAddress?.address,
           email: attendee.emailAddress?.address,
           type: attendee.type || 'required',
-          status: attendee.status?.response || 'none',
-          isOutlook: true
+          status: attendee.status?.response || 'none'
         })).filter((a: any) => a.email) : [];
-        
-        // 🔍 从描述中提取 ReMarkable 联系人信息
-        const extractedContacts = this.extractContactsFromDescription(rawDescription);
-        if (extractedContacts.organizer) {
-          organizer = extractedContacts.organizer;
-        }
-        if (extractedContacts.attendees.length > 0) {
-          attendees = extractedContacts.attendees;
-        }
-        const cleanDescription = extractedContacts.cleanDescription || rawDescription;
         
         return {
           id: `outlook-${outlookEvent.id}`,
           title: outlookEvent.subject || 'Untitled Event',
           subject: outlookEvent.subject || 'Untitled Event',
-          description: cleanDescription,
+          description: rawDescription,
           bodyPreview: outlookEvent.bodyPreview || outlookEvent.body?.content?.substring(0, 100) || `${outlookEvent.subject} - 来自 Outlook 的日程`,
           startTime: startTime,
           endTime: endTime,
@@ -1232,22 +1208,9 @@ export class MicrosoftCalendarService {
       const startDateTime = eventData.start?.dateTime || eventData.startTime;
       const endDateTime = eventData.end?.dateTime || eventData.endTime;
       
-      // 处理组织者和参会人：分离有效和无效的联系人
-      const invalidContacts = {
-        organizer: eventData.organizer?.name && !eventData.organizer?.email ? eventData.organizer : undefined,
-        attendees: eventData.attendees?.filter((a: any) => a.name && !a.email) || []
-      };
-      
-      // 整合无效联系人到描述中
-      const description = integrateContactsToDescription(
-        eventData.description,
-        invalidContacts.organizer,
-        invalidContacts.attendees
-      );
-      
       const outlookEventData: any = {
         subject: eventData.subject || eventData.title,
-        body: eventData.body || { contentType: 'Text', content: description }
+        body: eventData.body || { contentType: 'Text', content: eventData.description || '' }
       };
       
       // 🔧 强化时间字段处理和验证
@@ -1932,23 +1895,9 @@ export class MicrosoftCalendarService {
       const startDateTime = event.start?.dateTime || event.startTime;
       const endDateTime = event.end?.dateTime || event.endTime;
       
-      // 处理组织者和参会人：分离有效和无效的联系人
-      const validAttendees = event.attendees?.filter((a: any) => a.email) || [];
-      const invalidContacts = {
-        organizer: event.organizer?.name && !event.organizer?.email ? event.organizer : undefined,
-        attendees: event.attendees?.filter((a: any) => a.name && !a.email) || []
-      };
-      
-      // 整合无效联系人到描述中
-      const description = integrateContactsToDescription(
-        event.description,
-        invalidContacts.organizer,
-        invalidContacts.attendees
-      );
-      
       const outlookEventData = {
         subject: event.subject || event.title,
-        body: event.body || { contentType: 'Text', content: description },
+        body: event.body || { contentType: 'Text', content: event.description || '' },
         start: {
           dateTime: typeof startDateTime === 'string' ? startDateTime : formatTimeForStorage(startDateTime),
           timeZone: 'Asia/Shanghai'
@@ -1963,27 +1912,28 @@ export class MicrosoftCalendarService {
               : event.location)
           : undefined,
         isAllDay: event.isAllDay || false,
-        // 只添加有邮箱的组织者
+        // 添加组织者（仅当有邮箱时）
         organizer: event.organizer?.email ? {
           emailAddress: {
             name: event.organizer.name || event.organizer.email,
             address: event.organizer.email
           }
         } : undefined,
-        // 只添加有邮箱的参会人
-        attendees: validAttendees.length > 0 
-          ? validAttendees.map((attendee: any) => ({
-              emailAddress: {
-                name: attendee.name || attendee.email,
-                address: attendee.email
-              },
-              type: attendee.type || 'required', // required, optional, resource
-            }))
+        // 添加参会人（仅包含有邮箱的）
+        attendees: event.attendees?.length > 0 
+          ? event.attendees
+              .filter((a: any) => a.email) // 过滤掉没有邮箱的参会人
+              .map((attendee: any) => ({
+                emailAddress: {
+                  name: attendee.name || attendee.email,
+                  address: attendee.email
+                },
+                type: attendee.type || 'required', // required, optional, resource
+              }))
           : undefined
       };
       
       MSCalendarLogger.log('🎯 [syncEventToCalendar] Converted event data:', outlookEventData);
-      MSCalendarLogger.log('📝 [syncEventToCalendar] Invalid contacts integrated to description:', invalidContacts);
       
       const endpoint = `https://graph.microsoft.com/v1.0/me/calendars/${targetCalendarId}/events`;
       

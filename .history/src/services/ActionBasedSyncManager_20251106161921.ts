@@ -2350,18 +2350,7 @@ private getUserSettings(): any {
       case 'create':
         const newEvent = this.convertRemoteEventToLocal(action.data);
         
-        // � [FIX] 检查是否是已删除的事件，如果是则跳过创建
-        const cleanNewEventId = newEvent.id.startsWith('outlook-') ? newEvent.id.replace('outlook-', '') : newEvent.id;
-        const isDeletedEvent = this.deletedEventIds.has(cleanNewEventId) || 
-                               this.deletedEventIds.has(newEvent.id) ||
-                               (newEvent.externalId && this.deletedEventIds.has(newEvent.externalId));
-        
-        if (isDeletedEvent) {
-          console.log(`⏭️ [Sync] 跳过创建已删除的事件: ${newEvent.title}`);
-          return events; // 跳过创建
-        }
-        
-        // �📝 [SIMPLIFIED] 直接用 externalId 查找现有事件
+        // 📝 [SIMPLIFIED] 直接用 externalId 查找现有事件
         // newEvent.externalId 是纯 Outlook ID（没有 outlook- 前缀）
         const existingEvent = this.eventIndexMap.get(newEvent.externalId);
         

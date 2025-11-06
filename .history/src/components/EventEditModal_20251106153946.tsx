@@ -185,11 +185,6 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
   }, [isDragging, isResizing, handleDragMove, handleDragEnd, handleResizeMove, handleResizeEnd]);
 
   const flatTags = useMemo(() => {
-    // 🔧 [BUG FIX] 确保在 modal 打开时能获取到最新的标签数据
-    if (!isOpen || !hierarchicalTags || hierarchicalTags.length === 0) {
-      return [];
-    }
-    
     const isAlreadyFlat = hierarchicalTags.length > 0 && 
                          hierarchicalTags[0].level !== undefined && 
                          !hierarchicalTags[0].children;
@@ -218,7 +213,7 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
     };
     
     return flatten(hierarchicalTags);
-  }, [hierarchicalTags, isOpen]);
+  }, [hierarchicalTags]);
 
   // 搜索过滤标签
   const filteredTags = useMemo(() => {
@@ -268,38 +263,6 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
       }
     }
   }, [event, isOpen, draggable, resizable, eventTime?.start, eventTime?.end]);
-
-  // 冲突检测：当时间或参会人变化时检测冲突
-  useEffect(() => {
-    const checkConflicts = async () => {
-      if (!formData.startTime || !formData.endTime) {
-        setConflictInfo([]);
-        return;
-      }
-
-      try {
-        const startStr = formData.isAllDay 
-          ? formatTimeForStorage(parseDateInput(formData.startTime))
-          : formatTimeForStorage(parseTimeInput(formData.startTime));
-        const endStr = formData.isAllDay
-          ? formatTimeForStorage(parseDateInput(formData.endTime))
-          : formatTimeForStorage(parseTimeInput(formData.endTime));
-
-        const conflicts = await ConflictDetectionService.detectConflicts(
-          { start: startStr, end: endStr, attendees: formData.attendees },
-          event?.id
-        );
-
-        setConflictInfo(conflicts);
-      } catch (error) {
-        console.error('[EventEditModal] Failed to detect conflicts:', error);
-      }
-    };
-
-    // 使用防抖避免频繁检测
-    const timeoutId = setTimeout(checkConflicts, 500);
-    return () => clearTimeout(timeoutId);
-  }, [formData.startTime, formData.endTime, formData.attendees, formData.isAllDay, event?.id]);
 
   // 当标签变化时，自动根据标签的日历映射填写日历分组
   useEffect(() => {
@@ -1007,160 +970,72 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
           {/* 参会人 */}
           <div className="form-group form-group-inline">
             <label>参会人</label>
-            <div className="attendees-container">
-              {formData.attendees.length > 0 && (
-                <div className="attendees-list">
-                  {formData.attendees.map((attendee, index) => (
-                    <div key={index} className="attendee-row">
-                      <div className="attendee-avatar">
-                        <Avatar contact={attendee} size={32} />
-                      </div>
-                      <input
-                        type="text"
-                        placeholder="姓名"
-                        value={attendee.name}
-                        onChange={(e) => {
-                          const newAttendees = [...formData.attendees];
-                          newAttendees[index] = { ...attendee, name: e.target.value };
-                          setFormData({ ...formData, attendees: newAttendees });
-                        }}
-                        style={{ flex: 1, marginRight: '8px' }}
-                      />
-                      <input
-                        type="email"
-                        placeholder="邮箱"
-                        value={attendee.email}
-                        onChange={(e) => {
-                          const newAttendees = [...formData.attendees];
-                          newAttendees[index] = { ...attendee, email: e.target.value };
-                          setFormData({ ...formData, attendees: newAttendees });
-                        }}
-                        style={{ flex: 2, marginRight: '8px' }}
-                      />
-                      <select
-                        value={attendee.type || 'required'}
-                        onChange={(e) => {
-                          const newAttendees = [...formData.attendees];
-                          newAttendees[index] = { ...attendee, type: e.target.value as any };
-                          setFormData({ ...formData, attendees: newAttendees });
-                        }}
-                        style={{ width: '80px', marginRight: '8px' }}
-                        title="参会类型"
-                      >
-                        <option value="required">必需</option>
-                        <option value="optional">可选</option>
-                        <option value="resource">资源</option>
-                      </select>
-                      <select
-                        value={attendee.status || 'none'}
-                        onChange={(e) => {
-                          const newAttendees = [...formData.attendees];
-                          newAttendees[index] = { ...attendee, status: e.target.value as any };
-                          setFormData({ ...formData, attendees: newAttendees });
-                        }}
-                        style={{ width: '90px', marginRight: '8px' }}
-                        title="响应状态"
-                      >
-                        <option value="none">未响应</option>
-                        <option value="accepted">✓ 已接受</option>
-                        <option value="tentative">? 待定</option>
-                        <option value="declined">✗ 已拒绝</option>
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const newAttendees = formData.attendees.filter((_, i) => i !== index);
-                          setFormData({ ...formData, attendees: newAttendees });
-                        }}
-                        className="attendee-remove-btn"
-                        style={{ padding: '4px 8px', cursor: 'pointer' }}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
+            <div className="attendees-list">
+              {formData.attendees.map((attendee, index) => (
+                <div key={index} className="attendee-row">
+                  <input
+                    type="text"
+                    placeholder="姓名"
+                    value={attendee.name}
+                    onChange={(e) => {
+                      const newAttendees = [...formData.attendees];
+                      newAttendees[index] = { ...attendee, name: e.target.value };
+                      setFormData({ ...formData, attendees: newAttendees });
+                    }}
+                    style={{ flex: 1, marginRight: '8px' }}
+                  />
+                  <input
+                    type="email"
+                    placeholder="邮箱"
+                    value={attendee.email}
+                    onChange={(e) => {
+                      const newAttendees = [...formData.attendees];
+                      newAttendees[index] = { ...attendee, email: e.target.value };
+                      setFormData({ ...formData, attendees: newAttendees });
+                    }}
+                    style={{ flex: 2, marginRight: '8px' }}
+                  />
+                  <select
+                    value={attendee.type || 'required'}
+                    onChange={(e) => {
+                      const newAttendees = [...formData.attendees];
+                      newAttendees[index] = { ...attendee, type: e.target.value };
+                      setFormData({ ...formData, attendees: newAttendees });
+                    }}
+                    style={{ width: '80px', marginRight: '8px' }}
+                  >
+                    <option value="required">必需</option>
+                    <option value="optional">可选</option>
+                    <option value="resource">资源</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newAttendees = formData.attendees.filter((_, i) => i !== index);
+                      setFormData({ ...formData, attendees: newAttendees });
+                    }}
+                    className="attendee-remove-btn"
+                    style={{ padding: '4px 8px', cursor: 'pointer' }}
+                  >
+                    ✕
+                  </button>
                 </div>
-              )}
-              <div className="attendees-actions" style={{ marginTop: '8px', display: 'flex', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFormData({
-                      ...formData,
-                      attendees: [...formData.attendees, { 
-                        name: '', 
-                        email: '', 
-                        type: 'required', 
-                        status: 'none',
-                        isReMarkable: true 
-                      } as Contact]
-                    });
-                  }}
-                  className="attendee-add-btn"
-                  style={{ padding: '6px 12px', cursor: 'pointer', flex: 1 }}
-                >
-                  + 手动添加
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowContactPicker(true)}
-                  className="attendee-add-btn"
-                  style={{ padding: '6px 12px', cursor: 'pointer', flex: 1, backgroundColor: '#1890ff', color: '#fff' }}
-                >
-                  📋 从联系人选择
-                </button>
-              </div>
-
-              {/* 冲突警告 */}
-              {conflictInfo.length > 0 && (
-                <div className="conflict-warning" style={{ 
-                  marginTop: '12px', 
-                  padding: '8px 12px', 
-                  backgroundColor: '#fff3cd', 
-                  border: '1px solid #ffc107',
-                  borderRadius: '4px',
-                  fontSize: '12px'
-                }}>
-                  <div style={{ fontWeight: 'bold', marginBottom: '4px', color: '#856404' }}>
-                    ⚠️ {ConflictDetectionService.getConflictSummary(conflictInfo)}
-                  </div>
-                  {conflictInfo.slice(0, 2).map((conflict, index) => (
-                    <div key={index} style={{ marginTop: '4px', color: '#856404' }}>
-                      {ConflictDetectionService.formatConflictMessage(conflict)}
-                    </div>
-                  ))}
-                  {conflictInfo.length > 2 && (
-                    <div style={{ marginTop: '4px', color: '#856404' }}>
-                      还有 {conflictInfo.length - 2} 个冲突...
-                    </div>
-                  )}
-                </div>
-              )}
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData({
+                    ...formData,
+                    attendees: [...formData.attendees, { name: '', email: '', type: 'required' }]
+                  });
+                }}
+                className="attendee-add-btn"
+                style={{ marginTop: '8px', padding: '6px 12px', cursor: 'pointer' }}
+              >
+                + 添加参会人
+              </button>
             </div>
           </div>
-
-          {/* 联系人选择器弹窗 */}
-          <ContactPicker
-            visible={showContactPicker}
-            onClose={() => setShowContactPicker(false)}
-            onSelect={(contacts) => {
-              const newAttendees = [...formData.attendees];
-              contacts.forEach(contact => {
-                // 避免重复添加
-                const exists = newAttendees.some(a => a.email === contact.email);
-                if (!exists) {
-                  newAttendees.push({
-                    ...contact,
-                    type: contact.type || 'required',
-                    status: contact.status || 'none',
-                  });
-                }
-              });
-              setFormData({ ...formData, attendees: newAttendees });
-            }}
-            selectedContacts={formData.attendees}
-            multiSelect={true}
-          />
         </div>
 
         <div className="modal-footer">

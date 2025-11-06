@@ -31,52 +31,6 @@ export enum SyncStatus {
  */
 export type SyncStatusType = 'pending' | 'synced' | 'error' | 'local-only' | 'conflict';
 
-/**
- * 联系人平台来源
- */
-export type ContactSource = 'remarkable' | 'outlook' | 'google' | 'icloud';
-
-/**
- * 参会人类型
- */
-export type AttendeeType = 'required' | 'optional' | 'resource';
-
-/**
- * 参会人响应状态
- */
-export type AttendeeStatus = 'accepted' | 'declined' | 'tentative' | 'none';
-
-/**
- * 统一的联系人接口
- * 支持 ReMarkable 本地联系人和各云平台联系人
- */
-export interface Contact {
-  /** 联系人 ID */
-  id?: string;
-  /** 姓名 */
-  name?: string;
-  /** 邮箱地址 */
-  email?: string;
-  /** 电话号码 */
-  phone?: string;
-  /** 头像 URL */
-  avatarUrl?: string;
-  /** 所属组织/公司 */
-  organization?: string;
-  /** 平台来源标识 */
-  isReMarkable?: boolean;
-  isOutlook?: boolean;
-  isGoogle?: boolean;
-  isiCloud?: boolean;
-  /** 参会人相关属性（当作为 Event.attendees 使用时） */
-  type?: AttendeeType;
-  status?: AttendeeStatus;
-  /** 外部平台的原始 ID */
-  externalId?: string;
-  /** 备注信息 */
-  notes?: string;
-}
-
 export interface Event {
   id: string;
   title: string;
@@ -105,7 +59,7 @@ export interface Event {
   lastLocalChange?: string; // 🔧 修改：使用字符串存储本地时间
   // 🎯 事件类型标记（用于控制显示样式）
   isTimer?: boolean;     // 🆕 添加：标记为计时器事件
-  isDeadline?: boolean; // 🆕 添加：标记为截止日期事件
+  isMilestone?: boolean; // 🆕 添加：标记为里程碑事件
   isTask?: boolean;      // 🆕 添加：标记为任务事件
   isPlan?: boolean;      // 🆕 添加：标记为计划页面事件
   isTimeCalendar?: boolean; // 🆕 添加：标记为 TimeCalendar 页面创建的事件

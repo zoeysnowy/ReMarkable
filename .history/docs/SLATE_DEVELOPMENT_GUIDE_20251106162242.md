@@ -487,7 +487,7 @@ console.log('Editor state:', JSON.stringify(editor.children, null, 2));
 
 ## 📝 更新日志
 
-### 2025-11-06 - PlanManager 迁移完成 + Bug 修复
+### 2025-11-06 - PlanManager 迁移完成
 
 **重大更新**: PlanManager 从 SlateFreeFormEditor 迁移到 UnifiedSlateEditor
 
@@ -499,25 +499,6 @@ console.log('Editor state:', JSON.stringify(editor.children, null, 2));
 - 添加 Gray-text placeholder
 - 优化时间管理（避免强制定义时间）
 - 实现增量更新（只保存变化的 item）
-
-🔧 **Bug 修复** (v1.2):
-
-1. **空 event 自动删除**
-   - 问题：完全为空的 event（标题空、描述空、无时间）会保留为"(无标题)"
-   - 修复：在 `handleLinesChange` 中检测并自动删除空 event
-   - 位置：`PlanManager.tsx` L1024-1098
-
-2. **Enter 键行为修复**
-   - 问题：在有 description 的 event 标题行按 Enter，新行插入位置错误
-   - 修复：检测当前行是否有 description，如果有则在 description 行后创建新行
-   - 位置：`UnifiedSlateEditor.tsx` Enter 键处理逻辑
-
-3. **删除事件恢复问题**
-   - 问题：删除的 event 过一段时间又出现（同步队列恢复）
-   - 修复：
-     - 本地删除时无论是否有 `externalId` 都添加到 `deletedEventIds`
-     - 远程创建前检查 `deletedEventIds`，跳过已删除的事件
-   - 位置：`ActionBasedSyncManager.ts` L2250-2370
 
 **架构变更**:
 ```typescript

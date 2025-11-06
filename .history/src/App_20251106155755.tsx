@@ -652,13 +652,6 @@ function App() {
 
   // 打开计时器事件编辑框
   const handleTimerEdit = () => {
-    // 🔧 [BUG FIX] 在打开 modal 前确保标签已加载
-    const latestTags = TagService.getTags();
-    if (latestTags.length > 0 && appTags.length === 0) {
-      setAppTags(latestTags);
-      AppLogger.log('🏷️ [handleTimerEdit] Force updated appTags:', latestTags.length);
-    }
-    
     // 🔧 [BUG FIX] 只允许编辑已存在的Timer，不创建临时event
     if (!globalTimer) {
       // 如果没有运行中的Timer，打开空的编辑框让用户选择tag

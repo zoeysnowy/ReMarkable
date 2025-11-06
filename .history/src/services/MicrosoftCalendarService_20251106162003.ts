@@ -1000,13 +1000,12 @@ export class MicrosoftCalendarService {
         if (extractedContacts.attendees.length > 0) {
           attendees = extractedContacts.attendees;
         }
-        const cleanDescription = extractedContacts.cleanDescription || rawDescription;
         
         return {
           id: `outlook-${outlookEvent.id}`,
           title: outlookEvent.subject || 'Untitled Event',
           subject: outlookEvent.subject || 'Untitled Event',
-          description: cleanDescription,
+          description: rawDescription,
           bodyPreview: outlookEvent.bodyPreview || outlookEvent.body?.content?.substring(0, 100) || `${outlookEvent.subject} - 来自 Outlook 的日程`,
           startTime: startTime,
           endTime: endTime,

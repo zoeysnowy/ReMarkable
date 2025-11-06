@@ -185,11 +185,6 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
   }, [isDragging, isResizing, handleDragMove, handleDragEnd, handleResizeMove, handleResizeEnd]);
 
   const flatTags = useMemo(() => {
-    // 🔧 [BUG FIX] 确保在 modal 打开时能获取到最新的标签数据
-    if (!isOpen || !hierarchicalTags || hierarchicalTags.length === 0) {
-      return [];
-    }
-    
     const isAlreadyFlat = hierarchicalTags.length > 0 && 
                          hierarchicalTags[0].level !== undefined && 
                          !hierarchicalTags[0].children;
@@ -218,7 +213,7 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
     };
     
     return flatten(hierarchicalTags);
-  }, [hierarchicalTags, isOpen]);
+  }, [hierarchicalTags]);
 
   // 搜索过滤标签
   const filteredTags = useMemo(() => {
