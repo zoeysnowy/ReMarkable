@@ -73,33 +73,187 @@ interface Event {
 
 ### 组织者与参会人字段说明
 
+#### 基础字段定义
+
 **organizer（组织者）**
-- 标识事件的发起人
-- 通常从 Outlook 同步时自动填充
-- 手动创建事件时可选填
+```typescript
+{
+  name?: string;           // 组织者姓名
+  email?: string;          // 组织者邮箱
+  avatarUrl?: string;      // 头像 URL（可选）
+  isReMarkable?: boolean;  // 是否为 ReMarkable 本地联系人
+  isOutlook?: boolean;     // 是否从 Outlook 同步
+  isGoogle?: boolean;      // 是否从 Google 同步（预留）
+  isiCloud?: boolean;      // 是否从 iCloud 同步（预留）
+}
+```
 
 **attendees（参会人列表）**
-- 支持多个参会人
-- `type` 字段标识参会类型：
-  - `required`: 必需参会人
-  - `optional`: 可选参会人
-  - `resource`: 资源（如会议室）
-- `status` 字段标识响应状态：
-  - `accepted`: 已接受
-  - `declined`: 已拒绝
-  - `tentative`: 暂定
-  - `none`: 未响应
+```typescript
+Array<{
+  name?: string;           // 参会人姓名
+  email?: string;          // 参会人邮箱
+  avatarUrl?: string;      // 头像 URL（可选）
+  type?: string;           // "required" | "optional" | "resource"
+  status?: string;         // "accepted" | "declined" | "tentative" | "none"
+  isReMarkable?: boolean;  // 是否为 ReMarkable 本地联系人
+  isOutlook?: boolean;     // 是否从 Outlook 同步
+  isGoogle?: boolean;      // 是否从 Google 同步（预留）
+  isiCloud?: boolean;      // 是否从 iCloud 同步（预留）
+}>
+```
 
-**UI 交互**
-- EventEditModal 提供组织者输入框（姓名、邮箱）
-- 参会人支持动态添加/删除
-- 参会人列表显示姓名、邮箱、参会类型
-- 在日历视图中显示参会人数量（👥 图标）
+#### 平台标识系统
 
-**同步行为**
-- 创建/更新事件时，organizer 和 attendees 会同步到 Microsoft Outlook
-- 从 Outlook 同步回来的事件会自动填充这些字段
-- 字段格式转换由 `MicrosoftCalendarService` 处理
+**设计理念**: 统一的联系人管理，支持多平台融合
+
+- **isReMarkable**: 标识为 ReMarkable 本地联系人，仅需姓名，邮箱可选
+- **isOutlook**: 标识从 Outlook 同步的联系人，必须有有效邮箱
+- **isGoogle/isiCloud**: 预留字段，用于未来扩展
+
+**优先级规则**:
+1. Outlook 同步时，有邮箱的使用 `isOutlook=true`
+2. ReMarkable 本地添加的使用 `isReMarkable=true`
+3. 同一联系人可以同时有多个标识
+
+#### UI 功能特性
+
+**1. 组织者输入**
+- 位置：EventEditModal 表单中部
+- 字段：姓名输入框、邮箱输入框
+- 头像：自动根据邮箱加载 Gravatar 或使用默认头像
+- 验证：邮箱格式验证（可选填）
+
+**2. 参会人管理**
+- **添加方式**:
+  - 手动输入：姓名 + 邮箱 + 参会类型
+  - 批量导入：通过联系人选择器（ContactPicker）从已保存联系人中选择
+- **显示信息**:
+  - 头像（圆形）
+  - 姓名（主标题）
+  - 邮箱（副标题，灰色小字）
+  - 参会类型（必需/可选/资源）
+  - 响应状态徽章（已接受/已拒绝/待定）
+- **交互操作**:
+  - 修改参会类型（下拉选择）
+  - 删除参会人（X 按钮）
+  - 查看冲突警告（黄色感叹号图标）
+
+**3. 响应状态显示**
+- ✅ **已接受** (accepted): 绿色徽章
+- ❌ **已拒绝** (declined): 红色徽章
+- ❓ **暂定** (tentative): 黄色徽章
+- ⚪ **未响应** (none): 灰色徽章
+
+**4. 会议冲突检测**
+- 实时检测参会人时间冲突
+- 黄色警告框显示冲突详情
+- 列出冲突的参会人和冲突事件
+- 建议调整时间或移除冲突参会人
+
+**5. 联系人选择器（ContactPicker）**
+- 搜索功能：按姓名或邮箱搜索
+- 批量选择：支持多选参会人
+- 快速添加：点击联系人卡片即可添加
+- 联系人来源：
+  - ReMarkable 本地联系人
+  - Outlook 同步的联系人
+  - 最近使用的联系人
+
+#### 同步行为
+
+**1. 创建/更新事件 (Local → Outlook)**
+
+- **符合 Outlook 格式的联系人**:
+  - 必须有有效邮箱地址
+  - 直接同步到 Outlook 的 `organizer` 和 `attendees` 字段
+  - 设置 `isOutlook=true`
+
+- **不符合 Outlook 格式的联系人**:
+  - ReMarkable 本地联系人（仅有姓名）
+  - 邮箱格式无效的联系人
+  - **处理方式**: 整合到 `description` 字段开头
+    ```
+    【组织者】张三
+    【参会人】李四/王五/赵六
+    ─────────────────
+    [原有的描述内容]
+    ```
+  - 使用特殊标记 `<!--REMARKABLE_CONTACTS-->` 便于识别和提取
+
+**2. 从 Outlook 同步回来 (Outlook → Local)**
+
+- **提取 Outlook 联系人**:
+  - 读取 `organizer.emailAddress` 和 `attendees[]`
+  - 设置 `isOutlook=true`
+  - 自动填充姓名、邮箱、响应状态
+
+- **提取 ReMarkable 联系人**:
+  - 检测 description 中的特殊标记
+  - 解析 `【组织者】` 和 `【参会人】` 行
+  - 恢复为 `isReMarkable=true` 的联系人对象
+  - 清理 description，移除联系人标记
+
+**3. 更新同步策略**
+
+每次同步时检查是否需要更新 description：
+- 比较本地联系人和 Outlook 联系人
+- 如果 ReMarkable 联系人有变化，更新 description
+- 如果 description 中的联系人标记已过期，清理
+
+#### 头像系统
+
+**头像加载优先级**:
+1. 用户上传的头像（`avatarUrl` 字段）
+2. Gravatar（根据邮箱 MD5 生成）
+3. 默认头像（首字母圆形背景）
+
+**Avatar 组件**:
+```typescript
+<Avatar 
+  name="张三"
+  email="zhangsan@example.com"
+  avatarUrl={contact.avatarUrl}
+  size={32}
+/>
+```
+
+**性能优化**:
+- 头像懒加载
+- Gravatar 请求缓存
+- 默认头像使用 CSS 渐变
+
+#### 联系人服务（ContactService）
+
+**功能**:
+- `getAllContacts()`: 获取所有联系人（本地 + 同步）
+- `searchContacts(query)`: 搜索联系人
+- `saveContact(contact)`: 保存联系人到本地
+- `getRecentContacts()`: 获取最近使用的联系人
+- `mergeContacts()`: 合并重复联系人
+
+**存储位置**: `localStorage['remarkable-contacts']`
+
+#### 冲突检测服务（ConflictDetectionService）
+
+**功能**:
+- `checkConflicts(eventTime, attendees)`: 检测参会人时间冲突
+- `getConflictingEvents(attendee, timeRange)`: 获取某人的冲突事件
+- `suggestAlternativeTime()`: 建议无冲突的时间段（未来功能）
+
+**检测逻辑**:
+1. 遍历所有参会人
+2. 查询每个人在该时间段的其他事件
+3. 标记有冲突的参会人
+4. 返回冲突详情数组
+
+**UI 显示**:
+```
+⚠️ 时间冲突警告
+以下参会人在此时间段有其他安排：
+• 李四 - 与"产品评审会"冲突 (14:00-15:00)
+• 王五 - 与"客户拜访"冲突 (14:30-16:00)
+```
 
 ---
 

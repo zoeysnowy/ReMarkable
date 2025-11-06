@@ -15,6 +15,12 @@
 - ✅ **队列合并优化**: 同一事件的多个 update action 自动合并，只保留最新的，减少 API 调用
 - ✅ **CalendarSync 降级方案**: 当 syncManager 未初始化时，可直接调用 `microsoftService` 进行简化版同步
 - ✅ **标签日历映射修复**: 添加/修改标签后自动同步到标签映射的日历分组，优先级：标签映射 > 手动选择 > 默认日历
+- 🆕 **参会人和组织者同步**: 支持 ReMarkable 本地联系人和 Outlook 联系人的双向同步
+  - 平台标识：isReMarkable/isOutlook/isGoogle/isiCloud
+  - 智能整合：不符合 Outlook 格式的联系人整合到 description
+  - 双向提取：同步回来时自动提取 ReMarkable 联系人
+- 🆕 **会议冲突检测**: 实时检测参会人时间冲突，显示冲突警告
+- 🆕 **联系人管理**: ContactService 提供统一的联系人存储和搜索
 
 ---
 
@@ -380,6 +386,412 @@ window.addEventListener('calendarFallback', (event) => {
   const { eventTitle, invalidCalendar, fallbackCalendar } = event.detail;
   alert(`事件 "${eventTitle}" 的目标日历不存在，已自动保存到默认日历`);
 });
+```
+
+---
+
+### 3.4 联系人同步机制 (ContactService & MicrosoftCalendarService)
+
+#### 3.4.1 设计理念
+
+**问题背景**:
+- Outlook 要求 organizer 和 attendees 必须有有效的邮箱地址
+- ReMarkable 用户可能只记录姓名（如"张三"），不需要邮箱
+- 需要支持多平台联系人（Outlook/Google/iCloud/ReMarkable 本地）
+
+**解决方案**: 
+- **平台标识系统**: 使用 `isReMarkable/isOutlook/isGoogle/isiCloud` 标识联系人来源
+- **智能整合策略**: 不符合 Outlook 格式的联系人整合到 `description` 字段
+- **双向提取**: 同步回来时从 description 提取 ReMarkable 联系人
+
+#### 3.4.2 联系人数据结构
+
+**代码位置**: `src/types.ts` L45-70
+
+```typescript
+interface Contact {
+  name?: string;           // 姓名（必填）
+  email?: string;          // 邮箱（Outlook 必需，ReMarkable 可选）
+  avatarUrl?: string;      // 头像 URL
+  type?: string;           // "required" | "optional" | "resource"（仅 attendees）
+  status?: string;         // "accepted" | "declined" | "tentative" | "none"（仅 attendees）
+  
+  // 平台标识
+  isReMarkable?: boolean;  // ReMarkable 本地联系人
+  isOutlook?: boolean;     // Outlook 同步的联系人
+  isGoogle?: boolean;      // Google 联系人（预留）
+  isiCloud?: boolean;      // iCloud 联系人（预留）
+}
+
+interface Event {
+  // ... 其他字段
+  organizer?: Contact;
+  attendees?: Contact[];
+}
+```
+
+#### 3.4.3 同步到 Outlook (Local → Remote)
+
+**代码位置**: `src/services/MicrosoftCalendarService.ts` L65-160
+
+```typescript
+// 🔧 常量定义
+const REMARKABLE_CONTACTS_MARKER = '<!--REMARKABLE_CONTACTS-->';
+const ORGANIZER_PREFIX = '【组织者】';
+const ATTENDEES_PREFIX = '【参会人】';
+const SEPARATOR = '─────────────────';
+
+// 🔧 整合联系人到 description
+private integrateContactsToDescription(
+  event: Event,
+  outlookOrganizer: any | null,
+  outlookAttendees: any[]
+): string {
+  const remarkableOrganizer = event.organizer?.isReMarkable 
+    ? event.organizer.name 
+    : null;
+  
+  const remarkableAttendees = (event.attendees || [])
+    .filter(a => a.isReMarkable && a.name)
+    .map(a => a.name);
+  
+  // 如果没有 ReMarkable 联系人，不添加标记
+  if (!remarkableOrganizer && remarkableAttendees.length === 0) {
+    return event.description || '';
+  }
+  
+  // 构建联系人标记
+  let contactSection = REMARKABLE_CONTACTS_MARKER + '\n';
+  if (remarkableOrganizer) {
+    contactSection += `${ORGANIZER_PREFIX}${remarkableOrganizer}\n`;
+  }
+  if (remarkableAttendees.length > 0) {
+    contactSection += `${ATTENDEES_PREFIX}${remarkableAttendees.join('/')}\n`;
+  }
+  contactSection += SEPARATOR + '\n\n';
+  
+  // 清理旧的联系人标记
+  let cleanDescription = event.description || '';
+  const markerIndex = cleanDescription.indexOf(REMARKABLE_CONTACTS_MARKER);
+  if (markerIndex !== -1) {
+    const separatorIndex = cleanDescription.indexOf(SEPARATOR, markerIndex);
+    if (separatorIndex !== -1) {
+      cleanDescription = cleanDescription.substring(separatorIndex + SEPARATOR.length).trim();
+    }
+  }
+  
+  return contactSection + cleanDescription;
+}
+
+// 🔧 同步事件到日历
+async syncEventToCalendar(event: Event, calendarId: string) {
+  // 1. 分离 Outlook 和 ReMarkable 联系人
+  const outlookOrganizer = event.organizer?.isOutlook && event.organizer.email
+    ? {
+        emailAddress: {
+          name: event.organizer.name || event.organizer.email,
+          address: event.organizer.email
+        }
+      }
+    : null;
+  
+  const outlookAttendees = (event.attendees || [])
+    .filter(a => a.isOutlook && a.email)
+    .map(a => ({
+      emailAddress: {
+        name: a.name || a.email,
+        address: a.email
+      },
+      type: a.type || 'required'
+    }));
+  
+  // 2. 整合 ReMarkable 联系人到 description
+  const finalDescription = this.integrateContactsToDescription(
+    event,
+    outlookOrganizer,
+    outlookAttendees
+  );
+  
+  // 3. 构建 Outlook 事件对象
+  const outlookEvent = {
+    subject: event.title,
+    body: { contentType: 'text', content: finalDescription },
+    start: { dateTime: event.start, timeZone: 'UTC' },
+    end: { dateTime: event.end, timeZone: 'UTC' },
+    organizer: outlookOrganizer,
+    attendees: outlookAttendees,
+    location: { displayName: event.location || '' }
+  };
+  
+  // 4. 调用 Graph API
+  return await this.callGraphAPI(
+    `/me/calendars/${calendarId}/events`,
+    'POST',
+    outlookEvent
+  );
+}
+```
+
+#### 3.4.4 从 Outlook 同步回来 (Remote → Local)
+
+**代码位置**: `src/services/MicrosoftCalendarService.ts` L180-280
+
+```typescript
+// 🔧 从 description 提取 ReMarkable 联系人
+private extractContactsFromDescription(description: string): {
+  organizer: Contact | null;
+  attendees: Contact[];
+  cleanDescription: string;
+} {
+  const markerIndex = description.indexOf(REMARKABLE_CONTACTS_MARKER);
+  if (markerIndex === -1) {
+    return { organizer: null, attendees: [], cleanDescription: description };
+  }
+  
+  const separatorIndex = description.indexOf(SEPARATOR, markerIndex);
+  if (separatorIndex === -1) {
+    return { organizer: null, attendees: [], cleanDescription: description };
+  }
+  
+  // 提取联系人部分
+  const contactSection = description.substring(
+    markerIndex + REMARKABLE_CONTACTS_MARKER.length,
+    separatorIndex
+  ).trim();
+  
+  // 清理后的描述
+  const cleanDescription = description.substring(separatorIndex + SEPARATOR.length).trim();
+  
+  // 解析组织者
+  let organizer: Contact | null = null;
+  const organizerMatch = contactSection.match(new RegExp(`${ORGANIZER_PREFIX}(.+)`));
+  if (organizerMatch) {
+    organizer = {
+      name: organizerMatch[1].trim(),
+      isReMarkable: true
+    };
+  }
+  
+  // 解析参会人
+  const attendees: Contact[] = [];
+  const attendeesMatch = contactSection.match(new RegExp(`${ATTENDEES_PREFIX}(.+)`));
+  if (attendeesMatch) {
+    const names = attendeesMatch[1].split('/').map(n => n.trim()).filter(Boolean);
+    names.forEach(name => {
+      attendees.push({
+        name,
+        isReMarkable: true,
+        type: 'required',
+        status: 'none'
+      });
+    });
+  }
+  
+  return { organizer, attendees, cleanDescription };
+}
+
+// 🔧 处理从 Outlook 获取的事件
+private processRemoteEvent(outlookEvent: any): Event {
+  const rawDescription = outlookEvent.body?.content || '';
+  
+  // 1. 提取 Outlook 联系人
+  let organizer: Contact | null = null;
+  if (outlookEvent.organizer?.emailAddress) {
+    organizer = {
+      name: outlookEvent.organizer.emailAddress.name || outlookEvent.organizer.emailAddress.address,
+      email: outlookEvent.organizer.emailAddress.address,
+      isOutlook: true
+    };
+  }
+  
+  let attendees: Contact[] = (outlookEvent.attendees || []).map((a: any) => ({
+    name: a.emailAddress?.name || a.emailAddress?.address,
+    email: a.emailAddress?.address,
+    type: a.type || 'required',
+    status: a.status?.response || 'none',
+    isOutlook: true
+  })).filter((a: Contact) => a.email);
+  
+  // 2. 提取 ReMarkable 联系人
+  const extracted = this.extractContactsFromDescription(rawDescription);
+  if (extracted.organizer) {
+    organizer = extracted.organizer;
+  }
+  if (extracted.attendees.length > 0) {
+    attendees = extracted.attendees;
+  }
+  
+  // 3. 构建本地事件对象
+  return {
+    id: `outlook-${outlookEvent.id}`,
+    title: outlookEvent.subject || 'Untitled Event',
+    description: extracted.cleanDescription,
+    start: this.convertUtcToLocal(outlookEvent.start?.dateTime),
+    end: this.convertUtcToLocal(outlookEvent.end?.dateTime),
+    organizer,
+    attendees,
+    externalId: outlookEvent.id,
+    syncStatus: 'synced'
+  };
+}
+```
+
+#### 3.4.5 ContactService - 本地联系人管理
+
+**代码位置**: `src/services/ContactService.ts`
+
+```typescript
+class ContactService {
+  private static STORAGE_KEY = 'remarkable-contacts';
+  private static contacts: Contact[] = [];
+  
+  // 获取所有联系人
+  static getAllContacts(): Contact[] {
+    if (this.contacts.length === 0) {
+      const stored = localStorage.getItem(this.STORAGE_KEY);
+      this.contacts = stored ? JSON.parse(stored) : [];
+    }
+    return this.contacts;
+  }
+  
+  // 搜索联系人
+  static searchContacts(query: string): Contact[] {
+    const lowerQuery = query.toLowerCase();
+    return this.getAllContacts().filter(c => 
+      c.name?.toLowerCase().includes(lowerQuery) ||
+      c.email?.toLowerCase().includes(lowerQuery)
+    );
+  }
+  
+  // 保存联系人
+  static saveContact(contact: Contact): void {
+    const existing = this.contacts.find(c => 
+      c.email && c.email === contact.email
+    );
+    
+    if (existing) {
+      Object.assign(existing, contact);
+    } else {
+      this.contacts.push(contact);
+    }
+    
+    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.contacts));
+  }
+  
+  // 获取最近使用的联系人
+  static getRecentContacts(limit: number = 10): Contact[] {
+    // 从最近的事件中提取联系人
+    const events = JSON.parse(localStorage.getItem('remarkable-events') || '[]');
+    const recentContacts: Map<string, Contact> = new Map();
+    
+    events
+      .sort((a: any, b: any) => new Date(b.start).getTime() - new Date(a.start).getTime())
+      .slice(0, 50)
+      .forEach((event: any) => {
+        if (event.organizer) {
+          const key = event.organizer.email || event.organizer.name;
+          if (key && !recentContacts.has(key)) {
+            recentContacts.set(key, event.organizer);
+          }
+        }
+        (event.attendees || []).forEach((attendee: Contact) => {
+          const key = attendee.email || attendee.name;
+          if (key && !recentContacts.has(key)) {
+            recentContacts.set(key, attendee);
+          }
+        });
+      });
+    
+    return Array.from(recentContacts.values()).slice(0, limit);
+  }
+}
+```
+
+#### 3.4.6 同步更新检测
+
+**问题**: 每次同步都更新 description 会导致不必要的 API 调用
+
+**优化策略**: 比较现有 description 和新 description，仅在变化时更新
+
+```typescript
+// 在 syncEventToCalendar 中
+const currentDescription = await this.getEventDescription(externalId);
+const newDescription = this.integrateContactsToDescription(event, ...);
+
+if (currentDescription !== newDescription) {
+  // 仅在 description 变化时更新
+  await this.updateEvent(externalId, { body: { content: newDescription } });
+}
+```
+
+#### 3.4.7 会议冲突检测
+
+**代码位置**: `src/services/ConflictDetectionService.ts`
+
+```typescript
+class ConflictDetectionService {
+  // 检测参会人时间冲突
+  static checkConflicts(
+    eventTime: { start: string; end: string },
+    attendees: Contact[]
+  ): ConflictWarning[] {
+    const conflicts: ConflictWarning[] = [];
+    const events = JSON.parse(localStorage.getItem('remarkable-events') || '[]');
+    
+    attendees.forEach(attendee => {
+      const conflictingEvents = events.filter((e: any) => {
+        // 检查是否为同一参会人
+        const hasAttendee = (e.attendees || []).some((a: Contact) => 
+          a.email && a.email === attendee.email ||
+          !a.email && a.name === attendee.name
+        );
+        
+        if (!hasAttendee) return false;
+        
+        // 检查时间是否重叠
+        return this.isTimeOverlap(
+          { start: e.start, end: e.end },
+          eventTime
+        );
+      });
+      
+      if (conflictingEvents.length > 0) {
+        conflicts.push({
+          attendee,
+          conflictingEvents: conflictingEvents.map((e: any) => ({
+            title: e.title,
+            start: e.start,
+            end: e.end
+          }))
+        });
+      }
+    });
+    
+    return conflicts;
+  }
+  
+  // 检查时间是否重叠
+  private static isTimeOverlap(
+    time1: { start: string; end: string },
+    time2: { start: string; end: string }
+  ): boolean {
+    const start1 = new Date(time1.start).getTime();
+    const end1 = new Date(time1.end).getTime();
+    const start2 = new Date(time2.start).getTime();
+    const end2 = new Date(time2.end).getTime();
+    
+    return (start1 < end2 && end1 > start2);
+  }
+}
+
+interface ConflictWarning {
+  attendee: Contact;
+  conflictingEvents: Array<{
+    title: string;
+    start: string;
+    end: string;
+  }>;
+}
 ```
 
 ---
