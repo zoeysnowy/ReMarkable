@@ -25,8 +25,10 @@
 
 **EventHub** 和 **TimeHub** 是 ReMarkable 应用的两个核心状态管理中心，共同实现了**单一数据源（Single Source of Truth）**原则：
 
-- **EventHub**: 管理事件的**所有非时间字段**（标题、标签、描述、优先级等）
+- **EventHub**: 管理事件的**所有非时间字段**（标题、标签、描述、优先级、组织者、参会人等）
 - **TimeHub**: 管理事件的**时间字段和时间意图**（start/end/allDay/TimeSpec）
+
+> **注意**: 组织者（organizer）和参会人（attendees）字段由 EventHub 管理，这些字段主要用于与 Microsoft Outlook 同步，支持会议协作场景。详见 [EventEditModal PRD](../PRD/EVENTEDITMODAL_MODULE_PRD.md#event-数据结构)。
 
 ### 1.2 架构图
 

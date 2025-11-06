@@ -24,6 +24,85 @@
 
 ---
 
+## Event 数据结构
+
+### 核心字段定义
+
+Event 对象的完整类型定义位于 `src/types.ts`，包含以下核心字段：
+
+```typescript
+interface Event {
+  // 基础标识
+  id: string;
+  title: string;
+  description?: string;
+  
+  // 时间相关（必须使用 timeUtils 工具）
+  start: string;      // 本地时间字符串，如 "2025-11-06T14:30:00"
+  end: string;        // 本地时间字符串，如 "2025-11-06T16:00:00"
+  
+  // 日历与标签
+  calendarId: string;
+  tag?: string;
+  
+  // 组织者与参会人
+  organizer?: {
+    name?: string;
+    email?: string;
+  };
+  attendees?: Array<{
+    name?: string;
+    email?: string;
+    type?: string;      // "required" | "optional" | "resource"
+    status?: string;    // "accepted" | "declined" | "tentative" | "none"
+  }>;
+  
+  // 同步相关
+  microsoftEventId?: string;
+  isOutlookEvent?: boolean;
+  
+  // 其他元数据
+  isAllDay?: boolean;
+  location?: string;
+  category?: string;
+  body?: string;
+  recurrenceRule?: string;
+  raw?: any;
+}
+```
+
+### 组织者与参会人字段说明
+
+**organizer（组织者）**
+- 标识事件的发起人
+- 通常从 Outlook 同步时自动填充
+- 手动创建事件时可选填
+
+**attendees（参会人列表）**
+- 支持多个参会人
+- `type` 字段标识参会类型：
+  - `required`: 必需参会人
+  - `optional`: 可选参会人
+  - `resource`: 资源（如会议室）
+- `status` 字段标识响应状态：
+  - `accepted`: 已接受
+  - `declined`: 已拒绝
+  - `tentative`: 暂定
+  - `none`: 未响应
+
+**UI 交互**
+- EventEditModal 提供组织者输入框（姓名、邮箱）
+- 参会人支持动态添加/删除
+- 参会人列表显示姓名、邮箱、参会类型
+- 在日历视图中显示参会人数量（👥 图标）
+
+**同步行为**
+- 创建/更新事件时，organizer 和 attendees 会同步到 Microsoft Outlook
+- 从 Outlook 同步回来的事件会自动填充这些字段
+- 字段格式转换由 `MicrosoftCalendarService` 处理
+
+---
+
 **关键点**：
 - ✅ 记录初始尺寸（`resizeStart.width/height`）
 - ✅ 计算增量（`deltaX/deltaY`）并应用最小值限制
