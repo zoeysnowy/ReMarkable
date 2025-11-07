@@ -10,7 +10,6 @@ coverage/
 
 # Large external sources
 tui-calendar-source/
-tui.calendar*/
 
 # Environment variables
 .env
