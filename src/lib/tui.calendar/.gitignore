@@ -46,6 +46,8 @@ Desktop.ini
 build/
 storybook-static/
 dist/
+# Allow apps/calendar/dist to be tracked (needed for production use)
+!apps/calendar/dist/
 apps/calendar/types/
 tmpdoc/
 
