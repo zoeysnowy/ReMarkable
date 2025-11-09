@@ -1268,26 +1268,29 @@ function App() {
   // ❌ [REMOVED] getCurrentTimerSeconds() - 未使用的函数，globalTimer 已提供完整的时间信息
 
   // 获取层级标签的完整路径（例如✅Parent/#Child✅
-  const getHierarchicalTagPath = (tagId: string): string => {
+  // 🚀 [OPTIMIZED] 使用 useCallback 缓存标签路径计算函数
+  const getHierarchicalTagPath = useCallback((tagId: string): string => {
     const flatTags = TagService.getFlatTags();
     const tag = flatTags.find(t => t.id === tagId);
     
     if (!tag) return '';
     
-    // 调试：输出标签信✅
-    AppLogger.log('🏷️[getHierarchicalTagPath] Tag info:', {
-      tagId,
-      tagName: tag.name,
-      emoji: tag.emoji,
-      parentId: tag.parentId,
-      level: (tag as any).level,
-      allTags: flatTags.map(t => ({ 
-        id: t.id, 
-        name: t.name, 
-        parentId: t.parentId,
-        level: (t as any).level 
-      }))
-    });
+    // 🔧 [PERFORMANCE] 仅在 DEV 模式输出调试日志
+    if (process.env.NODE_ENV === 'development') {
+      AppLogger.log('🏷️[getHierarchicalTagPath] Tag info:', {
+        tagId,
+        tagName: tag.name,
+        emoji: tag.emoji,
+        parentId: tag.parentId,
+        level: (tag as any).level,
+        allTags: flatTags.map(t => ({ 
+          id: t.id, 
+          name: t.name, 
+          parentId: t.parentId,
+          level: (t as any).level 
+        }))
+      });
+    }
     
     // 构建层级路径，包含emoji
     const pathParts: { emoji?: string; name: string }[] = [];
@@ -1299,37 +1302,68 @@ function App() {
         name: currentTag.name
       });
       
-      AppLogger.log('🔗 [getHierarchicalTagPath] Processing tag:', {
-        id: currentTag.id,
-        name: currentTag.name,
-        emoji: currentTag.emoji,
-        parentId: currentTag.parentId,
-        pathSoFar: pathParts.map(p => `${p.emoji}${p.name}`).join('/')
-      });
+      if (process.env.NODE_ENV === 'development') {
+        AppLogger.log('🔗 [getHierarchicalTagPath] Processing tag:', {
+          id: currentTag.id,
+          name: currentTag.name,
+          emoji: currentTag.emoji,
+          parentId: currentTag.parentId,
+          pathSoFar: pathParts.map(p => `${p.emoji}${p.name}`).join('/')
+        });
+      }
       
       if (currentTag.parentId) {
         const parentTag = flatTags.find(t => t.id === currentTag.parentId) as any;
         if (parentTag) {
-          AppLogger.log('🔗 [getHierarchicalTagPath] Found parent:', {
-            parentId: parentTag.id,
-            parentName: parentTag.name,
-            parentEmoji: parentTag.emoji
-          });
+          if (process.env.NODE_ENV === 'development') {
+            AppLogger.log('🔗 [getHierarchicalTagPath] Found parent:', {
+              parentId: parentTag.id,
+              parentName: parentTag.name,
+              parentEmoji: parentTag.emoji
+            });
+          }
           currentTag = parentTag;
         } else {
-          AppLogger.warn('⚠️ [getHierarchicalTagPath] Parent not found:', currentTag.parentId);
+          if (process.env.NODE_ENV === 'development') {
+            AppLogger.warn('⚠️ [getHierarchicalTagPath] Parent not found:', currentTag.parentId);
+          }
           break;
         }
       } else {
-        AppLogger.log('🔚 [getHierarchicalTagPath] No parent, stopping');
+        if (process.env.NODE_ENV === 'development') {
+          AppLogger.log('🔚 [getHierarchicalTagPath] No parent, stopping');
+        }
         break;
       }
     }
     
     const result = pathParts.map(part => `#${part.emoji || ''}${part.name}`).join('/');
-    AppLogger.log('🔗 [getHierarchicalTagPath] Final path:', result);
+    if (process.env.NODE_ENV === 'development') {
+      AppLogger.log('🔗 [getHierarchicalTagPath] Final path:', result);
+    }
     return result;
-  };
+  }, []); // 🔧 空依赖数组，TagService.getFlatTags() 总是返回最新数据
+  
+  // 🚀 [NEW] 缓存当前 Timer 的标签路径，只在 tagId 变化时重新计算
+  const timerTagPath = useMemo(() => {
+    if (!globalTimer?.tagId) return undefined;
+    return getHierarchicalTagPath(globalTimer.tagId);
+  }, [globalTimer?.tagId, getHierarchicalTagPath]);
+  
+  // 🚀 [NEW] 缓存当前 Timer 的标签颜色
+  const timerTagColor = useMemo(() => {
+    if (!globalTimer?.tagId) return undefined;
+    const flatTags = TagService.getFlatTags();
+    const tag = flatTags.find(t => t.id === globalTimer.tagId);
+    return tag?.color || '#3b82f6';
+  }, [globalTimer?.tagId]);
+  
+  // 🚀 [NEW] 缓存当前 Timer 的标签 Emoji
+  const timerTagEmoji = useMemo(() => {
+    if (!globalTimer?.tagId) return undefined;
+    const tag = TagService.getFlatTags().find(t => t.id === globalTimer.tagId);
+    return tag?.emoji || '⏱️';
+  }, [globalTimer?.tagId]);
   
   // 获取最底层标签的颜✅
   const getBottomTagColor = (tagId: string): string => {
@@ -1360,12 +1394,9 @@ function App() {
               <TimerCard
                 tagId={globalTimer?.tagId}
                 tagName={globalTimer?.tagName}
-                tagEmoji={globalTimer ? (() => {
-                  const tag = TagService.getFlatTags().find(t => t.id === globalTimer.tagId);
-                  return tag?.emoji || '⏱️';
-                })() : undefined}
-                tagPath={globalTimer ? getHierarchicalTagPath(globalTimer.tagId) : undefined}
-                tagColor={globalTimer ? getBottomTagColor(globalTimer.tagId) : undefined}
+                tagEmoji={timerTagEmoji}
+                tagPath={timerTagPath}
+                tagColor={timerTagColor}
                 startTime={globalTimer?.startTime}
                 originalStartTime={globalTimer?.originalStartTime}
                 elapsedTime={globalTimer?.elapsedTime}
@@ -1397,7 +1428,7 @@ function App() {
               microsoftService={microsoftService}
               syncManager={syncManager}
               lastSyncTime={lastSyncTime}
-              availableTags={availableTagsForEdit}
+              availableTags={hierarchicalTags}
               globalTimer={globalTimer}
             />
           </PageContainer>

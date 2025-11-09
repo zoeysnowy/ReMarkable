@@ -122,6 +122,7 @@ class TagServiceClass {
 
   // 扁平化标签层级结构
   private flattenTags(tags: HierarchicalTag[]): FlatTag[] {
+    const start = performance.now();
     const result: FlatTag[] = [];
     
     const flatten = (tags: HierarchicalTag[], parentId?: string, level: number = 0) => {
@@ -151,13 +152,33 @@ class TagServiceClass {
       result.forEach(tag => {
         let level = 0;
         let currentId = tag.parentId;
+        const visited = new Set<string>(); // 🔧 防止循环引用导致死循环
+        
         while (currentId) {
+          if (visited.has(currentId)) {
+            // 检测到循环引用，停止计算
+            console.error(`❌ [TagService] 检测到标签循环引用: ${tag.id} -> ${currentId}`);
+            break;
+          }
+          visited.add(currentId);
+          
           level++;
           const parent = tagMap.get(currentId);
           currentId = parent?.parentId;
+          
+          // 🔧 安全检查：最多 20 层，防止异常数据
+          if (level > 20) {
+            console.error(`❌ [TagService] 标签层级过深 (>20): ${tag.id}`);
+            break;
+          }
         }
         tag.level = level;
       });
+    }
+    
+    const duration = performance.now() - start;
+    if (duration > 100) {
+      console.warn(`⚠️ [TagService] flattenTags() 耗时 ${duration.toFixed(2)}ms，处理 ${tags.length} 个标签`);
     }
     
     return result;
@@ -287,6 +308,7 @@ class TagServiceClass {
 
   // 通知所有监听器
   private notifyListeners(): void {
+    console.log('🔔 [TagService] Notifying listeners, stack:', new Error().stack);
     this.listeners.forEach(listener => {
       try {
         listener([...this.tags]);

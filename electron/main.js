@@ -1094,15 +1094,21 @@ function createWidgetSettingsWindow() {
       height: settingsHeight,
       x: settingsX,
       y: settingsY,
-      frame: false,
-      transparent: true,
-      backgroundColor: '#00000000',
-      resizable: false,
-      alwaysOnTop: true, // Settings 始终在最前
-      skipTaskbar: true, // 不在任务栏显示
-      parent: widgetWindow, // 设置父窗口
-      modal: false,
+      frame: true, // ✅ 启用系统边框和标题栏（可拖动）
+      transparent: false,
+      backgroundColor: '#ffffff', // 🎨 使用白色背景（匹配 Settings 页面）
+      resizable: true, // ✅ 允许调整大小
+      minimizable: true, // ✅ 允许最小化
+      maximizable: false, // ❌ 禁止最大化（避免全屏覆盖）
+      minWidth: 350,
+      minHeight: 500,
+      maxWidth: 500,
+      alwaysOnTop: false, // ❌ 不置顶（允许被其他窗口遮挡）
+      skipTaskbar: false, // ✅ 在任务栏显示（方便切换）
+      parent: widgetWindow, // 设置父窗口关联
+      modal: false, // ❌ 非模态（不阻止 Widget 交互）
       show: false,
+      title: '⚙️ Widget 日历设置',
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,

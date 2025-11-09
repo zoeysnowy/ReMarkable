@@ -88,8 +88,12 @@ export class ActionBasedSyncManager {
     lastCheckTime: number;      // 最后检查的时间
   }> = new Map();
   private syncRoundCounter = 0; // 同步轮次计数器
+  private lastSyncBatchCount = 0; // 🔧 [NEW] 上次同步的批次数量（用于动态计算删除确认时间）
   
-  // 📊 [NEW] 同步统计信息
+  // � [NEW] IndexMap 重建状态追踪
+  private indexMapRebuildPromise: Promise<void> | null = null;
+  
+  // �📊 [NEW] 同步统计信息
   private syncStats = {
     syncFailed: 0,        // 同步至日历失败
     calendarCreated: 0,   // 新增日历事项
@@ -577,16 +581,24 @@ export class ActionBasedSyncManager {
         console.warn('⚠️ [getAllCalendarsEvents] No calendars in cache; skip global fetch to preserve calendarId fidelity');
         return [];
       }
-      // ⚡ [OPTIMIZED] 并发限制：每次最多3个请求，避免触发速率限制
-      const CONCURRENT_LIMIT = 3;
+      // ⚡ [OPTIMIZED] 降低并发限制，避免触发 429 速率限制
+      // Microsoft Graph API 限制：每用户每秒 ~10 请求
+      const CONCURRENT_LIMIT = 2; // 🔧 从 3 降低到 2
       const chunks = [];
       for (let i = 0; i < calendars.length; i += CONCURRENT_LIMIT) {
         chunks.push(calendars.slice(i, i + CONCURRENT_LIMIT));
       }
-      // console.log(`⚡ [getAllCalendarsEvents] Using concurrent limit: ${CONCURRENT_LIMIT} (${chunks.length} batches)`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`⚡ [getAllCalendarsEvents] Fetching ${calendars.length} calendars in ${chunks.length} batches (${CONCURRENT_LIMIT} concurrent)`);
+      }
+      
+      // 🔧 [NEW] 记录批次数量，用于动态计算删除确认时间
+      this.lastSyncBatchCount = chunks.length;
       
       for (const [index, chunk] of chunks.entries()) {
-      // console.log(`📦 [getAllCalendarsEvents] Processing batch ${index + 1}/${chunks.length} (${chunk.length} calendars)`);
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`📦 [Batch ${index + 1}/${chunks.length}] Processing ${chunk.length} calendars...`);
+        }
         
         // 并发请求当前批次的日历
         const promises = chunk.map(async (cal: any) => {
@@ -608,9 +620,9 @@ export class ActionBasedSyncManager {
         const results = await Promise.all(promises);
         results.forEach(events => allEvents.push(...events));
         
-        // 如果还有下一批次，稍微延迟一下避免速率限制
+        // 🔧 增加批次间延迟，避免速率限制（100ms → 800ms）
         if (index < chunks.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise(resolve => setTimeout(resolve, 800));
         }
       }
       return allEvents;
@@ -755,6 +767,26 @@ export class ActionBasedSyncManager {
       if (!savedEvents) return;
 
       const events = JSON.parse(savedEvents);
+      
+      // 🔧 [OPTIMIZATION] 快速预检：检查是否真的有重复
+      const externalIdSet = new Set<string>();
+      let hasDuplicate = false;
+      
+      for (const event of events) {
+        if (event.externalId) {
+          if (externalIdSet.has(event.externalId)) {
+            hasDuplicate = true;
+            break; // 发现重复，立即退出
+          }
+          externalIdSet.add(event.externalId);
+        }
+      }
+      
+      if (!hasDuplicate) {
+        return; // ✅ 没有重复，直接返回，避免不必要的处理
+      }
+      
+      // 如果有重复，才进行详细分组
       const externalIdMap = new Map<string, any[]>();
       
       // 按 externalId 分组
@@ -766,7 +798,7 @@ export class ActionBasedSyncManager {
         }
       });
 
-      // 检查重复
+      // 统计重复
       let duplicateCount = 0;
       const duplicateGroups: string[] = [];
       
@@ -777,15 +809,12 @@ export class ActionBasedSyncManager {
         }
       });
 
-      if (duplicateCount === 0) {
-        return; // 没有重复，直接返回
-      }
-
       console.warn(`⚠️ [deduplicateEvents] Found ${duplicateCount} duplicate events in ${duplicateGroups.length} groups`);
 
       // 去重：每组只保留 lastSyncTime 最新的
       const uniqueEvents: any[] = [];
       const seenExternalIds = new Set<string>();
+      const removedEventIds = new Set<string>();
       
       events.forEach((event: any) => {
         if (!event.externalId) {
@@ -803,9 +832,12 @@ export class ActionBasedSyncManager {
             const currentTime = event.lastSyncTime ? new Date(event.lastSyncTime).getTime() : 0;
             
             if (currentTime > existingTime) {
-              // 当前事件更新，替换
+              // 当前事件更新，替换旧的
+              removedEventIds.add(existing.id);
               uniqueEvents[existingIndex] = event;
             } else {
+              // 旧事件更新，标记当前为删除
+              removedEventIds.add(event.id);
             }
           }
         } else {
@@ -815,20 +847,22 @@ export class ActionBasedSyncManager {
         }
       });
 
-      // 🔧 [IndexMap 优化] 删除重复事件时更新索引
-      events.forEach((event: any) => {
-        if (event.externalId && seenExternalIds.has(event.externalId)) {
-          const existingIndex = uniqueEvents.findIndex(e => e.externalId === event.externalId);
-          if (existingIndex !== -1 && uniqueEvents[existingIndex].id !== event.id) {
-            // 这是一个被去重的事件，从索引中删除
-            this.removeEventFromIndex(event);
-          }
+      // 🔧 [IndexMap 优化] 从索引中删除被去重的事件
+      removedEventIds.forEach(eventId => {
+        const event = events.find((e: any) => e.id === eventId);
+        if (event) {
+          this.removeEventFromIndex(event);
         }
       });
 
-      // 保存去重后的事件 - 因为去重可能涉及很多事件，使用完全重建
-      this.saveLocalEvents(uniqueEvents, true); // rebuildIndex=true
-      // console.log(`✅ [deduplicateEvents] Removed ${events.length - uniqueEvents.length} duplicate events (${events.length} → ${uniqueEvents.length})`);
+      // 🔧 [CRITICAL FIX] 使用异步重建，避免阻塞主线程
+      // 去重涉及大量事件，异步重建可以提升性能
+      this.saveLocalEvents(uniqueEvents, false); // ❌ 不立即重建
+      
+      // 异步重建 IndexMap
+      this.rebuildEventIndexMapAsync(uniqueEvents).catch(err => {
+        console.error('❌ [deduplicateEvents] Failed to rebuild IndexMap:', err);
+      });
       
       // 触发事件更新通知
       window.dispatchEvent(new Event('local-events-changed'));
@@ -1103,10 +1137,12 @@ export class ActionBasedSyncManager {
     const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
     
     if (this.isRunning && this.microsoftService.isSignedIn() && isOnline) {
-      // 🔧 [FIX] 使用 setTimeout 0 让同步在下一个事件循环执行，不阻塞 UI
+      // � [PERFORMANCE FIX] 延迟同步避免阻塞 UI
+      // 删除操作延迟 1 秒执行，让 UI 先响应用户操作
+      const delayMs = type === 'delete' ? 1000 : 100;
       setTimeout(() => {
         this.syncSingleAction(action);
-      }, 0);
+      }, delayMs);
     }
   }
 
@@ -1190,10 +1226,11 @@ export class ActionBasedSyncManager {
         return;
       }
       
-      // 🔧 [NEW] 窗口激活时不进行定时同步，避免打断用户操作
-      if (this.isWindowFocused) {
-        return;
-      }
+      // 🔧 [MODIFIED] 移除窗口激活检查，允许在激活时同步
+      // 删除检查会在 fetchRemoteChanges 中根据 isWindowFocused 跳过
+      // if (this.isWindowFocused) {
+      //   return;
+      // }
       
       if (!this.syncInProgress) {
         // 🎯 标记为定时器触发，启用优先级控制
@@ -1564,16 +1601,40 @@ export class ActionBasedSyncManager {
 
       // 🔍 [DEBUG] 检查是否有重复的 externalId
       const externalIdCounts = new Map<string, number>();
+      const externalIdToEvents = new Map<string, any[]>();
+      
       localEventsWithExternalId.forEach((event: any) => {
         const cleanId = event.externalId.startsWith('outlook-') 
           ? event.externalId.replace('outlook-', '') 
           : event.externalId;
         externalIdCounts.set(cleanId, (externalIdCounts.get(cleanId) || 0) + 1);
+        
+        // 记录每个 externalId 对应的事件列表
+        const events = externalIdToEvents.get(cleanId) || [];
+        events.push(event);
+        externalIdToEvents.set(cleanId, events);
       });
       
       const duplicates = Array.from(externalIdCounts.entries()).filter(([_, count]) => count > 1);
       if (duplicates.length > 0) {
-        console.warn(`⚠️ [Sync] Found ${duplicates.length} duplicate externalIds in localStorage`);
+        // 计算总的重复事件数量
+        const totalDuplicateEvents = duplicates.reduce((sum, [_, count]) => sum + count, 0);
+        const extraDuplicates = totalDuplicateEvents - duplicates.length; // 多余的副本数量
+        
+        console.warn(`⚠️ [Sync] Found ${duplicates.length} externalIds with duplicates (total ${totalDuplicateEvents} events, ${extraDuplicates} extra copies)`);
+        
+        // 🔍 [DEBUG] 打印前3个重复的详细信息
+        if (process.env.NODE_ENV === 'development' && duplicates.length > 0) {
+          console.group('🔍 [Sync] Duplicate externalId details (first 3)');
+          duplicates.slice(0, 3).forEach(([externalId, count]) => {
+            const events = externalIdToEvents.get(externalId) || [];
+            console.log(`📋 externalId: ${externalId.substring(0, 20)}... (${count} copies)`);
+            events.forEach((event, index) => {
+              console.log(`  ${index + 1}. id: ${event.id.substring(0, 30)}..., title: "${event.title}", lastSyncTime: ${event.lastSyncTime || 'N/A'}`);
+            });
+          });
+          console.groupEnd();
+        }
       }
 
       
@@ -1584,10 +1645,15 @@ export class ActionBasedSyncManager {
       // 2. 第二轮：候选列表中依然未找到的事件才真正删除
       // 3. 找到的事件从候选列表中移除
 
-      const deletionCheckStartTime = performance.now();
-      let deletionCheckCount = 0;
-      let deletionCandidateCount = 0;
-      let deletionConfirmedCount = 0;
+      // 🔧 [NEW] 删除轮询只在窗口非激活状态下进行，避免打断用户操作
+      if (this.isWindowFocused) {
+        console.log('⏸️ [Sync] Skipping deletion check: Window is focused (user is active)');
+        // 注意：候选列表会保留，等待下一次窗口非激活时的同步再检查
+      } else {
+        const deletionCheckStartTime = performance.now();
+        let deletionCheckCount = 0;
+        let deletionCandidateCount = 0;
+        let deletionConfirmedCount = 0;
       
       localEventsWithExternalId.forEach((localEvent: any) => {
         const cleanExternalId = localEvent.externalId.startsWith('outlook-') 
@@ -1604,8 +1670,11 @@ export class ActionBasedSyncManager {
         
         const isInSyncWindow = localEventTime >= startDate && localEventTime <= endDate;
         
-        // 只检查在同步窗口内的事件
-        if (isInSyncWindow) {
+        // 🔧 [NEW] 检查是否已在候选列表中（即使不在同步窗口内）
+        const isInCandidateList = this.deletionCandidates.has(localEvent.id);
+        
+        // 检查条件：在同步窗口内 OR 已在候选列表中
+        if (isInSyncWindow || isInCandidateList) {
           const isFoundInRemote = remoteEventIds.has(cleanExternalId);
           
           if (isFoundInRemote) {
@@ -1659,11 +1728,16 @@ export class ActionBasedSyncManager {
               const roundsSinceMissing = this.syncRoundCounter - existingCandidate.firstMissingRound;
               const timeSinceMissing = now - existingCandidate.firstMissingTime;
               
-              // 🔧 删除条件：至少2轮查询都未找到，且间隔至少30秒
-              if (roundsSinceMissing >= 1 && timeSinceMissing >= 30000) {
+              // 🔧 [NEW] 动态计算最小删除确认时间
+              // 公式：Math.max(60000, 批次数量 * 800ms间隔 + 30000ms安全余量)
+              // 例如：50个批次 → max(60000, 50*800+30000) = max(60000, 70000) = 70秒
+              const minDeletionConfirmTime = Math.max(60000, this.lastSyncBatchCount * 800 + 30000);
+              
+              // 🔧 删除条件：至少2轮查询都未找到，且间隔超过动态计算的最小时间
+              if (roundsSinceMissing >= 1 && timeSinceMissing >= minDeletionConfirmTime) {
                 // ✅ 确认删除
                 if (deletionConfirmedCount < 3) {
-                  console.warn(`🗑️ [Sync] Confirmed deletion after ${roundsSinceMissing + 1} rounds: "${localEvent.title}"`);
+                  console.warn(`🗑️ [Sync] Confirmed deletion after ${roundsSinceMissing + 1} rounds (${Math.round(timeSinceMissing/1000)}s): "${localEvent.title}"`);
                 }
                 this.recordRemoteAction('delete', 'event', localEvent.id, null, localEvent);
                 this.deletionCandidates.delete(localEvent.id);
@@ -1703,6 +1777,7 @@ export class ActionBasedSyncManager {
         const candidate = this.deletionCandidates.get(id);
         this.deletionCandidates.delete(id);
       });
+      } // 🔧 [END] 删除检查 else 块
 
       // 🔧 只在全量同步时重置标记并输出特殊日志
       if (isFullSync) {
@@ -1808,6 +1883,14 @@ private getUserSettings(): any {
     if (pendingRemoteActions.length === 0) {
       return;
     }
+    
+    // 🔧 [CRITICAL] 等待 IndexMap 重建完成，避免竞态条件
+    if (this.indexMapRebuildPromise) {
+      console.log(`⏳ [SyncRemote] Waiting for IndexMap rebuild to complete...`);
+      await this.indexMapRebuildPromise;
+      console.log(`✅ [SyncRemote] IndexMap rebuild completed, proceeding with ${pendingRemoteActions.length} actions`);
+    }
+    
     let successCount = 0;
     let failCount = 0;
     
@@ -2581,7 +2664,7 @@ private getUserSettings(): any {
       case 'create':
         const newEvent = this.convertRemoteEventToLocal(action.data);
         
-        // � [FIX] 检查是否是已删除的事件，如果是则跳过创建
+        // 🔧 [FIX] 检查是否是已删除的事件，如果是则跳过创建
         const cleanNewEventId = newEvent.id.startsWith('outlook-') ? newEvent.id.replace('outlook-', '') : newEvent.id;
         const isDeletedEvent = this.deletedEventIds.has(cleanNewEventId) || 
                                this.deletedEventIds.has(newEvent.id) ||
@@ -2592,9 +2675,24 @@ private getUserSettings(): any {
           return events; // 跳过创建
         }
         
-        // 📝 [STEP 1] 优先通过 externalId 查找现有事件
+        // 📝 [STEP 1] 优先通过 externalId 查找现有事件（从 IndexMap）
         // newEvent.externalId 是纯 Outlook ID（没有 outlook- 前缀）
         let existingEvent = this.eventIndexMap.get(newEvent.externalId);
+        
+        // 🔧 [CRITICAL FIX] 如果 IndexMap 没找到，再检查 events 数组（防止 IndexMap 失效）
+        if (!existingEvent && newEvent.externalId) {
+          existingEvent = events.find((e: any) => 
+            e.externalId === newEvent.externalId || 
+            e.externalId === `outlook-${newEvent.externalId}` ||
+            `outlook-${e.externalId}` === newEvent.externalId
+          );
+          
+          if (existingEvent) {
+            console.warn(`⚠️ [IndexMap Mismatch] Found duplicate via array search but not in IndexMap: ${newEvent.externalId.substring(0, 20)}...`);
+            // 修复 IndexMap
+            this.updateEventInIndex(existingEvent);
+          }
+        }
         
         // 🎯 [STEP 2] 如果没找到，尝试通过 ReMarkable 创建签名匹配 Timer 事件
         // 场景：Timer 事件刚同步到 Outlook，本地还没有 externalId，Outlook 返回时需要匹配本地事件
@@ -2870,102 +2968,110 @@ private getUserSettings(): any {
   // 🚀 Rebuild the event index map from events array
   // 🔧 [FIX] 优化：使用临时 Map，避免清空现有 Map 导致查询失败
   // 🚀 异步分批重建 IndexMap，避免阻塞主线程
-  private async rebuildEventIndexMapAsync(events: any[], visibleEventIds?: string[]) {
-    const startTime = performance.now();
-    let BATCH_SIZE = 200; // 初始批大小：200 个事件
-    const MAX_BATCH_TIME = 10; // 每批最多 10ms
-    const TARGET_FIRST_BATCH_TIME = 5; // 首批目标时间：5ms（留余量）
-    // 🎯 优先处理可视区域的事件
-    let priorityEvents: any[] = [];
-    let remainingEvents: any[] = [];
+  private async rebuildEventIndexMapAsync(events: any[], visibleEventIds?: string[]): Promise<void> {
+    // 🔧 [CRITICAL] 记录重建 Promise，允许其他操作等待
+    this.indexMapRebuildPromise = (async () => {
+      const startTime = performance.now();
+      console.log(`🔨 [IndexMap REBUILD] Starting rebuild for ${events.length} events at ${performance.now().toFixed(2)}ms`);
+      let BATCH_SIZE = 200; // 初始批大小：200 个事件
+      const MAX_BATCH_TIME = 10; // 每批最多 10ms
+      const TARGET_FIRST_BATCH_TIME = 5; // 首批目标时间：5ms（留余量）
+      // 🎯 优先处理可视区域的事件
+      let priorityEvents: any[] = [];
+      let remainingEvents: any[] = [];
     
-    if (visibleEventIds && visibleEventIds.length > 0) {
-      const visibleSet = new Set(visibleEventIds);
-      events.forEach(event => {
-        if (visibleSet.has(event.id)) {
-          priorityEvents.push(event);
-        } else {
-          remainingEvents.push(event);
-        }
-      });
-    } else {
-      remainingEvents = events;
-    }
-    
-    // 🔧 分批处理函数（带性能监控）
-    const processBatch = (batchEvents: any[], batchIndex: number): number => {
-      const batchStart = performance.now();
-      
-      batchEvents.forEach(event => {
-        if (event.id) {
-          this.eventIndexMap.set(event.id, event);
-        }
-        if (event.externalId) {
-          // 优先保留 Timer 事件的 externalId 索引
-          const existing = this.eventIndexMap.get(event.externalId);
-          if (!existing || event.id.startsWith('timer-')) {
-            this.eventIndexMap.set(event.externalId, event);
+      if (visibleEventIds && visibleEventIds.length > 0) {
+        const visibleSet = new Set(visibleEventIds);
+        events.forEach(event => {
+          if (visibleSet.has(event.id)) {
+            priorityEvents.push(event);
+          } else {
+            remainingEvents.push(event);
           }
-        }
-      });
-      
-      const batchDuration = performance.now() - batchStart;
-      if (batchIndex === 0 || batchIndex % 5 === 0) {
-      // console.log(`📊 [IndexMap] Batch ${batchIndex}: ${batchEvents.length} events in ${batchDuration.toFixed(2)}ms`);
-      }
-      
-      return batchDuration;
-    };
-    
-    // 🎯 第一批：立即处理可视区域的事件（自适应批大小）
-    if (priorityEvents.length > 0) {
-      // 如果可视事件太多，分成更小的批次
-      if (priorityEvents.length > BATCH_SIZE) {
-      // console.log(`⚠️ [IndexMap] Priority events (${priorityEvents.length}) exceed batch size, splitting...`);
-        
-        // 第一小批：尽快完成
-        const firstBatch = priorityEvents.slice(0, BATCH_SIZE);
-        const firstBatchTime = processBatch(firstBatch, 0);
-        
-        // 🔧 根据第一批的性能调整批大小
-        if (firstBatchTime > TARGET_FIRST_BATCH_TIME) {
-          // 如果超时，减小批大小
-          BATCH_SIZE = Math.max(50, Math.floor(BATCH_SIZE * TARGET_FIRST_BATCH_TIME / firstBatchTime));
-        }
-        
-        // 处理剩余的优先事件
-        for (let i = BATCH_SIZE; i < priorityEvents.length; i += BATCH_SIZE) {
-          const batch = priorityEvents.slice(i, i + BATCH_SIZE);
-          await new Promise(resolve => requestAnimationFrame(() => resolve(null)));
-          processBatch(batch, Math.floor(i / BATCH_SIZE));
-        }
+        });
       } else {
-        // 可视事件不多，一次处理完
-        processBatch(priorityEvents, 0);
+        remainingEvents = events;
       }
-    }
     
-    // 🔄 分批处理剩余事件（在窗口失焦时处理）
-    for (let i = 0; i < remainingEvents.length; i += BATCH_SIZE) {
-      const batch = remainingEvents.slice(i, i + BATCH_SIZE);
-      const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
+      // 🔧 分批处理函数（带性能监控）
+      const processBatch = (batchEvents: any[], batchIndex: number): number => {
+        const batchStart = performance.now();
       
-      // 等待窗口失焦或下一帧
-      await new Promise(resolve => {
-        if (document.hidden) {
-          // 窗口失焦，立即处理
-          resolve(null);
-        } else {
-          // 窗口激活，等待下一帧（约 16ms）
-          requestAnimationFrame(() => resolve(null));
+        batchEvents.forEach(event => {
+          if (event.id) {
+            this.eventIndexMap.set(event.id, event);
+          }
+          if (event.externalId) {
+            // 优先保留 Timer 事件的 externalId 索引
+            const existing = this.eventIndexMap.get(event.externalId);
+            if (!existing || event.id.startsWith('timer-')) {
+              this.eventIndexMap.set(event.externalId, event);
+            }
+          }
+        });
+      
+        const batchDuration = performance.now() - batchStart;
+        if (batchIndex === 0 || batchIndex % 5 === 0) {
+        // console.log(`📊 [IndexMap] Batch ${batchIndex}: ${batchEvents.length} events in ${batchDuration.toFixed(2)}ms`);
         }
-      });
       
-      processBatch(batch, batchIndex);
-    }
+        return batchDuration;
+      };
     
-    const totalDuration = performance.now() - startTime;
-      // console.log(`✅ [IndexMap] Async rebuild completed: ${this.eventIndexMap.size} entries in ${totalDuration.toFixed(0)}ms`);
+      // 🎯 第一批：立即处理可视区域的事件（自适应批大小）
+      if (priorityEvents.length > 0) {
+        // 如果可视事件太多，分成更小的批次
+        if (priorityEvents.length > BATCH_SIZE) {
+        // console.log(`⚠️ [IndexMap] Priority events (${priorityEvents.length}) exceed batch size, splitting...`);
+        
+          // 第一小批：尽快完成
+          const firstBatch = priorityEvents.slice(0, BATCH_SIZE);
+          const firstBatchTime = processBatch(firstBatch, 0);
+        
+          // 🔧 根据第一批的性能调整批大小
+          if (firstBatchTime > TARGET_FIRST_BATCH_TIME) {
+            // 如果超时，减小批大小
+            BATCH_SIZE = Math.max(50, Math.floor(BATCH_SIZE * TARGET_FIRST_BATCH_TIME / firstBatchTime));
+          }
+        
+          // 处理剩余的优先事件
+          for (let i = BATCH_SIZE; i < priorityEvents.length; i += BATCH_SIZE) {
+            const batch = priorityEvents.slice(i, i + BATCH_SIZE);
+            await new Promise(resolve => requestAnimationFrame(() => resolve(null)));
+            processBatch(batch, Math.floor(i / BATCH_SIZE));
+          }
+        } else {
+          // 可视事件不多，一次处理完
+          processBatch(priorityEvents, 0);
+        }
+      }
+    
+      // 🔄 分批处理剩余事件（在窗口失焦时处理）
+      for (let i = 0; i < remainingEvents.length; i += BATCH_SIZE) {
+        const batch = remainingEvents.slice(i, i + BATCH_SIZE);
+        const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
+      
+        // 等待窗口失焦或下一帧
+        await new Promise(resolve => {
+          if (document.hidden) {
+            // 窗口失焦，立即处理
+            resolve(null);
+          } else {
+            // 窗口激活，等待下一帧（约 16ms）
+            requestAnimationFrame(() => resolve(null));
+          }
+        });
+      
+        processBatch(batch, batchIndex);
+      }
+    
+      const totalDuration = performance.now() - startTime;
+      console.log(`✅ [IndexMap REBUILD DONE] ${this.eventIndexMap.size} entries in ${totalDuration.toFixed(0)}ms (ended at ${performance.now().toFixed(2)}ms)`);
+    })();
+    
+    // 等待重建完成
+    await this.indexMapRebuildPromise;
+    this.indexMapRebuildPromise = null;
   }
   
   // 🔧 同步版本（仅用于关键路径）
@@ -3719,9 +3825,11 @@ private getUserSettings(): any {
       const expectedMax = events.length * 2;
       
       if (indexSize === 0 && events.length > 0) {
-        console.warn('⚠️ [Integrity] IndexMap empty, rebuilding silently...');
-        // 🔧 [FIX] 静默重建，不触发任何事件
-        this.rebuildEventIndexMap(events);
+        console.warn('⚠️ [Integrity] IndexMap empty, rebuilding async...');
+        // 🔧 [FIX] 使用异步重建，避免阻塞主线程
+        this.rebuildEventIndexMapAsync(events).catch(err => {
+          console.error('❌ [Integrity] Failed to rebuild IndexMap:', err);
+        });
         this.fullCheckCompleted = true;
       } else if (indexSize > expectedMax * 1.5) {
         console.warn(`⚠️ [Integrity] IndexMap too large (${indexSize} entries for ${events.length} events)`);
@@ -3849,8 +3957,10 @@ private getUserSettings(): any {
       
       if (migratedCount > 0) {
         localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(migratedEvents));
-        // 重建 IndexMap 以使用新的 ID
-        this.rebuildEventIndexMap(migratedEvents);
+        // 🔧 [FIX] 使用异步重建，避免阻塞主线程
+        this.rebuildEventIndexMapAsync(migratedEvents).catch(err => {
+          console.error('❌ [Migration] Failed to rebuild IndexMap:', err);
+        });
       } else {
       }
       

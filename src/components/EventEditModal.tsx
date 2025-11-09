@@ -91,6 +91,10 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
   const [conflictInfo, setConflictInfo] = useState<ConflictInfo[]>([]);
   const tagSelectorRef = useRef<HTMLDivElement>(null);
 
+  // 🚀 [PERFORMANCE] 标签展平状态
+  const [isTagsLoading, setIsTagsLoading] = useState(false);
+  const [flatTagsCache, setFlatTagsCache] = useState<any[]>([]);
+
   // 拖拽和调整大小状态
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 });
   const [modalSize, setModalSize] = useState({ width: 600, height: 0 });
@@ -184,51 +188,91 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
     };
   }, [isDragging, isResizing, handleDragMove, handleDragEnd, handleResizeMove, handleResizeEnd]);
 
-  const flatTags = useMemo(() => {
-    // 🔧 [BUG FIX] 确保在 modal 打开时能获取到最新的标签数据
+  // 🚀 [PERFORMANCE] 异步展平标签，避免阻塞主线程
+  useEffect(() => {
     if (!isOpen || !hierarchicalTags || hierarchicalTags.length === 0) {
-      return [];
+      setFlatTagsCache([]);
+      return;
     }
-    
+
+    // 检查是否已经是扁平格式
     const isAlreadyFlat = hierarchicalTags.length > 0 && 
                          hierarchicalTags[0].level !== undefined && 
                          !hierarchicalTags[0].children;
     
     if (isAlreadyFlat) {
-      return hierarchicalTags;
+      setFlatTagsCache(hierarchicalTags);
+      return;
     }
-    
-    const flatten = (tags: any[], level: number = 0, parentPath: string = ''): any[] => {
-      let result: any[] = [];
-      tags.forEach(tag => {
-        const path = parentPath ? `${parentPath} > ${tag.name}` : tag.name;
-        const flattenedTag = {
-          ...tag,
-          level,
-          path,
-          displayName: '  '.repeat(level) + tag.name
-        };
-        result.push(flattenedTag);
-        
-        if (tag.children && tag.children.length > 0) {
-          result = result.concat(flatten(tag.children, level + 1, path));
-        }
-      });
-      return result;
-    };
-    
-    return flatten(hierarchicalTags);
+
+    setIsTagsLoading(true);
+    const startTime = performance.now();
+
+    // 使用 setTimeout 异步执行展平操作
+    const timeoutId = setTimeout(() => {
+      const flatten = (tags: any[], level: number = 0, parentPath: string = ''): any[] => {
+        let result: any[] = [];
+        tags.forEach(tag => {
+          const path = parentPath ? `${parentPath} > ${tag.name}` : tag.name;
+          const flattenedTag = {
+            ...tag,
+            level,
+            path,
+            displayName: '  '.repeat(level) + tag.name
+          };
+          result.push(flattenedTag);
+          
+          if (tag.children && tag.children.length > 0) {
+            result = result.concat(flatten(tag.children, level + 1, path));
+          }
+        });
+        return result;
+      };
+      
+      const flattened = flatten(hierarchicalTags);
+      const elapsed = performance.now() - startTime;
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`🏷️ [EventEditModal] Tag flattening took ${elapsed.toFixed(2)}ms for ${flattened.length} tags`);
+      }
+      
+      setFlatTagsCache(flattened);
+      setIsTagsLoading(false);
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
   }, [hierarchicalTags, isOpen]);
+
+  const flatTags = flatTagsCache;
 
   // 搜索过滤标签
   const filteredTags = useMemo(() => {
-    if (!tagSearchQuery.trim()) return flatTags;
-    const query = tagSearchQuery.toLowerCase();
-    return flatTags.filter(tag => 
-      tag.name.toLowerCase().includes(query) ||
-      tag.path.toLowerCase().includes(query)
-    );
+    const start = performance.now();
+    const result = !tagSearchQuery.trim() 
+      ? flatTags 
+      : flatTags.filter(tag => {
+          const query = tagSearchQuery.toLowerCase();
+          return tag.name.toLowerCase().includes(query) || tag.path.toLowerCase().includes(query);
+        });
+    const elapsed = performance.now() - start;
+    if (elapsed > 5) {
+      console.log(`🏷️ [TagPicker] filteredTags took ${elapsed.toFixed(2)}ms`);
+    }
+    return result;
   }, [flatTags, tagSearchQuery]);
+
+  // 🚀 [PERFORMANCE] 使用 Map 缓存标签索引，O(1) 查找
+  const tagMap = useMemo(() => {
+    const map = new Map();
+    flatTags.forEach(tag => map.set(tag.id, tag));
+    return map;
+  }, [flatTags]);
+
+  // 🚀 [PERFORMANCE] 使用 Set 缓存已选标签，O(1) 检查
+  const selectedTagSet = useMemo(() => 
+    new Set(formData.tags), 
+    [formData.tags]
+  );
 
   // 初始化表单数据（优先使用 TimeHub 的快照）
   useEffect(() => {
@@ -559,18 +603,19 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
     }
   };
 
-  const toggleTag = (tagId: string) => {
+  const toggleTag = useCallback((tagId: string) => {
     setFormData(prev => ({
       ...prev,
       tags: prev.tags.includes(tagId)
         ? prev.tags.filter(id => id !== tagId)
         : [...prev.tags, tagId]
     }));
-  };
+  }, []);
 
-  const getTagById = (tagId: string) => {
-    return flatTags.find(tag => tag.id === tagId);
-  };
+  // 🚀 [PERFORMANCE] 使用 useCallback 和 Map O(1) 查找
+  const getTagById = useCallback((tagId: string) => {
+    return tagMap.get(tagId);
+  }, [tagMap]);
 
   // 🆕 创建防抖的 onStartTimeChange 回调（300ms 延迟）
   const debouncedStartTimeChange = useMemo(() => {
@@ -718,6 +763,25 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
         </div>
 
         <div className="modal-body">
+          {/* 🚀 [PERFORMANCE] 标签加载提示 */}
+          {isTagsLoading && (
+            <div style={{
+              padding: '8px 12px',
+              marginBottom: '12px',
+              backgroundColor: '#fff3cd',
+              border: '1px solid #ffc107',
+              borderRadius: '4px',
+              fontSize: '13px',
+              color: '#856404',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <span>⏳</span>
+              <span>正在加载标签数据，请稍候...</span>
+            </div>
+          )}
+
           {/* 标题 */}
           <div className="form-group form-group-inline">
             <label>标题</label>
@@ -869,7 +933,11 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
                   placeholder={formData.tags.length === 0 ? "选择标签..." : "搜索..."}
                   value={tagSearchQuery}
                   onChange={(e) => setTagSearchQuery(e.target.value)}
-                  onFocus={() => setShowTagDropdown(true)}
+                  onFocus={() => {
+                    const clickTime = performance.now();
+                    console.log(`🔍 [TagPicker] Focus at ${clickTime.toFixed(2)}ms`);
+                    setShowTagDropdown(true);
+                  }}
                   onClick={(e) => e.stopPropagation()}
                 />
               </div>
@@ -891,46 +959,41 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
                     </button>
                   </div>
                   <div className="tag-dropdown-list">
-                    {filteredTags.length > 0 ? (
-                      (() => {
-                        console.group('� [EventEditModal] 标签层级诊断 - Step 3: UI 渲染');
-                        console.table(filteredTags.map(tag => ({
-                          name: tag.name,
-                          level: tag.level,
-                          paddingLeft: `${(tag.level || 0) * 12}px`,
-                          计算结果: (tag.level || 0) * 12
-                        })));
-                        console.groupEnd();
+                    {isTagsLoading ? (
+                      <div className="loading-tags" style={{ 
+                        padding: '20px', 
+                        textAlign: 'center', 
+                        color: '#666' 
+                      }}>
+                        <div style={{ marginBottom: '8px' }}>⏳ 正在加载标签...</div>
+                        <div style={{ fontSize: '12px' }}>首次加载可能需要几秒钟</div>
+                      </div>
+                    ) : filteredTags.length > 0 ? (
+                      filteredTags.map(tag => {
+                        const paddingLeft = `${(tag.level || 0) * 12}px`;
+                        const isSelected = selectedTagSet.has(tag.id); // 🚀 O(1) 替代 includes() O(n)
                         
-                        return filteredTags.map(tag => {
-                          const paddingLeft = `${(tag.level || 0) * 12}px`;
-                          const computedPadding = (tag.level || 0) * 12;
-                          
-                          return (
-                            <label
-                              key={tag.id}
-                              className={`tag-option ${formData.tags.includes(tag.id) ? 'selected' : ''}`}
+                        return (
+                          <label
+                            key={tag.id}
+                            className={`tag-option ${isSelected ? 'selected' : ''}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleTag(tag.id)}
+                            />
+                            <div 
+                              className="tag-content"
+                              style={{ paddingLeft }}
                             >
-                              <input
-                                type="checkbox"
-                                checked={formData.tags.includes(tag.id)}
-                                onChange={() => toggleTag(tag.id)}
-                              />
-                              <div 
-                                className="tag-content"
-                                style={{ paddingLeft }}
-                                data-level={tag.level || 0}
-                                data-padding={paddingLeft}
-                                data-name={tag.name}
-                              >
-                                <span className="tag-color" style={{ color: tag.color }}>#</span>
-                                {tag.emoji && <span className="tag-emoji">{tag.emoji}</span>}
-                                <span className="tag-name" style={{ color: tag.color }}>{tag.name}</span>
-                              </div>
-                            </label>
-                          );
-                        });
-                      })()
+                              <span className="tag-color" style={{ color: tag.color }}>#</span>
+                              {tag.emoji && <span className="tag-emoji">{tag.emoji}</span>}
+                              <span className="tag-name" style={{ color: tag.color }}>{tag.name}</span>
+                            </div>
+                          </label>
+                        );
+                      })
                     ) : (
                       <div className="no-tags">没有找到匹配的标签</div>
                     )}

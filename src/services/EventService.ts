@@ -272,12 +272,18 @@ export class EventService {
       // 从数组中移除
       const updatedEvents = existingEvents.filter(e => e.id !== eventId);
 
-      // 保存�?localStorage
+      // 保存到 localStorage
+      console.log(`🗑️ [EventService] About to write ${updatedEvents.length} events to localStorage...`);
+      const setItemStart = performance.now();
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(updatedEvents));
+      const setItemDuration = performance.now() - setItemStart;
+      console.log(`💾 [EventService] localStorage.setItem took ${setItemDuration.toFixed(2)}ms`);
       eventLogger.log('💾 [EventService] Event deleted from localStorage');
 
       // 触发全局更新事件
+      console.log(`🔔 [EventService] About to dispatch eventsUpdated...`);
       this.dispatchEventUpdate(eventId, { deleted: true });
+      console.log(`✅ [EventService] dispatchEventUpdate completed`);
 
       // 同步�?Outlook
       if (!skipSync && syncManagerInstance && deletedEvent.syncStatus !== 'local-only') {

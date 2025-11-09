@@ -10,10 +10,16 @@
  * - 支持两种模式：内联（inline）和弹出（popup）
  * 
  * @author Zoey Gong
- * @version 1.0.0
+ * @version 1.1.0 - 性能优化版本
+ * @changelog
+ *   - v1.1.0 (2025-11-10): 性能优化
+ *     - 使用 useMemo 缓存过滤结果
+ *     - 使用 Map 索引替代 find() 查找
+ *     - 使用 Set 替代 includes() 检查选中状态
+ *     - 使用 useCallback 缓存函数
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import './HierarchicalTagPicker.css';
 
 export interface HierarchicalTag {
@@ -65,6 +71,28 @@ export const HierarchicalTagPicker: React.FC<HierarchicalTagPickerProps> = ({
   const [showDropdown, setShowDropdown] = useState(mode === 'popup');
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // 🚀 [PERFORMANCE] 使用 Map 缓存标签索引，O(1) 查找
+  const tagMap = useMemo(() => {
+    const map = new Map<string, HierarchicalTag>();
+    availableTags.forEach(tag => map.set(tag.id, tag));
+    return map;
+  }, [availableTags]);
+
+  // 🚀 [PERFORMANCE] 使用 Set 缓存已选标签，O(1) 检查
+  const selectedSet = useMemo(() => 
+    new Set(selectedTagIds), 
+    [selectedTagIds]
+  );
+
+  // 🚀 [PERFORMANCE] 使用 useMemo 缓存过滤结果
+  const filteredTags = useMemo(() => {
+    if (!searchQuery) return availableTags;
+    const lowerQuery = searchQuery.toLowerCase();
+    return availableTags.filter(tag =>
+      tag.name.toLowerCase().includes(lowerQuery)
+    );
+  }, [availableTags, searchQuery]);
+
   // 点击外部关闭下拉框
   useEffect(() => {
     if (mode === 'inline') {
@@ -84,20 +112,15 @@ export const HierarchicalTagPicker: React.FC<HierarchicalTagPickerProps> = ({
     }
   }, [showDropdown, mode]);
 
-  // 过滤标签
-  const filteredTags = availableTags.filter(tag =>
-    tag.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // 🚀 [PERFORMANCE] 使用 useCallback 缓存函数，使用 Map O(1) 查找
+  const getTagById = useCallback((id: string): HierarchicalTag | undefined => {
+    return tagMap.get(id);
+  }, [tagMap]);
 
-  // 获取标签对象
-  const getTagById = (id: string): HierarchicalTag | undefined => {
-    return availableTags.find(tag => tag.id === id);
-  };
-
-  // 切换标签选择
-  const toggleTag = (tagId: string) => {
+  // 🚀 [PERFORMANCE] 使用 useCallback 缓存函数，使用 Set O(1) 检查
+  const toggleTag = useCallback((tagId: string) => {
     if (multiSelect) {
-      const isSelected = selectedTagIds.includes(tagId);
+      const isSelected = selectedSet.has(tagId); // O(1) 替代 includes() O(n)
       if (isSelected) {
         onSelectionChange(selectedTagIds.filter(id => id !== tagId));
       } else {
@@ -116,30 +139,30 @@ export const HierarchicalTagPicker: React.FC<HierarchicalTagPickerProps> = ({
         onClose();
       }
     }
-  };
+  }, [multiSelect, selectedSet, selectedTagIds, onSelectionChange, maxSelection, mode, onClose]);
 
   // 移除已选标签（用于 chip）
-  const removeTag = (tagId: string, e?: React.MouseEvent) => {
+  const removeTag = useCallback((tagId: string, e?: React.MouseEvent) => {
     if (e) {
       e.stopPropagation();
     }
     onSelectionChange(selectedTagIds.filter(id => id !== tagId));
-  };
+  }, [selectedTagIds, onSelectionChange]);
 
   // 全选
-  const handleSelectAll = () => {
+  const handleSelectAll = useCallback(() => {
     const allIds = availableTags.map(t => t.id);
     if (maxSelection) {
       onSelectionChange(allIds.slice(0, maxSelection));
     } else {
       onSelectionChange(allIds);
     }
-  };
+  }, [availableTags, maxSelection, onSelectionChange]);
 
   // 清空
-  const handleDeselectAll = () => {
+  const handleDeselectAll = useCallback(() => {
     onSelectionChange([]);
-  };
+  }, [onSelectionChange]);
 
   // Inline 模式渲染
   if (mode === 'inline') {
@@ -203,7 +226,7 @@ export const HierarchicalTagPicker: React.FC<HierarchicalTagPickerProps> = ({
               {filteredTags.length > 0 ? (
                 filteredTags.map(tag => {
                   const paddingLeft = `${(tag.level || 0) * 12}px`;
-                  const isSelected = selectedTagIds.includes(tag.id);
+                  const isSelected = selectedSet.has(tag.id); // 🚀 O(1) 替代 includes() O(n)
                   
                   return (
                     <label
@@ -290,7 +313,7 @@ export const HierarchicalTagPicker: React.FC<HierarchicalTagPickerProps> = ({
         {filteredTags.length > 0 ? (
           filteredTags.map(tag => {
             const paddingLeft = `${(tag.level || 0) * 12}px`;
-            const isSelected = selectedTagIds.includes(tag.id);
+            const isSelected = selectedSet.has(tag.id); // 🚀 O(1) 替代 includes() O(n)
             
             return (
               <label

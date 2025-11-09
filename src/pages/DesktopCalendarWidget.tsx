@@ -226,7 +226,7 @@ const DesktopCalendarWidget: React.FC = () => {
     
     document.body.classList.add('widget-mode');
     document.body.style.backgroundColor = 'transparent';
-    document.body.style.overflow = 'visible'; // 🔧 允许 Settings 面板溢出
+    document.body.style.overflow = 'hidden'; // ✅ 恢复 hidden，避免滚动条
     document.body.style.margin = '0';
     document.body.style.padding = '0';
     
@@ -769,10 +769,10 @@ const DesktopCalendarWidget: React.FC = () => {
     backgroundColor: 'transparent', // 容器透明，让 Electron 窗口背景透过
     display: 'flex',
     flexDirection: 'column',
-    overflow: 'visible', // 🔧 允许 Settings 面板溢出
+    overflow: 'hidden', // ✅ 恢复 hidden，避免内容溢出
     cursor: 'default',
     userSelect: 'none',
-    position: 'relative', // 🎯 �?absolute 定位�?resize handles 提供定位上下�?
+    position: 'relative', // 🎯 为 resize handles 提供定位上下文
     transition: 'opacity 0.2s ease', // 只保留透明度过渡，移除缩放动画
     WebkitAppRegion: 'no-drag' // 默认不可拖动，只有拖动条可以拖动
   };
@@ -878,7 +878,7 @@ const DesktopCalendarWidget: React.FC = () => {
           marginTop: '14px', // 🎯 drag-bar (0px + 10px height) + 4px 间距 = 14px
           marginBottom: '0',
           position: 'relative', 
-          overflow: 'visible', // 🔧 允许 Settings 面板溢出
+          overflow: 'hidden', // ✅ 恢复 hidden，避免溢出
           pointerEvents: 'auto',
           WebkitAppRegion: 'no-drag',
           display: 'flex',
@@ -887,7 +887,7 @@ const DesktopCalendarWidget: React.FC = () => {
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* 日历主体区域 */}
-        <div style={{ flex: 1, overflow: 'visible' }}> {/* 🔧 允许溢出 */}
+        <div style={{ flex: 1, overflow: 'hidden' }}> {/* ✅ 恢复 hidden */}
           <MemoizedTimeCalendar
             microsoftService={microsoftService}
             lastSyncTime={lastSyncTime}

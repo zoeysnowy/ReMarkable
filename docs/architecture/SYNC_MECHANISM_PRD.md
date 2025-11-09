@@ -1,7 +1,7 @@
 # ReMarkable 同步机制产品需求文档 (PRD)
 
 > **AI 生成时间**: 2025-11-05  
-> **最后更新**: 2025-11-09  
+> **最后更新**: 2025-11-10  
 > **关联代码版本**: master  
 > **文档类型**: 核心功能模块 PRD  
 > **关联模块**: Timer, TimeCalendar, TagManager, PlanManager, EventService
@@ -9,6 +9,53 @@
 ---
 
 ## 📋 更新日志
+
+### 2025-11-10
+
+#### v1.7.2 - IndexMap 竞态条件修复
+- 🔧 **IndexMap Mismatch 修复**: 修复批量处理与异步重建的竞态条件，消除 964次 Mismatch 警告
+- ⏳ **重建状态追踪**: 新增 `indexMapRebuildPromise` 追踪异步重建状态
+- 🎯 **批量处理优化**: `syncPendingRemoteActions` 等待重建完成后再处理，避免 O(n²) 数组遍历
+- ✅ **性能提升**: IndexMap 稳定后查询（O(1)），避免 964次 数组查找回退
+- 📝 **代码位置**:
+  - IndexMap 追踪: `ActionBasedSyncManager.ts` L82
+  - 异步重建: `ActionBasedSyncManager.ts` L2962-3066
+  - 批量等待: `ActionBasedSyncManager.ts` L1883-1888
+- 📚 **相关文档**: [TAGPICKER_PERFORMANCE_FIX.md](../fixes/TAGPICKER_PERFORMANCE_FIX.md) - 完整性能分析
+
+**问题根源**:
+```typescript
+// 时序问题：
+T1: syncPendingRemoteActions 开始（965个create action）
+T2: rebuildEventIndexMapAsync 启动（异步，需200ms）
+T3: 处理第1个action → IndexMap.get() → null（重建中）
+T4: 回退到数组查找 → 找到 → ⚠️ Mismatch警告
+...重复964次...
+```
+
+**解决方案**:
+```typescript
+// 1. 记录重建 Promise
+this.indexMapRebuildPromise = (async () => {
+  // 重建逻辑...
+})();
+
+// 2. 批量处理前等待
+if (this.indexMapRebuildPromise) {
+  await this.indexMapRebuildPromise;
+}
+```
+
+#### v1.7.1 - 删除检测和分页优化
+- 🗑️ **远程删除检测机制**: 两轮确认 + 动态时间阈值，避免批次处理和分页导致的误删
+- 🚀 **智能分页机制**: 自动拉取所有分页（最多100页 = 100,000事件），不再硬编码10页限制
+- ✅ **分级警告策略**: <50K正常，50-100K建议清理，>100K严重警告
+- 📊 **进度显示**: 每10页显示一次进度，方便调试大型日历
+- 🎯 **动态删除阈值**: `Math.max(60s, 批次数*800ms+30s)` - 批次越多，确认时间越长
+- 🔧 **6层安全保护**: 分页累积、批次累积、动态时间、窗口激活、最近更新、空结果检查
+- 📝 **代码位置**: 
+  - 删除检测: `ActionBasedSyncManager.ts` L1588-1700
+  - 智能分页: `MicrosoftCalendarService.ts` L1276-1350
 
 ### 2025-11-09
 - 🎯 **Timer 重复检测改进**: 使用 "由 🔮 ReMarkable 创建于 xxx" 签名精确匹配本地 Timer 事件，避免同步返回时创建重复事件
@@ -1700,6 +1747,349 @@ if (existingEvent) {
 | **语义** | ⚠️ 没有明确的"来源"标识 | ✅ 明确标识 "ReMarkable 创建" |
 | **可维护性** | ⚠️ 逻辑复杂，容差难调优 | ✅ 利用现有签名基础设施 |
 | **跨平台** | ⚠️ 不同平台时间格式差异 | ✅ 统一的时间戳格式 |
+
+---
+
+### 7.5 远程删除检测机制 🆕
+
+**问题**: 用户在 Outlook 删除事件后，如何安全地同步删除到本地，同时避免误删？
+
+**核心挑战**:
+1. **批次处理**：1000个日历分500批次拉取，每批只返回部分事件
+2. **分页限制**：单个日历可能超过1000个事件，需要多次API调用
+3. **网络波动**：临时失败不应导致误删
+4. **用户活跃**：用户正在编辑事件时不应删除
+
+#### **7.5.1 两轮确认机制**
+
+**代码位置**: `ActionBasedSyncManager.ts` L1588-1700
+
+```typescript
+// 删除候选列表：记录"可能被删除"的事件
+private deletionCandidates = new Map<string, {
+  externalId: string;
+  title: string;
+  firstMissingRound: number;    // 首次未找到的同步轮次
+  firstMissingTime: number;     // 首次未找到的时间戳
+  lastCheckRound: number;       // 最后检查轮次
+  lastCheckTime: number;        // 最后检查时间
+}>();
+
+// 同步轮次计数器（每次 performSync 递增）
+private syncRoundCounter: number = 0;
+```
+
+**检测逻辑**：
+
+```typescript
+// 🔍 遍历所有已同步的本地事件（有 externalId）
+localEventsWithExternalId.forEach((localEvent: any) => {
+  const cleanExternalId = localEvent.externalId.replace('outlook-', '');
+  
+  // 检查是否在远程事件ID集合中
+  const isFoundInRemote = remoteEventIds.has(cleanExternalId);
+  
+  if (isFoundInRemote) {
+    // ✅ 找到了，从候选列表移除
+    this.deletionCandidates.delete(localEvent.id);
+  } else {
+    // ❌ 未找到
+    const candidate = this.deletionCandidates.get(localEvent.id);
+    
+    if (!candidate) {
+      // 🆕 第一轮：加入候选列表
+      this.deletionCandidates.set(localEvent.id, {
+        externalId: cleanExternalId,
+        title: localEvent.title,
+        firstMissingRound: this.syncRoundCounter,
+        firstMissingTime: Date.now(),
+        lastCheckRound: this.syncRoundCounter,
+        lastCheckTime: Date.now()
+      });
+      console.log(`⏳ [Sync] Deletion candidate (1st miss): "${localEvent.title}"`);
+    } else {
+      // 🔄 第二轮及以后：检查是否满足删除条件
+      const roundsSinceMissing = this.syncRoundCounter - candidate.firstMissingRound;
+      const timeSinceMissing = Date.now() - candidate.firstMissingTime;
+      
+      // 🔧 动态计算最小删除确认时间
+      const minDeletionConfirmTime = Math.max(
+        60000,  // 最小60秒
+        this.lastSyncBatchCount * 800 + 30000  // 批次数*800ms + 30秒余量
+      );
+      
+      if (roundsSinceMissing >= 1 && timeSinceMissing >= minDeletionConfirmTime) {
+        // ✅ 确认删除
+        console.warn(`🗑️ [Sync] Confirmed deletion after ${roundsSinceMissing + 1} rounds (${Math.round(timeSinceMissing/1000)}s): "${localEvent.title}"`);
+        this.recordRemoteAction('delete', 'event', localEvent.id);
+        this.deletionCandidates.delete(localEvent.id);
+      } else {
+        // ⏳ 继续等待
+        candidate.lastCheckRound = this.syncRoundCounter;
+        candidate.lastCheckTime = Date.now();
+      }
+    }
+  }
+});
+```
+
+#### **7.5.2 动态时间阈值**
+
+**公式**: `Math.max(60000, 批次数量 × 800ms + 30000ms)`
+
+**实例计算**:
+
+| 日历数 | 批次数 | 批次耗时 | 最小确认时间 | 需要轮次 |
+|--------|--------|---------|-------------|---------|
+| 10个   | 5批    | 4秒     | 60秒 (最小值) | 3-4轮 |
+| 100个  | 50批   | 40秒    | 70秒         | 2轮   |
+| 200个  | 100批  | 80秒    | 110秒        | 2轮   |
+| 1000个 | 500批  | 400秒   | 430秒        | 2轮   |
+
+**核心原理**:
+- **批次越多，时间阈值越长**：确保所有批次都完成后再确认删除
+- **最小60秒保护**：即使只有1个日历，也需要等待60秒才确认删除
+- **定时同步周期20秒**：2轮 = 至少40秒间隔
+
+**代码位置**: `ActionBasedSyncManager.ts` L589
+
+```typescript
+// 记录本次同步的批次数量
+this.lastSyncBatchCount = chunks.length;
+```
+
+#### **7.5.3 智能分页机制 🆕**
+
+**问题**: 单个日历可能超过1000个事件，API 需要分页拉取
+
+**升级方案**: `MicrosoftCalendarService.ts` L1276-1350
+
+```typescript
+async getEventsFromCalendar(calendarId: string) {
+  let allEvents: any[] = [];
+  let nextLink: string | null = initialUrl;
+  let pageCount = 0;
+  
+  // 🔧 [SMART PAGINATION] 智能分页：自动拉取所有页，直到没有更多数据
+  // 最大限制 100 页（100,000 个事件），避免极端情况下的无限循环
+  const ABSOLUTE_MAX_PAGES = 100;
+  
+  // 🔧 自动处理分页，累积所有结果
+  while (nextLink && pageCount < ABSOLUTE_MAX_PAGES) {
+    pageCount++;
+    const response = await fetch(nextLink, headers);
+    const data = await response.json();
+    
+    allEvents = allEvents.concat(data.value || []);
+    nextLink = data['@odata.nextLink'] || null;  // 下一页链接
+    
+    if (nextLink && pageCount % 10 === 0) {
+      // 每 10 页显示一次进度
+      console.log(`📄 [Pagination] Fetched ${pageCount} pages (${allEvents.length} events so far), continuing...`);
+    }
+  }
+  
+  // ⚠️ 如果达到绝对最大限制，发出警告
+  if (pageCount >= ABSOLUTE_MAX_PAGES && nextLink) {
+    console.warn(`⚠️ [Pagination] Calendar ${calendarId} has >100,000 events! Only fetched first ${allEvents.length} events.`);
+    console.warn(`⚠️ [Pagination] This is an extreme case. Remaining events will NOT be synced.`);
+    
+    // 🔔 通知用户
+    window.dispatchEvent(new CustomEvent('sync-pagination-limit', {
+      detail: {
+        calendarId,
+        fetchedCount: allEvents.length,
+        pageCount,
+        hasMore: true,
+        warning: `Calendar has more than ${allEvents.length} events.`
+      }
+    }));
+  }
+  
+  // 📈 如果超过 50 页（50,000 个事件），给出建议
+  if (pageCount > 50 && !nextLink) {
+    console.warn(`⚠️ [Pagination] Calendar ${calendarId} has ${allEvents.length} events across ${pageCount} pages.`);
+    console.warn(`⚠️ [Pagination] Consider archiving old events to improve sync performance.`);
+  }
+  
+  return allEvents;
+}
+```
+
+**分页能力对比**:
+
+| 版本 | 最大页数 | 最大事件数 | 行为 |
+|------|---------|-----------|------|
+| **旧版本** | 10 页固定 | 10,000 | ❌ 超出后停止，剩余事件被误删 |
+| **新版本** | 100 页自适应 | 100,000 | ✅ 自动拉取所有页，直到完成 |
+
+**分级警告策略**:
+
+| 事件数量 | 页数 | 警告级别 | 操作 |
+|---------|------|---------|------|
+| < 50,000 | < 50 | ✅ 正常 | 静默同步 |
+| 50,000 - 100,000 | 50-100 | ⚠️ 建议 | 提示清理历史事件 |
+| > 100,000 | > 100 | 🚨 严重 | 只同步前100K，发出警告 |
+
+**核心改进**:
+- ✅ **自动扩展**：不再硬编码 10 页限制，自动拉取所有分页
+- ✅ **进度显示**：每 10 页显示一次进度，方便调试
+- ✅ **分级警告**：根据事件数量给出不同级别的建议
+- ✅ **极限保护**：100 页上限避免极端情况下的无限循环
+
+**性能影响**:
+- 10,000 个事件：无影响（10 页）
+- 50,000 个事件：增加 ~40 秒（50 页 × 0.8秒/页）
+- 100,000 个事件：增加 ~80 秒（100 页 × 0.8秒/页）
+
+**极限场景处理**:
+- **>100,000个事件**: 
+  - 拉取前 100,000 个事件
+  - 发出 3 条警告日志
+  - 触发 `sync-pagination-limit` 事件通知用户
+  - 建议：清理历史事件或拆分到多个日历
+- **未来方案**: 实现 Delta Query API（增量同步）
+
+#### **7.5.4 窗口激活状态保护**
+
+**策略**: 用户活跃时（窗口聚焦）跳过删除检查，避免打断操作
+
+**代码位置**: `ActionBasedSyncManager.ts` L1594
+
+```typescript
+// 🔧 删除检查只在窗口非激活状态下进行
+if (this.isWindowFocused) {
+  console.log('⏸️ [Sync] Skipping deletion check: Window is focused (user is active)');
+  // 注意：候选列表会保留，等待下一次后台同步再检查
+} else {
+  // 执行删除检查逻辑
+  localEventsWithExternalId.forEach(...);
+}
+```
+
+**窗口外事件持续追踪**:
+- 已在候选列表的事件，即使当前不在同步窗口（±3个月）内，也会继续检查
+- 避免窗口外的事件被遗漏（用户可能删除了很久以前的事件）
+
+**代码位置**: `ActionBasedSyncManager.ts` L1618-1624
+
+```typescript
+const isInSyncWindow = localEventTime >= startDate && localEventTime <= endDate;
+const isInCandidateList = this.deletionCandidates.has(localEvent.id);
+
+// 检查条件：在同步窗口内 OR 已在候选列表中
+if (isInSyncWindow || isInCandidateList) {
+  // 执行删除检查
+}
+```
+
+#### **7.5.5 额外保护层**
+
+**1. 最近更新事件保护**（Line 1641-1649）
+
+```typescript
+// 如果事件在30秒内被更新过，不视为删除（可能是同步延迟）
+const recentlyUpdated = this.recentlyUpdatedEvents.has(localEvent.id);
+const timeSinceUpdate = Date.now() - this.recentlyUpdatedEvents.get(localEvent.id);
+
+if (recentlyUpdated && timeSinceUpdate < 30000) {
+  return; // 跳过删除检查
+}
+```
+
+**2. 已删除列表去重**（Line 1653-1656）
+
+```typescript
+// 避免重复删除同一事件
+if (this.deletedEventIds.has(localEvent.id)) {
+  return;
+}
+```
+
+**3. 空结果保护**（Line 1411-1423）
+
+```typescript
+// 如果远程返回0个事件，但本地有已同步事件 → 可能是认证问题
+if (allRemoteEvents.length === 0) {
+  const hasLocalEventsWithExternalId = localEvents.some(e => e.externalId);
+  if (hasLocalEventsWithExternalId) {
+    console.warn('⚠️ Remote returned 0 events but local has synced events - possible auth issue, aborting sync');
+    return; // ❌ 中止同步，避免全量误删
+  }
+}
+```
+
+#### **7.5.6 完整时间线示例**
+
+```
+场景：用户在 Outlook 删除了"团队会议"事件
+
+00:00  用户在 Outlook 删除事件
+       ↓
+00:20  ReMarkable 定时同步（第1轮）
+       - 批次处理完成（50个日历，40秒）
+       - 未找到"团队会议"
+       - 加入删除候选列表
+       - Log: ⏳ Deletion candidate (1st miss): "团队会议"
+       ↓
+00:40  定时同步（第2轮）
+       - 批次处理完成
+       - 仍未找到"团队会议"
+       - 检查条件:
+         * roundsSinceMissing = 1 ✅
+         * timeSinceMissing = 20秒
+         * minTime = max(60秒, 50批*800ms+30秒) = 70秒 ❌
+       - 继续等待
+       ↓
+01:00  定时同步（第3轮）
+       - 批次处理完成
+       - 仍未找到"团队会议"
+       - 检查条件:
+         * roundsSinceMissing = 2 ✅
+         * timeSinceMissing = 40秒
+         * minTime = 70秒 ❌
+       - 继续等待
+       ↓
+01:20  定时同步（第4轮）
+       - 批次处理完成
+       - 仍未找到"团队会议"
+       - 检查条件:
+         * roundsSinceMissing = 3 ✅
+         * timeSinceMissing = 60秒
+         * minTime = 70秒 ❌ (差10秒)
+       - 继续等待
+       ↓
+01:40  定时同步（第5轮）
+       - 批次处理完成
+       - 仍未找到"团队会议"
+       - 检查条件:
+         * roundsSinceMissing = 4 ✅
+         * timeSinceMissing = 80秒 ✅
+         * minTime = 70秒 ✅
+       - ✅ 确认删除
+       - Log: 🗑️ Confirmed deletion after 5 rounds (80s): "团队会议"
+```
+
+#### **7.5.7 为什么2轮机制足够安全？**
+
+**已有的保护层**:
+1. ✅ **分页完整性**：自动处理所有分页（最多10页 = 10000事件）
+2. ✅ **批次累积**：所有批次的事件都累积到 `allEvents`，不会漏检
+3. ✅ **动态时间阈值**：批次越多，确认时间越长（最长430秒）
+4. ✅ **窗口激活检查**：用户活跃时跳过删除，不打断操作
+5. ✅ **最近更新保护**：30秒内更新过的事件不删除
+6. ✅ **空结果保护**：远程0个事件时中止同步
+
+**2轮 vs 3轮对比**:
+
+| 维度 | 2轮机制 | 3轮机制 |
+|------|--------|--------|
+| **误删风险** | 极低（6层保护） | 更低（但提升有限） |
+| **删除延迟** | 60-430秒 | 80-650秒 |
+| **用户体验** | ✅ 已删除事件快速消失 | ⚠️ 等待时间过长 |
+| **内存占用** | ✅ 候选列表短期存在 | ⚠️ 候选列表长期占用 |
+
+**结论**: 2轮机制 + 动态时间阈值 + 6层保护 = 已足够安全
 
 ---
 

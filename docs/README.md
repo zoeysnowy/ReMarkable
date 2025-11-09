@@ -31,6 +31,7 @@
 
 ### 🔧 fixes/ - 问题修复文档
 包含各种 bug 修复和问题解决的记录：
+- **性能修复**：TAGPICKER_PERFORMANCE_FIX.md（TagPicker 卡顿问题完整分析）
 - **组件修复**：DESKTOPWIDGET_DELAY_FIX.md, STATUSBAR_FIX.md 等
 - **编辑器问题**：MULTILINEEDITOR_* 系列文档
 - **UI 问题**：DRAGBAR_FIX_FINAL_V2.md

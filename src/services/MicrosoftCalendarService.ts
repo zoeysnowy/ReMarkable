@@ -1276,10 +1276,13 @@ export class MicrosoftCalendarService {
       let allEvents: any[] = [];
       let nextLink: string | null = `https://graph.microsoft.com/v1.0/me/calendars/${calendarId}/events?${queryParams}`;
       let pageCount = 0;
-      const MAX_PAGES = 10; // 防止无限循环
       
-      // 🔧 [CRITICAL FIX] 处理分页，确保获取所有事件
-      while (nextLink && pageCount < MAX_PAGES) {
+      // 🔧 [SMART PAGINATION] 智能分页：自动拉取所有页，直到没有更多数据
+      // 最大限制 100 页（100,000 个事件），避免极端情况下的无限循环
+      const ABSOLUTE_MAX_PAGES = 100;
+      
+      // 🔧 处理分页，确保获取所有事件
+      while (nextLink && pageCount < ABSOLUTE_MAX_PAGES) {
         pageCount++;
         
         let response: Response = await fetch(nextLink, {
@@ -1312,16 +1315,42 @@ export class MicrosoftCalendarService {
         nextLink = data['@odata.nextLink'] || null;
         
         if (nextLink) {
-          MSCalendarLogger.log(`📄 [Pagination] Fetched page ${pageCount} with ${events.length} events, fetching next page...`);
+          // 📊 每 10 页显示一次进度
+          if (pageCount % 10 === 0) {
+            MSCalendarLogger.log(`📄 [Pagination] Fetched ${pageCount} pages (${allEvents.length} events so far), continuing...`);
+          }
         }
       }
       
-      if (pageCount >= MAX_PAGES && nextLink) {
-        MSCalendarLogger.warn(`⚠️ [Pagination] Reached max pages (${MAX_PAGES}) but more data available`);
+      // ⚠️ 如果达到绝对最大限制，发出警告
+      if (pageCount >= ABSOLUTE_MAX_PAGES && nextLink) {
+        MSCalendarLogger.warn(`⚠️ [Pagination] Calendar ${calendarId} has >100,000 events! Only fetched first ${allEvents.length} events.`);
+        MSCalendarLogger.warn(`⚠️ [Pagination] This is an extreme case. Remaining events will NOT be synced.`);
+        MSCalendarLogger.warn(`⚠️ [Pagination] CRITICAL: Please clean up old events or split into multiple calendars.`);
+        
+        // 🔔 通知用户
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('sync-pagination-limit', {
+            detail: {
+              calendarId,
+              fetchedCount: allEvents.length,
+              pageCount,
+              hasMore: true,
+              warning: `Calendar has more than ${allEvents.length} events. This may cause sync issues.`
+            }
+          }));
+        }
       }
       
+      // 📊 显示分页统计
       if (pageCount > 1) {
         MSCalendarLogger.log(`✅ [Pagination] Fetched ${allEvents.length} events from ${pageCount} pages for calendar ${calendarId}`);
+      }
+      
+      // 📈 如果超过 50 页（50,000 个事件），给出建议
+      if (pageCount > 50 && !nextLink) {
+        MSCalendarLogger.warn(`⚠️ [Pagination] Calendar ${calendarId} has ${allEvents.length} events across ${pageCount} pages.`);
+        MSCalendarLogger.warn(`⚠️ [Pagination] Consider archiving old events to improve sync performance.`);
       }
 
       // Got events from calendar

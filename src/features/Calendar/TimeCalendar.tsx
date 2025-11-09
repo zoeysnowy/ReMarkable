@@ -325,30 +325,39 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
 
   //  从 localStorage 加载事件数据
   const loadEvents = useCallback(() => {
+    // ✅ 防止组件卸载后继续执行
+    if (!eventListenersAttachedRef.current) {
+      console.log('⏭️ [TimeCalendar] Skipping loadEvents - component unmounted');
+      return;
+    }
+    
+    console.log(`🔄 [TimeCalendar] loadEvents START at ${performance.now().toFixed(2)}ms`);
+    const startTime = performance.now();
     try {
+      console.log(`📂 [TimeCalendar] About to read localStorage...`);
+      const getItemStart = performance.now();
       const savedEvents = localStorage.getItem(STORAGE_KEYS.EVENTS);
+      const getItemDuration = performance.now() - getItemStart;
+      console.log(`💾 [TimeCalendar] localStorage.getItem took ${getItemDuration.toFixed(2)}ms`);
+      
       if (savedEvents) {
+        console.log(`� [TimeCalendar] Got ${savedEvents.length} chars, about to parse...`);
+        const parseStart = performance.now();
         const parsedEvents = JSON.parse(savedEvents);
-        // console.log(`📅 [LOAD] Loading ${parsedEvents.length} events from localStorage`);
+        const parseDuration = performance.now() - parseStart;
+        console.log(`🔍 [TimeCalendar] JSON.parse took ${parseDuration.toFixed(2)}ms for ${parsedEvents.length} events`);
         
-        // 🔍 调试：查找timer事件
-        // const timerEvents = parsedEvents.filter((e: any) => e.id && e.id.includes('timer-'));
-        // if (timerEvents.length > 0) {
-        //   console.log('🔍 [TIMER EVENTS] Found timer events:', timerEvents.map((e: any) => ({ 
-        //     id: e.id, 
-        //     title: e.title, 
-        //     syncStatus: e.syncStatus,
-        //     isTimer: e.isTimer 
-        //   })));
-        // } else {
-        //   console.log('⚠️ [TIMER EVENTS] No timer events found in localStorage');
-        // }
-        
+        console.log(`🎯 [TimeCalendar] About to call setEvents()...`);
+        const setEventsStart = performance.now();
         setEvents(parsedEvents);
+        const setEventsDuration = performance.now() - setEventsStart;
+        console.log(`✅ [TimeCalendar] setEvents() took ${setEventsDuration.toFixed(2)}ms`);
       }
     } catch (error) {
       console.error('❌ [LOAD] Failed to load events:', error);
     }
+    const totalDuration = performance.now() - startTime;
+    console.log(`🏁 [TimeCalendar] loadEvents COMPLETE in ${totalDuration.toFixed(2)}ms`);
   }, []);
 
   // 🏷️ 从 localStorage 加载标签数据
@@ -484,6 +493,11 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     let syncDebounceTimer: NodeJS.Timeout | null = null;
 
     const handleSyncCompleted = () => {
+      // ✅ 防止组件卸载后继续执行
+      if (!eventListenersAttachedRef.current) {
+        return;
+      }
+      
       // ✅ 同步完成后，重新加载事件以显示最新数据
       if (syncDebounceTimer) {
         clearTimeout(syncDebounceTimer);
@@ -509,6 +523,11 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     };
 
     const handleLocalEventsChanged = (event: unknown) => {
+      // ✅ 防止组件卸载后继续执行
+      if (!eventListenersAttachedRef.current) {
+        return;
+      }
+      
       const customEvent = event as CustomEvent;
       const detail = customEvent.detail;
       
@@ -531,6 +550,11 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     };
 
     const handleEventsUpdated = (event: unknown) => {
+      // ✅ 防止组件卸载后继续执行
+      if (!eventListenersAttachedRef.current) {
+        return;
+      }
+      
       const customEvent = event as CustomEvent;
       const detail = customEvent.detail;
       
@@ -636,10 +660,15 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   // 🆕 自动添加新标签到 visibleTags（确保新建标签默认勾选）
   const previousTagIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
+    console.log('🔍 [NEW TAG DETECT] useEffect triggered, hierarchicalTags.length:', hierarchicalTags.length, 'previousTagIds.size:', previousTagIdsRef.current.size);
+    
     if (hierarchicalTags.length === 0) return;
     
     // 获取当前所有标签ID
     const currentTagIds = new Set(flattenTags(hierarchicalTags).map(tag => tag.id));
+    
+    console.log('🔍 [NEW TAG DETECT] currentTagIds:', Array.from(currentTagIds));
+    console.log('🔍 [NEW TAG DETECT] previousTagIds:', Array.from(previousTagIdsRef.current));
     
     // 找出新增的标签
     const newTagIds = Array.from(currentTagIds).filter(id => !previousTagIdsRef.current.has(id));
@@ -2264,8 +2293,8 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         flexDirection: 'column',
         background: 'transparent', // 🔧 改为透明，让三个矩形各自的背景色生效
         opacity: calendarOpacity, // 🎨 整体透明度：影响所有子元素
-        position: 'relative', // 🔧 为 Settings 面板提供定位基准
-        overflow: 'visible', // 🔧 允许 Settings 面板溢出
+        position: 'relative', // 提供定位上下文
+        overflow: 'hidden', // ✅ 恢复 hidden（Settings 已改为独立子窗口）
         ...style // 允许外部覆盖
       }}>
         {/* 🎛️ 控制工具栏 */}
