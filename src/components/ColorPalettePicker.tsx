@@ -53,6 +53,7 @@ const ColorColumn: React.FC<ColorColumnProps> = ({ baseColor, onColorChange }) =
         {showPicker && (
           <div className="color-picker-popover">
             <div className="color-picker-content">
+              {/* @ts-ignore - React 19 compatibility issue with react-colorful */}
               <HexColorPicker color={baseColor} onChange={onColorChange} />
               <div className="color-input-container">
                 <label htmlFor="color-input">HEX / RGB</label>

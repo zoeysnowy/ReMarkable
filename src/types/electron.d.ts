@@ -90,6 +90,9 @@ export interface ElectronAPI {
     getConfig: (type: 'timer' | 'dailyStats') => Promise<any>;
     savePosition: (type: 'timer' | 'dailyStats', x: number, y: number) => void;
     saveSize: (type: 'timer' | 'dailyStats', width: number, height: number) => void;
+    // 🎨 Widget Settings 子窗口
+    openSettings: () => Promise<{ success: boolean; action: string; mountToLeft?: boolean }>;
+    closeSettings: () => Promise<{ success: boolean; action?: string; error?: string }>;
   };
   
   // 桌面悬浮窗口控制 (旧版，保留兼容性)

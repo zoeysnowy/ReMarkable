@@ -33,7 +33,7 @@ export class ConflictDetectionService {
     event: { start: string; end: string; attendees?: Contact[] },
     excludeEventId?: string
   ): Promise<ConflictInfo[]> {
-    const allEvents = await EventService.getEvents();
+    const allEvents = await EventService.getAllEvents();
     const conflicts: ConflictInfo[] = [];
 
     const eventStart = parseLocalTimeString(event.start);
@@ -82,7 +82,7 @@ export class ConflictDetectionService {
     end: string,
     excludeEventId?: string
   ): Promise<Map<string, ConflictInfo[]>> {
-    const allEvents = await EventService.getEvents();
+    const allEvents = await EventService.getAllEvents();
     const attendeeConflicts = new Map<string, ConflictInfo[]>();
 
     const eventStart = parseLocalTimeString(start);
@@ -99,7 +99,7 @@ export class ConflictDetectionService {
 
         // 检查该事件是否包含此参会人
         const hasAttendee = existingEvent.attendees?.some(
-          a => a.email?.toLowerCase() === attendee.email?.toLowerCase()
+          (a: Contact) => a.email?.toLowerCase() === attendee.email?.toLowerCase()
         ) || existingEvent.organizer?.email?.toLowerCase() === attendee.email?.toLowerCase();
 
         if (!hasAttendee) continue;
@@ -235,7 +235,7 @@ export class ConflictDetectionService {
     attendees: Contact[],
     preferredDate?: Date
   ): Promise<{ start: Date; end: Date } | null> {
-    const allEvents = await EventService.getEvents();
+    const allEvents = await EventService.getAllEvents();
     const workHoursStart = 9; // 工作时间开始：9:00
     const workHoursEnd = 18; // 工作时间结束：18:00
     const searchDate = preferredDate || new Date();

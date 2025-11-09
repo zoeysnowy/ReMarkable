@@ -44,13 +44,14 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
                   const rect = input.getBoundingClientRect();
                   // 检查输入框的父容器
                   const parent = input.parentElement;
-                  if (parent) {      // console.log(`🔍 Input ${index} parent styles:`, {
-                      overflow: window.getComputedStyle(parent).overflow,
-                      position: window.getComputedStyle(parent).position,
-                      zIndex: window.getComputedStyle(parent).zIndex,
-                      height: window.getComputedStyle(parent).height,
-                      maxHeight: window.getComputedStyle(parent).maxHeight
-                    });
+                  if (parent) {
+                    // console.log(`🔍 Input ${index} parent styles:`, {
+                    //   overflow: window.getComputedStyle(parent).overflow,
+                    //   position: window.getComputedStyle(parent).position,
+                    //   zIndex: window.getComputedStyle(parent).zIndex,
+                    //   height: window.getComputedStyle(parent).height,
+                    //   maxHeight: window.getComputedStyle(parent).maxHeight
+                    // });
                   }
                 });
                 

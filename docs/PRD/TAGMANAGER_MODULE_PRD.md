@@ -1,9 +1,16 @@
 # TagManager 模块产品需求文档 (PRD)
 
-**文档版本**: v1.0  
-**最后更新**: 2025-11-05  
+**文档版本**: v1.1  
+**最后更新**: 2025-11-10  
 **文件位置**: `src/components/TagManager.tsx` (2555 lines)  
 **框架**: Copilot PRD Reverse Engineering Framework v1.0
+
+**性能优化记录**:
+- ✅ **v1.1 (2025-11-10)**: 修复 TagService.getTags() 和 getFlatTags() 返回稳定引用
+  - **问题**: 每次返回 `[...this.tags]` 导致 App 组件和 EventEditModal 无限重渲染
+  - **修复**: 直接返回内部 `this.tags` 和 `this.flatTags` 引用
+  - **影响**: 解决删除事件后 EventEditModal TagPicker 无法响应的问题
+  - **注意**: 调用方不应修改返回的数组，需修改请使用 updateTags()
 
 ---
 

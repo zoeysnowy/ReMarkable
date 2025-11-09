@@ -66,6 +66,7 @@ export interface FloatingToolbarProps {
   onColorSelect?: (color: string) => void;
   onTaskToggle?: (isTask: boolean) => void; // 🆕 任务开关回调
   onTimeApplied?: (startIso: string, endIso?: string, allDay?: boolean) => void; // 🆕 TimeHub 模式下，时间写入完成后的回调（用于插入可视化/保存非时间字段）
+  onRequestClose?: () => void; // 🆕 Picker 关闭时请求关闭整个 FloatingBar
   
   // 数据源
   availableTags?: Array<{

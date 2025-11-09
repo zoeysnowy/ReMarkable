@@ -62,11 +62,23 @@ const CalendarSettingsPanel: React.FC<CalendarSettingsPanelProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   
-  // 🔧 动态计算初始位置：以 time-calendar-container 为参考
+  // 🔧 动态计算初始位置：基于"设置"按钮的位置
   const getInitialPosition = () => {
-    if (typeof window === 'undefined') return { x: 1588, y: 180 }; // 🔧 调整为 1640 - 52
+    if (typeof window === 'undefined') return { x: 1588, y: 180 };
     
-    // 尝试获取 time-calendar-container 的位置
+    // 🎯 尝试找到"设置"按钮
+    const settingsButton = Array.from(document.querySelectorAll('.toastui-calendar-nav-button'))
+      .find(btn => btn.textContent?.includes('设置')) as HTMLElement;
+    
+    if (settingsButton) {
+      const rect = settingsButton.getBoundingClientRect();
+      return {
+        x: rect.left, // 对齐按钮左侧
+        y: rect.bottom + 8 // 按钮下方 8px
+      };
+    }
+    
+    // 回退方案：尝试获取 time-calendar-container 的位置
     const calendarContainer = document.querySelector('.time-calendar-container');
     if (calendarContainer) {
       const rect = calendarContainer.getBoundingClientRect();
@@ -76,14 +88,21 @@ const CalendarSettingsPanel: React.FC<CalendarSettingsPanelProps> = ({
       };
     }
     
-    // 回退方案：使用窗口尺寸
+    // 最终回退：使用窗口尺寸
     return {
-      x: window.innerWidth - 332, // 🔧 更新为 312px + 20px边距
+      x: window.innerWidth - 332,
       y: 180
     };
   };
   
   const [position, setPosition] = useState(getInitialPosition);
+
+  // 🔧 每次打开时重新计算位置
+  useEffect(() => {
+    if (isOpen) {
+      setPosition(getInitialPosition());
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     setLocalSettings(settings);
@@ -294,7 +313,7 @@ const CalendarSettingsPanel: React.FC<CalendarSettingsPanelProps> = ({
         className="calendar-settings-panel" 
         ref={panelRef}
         style={{
-          position: 'fixed',
+          position: 'absolute', // 🔧 改为 absolute，允许溢出
           left: `${position.x}px`,
           top: `${position.y}px`,
           margin: 0
@@ -451,12 +470,12 @@ const CalendarSettingsPanel: React.FC<CalendarSettingsPanelProps> = ({
                     <div className="slider-track-wrapper compact">
                       <div 
                         className="slider-track-fill" 
-                        style={{ width: `${((localSettings.deadlineHeight || 24) - 18) / 0.22}%` }}
+                        style={{ width: `${((localSettings.deadlineHeight || 24) / 300) * 100}%` }}
                       />
                       <input
                         type="range"
-                        min="18"
-                        max="40"
+                        min="0"
+                        max="300"
                         value={localSettings.deadlineHeight || 24}
                         onChange={(e) => handleHeightChange('deadline', Number(e.target.value))}
                         className="inline-slider compact with-track"
@@ -483,12 +502,12 @@ const CalendarSettingsPanel: React.FC<CalendarSettingsPanelProps> = ({
                     <div className="slider-track-wrapper compact">
                       <div 
                         className="slider-track-fill" 
-                        style={{ width: `${((localSettings.taskHeight || 24) - 18) / 0.22}%` }}
+                        style={{ width: `${((localSettings.taskHeight || 24) / 300) * 100}%` }}
                       />
                       <input
                         type="range"
-                        min="18"
-                        max="40"
+                        min="0"
+                        max="300"
                         value={localSettings.taskHeight || 24}
                         onChange={(e) => handleHeightChange('task', Number(e.target.value))}
                         className="inline-slider compact with-track"
@@ -515,12 +534,12 @@ const CalendarSettingsPanel: React.FC<CalendarSettingsPanelProps> = ({
                     <div className="slider-track-wrapper compact">
                       <div 
                         className="slider-track-fill" 
-                        style={{ width: `${((localSettings.allDayHeight || 24) - 18) / 0.22}%` }}
+                        style={{ width: `${((localSettings.allDayHeight || 24) / 300) * 100}%` }}
                       />
                       <input
                         type="range"
-                        min="18"
-                        max="40"
+                        min="0"
+                        max="300"
                         value={localSettings.allDayHeight || 24}
                         onChange={(e) => handleHeightChange('allDay', Number(e.target.value))}
                         className="inline-slider compact with-track"

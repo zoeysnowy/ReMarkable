@@ -76,6 +76,7 @@ export class ActionBasedSyncManager {
   private isWindowFocused = true; // 🔧 [NEW] 窗口是否被激活
   private lastQueueModification = Date.now(); // 🔧 [FIX] 上次 action queue 修改时间
   private pendingSyncAfterOnline = false; // 🔧 [NEW] 网络恢复后待同步标记
+  private viewChangeTimeout: NodeJS.Timeout | null = null; // 🚀 [NEW] 视图变化防抖定时器
   
   // 🔧 [NEW] 删除候选追踪机制 - 两轮确认才删除
   private deletionCandidates: Map<string, {
@@ -119,6 +120,28 @@ export class ActionBasedSyncManager {
       window.addEventListener('blur', () => {
         this.isWindowFocused = false;
       }, { passive: true });
+      
+      // 🚀 [NEW] 监听日历视图变化，触发优先同步
+      window.addEventListener('calendarViewChanged', ((event: CustomEvent) => {
+        const { visibleStart, visibleEnd } = event.detail;
+        
+        // 防抖处理：避免快速切换月份时频繁同步
+        if (this.viewChangeTimeout) {
+          clearTimeout(this.viewChangeTimeout);
+        }
+        
+        this.viewChangeTimeout = setTimeout(() => {
+          if (this.isRunning && !this.syncInProgress) {
+            syncLogger.log('📅 [View Change] Triggering priority sync for new visible range');
+            this.syncVisibleDateRangeFirst(
+              new Date(visibleStart),
+              new Date(visibleEnd)
+            ).catch(error => {
+              syncLogger.error('❌ [View Change] Priority sync failed:', error);
+            });
+          }
+        }, 500); // 500ms 防抖
+      }) as EventListener);
     }
     
     // 🔍 [DEBUG] 暴露调试函数到全局
@@ -381,7 +404,158 @@ export class ActionBasedSyncManager {
     }
   }
 
-  // 🔧 [NEW] 获取所有日历的事件（保证每个事件携带正确的 calendarId）
+  // � [NEW] 优先同步可见日期范围的事件（立即），然后异步同步剩余事件
+  public async syncVisibleDateRangeFirst(visibleStart: Date, visibleEnd: Date) {
+    try {
+      syncLogger.log('📅 [Priority Sync] Starting sync for visible date range:', {
+        start: visibleStart.toISOString(),
+        end: visibleEnd.toISOString()
+      });
+
+      // 0. 先推送本地未同步的更改（Local to Remote）
+      const hasPendingLocalActions = this.actionQueue.some(
+        action => action.source === 'local' && !action.synchronized
+      );
+      
+      if (hasPendingLocalActions) {
+        syncLogger.log('📤 [Priority Sync] Pushing local changes first...');
+        await this.syncPendingLocalActions();
+      }
+
+      // 1. 立即同步可见范围的事件（Remote to Local）
+      await this.syncDateRange(visibleStart, visibleEnd, true); // isHighPriority = true
+      
+      // 2. 异步同步剩余事件（分批次，避免阻塞UI）
+      setTimeout(() => {
+        this.syncRemainingEventsInBackground(visibleStart, visibleEnd);
+      }, 100); // 100ms后开始后台同步
+
+    } catch (error) {
+      syncLogger.error('❌ [Priority Sync] Error:', error);
+    }
+  }
+
+  // 🔧 [NEW] 同步指定日期范围的事件
+  private async syncDateRange(startDate: Date, endDate: Date, isHighPriority: boolean = false) {
+    if (!this.microsoftService.isSignedIn()) {
+      syncLogger.warn('⚠️ [syncDateRange] Not signed in, skipping');
+      return;
+    }
+
+    const priorityLabel = isHighPriority ? '[HIGH PRIORITY]' : '[BACKGROUND]';
+    syncLogger.log(`📥 ${priorityLabel} Syncing date range:`, {
+      start: startDate.toISOString(),
+      end: endDate.toISOString()
+    });
+
+    try {
+      // 获取远程事件
+      const remoteEvents = await this.getAllCalendarsEvents(startDate, endDate);
+      
+      if (remoteEvents === null || remoteEvents.length === 0) {
+        syncLogger.warn(`⚠️ ${priorityLabel} No events found in range`);
+        return;
+      }
+
+      syncLogger.log(`✅ ${priorityLabel} Got ${remoteEvents.length} events, processing...`);
+
+      // 处理远程事件
+      const localEvents = this.getLocalEvents();
+      const uniqueEvents = new Map();
+      
+      remoteEvents.forEach(event => {
+        const key = event.externalId || event.id;
+        if (key && !uniqueEvents.has(key)) {
+          uniqueEvents.set(key, event);
+        }
+      });
+      
+      const eventsToProcess = Array.from(uniqueEvents.values());
+      
+      // 应用远程变更到本地
+      for (const event of eventsToProcess) {
+        // 检查是否已删除
+        const cleanEventId = event.id.startsWith('outlook-') ? event.id.replace('outlook-', '') : event.id;
+        const isDeleted = this.deletedEventIds.has(cleanEventId) || this.deletedEventIds.has(event.id);
+        
+        if (isDeleted) continue;
+
+        // 检查是否已存在
+        const pureOutlookId = event.id.replace(/^outlook-/, '');
+        const existingLocal = this.eventIndexMap.get(pureOutlookId);
+
+        if (!existingLocal) {
+          // 创建新事件
+          this.recordRemoteAction('create', 'event', event.id, event);
+        } else {
+          // 检查是否需要更新
+          const remoteModified = new Date(event.lastModifiedDateTime || event.createdDateTime || new Date());
+          const localModified = new Date(existingLocal.updatedAt || existingLocal.createdAt || new Date());
+          
+          if (remoteModified.getTime() > localModified.getTime() + 2 * 60 * 1000) {
+            this.recordRemoteAction('update', 'event', event.id, event);
+          }
+        }
+      }
+
+      // 立即应用远程动作
+      await this.syncPendingRemoteActions();
+      
+      if (isHighPriority) {
+        syncLogger.log('✅ [HIGH PRIORITY] Visible range synced successfully');
+        
+        // 触发UI更新事件
+        window.dispatchEvent(new CustomEvent('visibleRangeSynced', {
+          detail: { 
+            count: eventsToProcess.length,
+            startDate,
+            endDate
+          }
+        }));
+      }
+
+    } catch (error) {
+      syncLogger.error(`❌ ${priorityLabel} Sync failed:`, error);
+    }
+  }
+
+  // 🔧 [NEW] 后台同步剩余事件（分批次，避免阻塞UI）
+  private async syncRemainingEventsInBackground(visibleStart: Date, visibleEnd: Date) {
+    syncLogger.log('🔄 [Background Sync] Starting sync for remaining events...');
+
+    try {
+      // 计算完整同步范围（过去1年到未来3个月）
+      const now = new Date();
+      const fullStartDate = new Date(now);
+      fullStartDate.setFullYear(now.getFullYear() - 1);
+      fullStartDate.setHours(0, 0, 0, 0);
+      
+      const fullEndDate = new Date(now);
+      fullEndDate.setMonth(now.getMonth() + 3);
+      fullEndDate.setHours(23, 59, 59, 999);
+
+      // 分批次同步：
+      // Batch 1: visibleStart 之前的事件
+      if (visibleStart > fullStartDate) {
+        syncLogger.log('📦 [Background Sync] Batch 1: Events before visible range');
+        await this.syncDateRange(fullStartDate, new Date(visibleStart.getTime() - 1));
+        await new Promise(resolve => setTimeout(resolve, 200)); // 延迟200ms
+      }
+
+      // Batch 2: visibleEnd 之后的事件
+      if (visibleEnd < fullEndDate) {
+        syncLogger.log('📦 [Background Sync] Batch 2: Events after visible range');
+        await this.syncDateRange(new Date(visibleEnd.getTime() + 1), fullEndDate);
+      }
+
+      syncLogger.log('✅ [Background Sync] All remaining events synced');
+
+    } catch (error) {
+      syncLogger.error('❌ [Background Sync] Error:', error);
+    }
+  }
+
+  // �🔧 [NEW] 获取所有日历的事件（保证每个事件携带正确的 calendarId）
   // ⚡ [OPTIMIZED] 使用并发限制避免触发 Microsoft Graph API 速率限制 (429)
   private async getAllCalendarsEvents(startDate?: Date, endDate?: Date): Promise<any[] | null> {
     try {
@@ -946,13 +1120,32 @@ export class ActionBasedSyncManager {
     }
   }
 
+  // 🔧 [NEW] 获取当前 TimeCalendar 显示的日期
+  private getCurrentCalendarDate(): Date {
+    try {
+      // 尝试从 localStorage 获取保存的当前日期
+      const savedDate = localStorage.getItem('remarkable-calendar-current-date');
+      if (savedDate) {
+        const date = new Date(savedDate);
+        if (!isNaN(date.getTime())) {
+          return date;
+        }
+      }
+    } catch (error) {
+      // 忽略错误，使用默认值
+    }
+    
+    // 默认返回当前日期
+    return new Date();
+  }
+
   public start() {
     if (this.isRunning) {
       return;
     }
     
     this.isRunning = true;
-    // 🔧 [NEW] 启动时立即检查 token 是否过期
+    // 🔧 启动时立即检查 token 是否过期
     if (this.microsoftService && !this.microsoftService.checkTokenExpiration()) {
       // 不返回，让其他机制继续运行（用户可能会重新登录）
     }
@@ -960,12 +1153,35 @@ export class ActionBasedSyncManager {
     // 检查是否需要全量同步
     this.checkIfFullSyncNeeded();
     
-    // 🔧 延迟首次同步 5 秒，避免阻塞 UI 渲染
-    setTimeout(() => {
-      if (this.isRunning && !this.syncInProgress) {
-        this.performSync();
-      }
-    }, 5000);
+    // � [NEW] 立即同步可见日历视图（不延迟）
+    // 优先同步当前月视图的事件，剩余事件异步后台同步
+    if (typeof window !== 'undefined') {
+      // 获取当前 TimeCalendar 的可见日期范围
+      const currentDate = this.getCurrentCalendarDate();
+      const visibleStart = new Date(currentDate);
+      visibleStart.setMonth(visibleStart.getMonth() - 1); // 当前月-1月
+      visibleStart.setDate(1);
+      visibleStart.setHours(0, 0, 0, 0);
+      
+      const visibleEnd = new Date(currentDate);
+      visibleEnd.setMonth(visibleEnd.getMonth() + 2); // 当前月+2月
+      visibleEnd.setDate(0); // 上个月最后一天
+      visibleEnd.setHours(23, 59, 59, 999);
+      
+      syncLogger.log('🚀 [Start] Immediate priority sync for visible calendar view');
+      
+      // 立即同步可见范围
+      this.syncVisibleDateRangeFirst(visibleStart, visibleEnd).catch(error => {
+        syncLogger.error('❌ [Start] Priority sync failed:', error);
+      });
+    } else {
+      // 非浏览器环境，执行常规同步
+      setTimeout(() => {
+        if (this.isRunning && !this.syncInProgress) {
+          this.performSync();
+        }
+      }, 0);
+    }
     
     // 设置定期增量同步（20秒一次，只同步 3 个月窗口）
     this.syncInterval = setInterval(() => {
@@ -1008,9 +1224,24 @@ export class ActionBasedSyncManager {
     this.needsFullSync = true;
     this.checkIfFullSyncNeeded();
     
-    // 如果正在运行，立即执行同步
+    // 如果正在运行，立即执行优先级同步
     if (this.isRunning && !this.syncInProgress) {
-      this.performSync();
+      // 🚀 使用优先级同步策略
+      const currentDate = this.getCurrentCalendarDate();
+      const visibleStart = new Date(currentDate);
+      visibleStart.setMonth(visibleStart.getMonth() - 1);
+      visibleStart.setDate(1);
+      visibleStart.setHours(0, 0, 0, 0);
+      
+      const visibleEnd = new Date(currentDate);
+      visibleEnd.setMonth(visibleEnd.getMonth() + 2);
+      visibleEnd.setDate(0);
+      visibleEnd.setHours(23, 59, 59, 999);
+      
+      syncLogger.log('🚀 [Full Sync Triggered] Using priority strategy');
+      this.syncVisibleDateRangeFirst(visibleStart, visibleEnd).catch(error => {
+        syncLogger.error('❌ [Full Sync] Priority sync failed:', error);
+      });
     }
   }
 
@@ -2361,9 +2592,34 @@ private getUserSettings(): any {
           return events; // 跳过创建
         }
         
-        // �📝 [SIMPLIFIED] 直接用 externalId 查找现有事件
+        // 📝 [STEP 1] 优先通过 externalId 查找现有事件
         // newEvent.externalId 是纯 Outlook ID（没有 outlook- 前缀）
-        const existingEvent = this.eventIndexMap.get(newEvent.externalId);
+        let existingEvent = this.eventIndexMap.get(newEvent.externalId);
+        
+        // 🎯 [STEP 2] 如果没找到，尝试通过 ReMarkable 创建签名匹配 Timer 事件
+        // 场景：Timer 事件刚同步到 Outlook，本地还没有 externalId，Outlook 返回时需要匹配本地事件
+        if (!existingEvent && newEvent.remarkableSource) {
+          const createTime = this.extractOriginalCreateTime(newEvent.description);
+          
+          if (createTime) {
+            // 在本地事件中查找相同创建时间的 Timer 事件
+            existingEvent = events.find((e: any) => 
+              e.isTimer &&                    // ✅ 必须是 Timer 事件
+              !e.externalId &&                 // ✅ 还没有同步过(没有 externalId)
+              e.remarkableSource === true &&   // ✅ ReMarkable 创建的
+              Math.abs(new Date(e.createdAt).getTime() - createTime.getTime()) < 1000 // ✅ 创建时间匹配(1秒容差)
+            );
+            
+            if (existingEvent) {
+              console.log(`🎯 [Timer Dedupe] 通过 ReMarkable 签名匹配到本地 Timer 事件:`, {
+                localId: existingEvent.id,
+                remoteId: newEvent.externalId,
+                title: newEvent.title,
+                createTime: createTime.toISOString()
+              });
+            }
+          }
+        }
         
         if (!existingEvent) {
           // 🆕 真正的新事件，添加到列表
@@ -3017,7 +3273,20 @@ private getUserSettings(): any {
 
   public async performSyncNow(): Promise<void> {
     if (!this.syncInProgress) {
-      await this.performSync();
+      // 🚀 使用优先级同步策略：先同步可见范围，再同步剩余
+      const currentDate = this.getCurrentCalendarDate();
+      const visibleStart = new Date(currentDate);
+      visibleStart.setMonth(visibleStart.getMonth() - 1);
+      visibleStart.setDate(1);
+      visibleStart.setHours(0, 0, 0, 0);
+      
+      const visibleEnd = new Date(currentDate);
+      visibleEnd.setMonth(visibleEnd.getMonth() + 2);
+      visibleEnd.setDate(0);
+      visibleEnd.setHours(23, 59, 59, 999);
+      
+      syncLogger.log('🚀 [Manual Sync] User triggered sync, using priority strategy');
+      await this.syncVisibleDateRangeFirst(visibleStart, visibleEnd);
     }
   }
 
@@ -3040,7 +3309,20 @@ private getUserSettings(): any {
 
   public async forceSync(): Promise<void> {
     if (!this.syncInProgress) {
-      await this.performSync();
+      // 🚀 使用优先级同步策略：先同步可见范围，再同步剩余
+      const currentDate = this.getCurrentCalendarDate();
+      const visibleStart = new Date(currentDate);
+      visibleStart.setMonth(visibleStart.getMonth() - 1);
+      visibleStart.setDate(1);
+      visibleStart.setHours(0, 0, 0, 0);
+      
+      const visibleEnd = new Date(currentDate);
+      visibleEnd.setMonth(visibleEnd.getMonth() + 2);
+      visibleEnd.setDate(0);
+      visibleEnd.setHours(23, 59, 59, 999);
+      
+      syncLogger.log('🚀 [Force Sync] User triggered force sync, using priority strategy');
+      await this.syncVisibleDateRangeFirst(visibleStart, visibleEnd);
     }
   }
 

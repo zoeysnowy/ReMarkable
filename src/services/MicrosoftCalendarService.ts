@@ -191,6 +191,7 @@ export interface CalendarSyncMeta {
   calendarGroupsCount: number;
   calendarsCount: number;
   isOfflineMode: boolean;
+  lastCalendarListSyncTime?: string; // 🆕 日历列表最后同步时间（用于增量检查）
 }
 
 export class MicrosoftCalendarService {
@@ -204,6 +205,9 @@ export class MicrosoftCalendarService {
   private calendarGroups: CalendarGroup[] = [];
   private calendars: Calendar[] = [];
   private selectedCalendarId: string | null = null;
+  
+  // 🚀 [NEW] 日历缓存加载锁（防止并发重复请求）
+  private calendarCacheLoadingPromise: Promise<void> | null = null;
 
   constructor() {
     try {
@@ -326,6 +330,108 @@ export class MicrosoftCalendarService {
   }
 
   /**
+   * 🚀 [NEW] 确保日历缓存已加载（如果为空则自动同步）
+   * 使用互斥锁防止并发重复请求
+   */
+  private async ensureCalendarCacheLoaded(): Promise<void> {
+    // 🔒 如果正在加载中，直接返回现有Promise
+    if (this.calendarCacheLoadingPromise) {
+      MSCalendarLogger.log('⏳ Calendar cache loading in progress, waiting...');
+      return this.calendarCacheLoadingPromise;
+    }
+    
+    try {
+      const cached = localStorage.getItem(STORAGE_KEYS.CALENDARS_CACHE);
+      if (!cached || JSON.parse(cached).length === 0) {
+        MSCalendarLogger.log('📅 Calendar cache empty, syncing from remote...');
+        
+        // 🔒 设置加载锁
+        this.calendarCacheLoadingPromise = this.syncCalendarGroupsFromRemote()
+          .then(() => {
+            MSCalendarLogger.log('✅ Calendar cache loaded successfully');
+          })
+          .finally(() => {
+            // 🔓 释放锁
+            this.calendarCacheLoadingPromise = null;
+          });
+        
+        await this.calendarCacheLoadingPromise;
+      } else {
+        MSCalendarLogger.log('✅ Calendar cache already exists, skipping sync');
+        
+        // 🔄 检查是否需要增量同步（24小时检查一次）
+        await this.checkCalendarListChanges();
+      }
+    } catch (error) {
+      MSCalendarLogger.error('❌ Failed to ensure calendar cache:', error);
+      // 🔓 失败时也要释放锁
+      this.calendarCacheLoadingPromise = null;
+      throw error;
+    }
+  }
+
+  /**
+   * 🆕 检查日历列表是否有变化（增量同步）
+   * 策略：24小时检查一次，对比远程日历数量是否变化
+   */
+  private async checkCalendarListChanges(): Promise<void> {
+    try {
+      const meta = this.getSyncMeta();
+      const now = new Date();
+      
+      // 检查上次同步时间
+      if (meta?.lastCalendarListSyncTime) {
+        const lastSync = new Date(meta.lastCalendarListSyncTime);
+        const hoursSinceLastSync = (now.getTime() - lastSync.getTime()) / (1000 * 60 * 60);
+        
+        // 24小时内不重复检查
+        if (hoursSinceLastSync < 24) {
+          MSCalendarLogger.log(`⏭️ Calendar list checked ${hoursSinceLastSync.toFixed(1)}h ago, skipping`);
+          return;
+        }
+      }
+      
+      MSCalendarLogger.log('🔍 Checking calendar list changes (24h+ since last check)...');
+      
+      // 只获取日历数量进行对比（轻量级请求）
+      const response = await fetch('https://graph.microsoft.com/v1.0/me/calendars?$select=id&$top=999', {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to check calendar list: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const remoteCount = data.value.length;
+      const cachedCount = meta?.calendarsCount || 0;
+      
+      // 更新检查时间
+      if (meta) {
+        this.setSyncMeta({
+          ...meta,
+          lastCalendarListSyncTime: now.toISOString()
+        });
+      }
+      
+      // 数量不一致，触发完整同步
+      if (remoteCount !== cachedCount) {
+        MSCalendarLogger.log(`📊 Calendar count changed: ${cachedCount} → ${remoteCount}, syncing...`);
+        await this.syncCalendarGroupsFromRemote();
+      } else {
+        MSCalendarLogger.log(`✅ Calendar list unchanged (${cachedCount} calendars)`);
+      }
+      
+    } catch (error) {
+      MSCalendarLogger.error('❌ Failed to check calendar list changes:', error);
+      // 静默失败，不影响主流程
+    }
+  }
+
+  /**
    * 强制从远程同步日历分组和日历（覆盖缓存）
    */
   public async syncCalendarGroupsFromRemote(): Promise<{ groups: CalendarGroup[], calendars: Calendar[] }> {
@@ -347,11 +453,13 @@ export class MicrosoftCalendarService {
       this.setCachedCalendars(calendars);
 
       // 更新同步元数据
+      const now = new Date().toISOString();
       this.setSyncMeta({
-        lastSyncTime: new Date().toISOString(),
+        lastSyncTime: now,
         calendarGroupsCount: groups.length,
         calendarsCount: calendars.length,
-        isOfflineMode: false
+        isOfflineMode: false,
+        lastCalendarListSyncTime: now // 🆕 记录日历列表同步时间
       });
 
       MSCalendarLogger.log('✅ [Sync] Remote calendar sync completed successfully');
@@ -375,23 +483,28 @@ export class MicrosoftCalendarService {
 
   /**
    * 获取所有日历分组和日历（优先使用缓存）
+   * @param forceRefresh 是否强制刷新（⚠️ 仅在缓存为空时才会同步日历列表）
    */
   public async getAllCalendarData(forceRefresh: boolean = false): Promise<{ groups: CalendarGroup[], calendars: Calendar[] }> {
-    if (forceRefresh) {
-      MSCalendarLogger.log('🔄 [Cache] Force refresh requested, syncing from remote...');
-      return await this.syncCalendarGroupsFromRemote();
-    }
-
     // 先尝试从缓存获取
     const cachedGroups = this.getCachedCalendarGroups();
     const cachedCalendars = this.getCachedCalendars();
 
+    // 如果有缓存，直接返回（即使forceRefresh=true）
     if (cachedGroups.length > 0 || cachedCalendars.length > 0) {
       MSCalendarLogger.log('📋 [Cache] Using cached calendar data');
+      
+      // 🔄 后台检查日历列表是否有变化（24小时检查一次）
+      if (forceRefresh) {
+        this.checkCalendarListChanges().catch(error => {
+          MSCalendarLogger.error('❌ Background check failed:', error);
+        });
+      }
+      
       return { groups: cachedGroups, calendars: cachedCalendars };
     }
 
-    // 缓存为空，尝试从远程同步
+    // 缓存为空，必须从远程同步
     MSCalendarLogger.log('📋 [Cache] No cached data found, syncing from remote...');
     return await this.syncCalendarGroupsFromRemote();
   }
@@ -470,6 +583,12 @@ export class MicrosoftCalendarService {
               }));
               MSCalendarLogger.log('🔔 触发了 auth-state-changed 事件（Electron恢复）');
             }
+            
+            // 🚀 [FIX] 检查日历缓存，如果为空则同步
+            this.ensureCalendarCacheLoaded().catch(error => {
+              MSCalendarLogger.error('❌ Failed to ensure calendar cache:', error);
+            });
+            
             return;
           } else {
             MSCalendarLogger.log('⚠️ [Electron] 访问令牌已过期');
@@ -526,6 +645,11 @@ export class MicrosoftCalendarService {
                 }));
                 MSCalendarLogger.log('🔔 触发了 auth-state-changed 事件（localStorage恢复）');
               }
+              
+              // 🚀 [FIX] 检查日历缓存，如果为空则同步
+              this.ensureCalendarCacheLoaded().catch(error => {
+                MSCalendarLogger.error('❌ Failed to ensure calendar cache:', error);
+              });
             } else {
               MSCalendarLogger.log('⚠️ localStorage中的token也已过期');
             }
@@ -555,7 +679,12 @@ export class MicrosoftCalendarService {
       this.isAuthenticated = true;
       this.simulationMode = false;
       
-      // 🔧 测试连接（即使失败也不影响认证状态）
+      // � [FIX] 检查日历缓存，如果为空则同步
+      this.ensureCalendarCacheLoaded().catch(error => {
+        MSCalendarLogger.error('❌ Failed to ensure calendar cache:', error);
+      });
+      
+      // �🔧 测试连接（即使失败也不影响认证状态）
       try {
         await this.testConnection();
         MSCalendarLogger.log('✅ API 连接测试成功');
@@ -578,7 +707,12 @@ export class MicrosoftCalendarService {
             this.isAuthenticated = true;
             this.simulationMode = false;
             
-            // 🔧 测试连接（即使失败也不影响认证状态）
+            // � [FIX] 检查日历缓存，如果为空则同步
+            this.ensureCalendarCacheLoaded().catch(error => {
+              MSCalendarLogger.error('❌ Failed to ensure calendar cache:', error);
+            });
+            
+            // �🔧 测试连接（即使失败也不影响认证状态）
             try {
               await this.testConnection();
               MSCalendarLogger.log('✅ API 连接测试成功');
@@ -714,8 +848,8 @@ export class MicrosoftCalendarService {
       const isElectron = typeof window !== 'undefined' && window.electronAPI;
       
       if (isElectron) {
-        // Electron环境：使用外部浏览器认证
-        MSCalendarLogger.log('🔧 Electron环境：使用外部浏览器认证');
+        // Electron环境：使用 BrowserWindow 弹窗认证
+        MSCalendarLogger.log('🔧 Electron环境：使用 BrowserWindow 认证窗口');
         
         try {
           // 先尝试无声登录
@@ -727,7 +861,8 @@ export class MicrosoftCalendarService {
           if (silentResult) {
             MSCalendarLogger.log('✅ 无声登录成功');
             this.msalInstance.setActiveAccount(silentResult.account);
-            return true;
+            await this.acquireToken();
+            return this.isAuthenticated;
           }
         } catch (silentError) {
           MSCalendarLogger.log('🔄 无声登录失败，需要交互式登录');
@@ -741,23 +876,77 @@ export class MicrosoftCalendarService {
           `scope=${encodeURIComponent(MICROSOFT_GRAPH_CONFIG.scopes.join(' '))}&` +
           `response_mode=query`;
         
-        // 在外部浏览器中打开认证页面
-        if (window.electronAPI?.openExternalAuth) {
+        // 🚀 [FIX] 使用 microsoft-login-window IPC 打开认证窗口
+        if (window.electronAPI?.invoke) {
           try {
-            await window.electronAPI.openExternalAuth(authUrl);
+            MSCalendarLogger.log('🔐 打开 Microsoft 登录窗口...');
+            const result = await window.electronAPI.invoke('microsoft-login-window', authUrl);
+            
+            if (result.success && result.code) {
+              MSCalendarLogger.log('✅ 获取到授权码，正在交换 access token...');
+              
+              // 🔄 使用授权码交换 access token
+              const tokenResponse = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({
+                  client_id: MICROSOFT_GRAPH_CONFIG.clientId,
+                  scope: MICROSOFT_GRAPH_CONFIG.scopes.join(' '),
+                  code: result.code,
+                  redirect_uri: MICROSOFT_GRAPH_CONFIG.redirectUri,
+                  grant_type: 'authorization_code',
+                }),
+              });
+              
+              if (!tokenResponse.ok) {
+                throw new Error(`Token exchange failed: ${tokenResponse.status}`);
+              }
+              
+              const tokenData = await tokenResponse.json();
+              this.accessToken = tokenData.access_token;
+              
+              // 保存到 localStorage（Electron 持久化）
+              const expiresAt = Date.now() + (tokenData.expires_in * 1000);
+              localStorage.setItem('ms-access-token', tokenData.access_token);
+              localStorage.setItem('ms-token-expires', expiresAt.toString());
+              
+              if (tokenData.refresh_token) {
+                localStorage.setItem('ms-refresh-token', tokenData.refresh_token);
+              }
+              
+              // 设置认证状态
+              this.isAuthenticated = true;
+              this.simulationMode = false;
+              
+              MSCalendarLogger.log('✅ Electron 登录成功，已获取 access token');
+              
+              // 🔔 触发认证状态更新事件
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('auth-state-changed', { 
+                  detail: { isAuthenticated: true } 
+                }));
+              }
+              
+              // 🚀 确保日历缓存加载
+              await this.ensureCalendarCacheLoaded();
+              
+              // 🔧 启用自动同步
+              this.startRealTimeSync();
+              
+              return true;
+            } else {
+              MSCalendarLogger.error('❌ 未获取到授权码');
+              return false;
+            }
           } catch (error) {
-            throw new Error('无法打开外部认证页面');
+            MSCalendarLogger.error('❌ Electron 认证失败:', error);
+            throw error;
           }
+        } else {
+          throw new Error('electronAPI.invoke 不可用');
         }
-        
-        // 显示提示信息
-        alert('请在外部浏览器中完成Microsoft账户登录，然后返回应用。\n\n如果浏览器没有自动打开，请手动复制链接到浏览器中打开。');
-        
-        // 这里需要等待用户在外部浏览器完成登录
-        // 在实际应用中，可能需要实现一个回调机制
-        MSCalendarLogger.log('⚠️ 请在外部浏览器中完成登录，然后手动刷新应用');
-        
-        return false; // 暂时返回false，需要用户手动刷新
       } else {
         // Web环境：先尝试弹窗，如果失败则使用重定向
         MSCalendarLogger.log('🌐 Web环境：使用弹窗认证');
@@ -801,8 +990,11 @@ export class MicrosoftCalendarService {
       await this.acquireToken();
       
       if (this.isAuthenticated) {
-        // 🔧 临时禁用自动同步
-        // this.startRealTimeSync();
+        // ✅ 日历缓存会在 acquireToken() -> ensureCalendarCacheLoaded() 中自动加载
+        // ❌ 移除此处的冗余调用，避免重复请求
+        
+        // 🔧 启用自动同步
+        this.startRealTimeSync();
         return true;
       }
       return false;
@@ -900,19 +1092,15 @@ export class MicrosoftCalendarService {
       throw new Error('No access token available');
     }
 
-    const userSettings = this.getUserSettings();
-    const ongoingDays = userSettings?.ongoingDays ?? userSettings?.ongoing ?? 1;
-    
-    // 🔧 调试日志
-    // User settings resolved
-    
+    // 🔧 统一同步范围：固定为 ±3 个月（与 TimeCalendar 显示范围一致）
+    // 移除了 legacy 的 ongoingDays 设置
     const now = new Date();
     const startDate = new Date(now);
-    startDate.setDate(now.getDate() - ongoingDays - 1);
+    startDate.setMonth(now.getMonth() - 3); // 往前 3 个月
     startDate.setHours(0, 0, 0, 0);
     
     const endDate = new Date(now);
-    endDate.setDate(now.getDate() + 2);
+    endDate.setMonth(now.getMonth() + 3); // 往后 3 个月
     endDate.setHours(23, 59, 59, 999);
 
     // Querying events in date range
@@ -950,13 +1138,13 @@ export class MicrosoftCalendarService {
       const data = await response.json();
       const events = data.value || [];
       
-      // 🔧 修复：用户过滤应该和查询范围一致，使用ongoingDays天数
+      // 🔧 统一过滤范围：与查询范围一致（±3 个月）
       const userFilterStart = new Date(now);
-      userFilterStart.setDate(now.getDate() - ongoingDays);
+      userFilterStart.setMonth(now.getMonth() - 3);
       userFilterStart.setHours(0, 0, 0, 0);
 
       const userFilterEnd = new Date(now);
-      userFilterEnd.setDate(now.getDate() + 2); // 保持和查询范围一致
+      userFilterEnd.setMonth(now.getMonth() + 3);
       userFilterEnd.setHours(23, 59, 59, 999);
 
       const filteredEvents = events.filter((event: any) => {
@@ -977,14 +1165,14 @@ export class MicrosoftCalendarService {
         const rawDescription = outlookEvent.body?.content || `${outlookEvent.subject} - 来自 Outlook 的日程`;
         
         // 🆕 处理组织者信息
-        let organizer = outlookEvent.organizer?.emailAddress ? {
+        let organizer: Contact | null = outlookEvent.organizer?.emailAddress ? {
           name: outlookEvent.organizer.emailAddress.name || outlookEvent.organizer.emailAddress.address,
           email: outlookEvent.organizer.emailAddress.address,
           isOutlook: true
         } : null;
         
         // 🆕 处理与会者信息
-        let attendees = outlookEvent.attendees ? outlookEvent.attendees.map((attendee: any) => ({
+        let attendees: Contact[] = outlookEvent.attendees ? outlookEvent.attendees.map((attendee: any) => ({
           name: attendee.emailAddress?.name || attendee.emailAddress?.address,
           email: attendee.emailAddress?.address,
           type: attendee.type || 'required',
@@ -993,7 +1181,7 @@ export class MicrosoftCalendarService {
         })).filter((a: any) => a.email) : [];
         
         // 🔍 从描述中提取 ReMarkable 联系人信息
-        const extractedContacts = this.extractContactsFromDescription(rawDescription);
+        const extractedContacts = extractContactsFromDescription(rawDescription);
         if (extractedContacts.organizer) {
           organizer = extractedContacts.organizer;
         }
@@ -1063,19 +1251,15 @@ export class MicrosoftCalendarService {
       //   end: endDate.toLocaleDateString()
       // });
     } else {
-      const userSettings = this.getUserSettings();
-      const ongoingDays = userSettings?.ongoingDays ?? userSettings?.ongoing ?? 1;
-      
+      // 🔧 统一同步范围：固定为 ±3 个月（移除 legacy ongoingDays）
       const now = new Date();
       queryStartDate = new Date(now);
-      queryStartDate.setDate(now.getDate() - ongoingDays - 1);
+      queryStartDate.setMonth(now.getMonth() - 3);
       queryStartDate.setHours(0, 0, 0, 0);
       
       queryEndDate = new Date(now);
-      queryEndDate.setDate(now.getDate() + 2);
+      queryEndDate.setMonth(now.getMonth() + 3);
       queryEndDate.setHours(23, 59, 59, 999);
-      
-      // console.log('📅 [getEventsFromCalendar] Using ongoingDays setting:', ongoingDays);
     }
 
     // Querying specific calendar
@@ -1149,14 +1333,14 @@ export class MicrosoftCalendarService {
         const rawDescription = outlookEvent.body?.content || `${outlookEvent.subject} - 来自 Outlook 的日程`;
         
         // 🆕 处理组织者信息
-        let organizer = outlookEvent.organizer?.emailAddress ? {
+        let organizer: Contact | null = outlookEvent.organizer?.emailAddress ? {
           name: outlookEvent.organizer.emailAddress.name || outlookEvent.organizer.emailAddress.address,
           email: outlookEvent.organizer.emailAddress.address,
           isOutlook: true
         } : null;
         
         // 🆕 处理与会者信息
-        let attendees = outlookEvent.attendees ? outlookEvent.attendees.map((attendee: any) => ({
+        let attendees: Contact[] = outlookEvent.attendees ? outlookEvent.attendees.map((attendee: any) => ({
           name: attendee.emailAddress?.name || attendee.emailAddress?.address,
           email: attendee.emailAddress?.address,
           type: attendee.type || 'required',
@@ -1165,7 +1349,7 @@ export class MicrosoftCalendarService {
         })).filter((a: any) => a.email) : [];
         
         // 🔍 从描述中提取 ReMarkable 联系人信息
-        const extractedContacts = this.extractContactsFromDescription(rawDescription);
+        const extractedContacts = extractContactsFromDescription(rawDescription);
         if (extractedContacts.organizer) {
           organizer = extractedContacts.organizer;
         }

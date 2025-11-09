@@ -28,11 +28,9 @@ export function insertTag(
       children: [{ text: '' }],
     };
     
-    // 先聚焦编辑器
-    ReactEditor.focus(editor as ReactEditor);
-    
-    // 如果没有选区，选择最后一个位置
+    // 🔧 只在没有选区时才设置焦点和选区
     if (!editor.selection) {
+      ReactEditor.focus(editor as ReactEditor);
       const lastPath = [editor.children.length - 1, 0, 0];
       Transforms.select(editor, {
         anchor: { path: lastPath, offset: 0 },
@@ -55,10 +53,9 @@ export function insertTag(
  */
 export function insertEmoji(editor: Editor, emoji: string): boolean {
   try {
-    ReactEditor.focus(editor as ReactEditor);
-    
-    // 如果没有选区，选择最后一个位置
+    // 🔧 只在没有选区时才设置焦点和选区
     if (!editor.selection) {
+      ReactEditor.focus(editor as ReactEditor);
       const lastPath = [editor.children.length - 1, 0, 0];
       Transforms.select(editor, {
         anchor: { path: lastPath, offset: 0 },
@@ -92,10 +89,9 @@ export function insertDateMention(
       children: [{ text: '' }],
     };
     
-    ReactEditor.focus(editor as ReactEditor);
-    
-    // 如果没有选区，选择最后一个位置
+    // 🔧 只在没有选区时才设置焦点和选区
     if (!editor.selection) {
+      ReactEditor.focus(editor as ReactEditor);
       const lastPath = [editor.children.length - 1, 0, 0];
       Transforms.select(editor, {
         anchor: { path: lastPath, offset: 0 },

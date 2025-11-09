@@ -198,11 +198,14 @@ class TagServiceClass {
   }
 
   // 获取所有标签（层级结构）
+  // ✅ [PERFORMANCE FIX] 直接返回内部引用，避免每次创建新数组
+  // 调用方不应该修改返回的数组，如需修改请使用 updateTags()
   getTags(): HierarchicalTag[] {
-    return [...this.tags];
+    return this.tags;
   }
 
   // 获取所有标签（扁平结构）
+  // ✅ [PERFORMANCE FIX] 直接返回内部引用，避免每次创建新数组
   getFlatTags(): FlatTag[] {
     // 如果还没有初始化，尝试同步加载
     if (!this.initialized || this.flatTags.length === 0) {
@@ -212,7 +215,7 @@ class TagServiceClass {
         this.flatTags = this.flattenTags(savedTags);
       }
     }
-    return [...this.flatTags];
+    return this.flatTags;
   }
 
   // 根据ID获取标签

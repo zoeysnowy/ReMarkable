@@ -7,7 +7,7 @@ import type { Event } from '../types';
 import { FreeFormLine } from './MultiLineEditor/FreeFormEditor';
 import { UnifiedSlateEditor } from './UnifiedSlateEditor/UnifiedSlateEditor';
 import { insertTag, insertEmoji, insertDateMention } from './UnifiedSlateEditor/helpers';
-import { useFloatingToolbar } from '../hooks/useFloatingToolbar';
+import { useFloatingToolbar } from './FloatingToolbar/useFloatingToolbar';
 import { HeadlessFloatingToolbar } from './FloatingToolbar/HeadlessFloatingToolbar';
 import { ToolbarConfig } from './FloatingToolbar/types';
 import { TagService } from '../services/TagService';
@@ -17,12 +17,14 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/zh-cn';
 import { formatDateDisplay } from '../utils/dateParser';
 import { EventEditModal } from './EventEditModal';
-import { EventService } from '../services/EventService';
+import { EventHub } from '../services/EventHub'; // 🎯 使用 EventHub 而不是 EventService
+import { EventService } from '../services/EventService'; // 🔧 仅用于查询（getEventById）
 import { generateEventId } from '../utils/calendarUtils';
 import { formatTimeForStorage } from '../utils/timeUtils';
 import { icons } from '../assets/icons';
 import { useEventTime } from '../hooks/useEventTime';
 import { TimeHub } from '../services/TimeHub';
+import { getEventTime, setEventTime, isTask as isTaskByTime } from '../utils/timeManager'; // 🆕 统一时间管理
 import './PlanManager.css';
 import { dbg, warn, error } from '../utils/debugLogger';
 
@@ -43,10 +45,11 @@ if (typeof window !== 'undefined') {
 const DESCRIPTION_INDENT_OFFSET = 1; // Description 行相对于 Title 行的缩进增量
 
 // 时间显示组件，订阅 TimeHub 更新
-const PlanItemTimeDisplay: React.FC<{
+// 🔧 性能优化：使用 React.memo 避免不必要的重新渲染
+const PlanItemTimeDisplay = React.memo<{
   item: Event;
   onEditClick: (anchor: HTMLElement) => void;
-}> = ({ item, onEditClick }) => {
+}>(({ item, onEditClick }) => {
   // 直接使用 item.id 订阅 TimeHub
   const eventTime = useEventTime(item.id);
 
@@ -165,7 +168,16 @@ const PlanItemTimeDisplay: React.FC<{
   }
 
   return null;
-};
+}, (prevProps, nextProps) => {
+  // 🔧 自定义比较函数：只在关键属性变化时才重新渲染
+  return (
+    prevProps.item.id === nextProps.item.id &&
+    prevProps.item.startTime === nextProps.item.startTime &&
+    prevProps.item.endTime === nextProps.item.endTime &&
+    prevProps.item.dueDate === nextProps.item.dueDate &&
+    prevProps.item.isAllDay === nextProps.item.isAllDay
+  );
+});
 
 // 🔧 PlanManager 不再使用 Event，直接使用 Event
 // Event 中已包含所有 Plan 相关字段（content, level, mode, emoji, color, priority, isCompleted 等）
@@ -253,6 +265,31 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   // 设置 dayjs 语言环境为中文，确保与 UnifiedDateTimePicker 的展示一致
   dayjs.locale('zh-cn');
   
+  // 🆕 v1.6: 统一删除接口（单一删除入口）
+  const deleteItems = useCallback((itemIds: string[], reason: string) => {
+    if (itemIds.length === 0) return;
+    
+    dbg('delete', `🗑️ 统一删除 ${itemIds.length} 个 items`, { reason, ids: itemIds });
+    
+    // 1. 从 pendingEmptyItems 移除
+    setPendingEmptyItems(prev => {
+      const next = new Map(prev);
+      itemIds.forEach(id => next.delete(id));
+      return next;
+    });
+    
+    // 2. 调用外部删除（EventService + PlanManager 父组件）
+    itemIds.forEach(id => {
+      try {
+        onDelete(id);
+      } catch (err) {
+        error('delete', `删除 ${id} 失败`, { error: err });
+      }
+    });
+    
+    dbg('delete', `✅ 删除完成`, { count: itemIds.length });
+  }, [onDelete]);
+  
   // 标签替换
   const [replacingTagElement, setReplacingTagElement] = useState<HTMLElement | null>(null);
   const [showTagReplace, setShowTagReplace] = useState(false);
@@ -277,6 +314,53 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       setTimeout(() => setActivePickerIndex(null), 100);
     },
   });
+
+  // 🆕 监听 TagPicker 打开，同步实际的标签状态
+  useEffect(() => {
+    if (activePickerIndex === 0 && currentFocusedLineId) {
+      // activePickerIndex=0 表示打开 TagPicker
+      const editor = unifiedEditorRef.current;
+      if (!editor) return;
+
+      // 扫描当前聚焦行的 Slate 节点，提取所有 Tag 元素
+      try {
+        const { Node } = require('slate');
+        
+        // 查找当前行的节点
+        const lineNode = editor.children.find((node: any) => {
+          return node.lineId === currentFocusedLineId || 
+                 node.lineId === currentFocusedLineId.replace('-desc', '');
+        });
+
+        if (lineNode) {
+          // 扫描所有子节点，提取 type='tag' 的元素
+          const tagIds = new Set<string>();
+          const descendants = Array.from(Node.descendants(lineNode as any));
+          
+          descendants.forEach((entry: any) => {
+            const [node] = entry;
+            if (node.type === 'tag' && node.tagId) {
+              tagIds.add(node.tagId);
+            }
+          });
+
+          // 转换为数组
+          const actualTagIds = Array.from(tagIds);
+          
+          // 更新状态
+          setCurrentSelectedTags(actualTagIds);
+          currentSelectedTagsRef.current = actualTagIds;
+          
+          console.log('[TagPicker Sync]', { 
+            lineId: currentFocusedLineId,
+            foundTagIds: actualTagIds
+          });
+        }
+      } catch (err) {
+        console.error('[TagPicker Sync] Failed:', err);
+      }
+    }
+  }, [activePickerIndex, currentFocusedLineId]);
 
   // 将文本格式命令路由到当前 Slate 编辑器
   const handleTextFormat = useCallback((command: string) => {
@@ -601,12 +685,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     });
     
     // ===== 阶段 3: 批量执行动作 =====
-    // 3.1 批量删除
+    // 3.1 批量删除（使用统一接口）
     if (actions.delete.length > 0) {
-      dbg('plan', `🗑️ 执行批量删除: ${actions.delete.length} 个`, { 
-        ids: actions.delete 
-      });
-      actions.delete.forEach(id => onDelete(id));
+      deleteItems(actions.delete, 'batch-update-empty-items');
     }
     
     // 3.2 批量保存
@@ -635,8 +716,66 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     }
   }, [items, itemsMap, onSave, onDelete]);
 
-  // 🆕 v1.5: 防抖处理函数
+  // 🆕 v1.8: 立即状态同步（不防抖）- 用于更新 UI 状态
+  const immediateStateSync = useCallback((updatedItems: any[]) => {
+    // 🎯 目标：立即更新 pendingEmptyItems，让勾选框立即显示
+    // 不执行保存操作，只更新本地状态
+    
+    updatedItems.forEach((updatedItem: any) => {
+      const existingItem = itemsMap[updatedItem.id];
+      
+      // 检查是否为空白新行
+      const isEmpty = (
+        !updatedItem.title?.trim() && 
+        !updatedItem.content?.trim() && 
+        !updatedItem.description?.trim() &&
+        !updatedItem.startTime &&
+        !updatedItem.endTime &&
+        !updatedItem.dueDate
+      );
+      
+      if (isEmpty && !existingItem) {
+        // 新空白行：立即添加到 pendingEmptyItems
+        const now = new Date();
+        const nowISO = formatTimeForStorage(now);
+        
+        const newPendingItem: Event = {
+          id: updatedItem.id,
+          title: '',
+          content: updatedItem.content || '',
+          description: updatedItem.description || '',
+          tags: updatedItem.tags || [],
+          level: updatedItem.level || 0,
+          priority: 'medium',
+          isCompleted: false,
+          type: 'todo',
+          isPlan: true,
+          isTask: true,
+          isTimeCalendar: false,
+          remarkableSource: true,
+          startTime: '',
+          endTime: '',
+          isAllDay: false,
+          createdAt: nowISO,
+          updatedAt: nowISO,
+          source: 'local',
+          syncStatus: 'local-only',
+        } as Event;
+        
+        setPendingEmptyItems(prev => new Map(prev).set(updatedItem.id, newPendingItem));
+        
+        if (isDebugEnabled()) {
+          console.log('[⚡ 立即状态同步] 新空白行添加到 pending:', updatedItem.id);
+        }
+      }
+    });
+  }, [itemsMap]);
+
+  // 🆕 v1.5: 防抖处理函数（用于批量保存）
   const debouncedOnChange = useCallback((updatedItems: any[]) => {
+    // ✅ 立即同步状态（不等待防抖）
+    immediateStateSync(updatedItems);
+    
     // 清除之前的定时器
     if (onChangeTimerRef.current) {
       clearTimeout(onChangeTimerRef.current);
@@ -645,7 +784,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     // 保存最新的 updatedItems
     pendingUpdatedItemsRef.current = updatedItems;
     
-    // 设置新的定时器（300ms 后执行）
+    // 设置新的定时器（300ms 后执行保存操作）
     onChangeTimerRef.current = setTimeout(() => {
       const itemsToProcess = pendingUpdatedItemsRef.current;
       if (!itemsToProcess) return;
@@ -657,10 +796,25 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       pendingUpdatedItemsRef.current = null;
       onChangeTimerRef.current = null;
     }, 300);
-  }, [executeBatchUpdate]);
+  }, [immediateStateSync, executeBatchUpdate]);
 
   // 将 Event[] 转换为 FreeFormLine<Event>[]
   const editorLines = useMemo<FreeFormLine<Event>[]>(() => {
+    // 🔧 性能优化：记录依赖变化用于诊断
+    const itemIds = items.map(i => i.id).sort().join(',');
+    const pendingIds = Array.from(pendingEmptyItems.keys()).sort().join(',');
+    const itemContentHash = items.map(i => `${i.id}:${i.content || ''}:${i.description || ''}:${i.mode || ''}`).join('|');
+    
+    if (isDebugEnabled()) {
+      console.log('[🔍 editorLines useMemo] 依赖变化检测:', {
+        itemCount: items.length,
+        pendingCount: pendingEmptyItems.size,
+        itemIdsSample: itemIds.substring(0, 60) + (itemIds.length > 60 ? '...' : ''),
+        pendingIds,
+        contentHashLength: itemContentHash.length,
+      });
+    }
+    
     const lines: FreeFormLine<Event>[] = [];
     const visitedIds = new Set<string>(); // 🆕 检测循环引用/重复ID
 
@@ -966,87 +1120,26 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       调用栈: new Error().stack?.split('\n').slice(1, 5).join('\n')
     });
     
-    // 🆕 确定最终时间和 isTask 标志
-    let finalStartTime: string;
-    let finalEndTime: string;
-    let isTask: boolean;
+    // � 使用统一时间管理接口
+    const eventTime = getEventTime(item.id, {
+      start: item.startTime || null,
+      end: item.endTime || null,
+      dueDate: item.dueDate || null,
+      isAllDay: item.isAllDay,
+      timeSpec: (item as any).timeSpec,
+    });
     
-    const hasStart = !!item.startTime;
-    const hasEnd = !!item.endTime;
+    const finalStartTime = eventTime.start || '';
+    const finalEndTime = eventTime.end || '';
+    const isTask = isTaskByTime(eventTime);
     
-    // 检查 event 是否已经在 EventService 中
-    const existsInEventService = EventService.getEventById(item.id);
-    
-    if (existsInEventService) {
-      // Event 已存在 → 从 TimeHub 读取最新时间（TimeHub 是时间的唯一数据源）
-      const snapshot = TimeHub.getSnapshot(item.id);
-      if (snapshot.start && snapshot.end) {
-        finalStartTime = snapshot.start;
-        finalEndTime = snapshot.end;
-        // 根据时间判断 isTask
-        isTask = !(hasStart && hasEnd) && !item.isAllDay;
-        console.log('%c[🔴 SYNC] ✅ 使用 TimeHub 的最新时间', 'color: green; font-size: 14px', {
-          eventId: item.id,
-          TimeHub最新: { start: snapshot.start, end: snapshot.end },
-          item旧字段: { start: item.startTime, end: item.endTime },
-          isTask
-        });
-      } else {
-        // 🔧 TimeHub 无数据，使用 item 字段（fallback）
-        // 如果 item 也没有时间，保持空字符串，不自动生成当前时间
-        if (item.startTime || item.endTime || item.dueDate) {
-          const now = formatTimeForStorage(new Date());
-          finalStartTime = item.startTime || item.dueDate || now;
-          finalEndTime = item.endTime || item.dueDate || now;
-          isTask = !(hasStart && hasEnd) && !item.isAllDay;
-          console.log('%c[🔴 SYNC] ⚠️ TimeHub 无时间数据，使用 item 字段', 'color: orange; font-size: 14px', {
-            eventId: item.id,
-            snapshot,
-            fallback: { start: finalStartTime, end: finalEndTime },
-            isTask
-          });
-        } else {
-          // item 也没有任何时间，保持空白
-          finalStartTime = '';
-          finalEndTime = '';
-          isTask = true;
-          console.log('%c[🔴 SYNC] ⚠️ TimeHub 和 item 都无时间，保持空白', 'color: orange; font-size: 14px', {
-            eventId: item.id,
-            保持空时间: true
-          });
-        }
-      }
-    } else {
-      // Event 未创建 → 根据 item 的时间字段判断类型和时间
-      if (hasStart && hasEnd) {
-        // 有开始和结束 → event (time/allday)
-        finalStartTime = item.startTime!;
-        finalEndTime = item.endTime!;
-        isTask = false;
-        console.log('%c[🔴 SYNC] 📅 Event: 有完整时间', 'color: green; font-size: 14px', { start: finalStartTime, end: finalEndTime });
-      } else if (hasStart && !hasEnd) {
-        // 只有开始时间 → task (日期=开始日期)
-        finalStartTime = item.startTime!;
-        finalEndTime = item.startTime!;
-        isTask = true;
-        console.log('%c[🔴 SYNC] 📋 Task: 只有开始时间', 'color: blue; font-size: 14px', { date: finalStartTime });
-      } else if (!hasStart && hasEnd) {
-        // 只有结束时间 → task (日期=结束日期)
-        finalStartTime = item.endTime!;
-        finalEndTime = item.endTime!;
-        isTask = true;
-        console.log('%c[🔴 SYNC] 📋 Task: 只有结束时间', 'color: blue; font-size: 14px', { date: finalEndTime });
-      } else {
-        // 🔧 完全没有时间 → 保持空时间，不自动生成（用户通过 FloatingBar/@chrono 手动设置）
-        finalStartTime = '';
-        finalEndTime = '';
-        isTask = true;
-        console.log('%c[🔴 SYNC] 📋 Task: 无约定时间，保持空白（待用户手动设置）', 'color: blue; font-size: 14px', { 
-          eventId: item.id,
-          保持空时间: true
-        });
-      }
-    }
+    console.log('%c[🔴 SYNC] 时间数据准备完成', 'color: green; font-size: 14px', {
+      eventId: item.id,
+      finalStartTime,
+      finalEndTime,
+      isTask,
+      source: eventTime.start ? 'TimeHub/EventService' : 'fallback',
+    });
 
     const event: Event = {
       id: item.id || `event-${Date.now()}`,
@@ -1123,9 +1216,11 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       return null;
     }
 
+    // ✅ 立即渲染勾选框（不等待保存完成）
+    // Plan 页面的所有 title 行都应该有勾选框
     return (
       <>
-        {/* Checkbox */}
+        {/* Checkbox - 始终显示，不依赖异步状态 */}
         <input
           type="checkbox"
           checked={item.isCompleted || false}
@@ -1133,6 +1228,11 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             e.stopPropagation();
             const updatedItem = { ...item, isCompleted: e.target.checked };
             onSave(updatedItem);
+          }}
+          style={{
+            cursor: 'pointer',
+            // ✅ 确保勾选框可见
+            opacity: 1,
           }}
         />
         {/* Emoji（可选） */}
@@ -1214,72 +1314,106 @@ const PlanManager: React.FC<PlanManagerProps> = ({
 
       <div className="plan-list-scroll-container" ref={editorContainerRef}>
         <UnifiedSlateEditor
-          items={items.map(item => ({
-            id: item.id,
-            eventId: item.id,
-            level: item.level || 0,
-            title: item.title,
-            content: item.content || item.title,
-            description: item.description,
-            tags: item.tags || [],
-            // 🆕 v1.5: 透传完整的时间字段和元数据（无字段过滤）
-            startTime: item.startTime,
-            endTime: item.endTime,
-            dueDate: item.dueDate,
-            priority: item.priority,
-            isCompleted: item.isCompleted,
-            isAllDay: item.isAllDay,
-            timeSpec: (item as any).timeSpec,
-          }))}
+          items={editorLines.map(line => {
+            // 🔧 v1.8: 使用 editorLines（包含 pendingEmptyItems），确保新行立即显示勾选框
+            const item = line.data;
+            if (!item) {
+              // 安全回退：如果没有 data，返回空对象
+              return {
+                id: line.id,
+                eventId: line.id,
+                level: line.level,
+                title: '',
+                content: line.content,
+                description: '',
+                tags: [],
+                startTime: '',
+                endTime: '',
+                priority: 'medium',
+                isCompleted: false,
+                isAllDay: false,
+              };
+            }
+            return {
+              id: line.id,
+              eventId: item.id,
+              level: line.level,
+              title: item.title,
+              content: line.content,
+              description: item.description,
+              tags: item.tags || [],
+              // 🆕 v1.5: 透传完整的时间字段和元数据（无字段过滤）
+              startTime: item.startTime,
+              endTime: item.endTime,
+              dueDate: item.dueDate,
+              priority: item.priority,
+              isCompleted: item.isCompleted,
+              isAllDay: item.isAllDay,
+              timeSpec: (item as any).timeSpec,
+            };
+          })}
           onChange={debouncedOnChange}
           onFocus={(lineId) => {
-            // 🆕 更新焦点跟踪
+            // 🆕 v1.8: 更新焦点跟踪，从 editorLines 查找
             setCurrentFocusedLineId(lineId);
             
             // 查找当前行的 item 和 mode
-            const item = items.find(i => i.id === lineId || i.id === lineId.replace('-desc', ''));
-            if (item) {
+            const matchedLine = editorLines.find(l => l.id === lineId);
+            if (matchedLine && matchedLine.data) {
               const isDescMode = lineId.includes('-desc');
               setCurrentFocusedMode(isDescMode ? 'description' : 'title');
-              setCurrentIsTask(item.isTask || false);
+              setCurrentIsTask(matchedLine.data.isTask || false);
             }
           }}
-          onEditorReady={(editor) => {
+          onEditorReady={(editorApi) => {
             // 🆕 保存 UnifiedSlateEditor 的编辑器实例
-            unifiedEditorRef.current = editor;
+            unifiedEditorRef.current = editorApi.getEditor();
+          }}
+          onDeleteRequest={(lineId) => {
+            // 🆕 v1.6: 使用统一删除接口
+            deleteItems([lineId.replace('-desc', '')], 'user-backspace-delete');
           }}
           renderLinePrefix={(line) => {
-            // 🔧 移除 -desc 后缀来查找对应的 item
-            const baseLineId = line.lineId.replace('-desc', '');
-            const item = items.find(i => i.id === baseLineId);
+            // 🆕 v1.8: 检查是否是 placeholder 行（最后一行提示）
+            if ((line.metadata as any)?.isPlaceholder || line.eventId === '__placeholder__') {
+              return (
+                <span style={{ 
+                  color: '#9ca3af', 
+                  fontSize: '14px',
+                  userSelect: 'none',
+                  cursor: 'text',
+                }}>
+                  🖱️点击创建新事件 | ⌨️Shift+Enter 添加描述 | Tab/Shift+Tab 层级缩进 | Shift+Alt+↑↓移动所选事件
+                </span>
+              );
+            }
             
-            if (!item) return null;
+            // 🔧 v1.8: 从 editorLines 查找（包含立即同步的 pendingEmptyItems）
+            const matchedLine = editorLines.find(l => l.id === line.lineId);
             
-            const fakeFormLine: FreeFormLine<Event> = {
-              id: line.lineId,
-              content: '',
-              level: line.level,
-              data: { ...item, mode: line.mode },
-            };
+            if (!matchedLine || !matchedLine.data) {
+              // 极端情况：渲染默认勾选框（通常不会到这里，因为 immediateStateSync）
+              if (line.mode === 'description') return null;
+              
+              return (
+                <input
+                  type="checkbox"
+                  checked={false}
+                  disabled
+                  style={{ cursor: 'not-allowed', opacity: 0.5 }}
+                />
+              );
+            }
             
-            return renderLinePrefix(fakeFormLine);
+            return renderLinePrefix(matchedLine);
           }}
           renderLineSuffix={(line) => {
-            // 🔧 移除 -desc 后缀来查找对应的 item
-            const baseLineId = line.lineId.replace('-desc', '');
-            const item = items.find(i => i.id === baseLineId);
-            if (!item) return null;
+            // 🔧 v1.8: 从 editorLines 查找（包含 pendingEmptyItems）
+            const matchedLine = editorLines.find(l => l.id === line.lineId);
+            if (!matchedLine || !matchedLine.data) return null;
             
-            const fakeFormLine: FreeFormLine<Event> = {
-              id: line.lineId,
-              content: '',
-              level: line.level,
-              data: { ...item, mode: line.mode },
-            };
-            
-            return renderLineSuffix(fakeFormLine);
+            return renderLineSuffix(matchedLine);
           }}
-          placeholder="✨ Enter 创建新事件 | Shift+Enter 切换描述模式 | Tab 调整层级 | ↑↓ 导航"
         />
       </div>
 
@@ -1306,7 +1440,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             setEditingItem(null);
           }}
           onDelete={(eventId) => {
-            onDelete(editingItem.id);
+            deleteItems([editingItem.id], 'user-manual-delete');
             setSelectedItemId(null);
             setEditingItem(null);
           }}
@@ -1343,18 +1477,24 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         activePickerIndex={activePickerIndex}
         eventId={currentFocusedLineId ? (items.find(i => i.id === currentFocusedLineId.replace('-desc',''))?.id) : undefined}
         useTimeHub={true}
-        onTimeApplied={(startIso, endIso) => {
-          dbg('picker', '📌 HeadlessFloatingToolbar.onTimeApplied 被调用 (TimeHub已更新)', { 
+        onRequestClose={() => {
+          // 🆕 Picker 关闭时自动关闭整个 FloatingBar
+          floatingToolbar.hideToolbar();
+        }}
+        onTimeApplied={async (startIso, endIso) => {
+          dbg('picker', '📌 HeadlessFloatingToolbar.onTimeApplied 被调用', { 
             startIso, 
             endIso, 
             focusedLineId: currentFocusedLineId,
             对应的eventId: currentFocusedLineId ? (items.find(i => i.id === currentFocusedLineId.replace('-desc',''))?.id) : undefined
           });
+          
           const targetId = currentFocusedLineId || '';
           if (!targetId) {
             warn('picker', '⚠️ onTimeApplied: 没有 focusedLineId，跳过');
             return;
           }
+          
           const actualItemId = targetId.replace('-desc','');
           const item = items.find(i => i.id === actualItemId);
 
@@ -1363,70 +1503,38 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             return;
           }
 
-          // 🆕 UnifiedSlateEditor 的 onChange 会自动保存内容
-          // 这里只需要确保 EventService 同步时间
-          dbg('picker', '💾 onTimeApplied: 时间已由 TimeHub 更新', { 
-            itemId: item.id, 
-            eventId: item.id,
-          });
-          
-          // ⚠️ 不调用 onSave，因为 UnifiedSlateEditor 的 onChange 会处理
-          // ⚠️ 不调用 syncToUnifiedTimeline，因为它会用 item 的旧时间覆盖 TimeHub 刚写入的新时间
-
-          // 统一到 Event：若已有 eventId 则更新时间+非时间字段；若没有则先创建 Event 再写入 TimeHub
-          (async () => {
-            try {
-              if (item.id) {
-                // 已有 Event：只更新非时间字段（时间已由 TimeHub 更新）
-                dbg('picker', '📝 更新现有 Event (仅非时间字段)', { eventId: item.id });
-                await EventService.updateEvent(item.id, {
-                  title: item.title,
-                  description: item.description || item.content,
-                  tags: item.tags,
-                  isTask: item.isTask,
-                });
-                dbg('picker', '✅ Event 更新成功 (仅非时间字段)', { eventId: item.id });
-              } else if (startIso) {
-                // 没有 Event：先创建 Event，再写入 TimeHub，最后回写 eventId 到 item
-                dbg('picker', '🆕 创建新 Event (item 没有 eventId)', { startIso, endIso });
-                const newId = generateEventId();
-                const createRes = await EventService.createEvent({
-                  id: newId,
-                  title: item.title || '未命名',
-                  description: item.description || item.content,
-                  startTime: startIso,
-                  endTime: endIso || startIso,
-                  isAllDay: false,
-                  tags: item.tags,
-                  createdAt: formatTimeForStorage(new Date()),
-                  updatedAt: formatTimeForStorage(new Date()),
-                  remarkableSource: true,
-                  isPlan: true, // 🆕 标记为 Plan 事件
-                } as any);
-                if (createRes.success && createRes.event) {
-                  dbg('picker', '✅ 新 Event 创建成功，准备写入 TimeHub', { eventId: newId });
-                  // 写入 TimeHub
-                  const { TimeHub } = await import('../services/TimeHub');
-                  await TimeHub.setEventTime(newId, {
-                    start: startIso,
-                    end: endIso || startIso,
-                    kind: startIso !== (endIso || startIso) ? 'range' : 'fixed',
-                    allDay: false,
-                    source: 'picker',
-                  });
-                  dbg('picker', '✅ TimeHub 写入成功', { eventId: newId });
-                  // Event 已创建，保存更新后的 item（关联 eventId）
-                  const updatedItem = { ...item, id: newId };
-                  onSave(updatedItem);
-                  // ⚠️ 不要调用 syncToUnifiedTimeline，Event 已创建且 TimeHub 已写入时间
-                } else {
-                  error('picker', '❌ 创建 Event 失败', { createRes });
-                }
-              }
-            } catch (err) {
-              error('picker', '❌ Event 更新/创建异常', { error: err });
+          try {
+            // 🎯 使用统一时间管理接口
+            const updatedTime = await setEventTime(item.id, {
+              start: startIso,
+              end: endIso || startIso,
+              isAllDay: false,
+            });
+            
+            dbg('picker', '✅ 时间更新成功（TimeHub + EventService 已同步）', { 
+              eventId: item.id,
+              ...updatedTime,
+            });
+            
+            // 🆕 更新 item 的时间字段（保持 metadata 同步）
+            const updatedItem: Event = {
+              ...item,
+              startTime: updatedTime.start || '',
+              endTime: updatedTime.end || '',
+              isAllDay: updatedTime.isAllDay,
+              timeSpec: updatedTime.timeSpec,
+            } as Event;
+            
+            // 保存更新后的 item（onSave 会触发 Slate 同步）
+            onSave(updatedItem);
+            
+            // 同步到日历（如果有时间）
+            if (updatedTime.start && updatedTime.end) {
+              syncToUnifiedTimeline(updatedItem);
             }
-          })();
+          } catch (err) {
+            error('picker', '❌ 时间更新失败', { error: err });
+          }
         }}
         onTextFormat={handleTextFormat}
         onTagSelect={(tagIds: string[]) => {
@@ -1524,11 +1632,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                 syncToUnifiedTimeline(updatedItem);
                 // 若已关联事件，统一同步非时间字段
                 if (updatedItem.id) {
-                  EventService.updateEvent(updatedItem.id, {
+                  // ✅ 使用 EventHub.updateFields 替代直接调用 EventService
+                  EventHub.updateFields(updatedItem.id, {
                     description: updatedItem.description,
                     tags: updatedItem.tags,
                     isTask: updatedItem.isTask,
-                  });
+                  }, { source: 'planmanager-description' });
                 }
               } else {
                 // Title 模式：更新 content 并关联时间到元数据
@@ -1547,30 +1656,35 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                     const startIso = formatTimeForStorage(start);
                     const endIso = formatTimeForStorage(end && end.getTime() !== start.getTime() ? end : start);
                     if (updatedItem.id) {
-                      await EventService.updateEvent(updatedItem.id, {
+                      // ✅ 使用 EventHub.updateFields + EventHub.setEventTime 替代直接调用
+                      await EventHub.updateFields(updatedItem.id, {
                         title: updatedItem.title,
                         description: updatedItem.description || updatedItem.content,
-                        startTime: startIso,
-                        endTime: endIso,
-                        isAllDay: false,
                         tags: updatedItem.tags,
                         isTask: updatedItem.isTask,
+                      }, { source: 'planmanager-title' });
+                      
+                      await EventHub.setEventTime(updatedItem.id, {
+                        start: startIso,
+                        end: endIso,
+                        allDay: false,
                       });
                     } else {
                       const newId = generateEventId();
-                      const createRes = await EventService.createEvent({
+                      // ✅ 使用 EventHub.createEvent 替代直接调用
+                      const createRes = await EventHub.createEvent({
                         id: newId,
                         title: updatedItem.title || '未命名',
                         description: updatedItem.description || updatedItem.content,
                         startTime: startIso,
                         endTime: endIso,
                         isAllDay: false,
-                        tags: updatedItem.tags,
+                        tags: updatedItem.tags || [],
                         createdAt: formatTimeForStorage(new Date()),
                         updatedAt: formatTimeForStorage(new Date()),
                         remarkableSource: true,
                         isPlan: true, // 🆕 标记为 Plan 事件
-                      } as any);
+                      } as Event);
                       if (createRes.success && createRes.event) {
                         // Event 已创建，直接保存（id已经是newId）
                         onSave(updatedItem);
@@ -1684,28 +1798,30 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                       (async () => {
                         try {
                           if (updatedItem.id) {
-                            await EventService.updateEvent(updatedItem.id, {
+                            // ✅ 使用 EventHub.updateFields 替代直接调用
+                            await EventHub.updateFields(updatedItem.id, {
                               title: updatedItem.title,
                               description: updatedItem.description || updatedItem.content,
                               tags: updatedItem.tags,
                               isTask: updatedItem.isTask,
-                            });
+                            }, { source: 'planmanager-mention' });
                             dbg('mention', 'Updated existing event (non-time fields) after mention insert', { eventId: updatedItem.id });
                           } else {
                             const newId = generateEventId();
-                            const createRes = await EventService.createEvent({
+                            // ✅ 使用 EventHub.createEvent 替代直接调用
+                            const createRes = await EventHub.createEvent({
                               id: newId,
                               title: updatedItem.title || '未命名',
                               description: updatedItem.description || updatedItem.content,
                               startTime: formatTimeForStorage(startDate),
                               endTime: formatTimeForStorage(endDate || startDate),
                               isAllDay: false,
-                              tags: updatedItem.tags,
+                              tags: updatedItem.tags || [],
                               createdAt: formatTimeForStorage(new Date()),
                               updatedAt: formatTimeForStorage(new Date()),
                               remarkableSource: true,
                               isPlan: true, // 🆕 标记为 Plan 事件
-                            } as any);
+                            } as Event);
                             if (createRes.success && createRes.event) {
                               // Event 已创建，直接保存（id已经是newId）
                               onSave(updatedItem);

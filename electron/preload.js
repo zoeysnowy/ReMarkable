@@ -56,7 +56,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     close: (type) => ipcRenderer.invoke('widget-close-typed', type),
     getConfig: (type) => ipcRenderer.invoke('widget-get-config', type),
     savePosition: (type, x, y) => ipcRenderer.invoke('widget-save-position', type, x, y),
-    saveSize: (type, width, height) => ipcRenderer.invoke('widget-save-size', type, width, height)
+    saveSize: (type, width, height) => ipcRenderer.invoke('widget-save-size', type, width, height),
+    // 🎨 Settings 子窗口
+    openSettings: () => ipcRenderer.invoke('widget-settings-open'),
+    closeSettings: () => ipcRenderer.invoke('widget-settings-close')
   },
   
   // 事件监听

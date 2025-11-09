@@ -30,7 +30,7 @@
 
 /* 🆕 Gray text placeholder */
 .unified-slate-editor .gray-text-placeholder {
-  padding: 8px 16px;
+  /* padding 由 inline style 控制以实现精确定位 */
   color: #9ca3af;
   cursor: pointer;
   font-size: 14px;
@@ -39,4 +39,17 @@
 
 .unified-slate-editor .gray-text-placeholder:hover {
   color: #6b7280;
+}
+
+/* 🆕 Placeholder 行样式 */
+.unified-event-line.placeholder-line {
+  cursor: text;
+}
+
+.unified-event-line.placeholder-line:hover {
+  background-color: rgba(156, 163, 175, 0.05);
+}
+
+.unified-event-line.placeholder-line .event-line-content {
+  pointer-events: all;
 }

@@ -27,16 +27,51 @@ export interface EventLineNode {
   children: ParagraphNode[];
   
   // 🆕 v1.5: 元数据透传（保留业务字段，避免字段丢失）
-  metadata?: {
-    startTime?: string | null;       // 开始时间
-    endTime?: string | null;         // 结束时间
-    dueDate?: string | null;         // 截止日期
-    priority?: string;               // 优先级
-    isCompleted?: boolean;           // 是否完成
-    isAllDay?: boolean;              // 是否全天
-    timeSpec?: any;                  // TimeHub 的时间意图对象
-    [key: string]: any;              // 其他业务字段
-  };
+  metadata?: EventMetadata;
+}
+
+/**
+ * Event 元数据（完整业务字段透传）
+ * 
+ * v1.6: 扩展所有业务字段，避免字段丢失
+ */
+export interface EventMetadata {
+  // 时间字段
+  startTime?: string | null;
+  endTime?: string | null;
+  dueDate?: string | null;
+  isAllDay?: boolean;
+  timeSpec?: any;
+  
+  // 样式字段
+  emoji?: string;
+  color?: string;
+  
+  // 业务字段
+  priority?: string;
+  category?: string;
+  isCompleted?: boolean;
+  isTask?: boolean;
+  type?: string;
+  
+  // Plan 相关
+  isPlan?: boolean;
+  isTimeCalendar?: boolean;
+  
+  // 同步字段
+  calendarId?: string;
+  calendarIds?: string[];
+  source?: string;
+  syncStatus?: string;
+  externalId?: string;
+  remarkableSource?: boolean;
+  
+  // 时间戳
+  createdAt?: string;
+  updatedAt?: string;
+  
+  // 扩展字段（允许其他未列出的字段）
+  [key: string]: any;
 }
 
 /**

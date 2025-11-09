@@ -1,17 +1,19 @@
 import { STORAGE_KEYS } from '../constants/storage';
-import { PlanItem } from '../components/PlanManager';
+import type { Event } from '../types';
 import { TagService } from './TagService';
 
 export const RecoveryService = {
-  recoverPlanItemsFromEvents(): PlanItem[] {
+  recoverPlanItemsFromEvents(): Event[] {
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.EVENTS);
       if (!raw) return [];
       const events = JSON.parse(raw) as any[];
-      const items: PlanItem[] = events.map((ev) => ({
+      const now = new Date().toISOString();
+      const items: Event[] = events.map((ev) => ({
         id: ev.id || `plan-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
         title: ev.title || ev.eventTitle || '未命名',
         content: ev.description,
+        description: ev.description,
         tags: ev.tags || (ev.tagId ? [ev.tagId] : []),
         priority: 'medium',
         isCompleted: false,
@@ -19,9 +21,14 @@ export const RecoveryService = {
         type: ev.isTask ? 'task' : 'event',
         level: 0,
         mode: ev.description ? 'description' : 'title',
-        description: ev.description,
+        // 必需的 Event 字段
+        startTime: ev.startTime || now,
+        endTime: ev.endTime || now,
+        isAllDay: ev.isAllDay ?? false,
+        createdAt: ev.createdAt || now,
+        updatedAt: ev.updatedAt || now,
       }));
-      localStorage.setItem(STORAGE_KEYS.PLAN_ITEMS, JSON.stringify(items));
+      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(items));
       return items;
     } catch (e) {
       console.error('[RecoveryService] Failed to recover from events:', e);

@@ -278,12 +278,8 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
       }
 
       try {
-        const startStr = formData.isAllDay 
-          ? formatTimeForStorage(parseDateInput(formData.startTime))
-          : formatTimeForStorage(parseTimeInput(formData.startTime));
-        const endStr = formData.isAllDay
-          ? formatTimeForStorage(parseDateInput(formData.endTime))
-          : formatTimeForStorage(parseTimeInput(formData.endTime));
+        const startStr = formatTimeForStorage(parseLocalTimeString(formData.startTime));
+        const endStr = formatTimeForStorage(parseLocalTimeString(formData.endTime));
 
         const conflicts = await ConflictDetectionService.detectConflicts(
           { start: startStr, end: endStr, attendees: formData.attendees },

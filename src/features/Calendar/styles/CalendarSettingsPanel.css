@@ -1,27 +1,23 @@
 /* Calendar Settings Panel - 日历设置面板样式 */
 
 .calendar-settings-overlay {
-  position: fixed;
+  position: absolute; /* 🔧 改为 absolute，允许溢出父容器 */
   top: 0;
   left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.3);
-  z-index: 1000; /* 确保在其他内容之上 */
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  padding: 60px 20px;
+  width: 100%; /* 使用 width 而不是 right，避免限制 */
+  height: 100%; /* 使用 height 而不是 bottom，避免限制 */
+  background-color: transparent; /* 🔧 移除遮罩背景 */
+  z-index: 1000;
   pointer-events: none; /* 允许点击穿透到下层 */
+  overflow: visible; /* 🔧 允许内容溢出 */
 }
 
 .calendar-settings-panel {
   background: white;
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-  width: 100%;
-  max-width: 312px; /* 🔧 从 260px 增加 20% */
-  max-height: calc(100vh - 120px);
+  width: 312px; /* 🔧 固定宽度，移除 max-width */
+  max-height: none; /* 🔧 移除高度限制，允许完整显示 */
   display: flex;
   flex-direction: column;
   overflow: hidden;

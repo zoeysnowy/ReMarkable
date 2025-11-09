@@ -1,22 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { snapshotService } from '../services/snapshotService';
-import { PlanItem } from './PlanManager';
+import type { Event } from '../types';
 import './DailySnapshotViewer.css';
 
 interface DailySnapshotViewerProps {
   /** 选中的日期 (YYYY-MM-DD) */
   selectedDate: string;
-  /** 当前的 PlanItem 列表（用于显示最新状态） */
-  currentItems?: PlanItem[];
+  /** 当前的 Event 列表（用于显示最新状态） */
+  currentItems?: Event[];
 }
 
 interface DailySnapshot {
   date: string;
-  items: PlanItem[];
+  items: Event[];
   changes: {
-    added: PlanItem[];
-    checked: PlanItem[];
-    dropped: PlanItem[];
+    added: Event[];
+    checked: Event[];
+    dropped: Event[];
     deleted: string[];
   };
 }
@@ -210,7 +210,7 @@ export const DailySnapshotViewer: React.FC<DailySnapshotViewerProps> = ({
 // ==================== 子组件：任务卡片 ====================
 
 interface TaskCardProps {
-  item: PlanItem;
+  item: Event;
   highlight?: 'added' | 'checked' | 'dropped' | 'deleted';
 }
 
@@ -236,7 +236,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ item, highlight }) => {
       <div className="task-meta">
         {item.tags && item.tags.length > 0 && (
           <div className="task-tags">
-            {item.tags.map((tag, idx) => (
+            {item.tags.map((tag: string, idx: number) => (
               <span key={idx} className="tag">
                 {tag}
               </span>

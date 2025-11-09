@@ -1992,14 +1992,22 @@ import { LocationIcon } from '@/assets/icons';
 {event.location && (
   <div className="location-row">
     <img src={LocationIcon} alt="位置" className="icon-location" />
-    <span>{event.location}</span>
+    <span className="location-text">{event.location}</span>
   </div>
 )}
 ```
 
 **交互**:
-- 点击复制到剪贴板
-- 长按打开地图（未来功能）
+
+**PC 版**:
+- **点击位置字段**：进入编辑模式，可修改位置信息
+- **选中文字**：可复制位置文本
+- **右键位置区域**：弹出上下文菜单，包含"复制"选项
+
+**移动端**:
+- **点击位置字段**：进入编辑模式，可修改位置信息
+- **长按位置**：打开地图应用（如果系统支持，未来功能）
+- **双击位置文本**：选中并复制到剪贴板
 
 ---
 
@@ -2014,52 +2022,184 @@ const calendar = availableCalendars.find(cal => cal.id === event.calendarId);
 
 **显示逻辑**:
 ```typescript
-function renderCalendarSource(calendar: Calendar): ReactNode {
-  if (!calendar) return null;
-  
-  // 获取平台图标
-  const getPlatformIcon = (provider: string) => {
-    switch (provider) {
-      case 'microsoft': return OutlookIcon;
-      case 'google': return GoogleCalendarIcon;
-      case 'apple': return ICloudIcon;
-      default: return null;
+function renderCalendarSource(event: Event, calendar?: Calendar): ReactNode {
+  // 1. 判断事件来源
+  const getEventSource = (): { icon: string, name: string, emoji?: string } => {
+    // 🆕 特殊情况：Timer 子事件，显示父事件的来源
+    if (event.isTimer && event.parentEventId) {
+      const parentEvent = EventService.getEventById(event.parentEventId);
+      if (parentEvent) {
+        // 递归获取父事件的来源（父事件可能来自 Outlook/Google/iCloud/Plan 等）
+        return getEventSourceForEvent(parentEvent);
+      }
     }
+    
+    return getEventSourceForEvent(event);
   };
   
-  const platformIcon = getPlatformIcon(calendar.provider);
+  // 辅助函数：获取指定事件的来源
+  const getEventSourceForEvent = (evt: Event): { icon: string, name: string, emoji?: string } => {
+    // 外部日历同步的事件（优先判断）
+    if (evt.source === 'outlook' || evt.source === 'google' || evt.source === 'icloud') {
+      const cal = availableCalendars.find(c => c.id === evt.calendarId) || calendar;
+      switch (evt.source) {
+        case 'outlook':
+          return { icon: OutlookIcon, name: `Outlook: ${cal?.name || '默认'}` };
+        case 'google':
+          return { icon: GoogleCalendarIcon, name: `Google: ${cal?.name || '默认'}` };
+        case 'icloud':
+          return { icon: ICloudIcon, name: `iCloud: ${cal?.name || '默认'}` };
+      }
+    }
+    
+    // ReMarkable 本地创建的事件
+    if (evt.source === 'local' || evt.remarkableSource) {
+      // 独立 Timer 事件（没有父事件的 Timer）
+      if (evt.isTimer && !evt.parentEventId) {
+        return { emoji: '⏱️', name: 'ReMarkable计时' };
+      }
+      // 由 Plan 模块创建
+      if (evt.isPlan) {
+        return { emoji: '✅', name: 'ReMarkable计划' };
+      }
+      // 由 TimeCalendar 页面创建
+      if (evt.isTimeCalendar) {
+        return { emoji: '🚀', name: 'ReMarkable' };
+      }
+      // 其他本地事件
+      return { emoji: '🚀', name: 'ReMarkable' };
+    }
+    
+    // 兜底：显示 ReMarkable
+    return { emoji: '🚀', name: 'ReMarkable' };
+  };
+  
+  const source = getEventSource();
   
   return (
     <div className="calendar-source">
       <span>来自</span>
-      <span 
-        className="calendar-dot" 
-        style={{ backgroundColor: calendar.color }}
-      >
-        ●
-      </span>
-      {platformIcon && (
-        <img src={platformIcon} alt={calendar.provider} className="icon-platform" />
+      {calendar && (
+        <span 
+          className="calendar-dot" 
+          style={{ backgroundColor: calendar.color }}
+        >
+          ●
+        </span>
       )}
-      <span>{getPlatformName(calendar)}: {calendar.name}</span>
-    </div>
-  );
-} 
-        style={{ backgroundColor: calendar.color }}
-      >
-        ●
-      </span>
-      <span>{getPlatformName(calendar)}: {calendar.name}</span>
+      {source.emoji && (
+        <span className="source-emoji">{source.emoji}</span>
+      )}
+      {source.icon && (
+        <img src={source.icon} alt={event.source || 'remarkable'} className="icon-platform" />
+      )}
+      <span>{source.name}</span>
     </div>
   );
 }
+      {source.icon && (
+        <img src={source.icon} alt={event.source || 'remarkable'} className="icon-platform" />
+      )}
+      <span>{source.name}</span>
+    </div>
+  );
+}
+```
 
-function getPlatformName(calendar: Calendar): string {
-  if (calendar.provider === 'microsoft') return 'Outlook';
-  if (calendar.provider === 'google') return 'Google';
-  if (calendar.provider === 'apple') return 'iCloud';
-  return 'ReMarkable';
-}
+**判断逻辑说明**:
+
+| 优先级 | 判断条件 | 显示内容 | 说明 |
+|--------|---------|---------|------|
+| **1** | `event.isTimer && event.parentEventId` | **继承父事件来源** | Timer 子事件显示父事件的来源（可能是 Outlook/Plan/等任意来源） |
+| **2** | `event.source === 'outlook'` | Outlook Icon + `Outlook: ${calendar.name}` | 从 Microsoft Outlook 同步的事件 |
+| **2** | `event.source === 'google'` | Google Icon + `Google: ${calendar.name}` | 从 Google Calendar 同步的事件 |
+| **2** | `event.source === 'icloud'` | iCloud Icon + `iCloud: ${calendar.name}` | 从 Apple iCloud 同步的事件 |
+| **3** | `event.isTimer && !event.parentEventId` | ⏱️ + `ReMarkable计时` | **独立 Timer 事件**（直接从 Timer 页面创建，无父事件） |
+| **3** | `event.isPlan === true` | ✅ + `ReMarkable计划` | 由 **Plan 模块**创建的计划事件 |
+| **3** | `event.isTimeCalendar === true` | 🚀 + `ReMarkable` | 由 **TimeCalendar 页面**创建的事件 |
+| **4** | `event.source === 'local'` 或 `event.remarkableSource === true` | 🚀 + `ReMarkable` | ReMarkable 本地创建的其他事件 |
+
+**核心规则**:
+1. **Timer 子事件优先继承父事件来源**
+   - 例：对 Outlook 事件进行计时 → Timer 子事件显示 "Outlook: 工作"
+   - 例：对 Plan 事件进行计时 → Timer 子事件显示 "✅ ReMarkable计划"
+   
+2. **独立 Timer 事件才显示 ⏱️ ReMarkable计时**
+   - 仅当 `isTimer === true && !parentEventId` 时
+   - 即：直接从 Timer 页面创建的独立计时事件
+
+**重要说明**:
+- ⚠️ `event.source` 字段记录的是**事件的原始来源**，在 ReMarkable 中编辑后**不会改变**
+- ✅ 即使从 Outlook/Google/iCloud 同步的事件在 ReMarkable 中被多次编辑，依然显示原平台来源
+- 🔄 `event.syncStatus` 字段标记同步状态（`pending`/`synced`/`error`），与来源显示无关
+- 📝 本地编辑后，事件会标记为待同步（`syncStatus: 'pending'`），但来源标识保持不变
+
+**示例 1: 外部平台事件编辑**
+```typescript
+// 从 Outlook 同步的事件
+const outlookEvent = {
+  id: 'outlook-123',
+  title: '准备演讲稿',
+  source: 'outlook',      // ✅ 原始来源，永不改变
+  syncStatus: 'synced',   // 当前同步状态
+  // ...
+};
+
+// 用户在 ReMarkable 中编辑标题
+outlookEvent.title = '准备演讲稿 - 已修改';
+outlookEvent.syncStatus = 'pending'; // ⚠️ 标记为待同步
+// outlookEvent.source 依然是 'outlook' ✅
+
+// 显示结果：Outlook Icon + "Outlook: 工作"
+```
+
+**示例 2: Timer 子事件继承父事件来源**
+```typescript
+// Plan 事件
+const planEvent = {
+  id: 'plan-456',
+  title: '写代码',
+  source: 'local',
+  isPlan: true,
+  // ...
+};
+// 显示：✅ ReMarkable计划
+
+// 对该 Plan 事件进行计时，生成 Timer 子事件
+const timerChildEvent = {
+  id: 'timer-789',
+  title: '写代码',         // 继承父事件标题
+  source: 'local',
+  isTimer: true,
+  parentEventId: 'plan-456', // ✅ 指向父事件
+  // ...
+};
+// 显示：✅ ReMarkable计划（继承自父事件，而不是 ⏱️ ReMarkable计时）
+
+// 对 Outlook 事件进行计时
+const outlookTimerChild = {
+  id: 'timer-abc',
+  title: '准备演讲稿',
+  source: 'outlook',         // 继承父事件的 source
+  isTimer: true,
+  parentEventId: 'outlook-123',
+  // ...
+};
+// 显示：Outlook Icon + "Outlook: 工作"（继承自父事件）
+```
+
+**示例 3: 独立 Timer 事件**
+```typescript
+// 直接从 Timer 页面创建的独立计时事件
+const independentTimer = {
+  id: 'timer-xyz',
+  title: '自由计时',
+  source: 'local',
+  isTimer: true,
+  parentEventId: null,  // ✅ 无父事件
+  // ...
+};
+// 显示：⏱️ ReMarkable计时
 ```
 
 **UI 样式**:
@@ -2074,6 +2214,10 @@ function getPlatformName(calendar: Calendar): string {
 .calendar-dot {
   font-size: 18px;
 }
+.source-emoji {
+  font-size: 16px;
+}
+}
 ```
 
 ---
@@ -2083,41 +2227,65 @@ function getPlatformName(calendar: Calendar): string {
 **显示条件**:
 ```typescript
 function shouldShowActualProgress(event: Event, activeTimers: Map<string, TimerState>): boolean {
-  // 1. 当前事件有活动 Timer（运行中或已暂停）
+  // 1. 如果是 Timer 子事件（有父事件），显示父事件的汇总数据
+  if (event.isTimer && event.parentEventId) {
+    const parentEvent = EventService.getEventById(event.parentEventId);
+    // 递归判断父事件是否有计时数据
+    return shouldShowActualProgress(parentEvent, activeTimers);
+  }
+  
+  // 2. 如果是独立 Timer 事件（无父事件），显示自己的计时数据
+  if (event.isTimer && !event.parentEventId) return true;
+  
+  // 3. 当前事件有活动 Timer（运行中或已暂停）
   if (activeTimers.has(event.id)) return true;
   
-  // 2. 当前事件有 Timer 子事件（历史计时记录）
+  // 4. 当前事件有 Timer 子事件（历史计时记录）
   if (event.timerChildEvents && event.timerChildEvents.length > 0) return true;
-  
-  // 🆕 3. 如果是 Timer 子事件本身，显示自己的计时数据
-  if (event.isTimer === true) return true;
   
   return false;
 }
 ```
 
-**核心概念 - 父事件多次计时**:
+**用户体验设计理念**:
+- 🎯 **用户视角**：用户创建了一个事件，可以对它**反复计时**，查看总共花了多少时间
+- ✅ **统一显示**：无论点击父事件还是 Timer 子事件，都显示**该事件的完整计时汇总**
+- 🔄 **多次计时**：同一事件可以多次计时，所有计时记录累加显示
+- 📊 **汇总数据**：显示所有计时的时间段、总时长、ddl 完成情况等
+
+**核心概念 - 父事件多次计时**（技术实现细节）:
 - ✅ 非 Timer 创建的事件（Remote/Plan/手动创建）可以被**多次计时**
 - ✅ 每次计时生成一个 **Timer 子事件**（`parentEventId` 指向父事件）
 - ✅ 所有 Timer 子事件的日志**合并显示**在父事件的 Slate 编辑区
 - ✅ TimeCalendar 上同时显示父事件色块 + 多个 Timer 子事件色块
-- ✅ 点击任意 Timer 子事件色块 → 打开**该 Timer 子事件** Modal，显示该次计时的数据
+- ✅ 点击任意 Timer 子事件色块 → 打开 Modal，显示**父事件的完整计时汇总**（而不是单次计时）
 
 **数据来源**: 
 ```typescript
 function getActualProgressData(event: Event, activeTimers: Map<string, TimerState>) {
-  // 🆕 情况 1: 如果是 Timer 子事件，显示自己的计时数据
-  if (event.isTimer && event.segments) {
+  // 🆕 情况 1: Timer 子事件（有父事件）- 显示父事件的汇总数据
+  if (event.isTimer && event.parentEventId) {
+    const parentEvent = EventService.getEventById(event.parentEventId);
+    if (parentEvent) {
+      // 递归获取父事件的汇总数据
+      return getActualProgressData(parentEvent, activeTimers);
+    }
+  }
+  
+  // 🆕 情况 2: 独立 Timer 事件（无父事件）- 显示自己的计时数据
+  if (event.isTimer && !event.parentEventId) {
+    const activeTimer = activeTimers.get(event.id);
     return {
-      segments: event.segments,
-      totalElapsed: event.duration || 0,
+      segments: event.segments || activeTimer?.segments || [],
+      totalElapsed: event.duration || activeTimer?.elapsedTime || 0,
       startTime: event.startTime,
       endTime: event.endTime,
-      isTimerChild: true
+      activeTimer,
+      isIndependentTimer: true
     };
   }
   
-  // 情况 2: 父事件，显示所有 Timer 子事件的汇总
+  // 情况 3: 父事件（或普通事件）- 显示所有 Timer 子事件的汇总
   const activeTimer = activeTimers.get(event.id);
   const childEvents = event.timerChildEvents || [];
   
@@ -2134,16 +2302,76 @@ function getActualProgressData(event: Event, activeTimers: Map<string, TimerStat
     totalElapsed,
     activeTimer,
     childEvents,
-    isTimerChild: false
+    isIndependentTimer: false
   };
 }
 ```
 
-**用户体验说明**:
-- ✅ **用户视角**：查看"这个事件"的实际进展（不区分是哪一次计时）
-- ✅ **Timer 子事件 Modal**：显示该次计时的独立数据（时间段、时长）
-- ✅ **父事件 Modal**：显示所有计时的汇总数据
-- ✅ **无需提示**：用户不需要知道当前查看的是子事件还是父事件
+**用户场景示例**:
+
+**场景 1: 用户对 Plan 事件进行多次计时**
+```typescript
+// 用户在 Plan 页面创建了一个事件
+const planEvent = {
+  id: 'plan-123',
+  title: '写代码',
+  isPlan: true,
+  // ...
+};
+
+// 第一次计时（上午 10:00 - 11:00）
+// 系统自动创建 Timer 子事件 timer-1
+const timerChild1 = {
+  id: 'timer-1',
+  parentEventId: 'plan-123',
+  startTime: '2025-11-08 10:00',
+  endTime: '2025-11-08 11:00',
+  duration: 3600,
+  segments: [{ start: 10:00, end: 11:00, duration: 3600 }]
+};
+
+// 第二次计时（下午 14:00 - 15:30）
+// 系统自动创建 Timer 子事件 timer-2
+const timerChild2 = {
+  id: 'timer-2',
+  parentEventId: 'plan-123',
+  startTime: '2025-11-08 14:00',
+  endTime: '2025-11-08 15:30',
+  duration: 5400,
+  segments: [{ start: 14:00, end: 15:30, duration: 5400 }]
+};
+
+// 用户体验：
+// 1. 点击 TimeCalendar 上的 planEvent 色块 → 打开 Modal
+//    显示：总时长 2.5h（= 1h + 1.5h），所有时间段列表
+// 
+// 2. 点击 TimeCalendar 上的 timerChild1 色块 → 打开 Modal
+//    显示：总时长 2.5h（= 1h + 1.5h），所有时间段列表（与点击父事件一致）
+//
+// 3. 点击 TimeCalendar 上的 timerChild2 色块 → 打开 Modal
+//    显示：总时长 2.5h（= 1h + 1.5h），所有时间段列表（与点击父事件一致）
+```
+
+**场景 2: 用户从 Timer 页面独立计时**
+```typescript
+// 用户直接在 Timer 页面开始计时（没有关联任何事件）
+const independentTimer = {
+  id: 'timer-xyz',
+  title: '自由计时',
+  isTimer: true,
+  parentEventId: null,  // 无父事件
+  duration: 1800,
+  segments: [{ start: 16:00, end: 16:30, duration: 1800 }]
+};
+
+// 用户体验：
+// 点击该事件 → 显示：总时长 0.5h，单次时间段
+```
+
+**关键设计原则**:
+- ✅ **用户无感知**：用户不需要知道"父事件"和"子事件"的概念
+- ✅ **统一体验**：无论从哪个入口打开，都显示该事件的完整计时汇总
+- ✅ **数据一致**：同一事件的所有计时记录始终汇总显示
 
 ---
 
@@ -2831,7 +3059,7 @@ function formatTimestamp(timestamp: string): string {
 #### 6.3 FloatingBar 集成
 
 ```typescript
-import { useFloatingToolbar } from '@/hooks/useFloatingToolbar';
+import { useFloatingToolbar } from '@/components/FloatingToolbar/useFloatingToolbar';
 import { HeadlessFloatingToolbar } from '@/components/FloatingToolbar/HeadlessFloatingToolbar';
 import { insertTag, insertEmoji, insertDateMention } from '@/components/UnifiedSlateEditor/helpers';
 import { 

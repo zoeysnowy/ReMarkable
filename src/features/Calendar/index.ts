@@ -5,6 +5,6 @@ export { default as TimeCalendar } from './TimeCalendar';
 export { default as ToastUIReactCalendar } from './components/ToastUIReactCalendar';
 export { default as CalendarSync } from './components/CalendarSync';
 export { default as CalendarSettingsPanel } from './components/CalendarSettingsPanel';
-export { default as CalendarPicker } from './components/CalendarPicker';
+export { CalendarPicker } from './components/CalendarPicker';
 export { default as CalendarMappingPicker } from './components/CalendarMappingPicker';
 export { default as CalendarGroupManager } from './components/CalendarGroupManager';

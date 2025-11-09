@@ -30,26 +30,24 @@ import {
   slateNodesToRichHtml,
   parseExternalHtml,
 } from './serialization';
+import {
+  initDebug,
+  isDebugEnabled,
+  logKeyDown,
+  logSelection,
+  logDOMChange,
+  logValueChange,
+  logOperation,
+  logError,
+  logFocus,
+  logEditorSnapshot,
+  startPerformanceMark,
+  endPerformanceMark,
+} from './debugLogger';
 import './UnifiedSlateEditor.css';
 
-// 🔍 初始化调试标志 - 在模块加载时立即从 localStorage 读取
-if (typeof window !== 'undefined') {
-  try {
-    const saved = localStorage.getItem('SLATE_DEBUG');
-    if (saved === 'true') {
-      (window as any).SLATE_DEBUG = true;
-      console.log('%c[🚀] SLATE_DEBUG 已从 localStorage 恢复', 'background: #2196F3; color: white; padding: 2px 6px; border-radius: 3px;');
-    }
-  } catch (e) {
-    // ignore
-  }
-}
-
-// 🔍 调试开关 - 通过 window.SLATE_DEBUG = true 开启
-const isDebugEnabled = () => {
-  if (typeof window === 'undefined') return false;
-  return (window as any).SLATE_DEBUG === true;
-};
+// 🔍 初始化调试系统
+initDebug();
 
 /**
  * 安全地设置编辑器焦点和选区
@@ -107,11 +105,17 @@ export interface UnifiedSlateEditorProps {
   items: any[];  // PlanItem[]
   onChange: (items: any[]) => void;
   onFocus?: (lineId: string) => void;
-  onEditorReady?: (editor: Editor) => void;
+  onEditorReady?: (editor: any) => void;  // 🆕 改为接收 editor 实例（含 syncFromExternal 方法）
+  onDeleteRequest?: (lineId: string) => void;  // 🆕 删除请求回调（通知外部删除）
   renderLinePrefix?: (element: EventLineNode) => React.ReactNode;
   renderLineSuffix?: (element: EventLineNode) => React.ReactNode;
-  placeholder?: string;
   className?: string;
+}
+
+// 🆕 暴露给外部的编辑器接口
+export interface UnifiedSlateEditorHandle {
+  syncFromExternal: (items: any[]) => void;  // 从外部同步内容
+  getEditor: () => Editor;  // 获取 Slate Editor 实例
 }
 
 // 自定义编辑器配置
@@ -136,9 +140,9 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   onChange,
   onFocus,
   onEditorReady,
+  onDeleteRequest,  // 🆕 删除请求回调
   renderLinePrefix,
   renderLineSuffix,
-  placeholder = '开始输入...',
   className = '',
 }) => {
   // 🔍 组件挂载日志
@@ -165,175 +169,205 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   // 创建编辑器实例
   const editor = useMemo(() => withCustom(withHistory(withReact(createEditor() as CustomEditor))), []);
   
+  // 🆕 增强的 value：始终在末尾添加一个 placeholder 提示行
+  const enhancedValue = useMemo(() => {
+    const baseNodes = planItemsToSlateNodes(items);
+    
+    // 🎯 v1.8: 在末尾添加一个特殊的 placeholder 行（第 i+1 行）
+    // 这一行不可编辑，只显示提示文字，点击时会在它之前插入新行
+    const placeholderLine: EventLineNode = {
+      type: 'event-line',
+      eventId: '__placeholder__',
+      lineId: '__placeholder__',
+      level: 0,
+      mode: 'title',
+      children: [
+        {
+          type: 'paragraph',
+          children: [{ text: '' }], // 内容为空
+        },
+      ],
+      metadata: {
+        isPlaceholder: true, // 🔧 标记为 placeholder
+      } as any,
+    };
+    
+    return [...baseNodes, placeholderLine];
+  }, [items]);
+  
   // 初始化内容
-  const [value, setValue] = useState<EventLineNode[]>(() => planItemsToSlateNodes(items));
+  const [value, setValue] = useState<EventLineNode[]>(() => enhancedValue);
   
   // 🆕 生成编辑器 key，用于强制重新渲染
   const [editorKey, setEditorKey] = useState(0);
   
-  // 🆕 检测是否应该显示 gray-text placeholder
-  const shouldShowGrayText = useMemo(() => {
-    // 情况1: 没有任何节点
-    if (!value || value.length === 0) return true;
-    
-    // 情况2: 只有一个节点，检查是否为空
-    if (value.length === 1) {
-      const firstLine = value[0];
-      if (!firstLine.children || firstLine.children.length === 0) return true;
-      
-      const paragraph = firstLine.children[0];
-      if (!paragraph.children || paragraph.children.length === 0) return true;
-      
-      const firstChild = paragraph.children[0];
-      // 检查是否只有一个空文本节点
-      if (paragraph.children.length === 1 && 
-          typeof firstChild === 'object' && 
-          'text' in firstChild && 
-          (!firstChild.text || firstChild.text === '')) {
-        return true;
-      }
-      
-      return false;
-    }
-    
-    // 情况3: 有多个节点，不显示 placeholder
-    return false;
-  }, [value]);
+  // 🆕 v1.8: 移除 shouldShowPlaceholder，改为在 renderLinePrefix 中渲染
   
   // 🆕 用 ref 存储上次的 items，避免无限循环
   const prevItemsRef = React.useRef<any[]>(items);
   
-  // 同步外部 items 变化（只在结构变化时同步，避免循环更新）
-  useEffect(() => {
-    // 🔧 特殊情况：如果 items 为空且 value 已经是单个空节点，不同步
-    if (items.length === 0 && value.length === 1) {
-      const firstNode = value[0];
-      if (!firstNode.children || firstNode.children.length === 0) {
-        prevItemsRef.current = items;
-        return;
-      }
-      
-      const paragraph = firstNode.children[0];
-      if (!paragraph.children || paragraph.children.length === 0) {
-        prevItemsRef.current = items;
-        return;
-      }
-      
-      const firstChild = paragraph.children[0];
-      const isEmpty = paragraph.children.length === 1 && 
-                     typeof firstChild === 'object' && 
-                     'text' in firstChild && 
-                     (!firstChild.text || firstChild.text === '');
-      
-      if (isEmpty) {
-        prevItemsRef.current = items;
-        return;
-      }
-    }
-    
-    // 比较 items 的 ID 列表，只有结构变化时才同步
-    const currentIds = value.map(node => node.lineId.replace('-desc', '')).filter((id, index, arr) => arr.indexOf(id) === index);
-    const newIds = items.map(item => item.id);
-    
-    // 检查 ID 列表是否变化
-    const idsChanged = currentIds.length !== newIds.length || 
-                       currentIds.some((id, index) => id !== newIds[index]);
-    
-    // 🔧 检查 items 是否真的变化（深度对比 ID 列表）
-    const prevIds = prevItemsRef.current.map(item => item.id);
-    const itemsReallyChanged = prevIds.length !== newIds.length || 
-                               prevIds.some((id, index) => id !== newIds[index]);
-    
-    // 🔧 判断是新增还是删除
-    const isAddition = newIds.length > currentIds.length;
-    const isDeletion = newIds.length < currentIds.length;
-    
-    if (idsChanged && itemsReallyChanged) {
-      if (isDebugEnabled()) {
-        window.console.log('[UnifiedSlateEditor] Items structure changed, syncing...', { 
-          currentIds, 
-          newIds, 
-          prevIds,
-          isAddition,
-          isDeletion,
-        });
-      }
-      
-      // 🔧 只在新增时重新创建编辑器，删除时让 Slate 自己处理
-      if (!isDeletion) {
-        const newNodes = planItemsToSlateNodes(items);
-        setValue(newNodes);
-        
-        // 🆕 强制重新渲染编辑器（通过改变 key）- 只在新增时
-        setEditorKey(prev => prev + 1);
-      }
-      
-      // 更新 ref
-      prevItemsRef.current = items;
-    }
-  }, [items]); // ⚠️ 移除 value 依赖，避免循环
+  // 🆕 标记是否正在内部更新（避免循环）
+  const isInternalUpdateRef = React.useRef(false);
   
-  // 通知编辑器就绪
+  // 🆕 DOM 变化监控
+  const editorContainerRef = React.useRef<HTMLDivElement>(null);
+  
   useEffect(() => {
+    if (!isDebugEnabled() || !editorContainerRef.current) return;
+    
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'childList') {
+          logDOMChange('子节点变化', {
+            addedNodes: mutation.addedNodes.length,
+            removedNodes: mutation.removedNodes.length,
+            target: mutation.target.nodeName,
+          });
+        } else if (mutation.type === 'characterData') {
+          logDOMChange('文本内容变化', {
+            oldValue: mutation.oldValue,
+            newValue: mutation.target.textContent,
+          });
+        } else if (mutation.type === 'attributes') {
+          logDOMChange('属性变化', {
+            attributeName: mutation.attributeName,
+            oldValue: mutation.oldValue,
+          });
+        }
+      });
+    });
+    
+    observer.observe(editorContainerRef.current, {
+      childList: true,
+      characterData: true,
+      characterDataOldValue: true,
+      attributes: true,
+      attributeOldValue: true,
+      subtree: true,
+    });
+    
+    return () => observer.disconnect();
+  }, []);
+  
+  // 🔧 仅在初始化时同步一次
+  const isInitializedRef = React.useRef(false);
+  useEffect(() => {
+    if (!isInitializedRef.current && items.length > 0) {
+      logOperation('初始化编辑器内容', { itemCount: items.length });
+      
+      setValue(enhancedValue);
+      isInitializedRef.current = true;
+    }
+  }, []); // ✅ 空依赖，只执行一次
+  
+  // 🆕 v1.8: 监听 items 变化，自动更新 value（保持 placeholder 行）
+  useEffect(() => {
+    if (!isInitializedRef.current) return; // 跳过初始化阶段
+    
+    if (!isInternalUpdateRef.current) {
+      logOperation('外部 items 变化，更新 value', { itemCount: items.length });
+      setValue(enhancedValue);
+    }
+  }, [enhancedValue]);
+  
+  // 通知编辑器就绪（传递带 syncFromExternal 方法的对象）
+  useEffect(() => {
+    // 暴露调试接口到全局
+    if (isDebugEnabled() && typeof window !== 'undefined') {
+      (window as any).slateEditorSnapshot = () => logEditorSnapshot(editor);
+      console.log('%c💡 调试命令可用: window.slateEditorSnapshot()', 'color: #4CAF50; font-weight: bold;');
+    }
+    
     if (onEditorReady) {
-      onEditorReady(editor);
+      onEditorReady({
+        syncFromExternal: (newItems: any[]) => {
+          logOperation('外部显式同步', { itemCount: newItems.length });
+          
+          isInternalUpdateRef.current = true;
+          const baseNodes = planItemsToSlateNodes(newItems);
+          
+          // 🆕 v1.8: 添加 placeholder 行到末尾
+          const placeholderLine: EventLineNode = {
+            type: 'event-line',
+            eventId: '__placeholder__',
+            lineId: '__placeholder__',
+            level: 0,
+            mode: 'title',
+            children: [
+              {
+                type: 'paragraph',
+                children: [{ text: '' }],
+              },
+            ],
+            metadata: {
+              isPlaceholder: true,
+            } as any,
+          };
+          
+          const newNodes = [...baseNodes, placeholderLine];
+          setValue(newNodes);
+          setEditorKey(prev => prev + 1);
+          
+          requestAnimationFrame(() => {
+            isInternalUpdateRef.current = false;
+          });
+        },
+        getEditor: () => editor,
+      });
     }
   }, [editor, onEditorReady]);
   
   // ==================== 内容变化处理 ====================
   
-  const handleChange = useCallback((newValue: Descendant[]) => {
+  const handleEditorChange = useCallback((newValue: Descendant[]) => {
     const timestamp = new Date().toISOString().split('T')[1].slice(0, 12);
     
-    if (isDebugEnabled()) {
-      // 📊 详细记录每个节点的完整状态
-      window.console.group(`%c[🔄 ${timestamp}] handleChange - 编辑器内容变化`, 'color: #2196F3; font-weight: bold;');
-      window.console.log('节点总数:', newValue.length);
-      
-      newValue.forEach((node: any, index) => {
-        const paragraph = node.children?.[0];
-        const textNode = paragraph?.children?.[0];
-        const text = textNode?.text || '';
-        
-        window.console.log(`  [${index}] lineId: ${node.lineId.slice(-10)}`, {
-          mode: node.mode,
-          level: node.level,
-          text: `"${text}"`,
-          textLength: text.length,
-          nodeStructure: {
-            type: node.type,
-            childrenCount: node.children?.length,
-            paragraphChildrenCount: paragraph?.children?.length,
-          }
-        });
-      });
-      
-      // 光标位置
-      if (editor.selection) {
-        window.console.log('光标位置:', {
-          anchor: editor.selection.anchor,
-          focus: editor.selection.focus,
-          isCollapsed: Range.isCollapsed(editor.selection),
-        });
-      } else {
-        window.console.log('光标位置: null (无焦点)');
+    // 🎯 修复防抖失效：跳过内部更新触发的 onChange
+    if (isInternalUpdateRef.current) {
+      if (isDebugEnabled()) {
+        window.console.log(`%c[⏭️ ${timestamp}] 跳过内部更新的 onChange`, 'color: #9E9E9E;');
       }
-      
-      window.console.groupEnd();
+      return;
     }
+    
+    // 使用增强的调试工具记录变化
+    logValueChange(value, newValue as unknown as EventLineNode[]);
     
     setValue(newValue as unknown as EventLineNode[]);
     
+    // 🆕 v1.8: 过滤掉 placeholder 行再转换为 PlanItem
+    const filteredNodes = (newValue as unknown as EventLineNode[]).filter(node => {
+      return !(node.metadata as any)?.isPlaceholder && node.eventId !== '__placeholder__';
+    });
+    
     // 转换为 PlanItem 并通知外部
-    const planItems = slateNodesToPlanItems(newValue as unknown as EventLineNode[]);
+    const planItems = slateNodesToPlanItems(filteredNodes);
+    
+    // 🆕 检测 description 行删除，清空 item.description
+    planItems.forEach(item => {
+      const hasDescriptionNode = filteredNodes.some(node => {
+        const eventLine = node as EventLineNode;
+        return (eventLine.eventId === item.eventId || eventLine.lineId.startsWith(item.id)) 
+               && eventLine.mode === 'description';
+      });
+      
+      if (!hasDescriptionNode && item.description) {
+        item.description = ''; // 清空 description
+        if (isDebugEnabled()) {
+          console.log(`🧹 清空 description (节点已删除):`, { 
+            itemId: item.id.slice(-10) + '...',
+            oldDescription: item.description.slice(0, 20) + '...'
+          });
+        }
+      }
+    });
     
     if (isDebugEnabled()) {
-      window.console.log(`[📤 ${timestamp}] 转换后的 PlanItems`, {
+      console.log('📤 转换后的 PlanItems:', {
         itemCount: planItems.length,
         items: planItems.map(item => ({
-          id: item.id.slice(-10),
-          title: `"${item.title}"`,
-          titleLength: item.title?.length || 0,
+          id: item.id.slice(-10) + '...',
+          title: item.title ? `"${item.title}"` : '(空)',
           description: item.description ? `"${item.description}"` : null,
           isCompleted: item.isCompleted,
         })),
@@ -370,7 +404,13 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
         return;
       }
       
-      // 当用户点击编辑器时，通知焦点变化
+      // 记录点击事件
+      logFocus('click', editor, {
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
+      
+      // 通知焦点变化
       if (onFocus && editor.selection) {
         const match = Editor.above(editor, {
           match: n => (n as any).type === 'event-line',
@@ -379,14 +419,16 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
         if (match) {
           const [node] = match;
           const eventLine = node as unknown as EventLineNode;
-          onFocus(eventLine.lineId);
+          
+          // 跳过 placeholder 行
+          if (!((eventLine.metadata as any)?.isPlaceholder || eventLine.eventId === '__placeholder__')) {
+            onFocus(eventLine.lineId);
+          }
         }
       }
     } catch (err) {
       // 忽略选区错误
-      if (isDebugEnabled()) {
-        window.console.warn('[handleClick] Error:', err);
-      }
+      logError('handleClick', err);
       event.preventDefault();
     }
   }, [onFocus, editor]);
@@ -394,48 +436,11 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   // ==================== 键盘事件处理 ====================
   
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
-    const timestamp = new Date().toISOString().split('T')[1].slice(0, 12);
     const { selection } = editor;
     
-    // 🔍 详细记录每个按键
-    if (!event.nativeEvent?.isComposing && isDebugEnabled()) {
-      window.console.group(`%c[⌨️ ${timestamp}] 按键: "${event.key}"`, 'color: #FF9800; font-weight: bold;');
-      window.console.log('按键信息:', {
-        key: event.key,
-        code: event.code,
-        shiftKey: event.shiftKey,
-        ctrlKey: event.ctrlKey,
-        altKey: event.altKey,
-        metaKey: event.metaKey,
-      });
-      
-      if (selection) {
-        const currentNode = Editor.above(editor, {
-          match: n => (n as any).type === 'event-line',
-        });
-        
-        if (currentNode) {
-          const [node, path] = currentNode;
-          const eventLine = node as unknown as EventLineNode;
-          const text = Node.string(node as unknown as Node);
-          
-          window.console.log('当前位置:', {
-            lineId: eventLine.lineId.slice(-10),
-            mode: eventLine.mode,
-            level: eventLine.level,
-            path,
-            currentText: `"${text}"`,
-            textLength: text.length,
-            selection: {
-              anchor: selection.anchor,
-              focus: selection.focus,
-              isCollapsed: Range.isCollapsed(selection),
-            },
-          });
-        }
-      }
-      
-      window.console.groupEnd();
+    // 🔍 记录所有键盘事件
+    if (!event.nativeEvent?.isComposing) {
+      logKeyDown(event, editor);
     }
     
     if (!selection) return;
@@ -458,26 +463,61 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     const [currentNode, currentPath] = match;
     const eventLine = currentNode as unknown as EventLineNode;
     
-    // Enter 键 - 创建新的 EventLine
+    // 🆕 v1.8: 如果在 placeholder 行，拦截所有输入，在它之前创建新行
+    if ((eventLine.metadata as any)?.isPlaceholder || eventLine.eventId === '__placeholder__') {
+      // 允许导航键
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(event.key)) {
+        return;
+      }
+      
+      event.preventDefault();
+      
+      // 任何输入都在 placeholder 之前创建新行
+      const newLine = createEmptyEventLine(0);
+      const insertPath = [currentPath[0]];
+      
+      Transforms.insertNodes(editor, newLine as any, { at: insertPath });
+      
+      // 聚焦到新行并插入输入的字符
+      setTimeout(() => {
+        safeFocusEditor(editor, insertPath);
+        
+        // 如果是可打印字符，插入它
+        if (event.key.length === 1 && !event.ctrlKey && !event.metaKey) {
+          Transforms.insertText(editor, event.key);
+        }
+      }, 50);
+      
+      logOperation('Type on placeholder - 创建新行', { key: event.key });
+      return;
+    }
+    
+    // Enter 键 - 创建新的 EventLine 或 Description 行
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       
-      if (isDebugEnabled()) {
-        window.console.group(`%c[↩️ ${timestamp}] Enter 键 - 创建新行`, 'color: #4CAF50; font-weight: bold;');
-        window.console.log('当前状态:', {
-          currentLine: currentPath[0],
-          lineId: eventLine.lineId.slice(-10),
-          mode: eventLine.mode,
-          level: eventLine.level,
-          totalLines: value.length,
-        });
-      }
-      
-      // 🆕 检查当前 event 是否有 description 行
       let insertIndex = currentPath[0] + 1;
+      let newLine: EventLineNode;
       
-      if (eventLine.mode === 'title') {
-        // 从当前行开始查找是否有对应的 description 行
+      // 🆕 如果当前是 description 行，继续创建 description 行（同一个 eventId）
+      if (eventLine.mode === 'description') {
+        newLine = {
+          type: 'event-line',
+          eventId: eventLine.eventId, // 🔧 共享同一个 eventId
+          lineId: `${eventLine.lineId}-${Date.now()}`, // 生成唯一 lineId
+          level: eventLine.level,
+          mode: 'description',
+          children: [{ type: 'paragraph', children: [{ text: '' }] }],
+          metadata: eventLine.metadata, // 继承 metadata
+        };
+        
+        logOperation('Enter (description) - 创建新 description 行', {
+          currentLine: currentPath[0],
+          eventId: eventLine.eventId,
+          newLineId: newLine.lineId.slice(-10) + '...',
+        }, 'background: #9C27B0; color: white; padding: 2px 8px; border-radius: 3px; font-weight: bold;');
+      } else {
+        // Title 行：检查是否有 description 行，如果有则在其后插入
         const baseLineId = eventLine.lineId.replace('-desc', '');
         const descLineId = `${baseLineId}-desc`;
         
@@ -488,9 +528,6 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
             if (nextNode.type === 'event-line' && nextNode.lineId === descLineId) {
               // 找到 description 行，新行应该插入在 description 行之后
               insertIndex = i + 1;
-              if (isDebugEnabled()) {
-                window.console.log('找到 description 行，插入位置调整:', { from: currentPath[0] + 1, to: insertIndex });
-              }
               break;
             }
             // 如果遇到其他 event 的 title 行，说明没有 description
@@ -501,16 +538,23 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
         } catch (e) {
           // 忽略错误
         }
+        
+        // 创建新的 title 行（新 event）
+        newLine = createEmptyEventLine(eventLine.level);
+        
+        logOperation('Enter (title) - 创建新 title 行', {
+          currentLine: currentPath[0],
+          insertIndex,
+          newLineId: newLine.lineId.slice(-10) + '...',
+        }, 'background: #4CAF50; color: white; padding: 2px 8px; border-radius: 3px; font-weight: bold;');
       }
-      
-      // 创建新行（继承当前层级）
-      const newLine = createEmptyEventLine(eventLine.level);
       
       if (isDebugEnabled()) {
         window.console.log('创建新行:', {
           insertIndex,
           newLineId: newLine.lineId.slice(-10),
-          inheritedLevel: eventLine.level,
+          inheritedLevel: newLine.level,
+          mode: newLine.mode,
         });
       }
       
@@ -605,10 +649,27 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       return;
     }
     
-    // Shift+Tab - 减少缩进
+    // Shift+Tab - 减少缩进 / 退出 Description 模式
     if (event.key === 'Tab' && event.shiftKey) {
       event.preventDefault();
       
+      // 🆕 如果是 description 行，Shift+Tab 转换为 title 行
+      if (eventLine.mode === 'description') {
+        const newLineId = eventLine.lineId.replace('-desc', ''); // 移除 -desc 后缀
+        
+        Transforms.setNodes(
+          editor,
+          { 
+            mode: 'title',
+            lineId: newLineId, // 🔧 修复：更新 lineId，避免数据写入错误字段
+          } as unknown as Partial<Node>,
+          { at: currentPath }
+        );
+        
+        return;
+      }
+      
+      // Title 行：减少缩进
       const newLevel = Math.max(eventLine.level - 1, 0);
       
       Transforms.setNodes(
@@ -634,20 +695,23 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
         if (!text && Point.equals(selection.anchor, startPoint)) {
           event.preventDefault();
           
-          if (isDebugEnabled()) {
-            window.console.group(`%c[🗑️ ${timestamp}] 删除空行`, 'color: #f44336; font-weight: bold;');
-            window.console.log('删除前状态:', {
-              totalLines: value.length,
-              currentLine: currentPath[0],
-              lineId: eventLine.lineId.slice(-10),
-              isLastLine: value.length === 1,
-            });
-          }
+          logOperation('Backspace - 删除空行', {
+            totalLines: value.length,
+            currentLine: currentPath[0],
+            lineId: eventLine.lineId.slice(-10) + '...',
+            isLastLine: currentPath[0] === value.length - 1,
+          }, 'background: #f44336; color: white; padding: 2px 8px; border-radius: 3px; font-weight: bold;');
           
-          // 🔧 修复：如果是最后一行，清空内容而不是删除节点
-          if (value.length === 1) {
+          // 🆕 v1.8: 检查是否是倒数第二行（下一行是 placeholder）
+          const isSecondToLast = currentPath[0] === value.length - 2;
+          const nextNode = isSecondToLast ? value[currentPath[0] + 1] : null;
+          const nextIsPlaceholder = nextNode && 
+            ((nextNode.metadata as any)?.isPlaceholder || nextNode.eventId === '__placeholder__');
+          
+          // 🔧 如果只剩下当前行和 placeholder，清空当前行而不删除
+          if (value.length === 2 && nextIsPlaceholder) {
             if (isDebugEnabled()) {
-              window.console.log('操作: 清空最后一行');
+              window.console.log('操作: 清空倒数第二行（最后一个真实行）');
             }
             // 重置为空行
             Transforms.delete(editor, {
@@ -656,22 +720,52 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
                 focus: Editor.end(editor, currentPath),
               },
             });
-            
+            return;
+          }
+          
+          // 🔧 修复：如果是最后一行（placeholder），不允许删除
+          if ((eventLine.metadata as any)?.isPlaceholder || eventLine.eventId === '__placeholder__') {
             if (isDebugEnabled()) {
-              window.console.log('删除后光标位置:', editor.selection);
-              window.console.groupEnd();
+              window.console.log('操作: 阻止删除 placeholder 行');
             }
             return;
           }
         
           // 多行时删除当前行
-          if (value.length > 1) {
+          if (value.length > 2 || (value.length > 1 && !nextIsPlaceholder)) {
             if (isDebugEnabled()) {
-              window.console.log('操作: 删除当前行（非最后一行）');
+              window.console.log('操作: 删除当前行');
               window.console.log('删除前光标:', editor.selection);
             }
             
             Transforms.removeNodes(editor, { at: currentPath });
+            
+            // 🆕 v1.8: 如果删除后光标在 placeholder 行，移动到上一行
+            setTimeout(() => {
+              if (editor.selection) {
+                const match = Editor.above(editor, {
+                  match: n => (n as any).type === 'event-line',
+                });
+                
+                if (match) {
+                  const [node, path] = match;
+                  const line = node as unknown as EventLineNode;
+                  
+                  if ((line.metadata as any)?.isPlaceholder || line.eventId === '__placeholder__') {
+                    // 光标在 placeholder，移动到上一行末尾
+                    if (path[0] > 0) {
+                      const prevPath = [path[0] - 1];
+                      const prevEnd = Editor.end(editor, prevPath);
+                      Transforms.select(editor, prevEnd);
+                      
+                      if (isDebugEnabled()) {
+                        window.console.log('光标从 placeholder 移动到上一行末尾');
+                      }
+                    }
+                  }
+                }
+              }
+            }, 10);
             
             if (isDebugEnabled()) {
               window.console.log('删除后光标:', editor.selection);
@@ -704,6 +798,21 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
           event.preventDefault();
           Editor.addMark(editor, 'underline', true);
           return;
+      }
+    }
+    
+    // 🆕 v1.8: ArrowDown - 防止进入 placeholder 行
+    if (event.key === 'ArrowDown') {
+      // 检查下一行是否是 placeholder
+      if (currentPath[0] === value.length - 2) {
+        const nextNode = value[currentPath[0] + 1];
+        if (nextNode && ((nextNode.metadata as any)?.isPlaceholder || nextNode.eventId === '__placeholder__')) {
+          event.preventDefault();
+          // 移动到当前行末尾
+          const endPoint = Editor.end(editor, currentPath);
+          Transforms.select(editor, endPoint);
+          return;
+        }
       }
     }
   }, [editor, value]);
@@ -748,6 +857,33 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   
   // ==================== 渲染函数 ====================
   
+  // 🆕 v1.8: Placeholder 点击处理 - 在它之前创建新行
+  const handlePlaceholderClick = useCallback(() => {
+    try {
+      // 找到 placeholder 行的路径
+      const placeholderPath = editor.children.findIndex(
+        (node: any) => node.eventId === '__placeholder__' || node.metadata?.isPlaceholder
+      );
+      
+      if (placeholderPath === -1) return;
+      
+      // 在 placeholder 之前插入新行
+      const newLine = createEmptyEventLine(0);
+      const insertPath = [placeholderPath];
+      
+      Transforms.insertNodes(editor, newLine as any, { at: insertPath });
+      
+      // 聚焦到新行
+      setTimeout(() => {
+        safeFocusEditor(editor, insertPath);
+      }, 50);
+      
+      logOperation('Placeholder clicked - 创建新行', { insertPath });
+    } catch (err) {
+      logError('handlePlaceholderClick', err);
+    }
+  }, [editor]);
+  
   const renderElement = useCallback((props: RenderElementProps) => {
     const element = props.element as any;
     
@@ -759,6 +895,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
             element={element as EventLineNode}
             renderPrefix={renderLinePrefix}
             renderSuffix={renderLineSuffix}
+            onPlaceholderClick={handlePlaceholderClick}
           />
         );
       case 'paragraph':
@@ -770,7 +907,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       default:
         return <div {...props.attributes}>{props.children}</div>;
     }
-  }, [renderLinePrefix, renderLineSuffix]);
+  }, [renderLinePrefix, renderLineSuffix, handlePlaceholderClick]);
   
   const renderLeaf = useCallback((props: RenderLeafProps) => {
     let { children } = props;
@@ -818,27 +955,12 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   
   return (
     <SlateErrorBoundary>
-      <div className={`unified-slate-editor ${className}`} style={{ position: 'relative' }}>
-        {/* 🆕 Gray Text Placeholder - 绝对定位在第一行 */}
-        {shouldShowGrayText && (
-          <div
-            className="gray-text-placeholder"
-            onClick={handleGrayTextClick}
-            style={{
-              position: 'absolute',
-              top: '8px',
-              left: '16px',
-              color: '#9ca3af',
-              cursor: 'pointer',
-              fontSize: '14px',
-              userSelect: 'none',
-              pointerEvents: 'all',
-              zIndex: 1,
-            }}
-          >
-            {placeholder}
-          </div>
-        )}
+      <div 
+        ref={editorContainerRef}
+        className={`unified-slate-editor ${className}`} 
+        style={{ position: 'relative' }}
+      >
+        {/* 🔧 v1.8: 移除绝对定位的 placeholder，改用最后一行的 renderLinePrefix */}
         
         {/* 🔧 确保编辑器始终有内容 */}
         {value && value.length > 0 ? (
@@ -846,7 +968,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
             key={editorKey} 
             editor={editor} 
             initialValue={value as unknown as Descendant[]} 
-            onChange={handleChange}
+            onChange={handleEditorChange}
           >
             <Editable
               renderElement={renderElement}

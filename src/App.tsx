@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MicrosoftCalendarService } from './services/MicrosoftCalendarService';
 import { ActionBasedSyncManager } from './services/ActionBasedSyncManager';
-import TaskManager from './components/TaskManager';
+// ❌ [REMOVED] TaskManager - 从未使用的组件
 import CalendarSync from './features/Calendar/components/CalendarSync';
 // import UnifiedTimeline from './components/UnifiedTimeline'; // 暂时未使用
 import AppLayout, { PageType } from './components/AppLayout';
@@ -111,12 +111,9 @@ function App() {
   useEffect(() => {
     const handleTagsUpdate = () => {
       loadAvailableTagsForEdit();
-      // 🔧 [BUG FIX] 同步更新 appTags，确保 hierarchicalTags 也更新
-      const latestTags = TagService.getTags();
-      if (latestTags.length > 0) {
-        setAppTags(latestTags);
-        AppLogger.log('🏷️ [App] Updated appTags from TagService:', latestTags.length);
-      }
+      // 🔧 [PERFORMANCE FIX] 触发 hierarchicalTags 更新
+      setTagsVersion(v => v + 1);
+      AppLogger.log('🏷️ [App] TagService updated, incrementing tagsVersion');
     };
 
     TagService.addListener(handleTagsUpdate);
@@ -124,12 +121,9 @@ function App() {
     // 如果TagService已经初始化，立即加载标签
     if (TagService.isInitialized()) {
       loadAvailableTagsForEdit();
-      // 🔧 [BUG FIX] 立即同步 appTags
-      const initialTags = TagService.getTags();
-      if (initialTags.length > 0) {
-        setAppTags(initialTags);
-        AppLogger.log('🏷️ [App] Initialized appTags from TagService:', initialTags.length);
-      }
+      // 🔧 初始化时也触发一次更新
+      setTagsVersion(v => v + 1);
+      AppLogger.log('🏷️ [App] TagService initialized');
     }
 
     return () => {
@@ -138,13 +132,10 @@ function App() {
   }, []);
 
   // 基础状态
-  const [seconds, setSeconds] = useState(0);
-  const [isActive, setIsActive] = useState(false);
-  const [taskName, setTaskName] = useState('');
+  // ❌ [REMOVED] seconds, isActive, taskName, currentTask - 旧的计时器状态，已被 globalTimer 替代
+  // ❌ [REMOVED] timerSessions - 旧的会话记录，从未使用
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
-  const [currentTask, setCurrentTask] = useState('');
-  const [timerSessions, setTimerSessions] = useState<TimerSession[]>([]);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  // ❌ [REMOVED] intervalRef - 旧的计时器 interval，已不再使用
 
   // 服务和同步管理器状态
   const [syncManager, setSyncManager] = useState<any>(() => {
@@ -193,15 +184,16 @@ function App() {
     eventEmoji?: string; // 用户自定义事件emoji
     eventTitle?: string; // 用户自定义事件标题
     eventId?: string; // 🔧 [BUG FIX] Timer 事件的真实ID
+    parentEventId?: string; // 🆕 Issue #12: 关联的父事件 ID（Timer 子事件关联到的父事件）
   } | null>(null);
 
-  // 标签数据状态 - 同步FigmaTagManager的标签变化
-  const [appTags, setAppTags] = useState<any[]>([]);
+  // 标签数据状态 - 用版本号触发 hierarchicalTags 更新
+  // 🔧 [PERFORMANCE FIX] 移除冗余的 appTags state，直接使用 TagService
+  const [tagsVersion, setTagsVersion] = useState(0);
 
-  // 处理标签变化的回调函数
+  // 处理标签变化的回调函数 (从 FigmaTagManager)
   const handleTagsChange = useCallback((newTags: any[]) => {
     AppLogger.log('🏷️ [App] Received tags update from FigmaTagManager:', newTags.length);
-    setAppTags(newTags);
     
     // 同步更新TagService
     if (newTags.length > 0) {
@@ -218,6 +210,8 @@ function App() {
         }));
         
         TagService.updateTags(hierarchicalTags);
+        // 🔧 更新版本号触发 hierarchicalTags 重新计算
+        setTagsVersion(v => v + 1);
         AppLogger.log('✅ [App] Successfully synced tags to TagService');
       } catch (error) {
         AppLogger.error('❌ [App] Failed to sync tags to TagService:', error);
@@ -228,12 +222,23 @@ function App() {
   // 事件数据状态（用于首页统计）
   const [allEvents, setAllEvents] = useState<Event[]>([]);
 
-  // 🔧 [PERFORMANCE] 缓存层级标签，避免每次渲染时重新调用 TagService.getTags()
+  // 🔧 [PERFORMANCE FIX] 缓存层级标签，避免每次渲染时重新调用 TagService.getTags()
+  // 现在只依赖 tagsVersion，TagService.getTags() 返回稳定引用
   const hierarchicalTags = useMemo(() => {
     return TagService.getTags();
-  }, [appTags]); // 只在 appTags 变化时重新计算
+  }, [tagsVersion]); // 只在 TagService 更新时重新获取
+
+  // 🔧 [PERFORMANCE FIX] 缓存可用日历列表，避免每次渲染创建新数组
+  const availableCalendars = useMemo(() => {
+    return getAvailableCalendarsForSettings();
+  }, []); // 空依赖，日历列表应该是相对稳定的
 
   // 加载所有事件数据
+  // ⚠️ [PERFORMANCE ISSUE] allEvents 主要用于首页 DailyStatsCard 统计
+  // 但任何事件变化都会触发 App 重渲染，建议后续优化：
+  // 1. 使用 Context 隔离 allEvents 状态
+  // 2. 只在首页时监听和更新
+  // 3. 使用按需加载策略
   useEffect(() => {
     const loadEvents = () => {
       try {
@@ -251,6 +256,7 @@ function App() {
     loadEvents();
 
     // 监听storage变化（当TimeCalendar更新事件时同步）
+    // ⚠️ 注意：storage 事件只在不同标签页触发，同页面修改不会触发
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === STORAGE_KEYS.EVENTS) {
         loadEvents();
@@ -352,9 +358,9 @@ function App() {
     setAvailableTagsForEdit(flatTags);
   };
 
-  // 🔧 Issue #12: 支持从 Plan 事件启动计时
+  // 🔧 Issue #12: 支持从任何事件启动关联的计时器
   // 全局计时器管理函数
-  const handleTimerStart = (tagId: string, planEventId?: string) => {
+  const handleTimerStart = (tagId: string, parentEventId?: string) => {
     const tag = TagService.getFlatTags().find(t => t.id === tagId);
     if (!tag) {
       AppLogger.error('标签未找到', tagId);
@@ -366,7 +372,7 @@ function App() {
       name: tag.name,
       emoji: tag.emoji,
       color: tag.color,
-      planEventId // 🆕 关联的 Plan 事件 ID
+      parentEventId // 🆕 关联的父事件 ID
     });
 
       const startTime = Date.now();
@@ -380,12 +386,12 @@ function App() {
         originalStartTime: startTime, // 保存真正的开始时间
         elapsedTime: 0,
         isPaused: false,
-        planEventId // 🆕 保存关联的 Plan 事件 ID
+        parentEventId // 🆕 保存关联的父事件 ID
       };
       setGlobalTimer(timerState);
       // 💾 持久化到 localStorage，供 Widget 读取
       localStorage.setItem('remarkable-global-timer', JSON.stringify(timerState));
-      AppLogger.log('✅ 开始计时', tag.name, planEventId ? `(关联 Plan: ${planEventId})` : '');
+      AppLogger.log('✅ 开始计时', tag.name, parentEventId ? `(关联事件: ${parentEventId})` : '');
   };
 
   const handleTimerPause = () => {
@@ -537,7 +543,7 @@ function App() {
       startTime: startTime,
       endTime: endTime,
       duration: totalElapsed,
-      planEventId: globalTimer.planEventId // 🆕 关联的 Plan 事件 ID
+      parentEventId: globalTimer.parentEventId // 🆕 关联的父事件 ID
     });
 
     // 🎯 自动创建日历事件
@@ -591,7 +597,7 @@ function App() {
         syncStatus: 'pending' as const, // 🔧 标记为待同步
         isTimer: true,
         // 🆕 Issue #12: 关联父事件
-        parentEventId: globalTimer.planEventId,
+        parentEventId: globalTimer.parentEventId,
         createdAt: existingEvent?.createdAt || formatTimeForStorage(startTime),
         updatedAt: formatTimeForStorage(new Date())
       };
@@ -609,7 +615,7 @@ function App() {
       AppLogger.log('💾 [Timer Stop] Using EventService to create/update event', {
         isPlan: existingEvent?.isPlan,
         updateFields: Object.keys(updateData),
-        parentEventId: globalTimer.planEventId
+        parentEventId: globalTimer.parentEventId
       });
       const result = await EventService.updateEvent(timerEventId, updateData as Event);
       
@@ -617,16 +623,16 @@ function App() {
         AppLogger.log('💾 [Timer Stop] Event saved via EventService:', timerEventId);
         
         // 🆕 Issue #12: 更新父事件的 timerLogs
-        if (globalTimer.planEventId) {
-          const parentEvent = existingEvents.find((e: Event) => e.id === globalTimer.planEventId);
+        if (globalTimer.parentEventId) {
+          const parentEvent = existingEvents.find((e: Event) => e.id === globalTimer.parentEventId);
           if (parentEvent) {
             const updatedTimerLogs = [...(parentEvent.timerLogs || []), timerEventId];
-            await EventService.updateEvent(globalTimer.planEventId, {
+            await EventService.updateEvent(globalTimer.parentEventId, {
               timerLogs: updatedTimerLogs,
               updatedAt: formatTimeForStorage(new Date())
             } as Partial<Event>);
             AppLogger.log('📝 [Timer Stop] Updated parent event timerLogs:', {
-              parentId: globalTimer.planEventId,
+              parentId: globalTimer.parentEventId,
               timerLogs: updatedTimerLogs
             });
           }
@@ -652,12 +658,8 @@ function App() {
 
   // 打开计时器事件编辑框
   const handleTimerEdit = () => {
-    // 🔧 [BUG FIX] 在打开 modal 前确保标签已加载
-    const latestTags = TagService.getTags();
-    if (latestTags.length > 0 && appTags.length === 0) {
-      setAppTags(latestTags);
-      AppLogger.log('🏷️ [handleTimerEdit] Force updated appTags:', latestTags.length);
-    }
+    // 🔧 [PERFORMANCE FIX] 移除不必要的 appTags 检查
+    // TagService 已经初始化，直接使用即可
     
     // 🔧 [BUG FIX] 只允许编辑已存在的Timer，不创建临时event
     if (!globalTimer) {
@@ -1017,47 +1019,8 @@ function App() {
     };
   }, [globalTimer]);
 
-  // 格式化时间:显✅
-  const formatTime = (totalSeconds: number): string => {
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const secs = totalSeconds % 60;
-    
-    if (hours > 0) {
-      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    }
-    return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  // 计算今日总专注时✅
-  const getTodayTotalTime = (): number => {
-    const today = new Date().toDateString();
-    return timerSessions
-      .filter(session => new Date(session.startTime).toDateString() === today)
-      .reduce((total, session) => total + session.duration, 0);
-  };
-
-  // 计时器控制函✅
-  const startTimer = () => {
-    if (!taskName.trim()) return;
-    
-    setCurrentTask(taskName);
-    setTaskName('');
-    setIsActive(true);
-    setSeconds(0);
-  };
-
-  const pauseTimer = () => {
-    setIsActive(false);
-  };
-
-  // 组件间通用的计时器启动函数
-  const handleStartTimer = (taskTitle: string) => {
-    setTaskName(taskTitle);
-    setCurrentTask(taskTitle);
-    setIsActive(true);
-    setSeconds(0);
-  };
+  // ❌ [REMOVED] formatTime() - 从未使用的函数
+  // ❌ [REMOVED] getTodayTotalTime() - 从未使用的函数
 
   // ==================== Plan 相关事件管理 ====================
   
@@ -1135,50 +1098,8 @@ function App() {
 
   // ==================== End Plan 管理 ====================
 
-  const stopTimer = () => {
-    if (currentTask) {
-      // 保存会话记录
-      const session: TimerSession = {
-        id: Date.now().toString(),
-        taskName: currentTask,
-        startTime: formatTimeForStorage(new Date(Date.now() - seconds * 1000)),
-        endTime: formatTimeForStorage(new Date()),
-        duration: seconds,
-        completedAt: formatTimeForStorage(new Date())
-      };
-      
-      setTimerSessions(prev => {
-        const updated = [...prev, session];
-        localStorage.setItem('timer-sessions', JSON.stringify(updated));
-        return updated;
-      });
-    }
-    
-    // 重置状✅
-    setIsActive(false);
-    setCurrentTask('');
-    setSeconds(0);
-  };
-
-  // 计时器效果（老系统）
-  useEffect(() => {
-    if (isActive) {
-      intervalRef.current = setInterval(() => {
-        setSeconds(prev => prev + 1);
-      }, 1000);
-    } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [isActive]);
+  // ❌ [REMOVED] stopTimer, startTimer, pauseTimer - 旧的计时器系统已被 globalTimer 替代
+  // ❌ [REMOVED] 计时器 useEffect - 旧的 setInterval 逻辑已不再使用
 
   // 全局计时器效✅- 强制UI更新以显示实时时✅
   useEffect(() => {
@@ -1199,17 +1120,7 @@ function App() {
     };
   }, [globalTimer?.isRunning]);
 
-  // 加载历史会话
-  useEffect(() => {
-    try {
-      const sessions = localStorage.getItem('timer-sessions');
-      if (sessions) {
-        setTimerSessions(JSON.parse(sessions));
-      }
-    } catch (error) {
-      AppLogger.warn('历史会话加载失败:', error);
-    }
-  }, []);
+  // ❌ [REMOVED] 加载历史会话 - timerSessions 已移除
 
   // 监听认证状态变化并初始化同步管理器
   useEffect(() => {
@@ -1287,9 +1198,9 @@ function App() {
     }
   }, [microsoftService, lastAuthState]);  // 🔧 移除 syncManager 依赖，避免循环
 
-  // � 监听全局认证状态变化事件（登录成功后触发）
+  // 🔐 监听全局认证状态变化事件（登录成功后触发）
   useEffect(() => {
-    const handleAuthChange = (event: Event) => {
+    const handleAuthChange = (event: globalThis.Event) => {
       const customEvent = event as CustomEvent;
       const { isAuthenticated } = customEvent.detail;
       
@@ -1306,7 +1217,7 @@ function App() {
     return () => window.removeEventListener('auth-state-changed', handleAuthChange);
   }, [syncManager]);
 
-  // �🔄 定期更新 lastSyncTime（与 DesktopCalendarWidget 保持一致）
+  // 🔄 定期更新 lastSyncTime（与 DesktopCalendarWidget 保持一致）
   useEffect(() => {
     if (!syncManager) return;
     
@@ -1354,15 +1265,7 @@ function App() {
     saveAppSettings({ [settingKey]: value });
   };
 
-  // 获取当前计时器显示的时间:（秒✅
-  const getCurrentTimerSeconds = (): number => {
-    if (globalTimer) {
-      const elapsed = globalTimer.elapsedTime + 
-        (globalTimer.isRunning ? (Date.now() - globalTimer.startTime) : 0);
-      return Math.floor(elapsed / 1000);
-    }
-    return seconds;
-  };
+  // ❌ [REMOVED] getCurrentTimerSeconds() - 未使用的函数，globalTimer 已提供完整的时间信息
 
   // 获取层级标签的完整路径（例如✅Parent/#Child✅
   const getHierarchicalTagPath = (tagId: string): string => {
@@ -1491,7 +1394,6 @@ function App() {
         content = (
           <PageContainer title="时光" subtitle="时光日志与我的日历" className="time-calendar">
             <TimeCalendar 
-              onStartTimer={handleStartTimer}
               microsoftService={microsoftService}
               syncManager={syncManager}
               lastSyncTime={lastSyncTime}
@@ -1662,9 +1564,8 @@ function App() {
     syncManager,
     lastSyncTime,
     availableTagsForEdit,
-    appTags,
+    tagsVersion,  // 🔧 [PERFORMANCE FIX] 使用 tagsVersion 代替 appTags
     showEventEditModal,
-    handleStartTimer,
     handleTimerPause,
     handleTimerResume,
     handleTimerStop,
@@ -1704,7 +1605,7 @@ function App() {
           hierarchicalTags={hierarchicalTags}
           onStartTimeChange={handleStartTimeChange}
           globalTimer={globalTimer}
-          availableCalendars={getAvailableCalendarsForSettings()}
+          availableCalendars={availableCalendars}
         />
       )}
 
@@ -1804,6 +1705,18 @@ function App() {
 export default function AppWrapper() {
   // 检查是否为悬浮窗口模式
   const isWidgetMode = window.location.hash === '#/widget-v3';
+  const isWidgetSettings = window.location.hash === '#/widget-settings';
+  
+  // 如果是 Widget Settings 模式，渲染设置页面
+  if (isWidgetSettings) {
+    // 动态导入 WidgetSettings 组件
+    const WidgetSettings = React.lazy(() => import('./pages/WidgetSettings'));
+    return (
+      <React.Suspense fallback={<div>Loading...</div>}>
+        <WidgetSettings />
+      </React.Suspense>
+    );
+  }
   
   // 如果是悬浮窗口模式，渲染桌面日历组件
   if (isWidgetMode) {

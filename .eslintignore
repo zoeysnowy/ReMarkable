@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+build/
+dist/
+
+# TUI Calendar dist (third-party build)
+src/lib/tui.calendar/
+
+# Test coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

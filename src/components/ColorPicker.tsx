@@ -216,6 +216,7 @@ const ColorPicker: React.FC<ColorPickerProps> = ({
                 编辑主色调 #{editingColorIndex + 1}
               </div>
               <div style={{ padding: '12px' }}>
+                {/* @ts-ignore - React 19 compatibility issue with react-colorful */}
                 <HexColorPicker 
                   color={selectedColor} 
                   onChange={setSelectedColor}

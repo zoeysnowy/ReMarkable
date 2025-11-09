@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, RefObject } from 'react';
-import { logger } from '../utils/logger';
-import { FloatingBarMode } from '../components/FloatingToolbar/types';
+import { logger } from '../../utils/logger';
+import { FloatingBarMode } from './types';
 
 const FloatingToolbarLogger = logger.module('FloatingToolbar');
 
@@ -113,7 +113,7 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
       } else {
         // 只有在不是 menu_floatingbar 模式时才隐藏
         // （避免双击 Alt 后，鼠标点击导致工具栏消失）
-        setMode((prev) => prev === 'menu_floatingbar' ? prev : 'hidden');
+        setMode((prev: FloatingBarMode) => prev === 'menu_floatingbar' ? prev : 'hidden');
         if (mode !== 'menu_floatingbar') {
           hideToolbar();
         }
@@ -125,6 +125,15 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       if (!enabled) return;
+
+      // 🔧 ESC 键应该在任何时候都能关闭 FloatingBar（不受编辑器焦点限制）
+      if (mode !== 'hidden' && event.key === 'Escape') {
+        event.preventDefault();
+        hideToolbar();
+        setToolbarActive(false);
+        FloatingToolbarLogger.log('🚫 [FloatingToolbar] ESC 取消工具栏');
+        return;
+      }
 
       // 检查是否在编辑器区域内
       const target = event.target as HTMLElement;
@@ -244,17 +253,8 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
         
         return;
       }
-
-      // 3. 按 Escape 取消工具栏（在任何显示状态下都响应）
-      if (mode !== 'hidden' && event.key === 'Escape') {
-        event.preventDefault();
-        hideToolbar();
-        setToolbarActive(false);
-        FloatingToolbarLogger.log('🚫 [FloatingToolbar] 已取消工具栏');
-        return;
-      }
     },
-    [enabled, editorRef, lastAltPressTime, toolbarActive, menuItemCount, onMenuSelect, calculatePosition, hideToolbar]
+    [enabled, editorRef, lastAltPressTime, toolbarActive, mode, menuItemCount, onMenuSelect, calculatePosition, hideToolbar]
   );
 
   // 监听点击外部区域

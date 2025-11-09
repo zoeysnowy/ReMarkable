@@ -8,6 +8,7 @@ const { spawn } = require('child_process');
 const isDev = process.env.NODE_ENV === 'development' || process.defaultApp || /[\\/]electron-prebuilt[\\/]/.test(process.execPath) || /[\\/]electron[\\/]/.test(process.execPath);
 
 let mainWindow;
+let widgetSettingsWindow = null; // Widget Settings 子窗口
 let proxyProcess = null; // 存储代理服务器进程
 
 // ========================================
@@ -1043,6 +1044,105 @@ function createWidgetWindow() {
   }
 }
 
+// 🎨 创建 Widget Settings 子窗口
+function createWidgetSettingsWindow() {
+  if (widgetSettingsWindow && !widgetSettingsWindow.isDestroyed()) {
+    widgetSettingsWindow.focus();
+    return { success: true, action: 'focused' };
+  }
+
+  if (!widgetWindow || widgetWindow.isDestroyed()) {
+    console.warn('Widget window not found, cannot create settings window');
+    return { success: false, error: 'Widget window not found' };
+  }
+
+  try {
+    // 🎯 智能定位：获取 Widget 窗口位置和屏幕尺寸
+    const { screen } = require('electron');
+    const widgetBounds = widgetWindow.getBounds();
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+
+    const settingsWidth = 380;
+    const settingsHeight = 700;
+    const margin = 10;
+
+    // 🧠 判断挂载位置：默认右侧，距离屏幕右侧 < 400px 则左侧
+    const distanceToRight = screenWidth - (widgetBounds.x + widgetBounds.width);
+    const mountToLeft = distanceToRight < 400;
+
+    let settingsX, settingsY;
+    if (mountToLeft) {
+      // 挂载到左侧
+      settingsX = widgetBounds.x - settingsWidth - margin;
+      console.log(`🎯 Settings 挂载到 Widget 左侧 (距离屏幕右侧仅 ${distanceToRight}px)`);
+    } else {
+      // 挂载到右侧
+      settingsX = widgetBounds.x + widgetBounds.width + margin;
+      console.log(`🎯 Settings 挂载到 Widget 右侧 (距离屏幕右侧 ${distanceToRight}px)`);
+    }
+
+    // 垂直对齐 Widget 顶部
+    settingsY = widgetBounds.y;
+
+    // 确保不超出屏幕边界
+    settingsX = Math.max(0, Math.min(settingsX, screenWidth - settingsWidth));
+    settingsY = Math.max(0, Math.min(settingsY, screenHeight - settingsHeight));
+
+    widgetSettingsWindow = new BrowserWindow({
+      width: settingsWidth,
+      height: settingsHeight,
+      x: settingsX,
+      y: settingsY,
+      frame: false,
+      transparent: true,
+      backgroundColor: '#00000000',
+      resizable: false,
+      alwaysOnTop: true, // Settings 始终在最前
+      skipTaskbar: true, // 不在任务栏显示
+      parent: widgetWindow, // 设置父窗口
+      modal: false,
+      show: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, 'preload.js'),
+        partition: 'persist:main'
+      }
+    });
+
+    // 加载 Settings 页面
+    const settingsUrl = isDev
+      ? 'http://localhost:3000/#/widget-settings'
+      : `file://${path.join(__dirname, '../build/index.html#/widget-settings')}`;
+
+    console.log('Loading Widget Settings URL:', settingsUrl);
+    widgetSettingsWindow.loadURL(settingsUrl);
+
+    // 窗口准备好后显示
+    widgetSettingsWindow.once('ready-to-show', () => {
+      widgetSettingsWindow.show();
+      console.log('✅ Widget Settings window shown at', { x: settingsX, y: settingsY, mountToLeft });
+    });
+
+    // 开发环境下打开开发工具
+    if (isDev) {
+      widgetSettingsWindow.webContents.openDevTools({ mode: 'detach' });
+    }
+
+    // 窗口关闭时清理引用
+    widgetSettingsWindow.on('closed', () => {
+      widgetSettingsWindow = null;
+      console.log('🚪 Widget Settings window closed');
+    });
+
+    return { success: true, action: 'created', mountToLeft };
+  } catch (error) {
+    console.error('Failed to create Widget Settings window:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 // 新版小组件API处理器
 ipcMain.handle('widget-toggle', async (event, type, enabled) => {
   console.log(`Widget toggle: ${type} -> ${enabled}`);
@@ -1099,6 +1199,20 @@ ipcMain.handle('widget-get-config', async (event, type) => {
 ipcMain.handle('widget-save-position', (event, type, x, y) => {
   console.log(`Save position for ${type}: (${x}, ${y})`);
   return { success: true, type, position: { x, y } };
+});
+
+// 🎨 Widget Settings 子窗口管理
+ipcMain.handle('widget-settings-open', () => {
+  return createWidgetSettingsWindow();
+});
+
+ipcMain.handle('widget-settings-close', () => {
+  if (widgetSettingsWindow && !widgetSettingsWindow.isDestroyed()) {
+    widgetSettingsWindow.close();
+    widgetSettingsWindow = null;
+    return { success: true, action: 'closed' };
+  }
+  return { success: false, error: 'Settings window not found' };
 });
 
 ipcMain.handle('widget-save-size', (event, type, width, height) => {

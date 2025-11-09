@@ -29,6 +29,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
   onPrioritySelect,
   onColorSelect,
   onTaskToggle,
+  onRequestClose,
   availableTags = [],
   currentTags = [],
   currentIsTask = false,
@@ -152,6 +153,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
                   onEmojiSelect={(emoji: any) => {
                     onEmojiSelect?.(emoji.native);
                     setActivePicker(null);
+                    onRequestClose?.(); // 🆕 选择 Emoji 后自动关闭 FloatingBar
                   }}
                   theme="light"
                   set="native"
@@ -205,6 +207,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
                     // TimeHub 模式：时间已由 TimeHub 写入，这里通知外层插入可视化/保存其它字段
                     onTimeApplied?.(startIso, endIso, allDay);
                     setActivePicker(null);
+                    onRequestClose?.(); // 🆕 选择日期后自动关闭 FloatingBar
                   }}
                   // 非 TimeHub 模式下，沿用原有 onSelect 回调
                   onSelect={(!useTimeHub || !eventId) ? ((start: string | null, end: string | null) => {
@@ -212,9 +215,11 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
                       onDateRangeSelect?.(new Date(start), new Date(end));
                     }
                     setActivePicker(null);
+                    onRequestClose?.(); // 🆕 选择日期后自动关闭 FloatingBar
                   }) : undefined}
                   onClose={() => {
                     setActivePicker(null);
+                    onRequestClose?.(); // 🆕 关闭 DatePicker 也关闭 FloatingBar
                   }}
                 />
               )}
@@ -268,7 +273,10 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
                   onTagSelect?.(tagIds);
                   // setActivePicker(null); // 移除自动关闭
                 }}
-                onClose={() => setActivePicker(null)}
+                onClose={() => {
+                  setActivePicker(null);
+                  onRequestClose?.(); // 🆕 通知父组件关闭整个 FloatingBar
+                }}
               />
             )}
             
@@ -277,8 +285,12 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
                 onSelect={(priority) => {
                   onPrioritySelect?.(priority);
                   setActivePicker(null);
+                  onRequestClose?.(); // 🆕 选择后自动关闭 FloatingBar
                 }}
-                onClose={() => setActivePicker(null)}
+                onClose={() => {
+                  setActivePicker(null);
+                  onRequestClose?.(); // 🆕 关闭 Picker 也关闭 FloatingBar
+                }}
               />
             )}
 
@@ -287,8 +299,12 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
                 onSelect={(color) => {
                   onColorSelect?.(color);
                   setActivePicker(null);
+                  onRequestClose?.(); // 🆕 选择后自动关闭 FloatingBar
                 }}
-                onClose={() => setActivePicker(null)}
+                onClose={() => {
+                  setActivePicker(null);
+                  onRequestClose?.(); // 🆕 关闭 Picker 也关闭 FloatingBar
+                }}
               />
             )}
           </div>

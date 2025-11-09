@@ -226,7 +226,7 @@ const DesktopCalendarWidget: React.FC = () => {
     
     document.body.classList.add('widget-mode');
     document.body.style.backgroundColor = 'transparent';
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = 'visible'; // 🔧 允许 Settings 面板溢出
     document.body.style.margin = '0';
     document.body.style.padding = '0';
     
@@ -769,7 +769,7 @@ const DesktopCalendarWidget: React.FC = () => {
     backgroundColor: 'transparent', // 容器透明，让 Electron 窗口背景透过
     display: 'flex',
     flexDirection: 'column',
-    overflow: 'hidden',
+    overflow: 'visible', // 🔧 允许 Settings 面板溢出
     cursor: 'default',
     userSelect: 'none',
     position: 'relative', // 🎯 �?absolute 定位�?resize handles 提供定位上下�?
@@ -878,7 +878,7 @@ const DesktopCalendarWidget: React.FC = () => {
           marginTop: '14px', // 🎯 drag-bar (0px + 10px height) + 4px 间距 = 14px
           marginBottom: '0',
           position: 'relative', 
-          overflow: 'hidden', 
+          overflow: 'visible', // 🔧 允许 Settings 面板溢出
           pointerEvents: 'auto',
           WebkitAppRegion: 'no-drag',
           display: 'flex',
@@ -887,11 +887,8 @@ const DesktopCalendarWidget: React.FC = () => {
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* 日历主体区域 */}
-        <div style={{ flex: 1, overflow: 'hidden' }}>
+        <div style={{ flex: 1, overflow: 'visible' }}> {/* 🔧 允许溢出 */}
           <MemoizedTimeCalendar
-            onStartTimer={useCallback((taskTitle: string) => { 
-              widgetLogger.log('📝 Timer started:', taskTitle); 
-            }, [])}
             microsoftService={microsoftService}
             lastSyncTime={lastSyncTime}
             isWidgetMode={true}

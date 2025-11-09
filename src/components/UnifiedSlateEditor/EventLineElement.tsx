@@ -15,6 +15,7 @@ export interface EventLineElementProps {
   children: React.ReactNode;
   renderPrefix?: (element: EventLineNode) => React.ReactNode;
   renderSuffix?: (element: EventLineNode) => React.ReactNode;
+  onPlaceholderClick?: () => void; // 🆕 Placeholder 点击回调
 }
 
 export const EventLineElement: React.FC<EventLineElementProps> = ({
@@ -23,21 +24,33 @@ export const EventLineElement: React.FC<EventLineElementProps> = ({
   children,
   renderPrefix,
   renderSuffix,
+  onPlaceholderClick,
 }) => {
   const isDescriptionMode = element.mode === 'description';
+  const isPlaceholder = (element.metadata as any)?.isPlaceholder || element.eventId === '__placeholder__';
   
   const paddingLeft = isDescriptionMode
     ? `${(element.level + 1) * 24}px`
     : `${element.level * 24}px`;
   
+  // 🆕 处理 placeholder 点击
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (isPlaceholder && onPlaceholderClick) {
+      e.preventDefault();
+      e.stopPropagation();
+      onPlaceholderClick();
+    }
+  };
+  
   return (
     <div
       {...attributes}
-      className={`unified-event-line${isDescriptionMode ? ' description-mode' : ''}`}
+      className={`unified-event-line${isDescriptionMode ? ' description-mode' : ''}${isPlaceholder ? ' placeholder-line' : ''}`}
       data-line-id={element.lineId}
       data-event-id={element.eventId || ''}
       data-level={element.level}
       data-mode={element.mode}
+      onMouseDown={handleMouseDown}
       style={{
         paddingLeft,
         display: 'flex',
@@ -53,8 +66,15 @@ export const EventLineElement: React.FC<EventLineElementProps> = ({
         </div>
       )}
       
-      {/* 内容区域 */}
-      <div className="event-line-content" style={{ flex: 1 }}>
+      {/* 内容区域 - Placeholder 行显示为灰色但可点击 */}
+      <div 
+        className="event-line-content" 
+        style={{ 
+          flex: 1,
+          cursor: isPlaceholder ? 'text' : 'inherit',
+          userSelect: isPlaceholder ? 'none' : 'auto',
+        }}
+      >
         {children}
       </div>
       

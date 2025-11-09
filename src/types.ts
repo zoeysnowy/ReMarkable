@@ -154,7 +154,7 @@ export interface GlobalTimer {
   taskTitle?: string;
   eventTitle?: string;   // 事件标题
   tagId?: string;        // 标签ID
-  planEventId?: string;  // 🆕 Issue #12: 关联的 Plan 事件 ID
+  parentEventId?: string;  // 🆕 Issue #12: 关联的父事件 ID（Timer 子事件关联到的父事件）
   startTime: number;     // Unix timestamp
   originalStartTime?: number; // 原始开始时间
   elapsedTime: number;   // 已经过的时间（秒）

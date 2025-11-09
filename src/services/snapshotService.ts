@@ -1,6 +1,6 @@
 import * as Y from 'yjs';
 import { encodeStateAsUpdate, applyUpdate, encodeStateVector } from 'yjs';
-import { PlanItem } from '../components/PlanManager';
+import type { Event } from '../types';
 
 // ==================== 类型定义 ====================
 
@@ -8,7 +8,7 @@ interface BaseSnapshot {
   id: string;
   date: string; // YYYY-MM-DD
   timestamp: number;
-  items: PlanItem[];
+  items: Event[];
   version: number;
   ydocState?: Uint8Array; // Yjs CRDT 状态（可选，用于协作）
 }
@@ -24,11 +24,11 @@ interface ChangeRecord {
 
 interface DailySnapshot {
   date: string;
-  items: PlanItem[];
+  items: Event[];
   changes: {
-    added: PlanItem[];
-    checked: PlanItem[];
-    dropped: PlanItem[];
+    added: Event[];
+    checked: Event[];
+    dropped: Event[];
     deleted: string[];
   };
 }
@@ -46,22 +46,22 @@ const STORAGE_KEYS = {
 
 class SnapshotService {
   private ydoc: Y.Doc; // Yjs CRDT 文档
-  private yarray: Y.Array<PlanItem>; // PlanItem 数组
+  private yarray: Y.Array<Event>; // Event 数组
 
   constructor() {
     this.ydoc = new Y.Doc();
-    this.yarray = this.ydoc.getArray<PlanItem>('planItems');
+    this.yarray = this.ydoc.getArray<Event>('planItems');
   }
 
   /**
    * 创建基准快照
    */
-  createBaseSnapshot(items: PlanItem[], date?: string): BaseSnapshot {
+  createBaseSnapshot(items: Event[], date?: string): BaseSnapshot {
     const snapshotDate = date || new Date().toISOString().split('T')[0];
     
     // 创建新的 Yjs 文档并同步数据
     const ydoc = new Y.Doc();
-    const yarray = ydoc.getArray<PlanItem>('planItems');
+    const yarray = ydoc.getArray<Event>('planItems');
     
     // 清空并插入新数据
     yarray.delete(0, yarray.length);
@@ -87,13 +87,13 @@ class SnapshotService {
   /**
    * 记录变化（使用 Yjs CRDT 比较差异）
    */
-  recordChange(oldItems: PlanItem[], newItems: PlanItem[]): ChangeRecord {
+  recordChange(oldItems: Event[], newItems: Event[]): ChangeRecord {
     // 创建两个 Yjs 文档
     const oldDoc = new Y.Doc();
     const newDoc = new Y.Doc();
     
-    const oldArray = oldDoc.getArray<PlanItem>('planItems');
-    const newArray = newDoc.getArray<PlanItem>('planItems');
+    const oldArray = oldDoc.getArray<Event>('planItems');
+    const newArray = newDoc.getArray<Event>('planItems');
     
     // 初始化旧状态
     oldArray.push(oldItems);
@@ -129,7 +129,7 @@ class SnapshotService {
   /**
    * 恢复指定日期的快照
    */
-  restoreSnapshot(date: string): PlanItem[] {
+  restoreSnapshot(date: string): Event[] {
     // 1. 找到最近的基准快照
     const baseSnapshot = this.findNearestBaseSnapshot(date);
     if (!baseSnapshot) {
@@ -147,7 +147,7 @@ class SnapshotService {
       }
     } else {
       // 如果没有 CRDT 状态，从 JSON 重建
-      const yarray = ydoc.getArray<PlanItem>('planItems');
+      const yarray = ydoc.getArray<Event>('planItems');
       yarray.push(baseSnapshot.items);
     }
 
@@ -164,7 +164,7 @@ class SnapshotService {
     }
 
     // 5. 从 Yjs 文档提取最终状态
-    const yarray = ydoc.getArray<PlanItem>('planItems');
+    const yarray = ydoc.getArray<Event>('planItems');
     return yarray.toArray();
   }
 
@@ -190,15 +190,15 @@ class SnapshotService {
    * 分析两个状态之间的变化
    */
   private analyzeChanges(
-    oldItems: PlanItem[],
-    newItems: PlanItem[]
+    oldItems: Event[],
+    newItems: Event[]
   ): DailySnapshot['changes'] {
     const oldMap = new Map(oldItems.map((item) => [item.id, item]));
     const newMap = new Map(newItems.map((item) => [item.id, item]));
 
-    const added: PlanItem[] = [];
-    const checked: PlanItem[] = [];
-    const dropped: PlanItem[] = [];
+    const added: Event[] = [];
+    const checked: Event[] = [];
+    const dropped: Event[] = [];
     const deleted: string[] = [];
 
     // 检查新增

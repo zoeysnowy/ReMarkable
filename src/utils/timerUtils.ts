@@ -16,7 +16,7 @@ import { Event, SyncStatus } from '../types';
  */
 export const isRunningTimer = (event?: Event | null): boolean => {
   if (!event) return false;
-  return event.syncStatus === SyncStatus.LOCAL_ONLY || event.syncStatus === 'local-only';
+  return event.syncStatus === SyncStatus.LOCAL_ONLY;
 };
 
 /**
@@ -27,7 +27,7 @@ export const isRunningTimer = (event?: Event | null): boolean => {
  */
 export const needsSync = (event?: Event | null): boolean => {
   if (!event) return false;
-  return event.syncStatus === SyncStatus.PENDING || event.syncStatus === 'pending';
+  return event.syncStatus === SyncStatus.PENDING;
 };
 
 /**
@@ -38,7 +38,7 @@ export const needsSync = (event?: Event | null): boolean => {
  */
 export const isSynced = (event?: Event | null): boolean => {
   if (!event) return false;
-  return event.syncStatus === SyncStatus.SYNCED || event.syncStatus === 'synced';
+  return event.syncStatus === SyncStatus.SYNCED;
 };
 
 /**
@@ -49,7 +49,7 @@ export const isSynced = (event?: Event | null): boolean => {
  */
 export const hasSyncError = (event?: Event | null): boolean => {
   if (!event) return false;
-  return event.syncStatus === SyncStatus.ERROR || event.syncStatus === 'error';
+  return event.syncStatus === SyncStatus.ERROR;
 };
 
 /**
@@ -60,5 +60,5 @@ export const hasSyncError = (event?: Event | null): boolean => {
  */
 export const hasSyncConflict = (event?: Event | null): boolean => {
   if (!event) return false;
-  return event.syncStatus === SyncStatus.CONFLICT || event.syncStatus === 'conflict';
+  return event.syncStatus === SyncStatus.CONFLICT;
 };

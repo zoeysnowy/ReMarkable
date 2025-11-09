@@ -12,7 +12,8 @@ import {
   TagNode, 
   DateMentionNode,
   CustomElement,
-  EventLineData 
+  EventLineData,
+  EventMetadata,  // 🆕 导入 EventMetadata 类型
 } from './types';
 
 // ==================== PlanItem → Slate 节点 ====================
@@ -24,15 +25,41 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
   const nodes: EventLineNode[] = [];
   
   items.forEach(item => {
-    // 🆕 v1.5: 提取元数据（透传业务字段）
-    const metadata = {
+    // 🆕 v1.6: 提取完整元数据（透传所有业务字段）
+    const metadata: EventMetadata = {
+      // 时间字段
       startTime: item.startTime ?? null,
       endTime: item.endTime ?? null,
       dueDate: item.dueDate ?? null,
-      priority: item.priority,
-      isCompleted: item.isCompleted,
       isAllDay: item.isAllDay,
       timeSpec: item.timeSpec,
+      
+      // 样式字段
+      emoji: item.emoji,
+      color: item.color,
+      
+      // 业务字段
+      priority: item.priority,
+      category: item.category,
+      isCompleted: item.isCompleted,
+      isTask: item.isTask,
+      type: item.type,
+      
+      // Plan 相关
+      isPlan: item.isPlan,
+      isTimeCalendar: item.isTimeCalendar,
+      
+      // 同步字段
+      calendarId: item.calendarId,
+      calendarIds: item.calendarIds,
+      source: item.source,
+      syncStatus: item.syncStatus,
+      externalId: item.externalId,
+      remarkableSource: item.remarkableSource,
+      
+      // 时间戳
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
     };
     
     // Title 行（始终创建，即使内容为空）
@@ -173,7 +200,7 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
     const baseId = node.lineId.replace('-desc', '');
     
     if (!items.has(baseId)) {
-      // 🆕 v1.5: 从第一个遇到的节点中提取 metadata
+      // 🆕 v1.6: 从第一个遇到的节点中提取完整 metadata
       const metadata = node.metadata || {};
       
       items.set(baseId, {
@@ -184,14 +211,35 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
         content: '',
         description: '',
         tags: [],
-        // 🆕 透传元数据（保留时间字段等业务字段）
+        
+        // 🆕 v1.6: 透传完整元数据（带默认值）
         startTime: metadata.startTime ?? undefined,
         endTime: metadata.endTime ?? undefined,
         dueDate: metadata.dueDate ?? undefined,
-        priority: metadata.priority,
-        isCompleted: metadata.isCompleted,
-        isAllDay: metadata.isAllDay,
+        isAllDay: metadata.isAllDay ?? false,
         timeSpec: metadata.timeSpec,
+        
+        emoji: metadata.emoji,
+        color: metadata.color,
+        
+        priority: metadata.priority || 'medium',
+        category: metadata.category,
+        isCompleted: metadata.isCompleted || false,
+        isTask: metadata.isTask ?? true,
+        type: metadata.type || 'todo',
+        
+        isPlan: metadata.isPlan ?? true,
+        isTimeCalendar: metadata.isTimeCalendar ?? false,
+        
+        calendarId: metadata.calendarId,
+        calendarIds: metadata.calendarIds || [],
+        source: metadata.source || 'local',
+        syncStatus: metadata.syncStatus || 'local-only',
+        externalId: metadata.externalId,
+        remarkableSource: metadata.remarkableSource ?? true,
+        
+        createdAt: metadata.createdAt,
+        updatedAt: metadata.updatedAt,
       });
     }
     
