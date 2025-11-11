@@ -71,6 +71,10 @@ export interface TimeGetResult {
   start?: string;
   end?: string;
   displayHint?: string | null; // 🆕 v1.1: 模糊时间表述
+  isFuzzyDate?: boolean; // 🆕 v2.6: 是否为模糊日期
+  timeFieldState?: [number | null, number | null, number | null, number | null]; // 🆕 v2.7.4: [startHour, startMinute, endHour, endMinute] 实际值
+  isFuzzyTime?: boolean; // 🆕 v2.7: 是否为模糊时间段
+  fuzzyTimeName?: string; // 🆕 v2.7: 模糊时间段名称
 }
 
 export type WithTimeSpec<T> = T & { timeSpec?: TimeSpec };

@@ -21,6 +21,10 @@ export type SetEventTimeInput = {
   rawText?: string; // optional when updating intent
   timeSpec?: TimeSpec; // allow direct replacement
   displayHint?: string | null; // 🆕 v1.1: 用户原始输入的模糊时间表述
+  isFuzzyDate?: boolean;  // 🆕 v2.6: 是否为模糊日期
+  timeFieldState?: [number | null, number | null, number | null, number | null];  // 🆕 v2.7.4: [startHour, startMinute, endHour, endMinute]
+  isFuzzyTime?: boolean;  // 🆕 v2.7: 是否为模糊时间段
+  fuzzyTimeName?: string; // 🆕 v2.7: 模糊时间段名称
 };
 
 class TimeHubImpl {
@@ -126,7 +130,11 @@ class TimeHubImpl {
       const end = ev.endTime;
       const timeSpec = (ev as any).timeSpec as TimeSpec | undefined;
       const displayHint = (ev as any).displayHint as string | null | undefined; // 🆕 v1.1
-      return { timeSpec, start, end, displayHint };
+      const isFuzzyDate = (ev as any).isFuzzyDate as boolean | undefined; // 🆕 v2.6
+      const timeFieldState = (ev as any).timeFieldState as [number, number, number, number] | undefined; // 🆕 v2.6
+      const isFuzzyTime = (ev as any).isFuzzyTime as boolean | undefined; // 🆕 v2.7
+      const fuzzyTimeName = (ev as any).fuzzyTimeName as string | undefined; // 🆕 v2.7
+      return { timeSpec, start, end, displayHint, isFuzzyDate, timeFieldState, isFuzzyTime, fuzzyTimeName };
     } catch {
       return {};
     }
@@ -203,6 +211,22 @@ class TimeHubImpl {
     // 🆕 v1.1: 保存 displayHint（模糊时间表述）
     if (input.displayHint !== undefined) {
       (updated as any).displayHint = input.displayHint;
+    }
+    
+    // 🆕 v2.6: 保存 isFuzzyDate 和 timeFieldState（时间字段状态位图）
+    if (input.isFuzzyDate !== undefined) {
+      (updated as any).isFuzzyDate = input.isFuzzyDate;
+    }
+    if (input.timeFieldState !== undefined) {
+      (updated as any).timeFieldState = input.timeFieldState;
+    }
+    
+    // 🆕 v2.7: 保存 isFuzzyTime 和 fuzzyTimeName（模糊时间段）
+    if (input.isFuzzyTime !== undefined) {
+      (updated as any).isFuzzyTime = input.isFuzzyTime;
+    }
+    if (input.fuzzyTimeName !== undefined) {
+      (updated as any).fuzzyTimeName = input.fuzzyTimeName;
     }
 
     dbg('timehub', '💾 准备持久化到 EventService', { 

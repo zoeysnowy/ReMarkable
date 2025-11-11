@@ -67,6 +67,19 @@ const PlanItemTimeDisplay = React.memo<{
   const isAllDay = eventTime.timeSpec?.allDay ?? item.isAllDay;
   const displayHint = eventTime.displayHint ?? item.displayHint ?? null; // 🆕 v1.1: 获取 displayHint
   
+  // 🆕 v2.5: 获取 timeFieldState（时间字段状态位图）
+  const timeFieldState = eventTime.timeFieldState ?? item.timeFieldState ?? null;
+  const isFuzzyDate = eventTime.isFuzzyDate ?? item.isFuzzyDate ?? false;
+  
+  // 🆕 v2.7: 获取 isFuzzyTime 和 fuzzyTimeName（模糊时间段）
+  const isFuzzyTime = eventTime.isFuzzyTime ?? (item as any).isFuzzyTime ?? false;
+  const fuzzyTimeName = eventTime.fuzzyTimeName ?? (item as any).fuzzyTimeName ?? null;
+  
+  // 🆕 v1.2: 获取原始的本地时间字符串（用于 formatRelativeTimeDisplay）
+  const startTimeStr = eventTime.start || item.startTime || null;
+  const endTimeStr = eventTime.end || item.endTime || null;
+  const dueDateStr = item.dueDate || null;
+  
   // 清理定时器
   useEffect(() => {
     return () => {
@@ -138,13 +151,63 @@ const PlanItemTimeDisplay = React.memo<{
   if (!startTime && !dueDate) return null;
 
   // 使用相对时间格式化
+  // 🆕 v1.2: 直接传递本地时间字符串，而不是 ISO 格式
   const relativeTimeDisplay = formatRelativeTimeDisplay(
-    startTime?.toISOString() ?? null,
-    endTime?.toISOString() ?? null,
+    startTimeStr,
+    endTimeStr,
     isAllDay ?? false,
-    dueDate?.toISOString() ?? null,
+    dueDateStr,
     displayHint // 🆕 v1.1: 传递 displayHint
   );
+
+  // 🆕 v2.7.2: 优先级最高 - 如果是模糊时间段，只显示名称（不显示具体时间）
+  if (isFuzzyTime && fuzzyTimeName) {
+    // 从 relativeTimeDisplay 中提取日期部分
+    // 例如: "明天 12:00 --> 18:00" → "明天"
+    // 或者: "周末" (如果是模糊日期) → "周末"
+    const displayText = isFuzzyDate 
+      ? `${displayHint}${fuzzyTimeName}`  // 模糊日期 + 模糊时间段: "周末下午"
+      : `${relativeTimeDisplay.split(' ')[0]} ${fuzzyTimeName}`;  // 具体日期 + 模糊时间段: "明天 下午"
+    
+    return (
+      <Tippy
+        content={
+          <TimeHoverCard
+            startTime={startTimeStr}
+            endTime={endTimeStr}
+            dueDate={dueDateStr}
+            isAllDay={false}
+            onEditClick={handleEditClick}
+            onMouseEnter={handleCardMouseEnter}
+            onMouseLeave={handleCardMouseLeave}
+          />
+        }
+        visible={showHoverCard}
+        placement="bottom-start"
+        offset={({ reference, popper }) => {
+          return [reference.width - popper.width, 8];
+        }}
+        interactive={true}
+        arrow={false}
+        appendTo={() => document.body}
+        onClickOutside={() => setShowHoverCard(false)}
+      >
+        <div 
+          ref={containerRef}
+          style={{ display: 'inline-block' }}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+        >
+          <span
+            style={{ color: '#6b7280', whiteSpace: 'nowrap', cursor: 'pointer' }}
+            onClick={handleEditClick}
+          >
+            {displayText}
+          </span>
+        </div>
+      </Tippy>
+    );
+  }
 
   // 任务（仅截止日期）
   if (!startTime && dueDate) {
@@ -154,7 +217,7 @@ const PlanItemTimeDisplay = React.memo<{
           <TimeHoverCard
             startTime={null}
             endTime={null}
-            dueDate={dueDate.toISOString()}
+            dueDate={dueDateStr}
             isAllDay={isAllDay ?? false}
             onEditClick={handleEditClick}
             onMouseEnter={handleCardMouseEnter}
@@ -197,9 +260,9 @@ const PlanItemTimeDisplay = React.memo<{
         <Tippy
           content={
             <TimeHoverCard
-              startTime={startTime.toISOString()}
-              endTime={endTime.toISOString()}
-              dueDate={dueDate?.toISOString() ?? null}
+              startTime={startTimeStr}
+              endTime={endTimeStr}
+              dueDate={dueDateStr}
               isAllDay={true}
               onEditClick={handleEditClick}
               onMouseEnter={handleCardMouseEnter}
@@ -239,9 +302,9 @@ const PlanItemTimeDisplay = React.memo<{
         <Tippy
           content={
             <TimeHoverCard
-              startTime={startTime.toISOString()}
-              endTime={endTime.toISOString()}
-              dueDate={dueDate?.toISOString() ?? null}
+              startTime={startTimeStr}
+              endTime={endTimeStr}
+              dueDate={dueDateStr}
               isAllDay={true}
               onEditClick={handleEditClick}
               onMouseEnter={handleCardMouseEnter}
@@ -275,27 +338,132 @@ const PlanItemTimeDisplay = React.memo<{
       );
     }
 
-    // 正常时间段 - 需要拆分显示相对日期和时间
-    const pad2 = (n: number) => String(n).padStart(2, '0');
-    const startTimeStr = `${pad2(startTime.getHours())}:${pad2(startTime.getMinutes())}`;
-    const endTimeStr = `${pad2(endTime.getHours())}:${pad2(endTime.getMinutes())}`;
+    // 🆕 v2.7.4: 使用 timeFieldState 判断如何显示时间
+    // timeFieldState = [startHour, startMinute, endHour, endMinute] 存储实际值，null 表示未设置
+    const hasStartTimeField = timeFieldState && timeFieldState[0] !== null && timeFieldState[1] !== null;
+    const hasEndTimeField = timeFieldState && timeFieldState[2] !== null && timeFieldState[3] !== null;
     
+    // 如果是模糊日期且没有用户设置的时间字段，只显示 displayHint
+    if (isFuzzyDate && !hasStartTimeField && !hasEndTimeField) {
+      return (
+        <Tippy
+          content={
+            <TimeHoverCard
+              startTime={startTimeStr}
+              endTime={endTimeStr}
+              dueDate={dueDateStr}
+              isAllDay={false}
+              onEditClick={handleEditClick}
+              onMouseEnter={handleCardMouseEnter}
+              onMouseLeave={handleCardMouseLeave}
+            />
+          }
+          visible={showHoverCard}
+          placement="bottom-start"
+          offset={({ reference, popper }) => {
+            return [reference.width - popper.width, 8];
+          }}
+          interactive={true}
+          arrow={false}
+          appendTo={() => document.body}
+          onClickOutside={() => setShowHoverCard(false)}
+        >
+          <div 
+            ref={containerRef}
+            style={{ display: 'inline-block' }}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+          >
+            <span
+              style={{ color: '#6b7280', whiteSpace: 'nowrap', cursor: 'pointer' }}
+              onClick={handleEditClick}
+            >
+              {relativeTimeDisplay}
+            </span>
+          </div>
+        </Tippy>
+      );
+    }
+
+    // 🆕 v2.5: 根据 timeFieldState 判断显示格式
+    // - 只有开始时间：显示单个时间点（如 "下周日 12:00"）
+    // - 开始和结束时间：显示时间范围（如 "下周日 12:00 --> 14:00"）
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const startTimeDisplay = `${pad2(startTime.getHours())}:${pad2(startTime.getMinutes())}`;
+    const endTimeDisplay = `${pad2(endTime.getHours())}:${pad2(endTime.getMinutes())}`;
+    
+    // 从完整的相对时间字符串中提取日期部分（去掉时间部分）
+    const relativeDateOnly = relativeTimeDisplay.split(' ')[0]; // "明天" from "明天 14:30 - 15:30"
+    
+    // 如果只有开始时间字段，显示单个时间点
+    if (hasStartTimeField && !hasEndTimeField) {
+      return (
+        <Tippy
+          content={
+            <TimeHoverCard
+              startTime={startTimeStr}
+              endTime={endTimeStr}
+              dueDate={dueDateStr}
+              isAllDay={false}
+              onEditClick={handleEditClick}
+              onMouseEnter={handleCardMouseEnter}
+              onMouseLeave={handleCardMouseLeave}
+            />
+          }
+          visible={showHoverCard}
+          placement="bottom-start"
+          offset={({ reference, popper }) => {
+            return [reference.width - popper.width, 8];
+          }}
+          interactive={true}
+          arrow={false}
+          appendTo={() => document.body}
+          onClickOutside={() => setShowHoverCard(false)}
+        >
+          <div 
+            ref={containerRef}
+            style={{ display: 'inline-block' }}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+          >
+            <div
+              style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
+              onClick={handleEditClick}
+            >
+              <span style={{ fontSize: 14, color: '#6b7280' }}>{relativeDateOnly}</span>
+              <span style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>{startTimeDisplay}</span>
+              <span 
+                style={{ 
+                  fontSize: 12, 
+                  fontWeight: 500, 
+                  color: '#10b981',
+                  backgroundColor: '#f0fdf4',
+                  padding: '2px 6px',
+                  borderRadius: '4px'
+                }}
+              >
+                开始
+              </span>
+            </div>
+          </div>
+        </Tippy>
+      );
+    }
+    
+    // 如果有开始和结束时间字段，显示时间范围
     // 计算持续时间
     const diffMinutes = Math.max(0, Math.floor((endTime.getTime() - startTime.getTime()) / 60000));
     const hours = Math.floor(diffMinutes / 60);
     const minutes = diffMinutes % 60;
     const durationText = hours > 0 ? (minutes > 0 ? `${hours}h${minutes}m` : `${hours}h`) : `${minutes}m`;
 
-    // 从完整的相对时间字符串中提取日期部分（去掉时间部分）
-    const relativeDateOnly = relativeTimeDisplay.split(' ')[0]; // "明天" from "明天 14:30 - 15:30"
-
     return (
       <Tippy
         content={
           <TimeHoverCard
-            startTime={startTime.toISOString()}
-            endTime={endTime.toISOString()}
-            dueDate={dueDate?.toISOString() ?? null}
+            startTime={startTimeStr}
+            endTime={endTimeStr}
+            dueDate={dueDateStr}
             isAllDay={false}
             onEditClick={handleEditClick}
             onMouseEnter={handleCardMouseEnter}
@@ -323,7 +491,7 @@ const PlanItemTimeDisplay = React.memo<{
             onClick={handleEditClick}
           >
             <span style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>
-              {relativeDateOnly} {startTimeStr}
+              {relativeDateOnly} {startTimeDisplay}
             </span>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '0 6px' }}>
               <span style={{ fontSize: 12, fontWeight: 600, background: 'linear-gradient(135deg, #22d3ee, #3b82f6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1 }}>
@@ -341,7 +509,7 @@ const PlanItemTimeDisplay = React.memo<{
               </svg>
             </div>
             <span style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>
-              {endTimeStr}
+              {endTimeDisplay}
             </span>
           </div>
         </div>
@@ -420,7 +588,23 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   const [items, setItems] = useState<Event[]>(() => {
     // 初始化：从 EventService 加载 Plan 事件
     const now = new Date();
-    return EventService.getAllEvents().filter((event: Event) => {
+    const allEvents = EventService.getAllEvents();
+    
+    // 🔍 DEBUG: 检查 EventService 返回的数据
+    console.log('[PlanManager] 初始化 - 从 EventService 加载:', {
+      总事件数: allEvents.length,
+      示例事件: allEvents.slice(0, 3).map(e => ({
+        id: e.id?.substring(0, 30),
+        title: e.title?.substring(0, 20),
+        isPlan: e.isPlan,
+        hasTimelog: !!(e as any).timelog,
+        hasDescription: !!e.description,
+        timelogLength: ((e as any).timelog || '').length,
+        descriptionLength: (e.description || '').length,
+      }))
+    });
+    
+    const filtered = allEvents.filter((event: Event) => {
       if (!event.isPlan) return false;
       if (event.parentEventId) return false;
       if (event.isTimeCalendar) {
@@ -429,6 +613,21 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       }
       return true;
     });
+    
+    // 🔍 DEBUG: 检查过滤后的数据
+    console.log('[PlanManager] 初始化 - 过滤后的 Plan 事件:', {
+      过滤后数量: filtered.length,
+      示例: filtered.slice(0, 3).map(e => ({
+        id: e.id?.substring(0, 30),
+        title: e.title?.substring(0, 20),
+        hasTimelog: !!(e as any).timelog,
+        hasDescription: !!e.description,
+        timelogLength: ((e as any).timelog || '').length,
+        descriptionLength: (e.description || '').length,
+      }))
+    });
+    
+    return filtered;
   });
   
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -577,6 +776,14 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     // 🎯 只在 TagPicker 打开时（activePickerIndex 从非0变为0）同步 Slate 状态
     if (activePickerIndex !== 0 || !currentFocusedLineId) return;
     
+    // 📌 Description 模式下不同步状态（mention-only 标签不记住勾选）
+    if (currentFocusedMode === 'description') {
+      setCurrentSelectedTags([]);
+      currentSelectedTagsRef.current = [];
+      console.log('[TagPicker Sync] Description 模式，清空勾选状态');
+      return;
+    }
+    
     const editor = unifiedEditorRef.current;
     if (!editor) return;
 
@@ -608,11 +815,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         // 更新状态
         setCurrentSelectedTags(actualTagIds);
         currentSelectedTagsRef.current = actualTagIds;
+        console.log('[TagPicker Sync] Title 模式，同步已选标签:', actualTagIds);
       }
     } catch (err) {
       console.error('[TagPicker Sync] Failed:', err);
     }
-  }, [activePickerIndex]); // 🔥 只依赖 activePickerIndex，移除 currentFocusedLineId
+  }, [activePickerIndex, currentFocusedMode]); // 🔥 添加 currentFocusedMode 依赖
 
   // 将文本格式命令路由到当前 Slate 编辑器
   const handleTextFormat = useCallback((command: string) => {
@@ -869,6 +1077,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         !updatedItem.title?.trim() && 
         !updatedItem.content?.trim() && 
         !updatedItem.description?.trim() &&
+        !updatedItem.timelog?.trim() && // 🆕 v1.8: 检测富文本描述
         !updatedItem.startTime &&
         !updatedItem.endTime &&
         !updatedItem.dueDate
@@ -888,11 +1097,34 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         existingItem.title !== updatedItem.title ||
         existingItem.content !== updatedItem.content ||
         existingItem.description !== updatedItem.description ||
+        existingItem.timelog !== updatedItem.timelog || // 🆕 v1.8: 检测 timelog 变化
         JSON.stringify(existingItem.tags) !== JSON.stringify(updatedItem.tags);
       
       if (isChanged) {
         const now = new Date();
         const nowISO = formatTimeForStorage(now);
+        
+        // 🆕 v1.8: 从标签中提取 calendarIds
+        const tagIds = (updatedItem.tags || []).map((t: string) => {
+          const tag = TagService.getFlatTags().find(x => x.id === t || x.name === t);
+          return tag ? tag.id : t;
+        });
+        
+        const calendarIds = tagIds
+          .map((tagId: string) => {
+            const tag = TagService.getFlatTags().find(t => t.id === tagId);
+            return tag?.calendarMapping?.calendarId;
+          })
+          .filter((id: string | undefined): id is string => !!id);
+        
+        console.log('[executeBatchUpdate] 标签到日历映射:', {
+          eventId: updatedItem.id,
+          title: updatedItem.title?.substring(0, 20),
+          tags: updatedItem.tags,
+          tagIds,
+          calendarIds,
+          hasSyncMapping: calendarIds.length > 0
+        });
         
         const eventItem: Event = {
           ...(existingItem || {}),
@@ -901,7 +1133,11 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           title: updatedItem.title || '',
           content: updatedItem.content,
           description: updatedItem.description,
-          tags: updatedItem.tags || [],
+          timelog: updatedItem.timelog ?? existingItem?.timelog, // 🆕 v1.8: 保留富文本描述（使用 ?? 避免覆盖）
+          tags: tagIds, // 使用规范化的 tagIds
+          tagId: tagIds.length > 0 ? tagIds[0] : undefined, // 🆕 v1.8: 向后兼容 ActionBasedSyncManager
+          calendarIds: calendarIds.length > 0 ? calendarIds : undefined, // 🆕 v1.8: 设置 calendarIds
+          calendarId: calendarIds.length > 0 ? calendarIds[0] : undefined, // 🆕 v1.8: 向后兼容 ActionBasedSyncManager
           level: updatedItem.level || 0,
           priority: updatedItem.priority || existingItem?.priority || 'medium',
           isCompleted: updatedItem.isCompleted ?? existingItem?.isCompleted ?? false,
@@ -918,7 +1154,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           createdAt: existingItem?.createdAt || nowISO,
           updatedAt: nowISO,
           source: 'local',
-          syncStatus: 'local-only',
+          syncStatus: calendarIds.length > 0 ? 'pending' : 'local-only', // 🆕 v1.8: 根据日历映射设置同步状态
         } as Event;
         
         // 🆕 v1.5: 保留 timeSpec
@@ -947,23 +1183,31 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       dbg('plan', `💾 执行批量保存: ${actions.save.length} 个`, { 
         titles: actions.save.map(e => e.title) 
       });
-      actions.save.forEach(item => onSave(item));
+      // 🔍 v1.8: 调试 timelog 字段
+      actions.save.forEach(item => {
+        console.log('[PlanManager] 准备保存到 EventService:', {
+          id: item.id,
+          title: item.title?.substring(0, 20),
+          hasTimelog: !!(item as any).timelog,
+          hasDescription: !!item.description,
+          timelogLength: ((item as any).timelog || '').length,
+          descriptionLength: (item.description || '').length,
+          calendarIds: (item as any).calendarIds, // 🆕 v1.8: 显示 calendarIds
+          tags: item.tags
+        });
+        onSave(item);
+      });
     }
     
-    // 3.3 批量同步到 Calendar
-    if (actions.sync.length > 0) {
-      dbg('plan', `📅 执行批量同步: ${actions.sync.length} 个`, { 
-        titles: actions.sync.map(e => e.title) 
-      });
-      actions.sync.forEach(item => syncToUnifiedTimeline(item));
-    }
+    // 🆕 v1.8: 移除批量同步到 Calendar（因为 onSave 已经触发同步）
+    // ActionBasedSyncManager 会根据 calendarIds 和 syncStatus 自动同步
+    // 不再需要显式调用 syncToUnifiedTimeline
     
     // 📊 执行摘要
-    if (actions.delete.length > 0 || actions.save.length > 0 || actions.sync.length > 0) {
+    if (actions.delete.length > 0 || actions.save.length > 0) {
       dbg('plan', `✅ 批处理完成 (v1.5 透传架构 + 防抖)`, {
         deleted: actions.delete.length,
         saved: actions.save.length,
-        synced: actions.sync.length,
       });
     }
   }, [items, itemsMap, onSave, onDelete]);
@@ -996,6 +1240,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           title: '',
           content: updatedItem.content || '',
           description: updatedItem.description || '',
+          timelog: updatedItem.timelog, // 🆕 v1.8: 保留富文本描述
           tags: updatedItem.tags || [],
           level: updatedItem.level || 0,
           priority: 'medium',
@@ -1356,6 +1601,28 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     const finalEndTime = eventTime.end || '';
     const isTask = isTaskByTime(eventTime);
 
+    // 🆕 v1.8: 根据标签映射到日历分组
+    const tagIds = (item.tags || []).map(t => {
+      // 如果是有效的ID，直接返回；否则尝试按名称映射
+      const tag = TagService.getFlatTags().find(x => x.id === t || x.name === t);
+      return tag ? tag.id : t;
+    });
+    
+    // 从标签中提取 calendarIds
+    const calendarIds = tagIds
+      .map(tagId => {
+        const tag = TagService.getFlatTags().find(t => t.id === tagId);
+        return tag?.calendarMapping?.calendarId;
+      })
+      .filter((id): id is string => !!id); // 过滤掉 undefined
+    
+    console.log('[syncToUnifiedTimeline] 标签到日历映射:', {
+      itemId: item.id,
+      tags: tagIds,
+      calendarIds,
+      hasCalendarMapping: calendarIds.length > 0
+    });
+    
     const event: Event = {
       id: item.id || `event-${Date.now()}`,
       title: `${item.emoji || ''}${item.title}`.trim(),
@@ -1376,20 +1643,24 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         }
         return false;
       })(),
-      // 确保事件标签为 tagId 列表；若历史数据为名称，尝试映射
-      tags: (item.tags || []).map(t => {
-        // 如果是有效的ID，直接返回；否则尝试按名称映射
-        const tag = TagService.getFlatTags().find(x => x.id === t || x.name === t);
-        return tag ? tag.id : t;
-      }),
+      tags: tagIds,
+      calendarIds: calendarIds.length > 0 ? calendarIds : undefined, // 🆕 v1.8: 添加日历分组
       source: 'local',
-      syncStatus: 'local-only',
+      syncStatus: calendarIds.length > 0 ? 'pending' : 'local-only', // 🆕 v1.8: 有日历映射时标记为待同步（但不立即同步，由 ActionBasedSyncManager 统一处理）
       createdAt: formatTimeForStorage(new Date()),
       updatedAt: formatTimeForStorage(new Date()),
       isTask: isTask,
       category: `priority-${item.priority}`,
       remarkableSource: true,
     };
+
+    console.log('[syncToUnifiedTimeline] 准备保存事件到 EventService:', {
+      eventId: event.id,
+      title: event.title,
+      calendarIds: event.calendarIds,
+      syncStatus: event.syncStatus,
+      willTriggerSync: event.syncStatus === 'pending'
+    });
 
     // 检查事件是否已存在于 EventService，决定调用 create 还是 update
     const existingEvent = EventService.getEventById(event.id);
@@ -1546,7 +1817,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
               title: item.title,
               content: line.content,
               description: item.description,
+              timelog: (item as any).timelog,  // 🆕 v1.8: 传递 timelog 字段
               tags: item.tags || [],
+              calendarIds: (item as any).calendarIds, // 🆕 v1.8: 传递 calendarIds 字段
               // 🆕 v1.5: 透传完整的时间字段和元数据（无字段过滤）
               startTime: item.startTime,
               endTime: item.endTime,
@@ -1555,6 +1828,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
               isCompleted: item.isCompleted,
               isAllDay: item.isAllDay,
               timeSpec: (item as any).timeSpec,
+              syncStatus: (item as any).syncStatus, // 🆕 v1.8: 传递 syncStatus
             };
           }), [editorLines])}
           onChange={debouncedOnChange}
@@ -1682,6 +1956,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         activePickerIndex={activePickerIndex}
         eventId={currentFocusedLineId ? (items.find(i => i.id === currentFocusedLineId.replace('-desc',''))?.id) : undefined}
         useTimeHub={true}
+        editorMode={currentFocusedMode}
         onRequestClose={() => {
           // 🆕 Picker 关闭时自动关闭整个 FloatingBar
           console.log('%c[PlanManager] onRequestClose 被调用', 'background: #E91E63; color: white;');
@@ -1789,11 +2064,17 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           if (success) {
             console.log(`[✅ Tag 插入成功] ${tag.name}`);
             
-            // 立即更新 currentSelectedTags，避免等待 useEffect 扫描导致勾选消失
-            if (!currentSelectedTags.includes(insertId)) {
-              const newSelectedTags = [...currentSelectedTags, insertId];
-              setCurrentSelectedTags(newSelectedTags);
-              currentSelectedTagsRef.current = newSelectedTags;
+            if (isDescriptionMode) {
+              // 📌 Description 模式：插入后立即关闭 Picker 和 FloatingBar
+              floatingToolbar.hideToolbar();
+              console.log('[Description Mode] Tag 插入后自动关闭 FloatingBar');
+            } else {
+              // 📌 Title 模式：更新选中状态，保持 Picker 打开
+              if (!currentSelectedTags.includes(insertId)) {
+                const newSelectedTags = [...currentSelectedTags, insertId];
+                setCurrentSelectedTags(newSelectedTags);
+                currentSelectedTagsRef.current = newSelectedTags;
+              }
             }
             // 注意：UnifiedSlateEditor 的 onChange 会自动保存
           }

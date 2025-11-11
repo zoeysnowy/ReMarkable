@@ -86,6 +86,9 @@ export interface FloatingToolbarProps {
   // 🆕 TimeHub 集成
   eventId?: string;       // 当前上下文的事件/行 ID，用于 UnifiedDateTimePicker 通过 TimeHub 读写
   useTimeHub?: boolean;   // 是否启用 TimeHub 模式
+  
+  // 🆕 编辑器模式（用于 TagPicker 显示控制）
+  editorMode?: 'title' | 'description'; // description 模式下隐藏勾选框
 }
 
 export interface ToolbarPosition {

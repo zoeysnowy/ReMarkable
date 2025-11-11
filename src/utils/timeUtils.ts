@@ -3,9 +3,11 @@
  * 目标：18:06的事件在任何地方都显示为18:06，不受时区影响
  */
 
-// 🔧 将时间转换为存储格式（ISO字符串，但保持本地时间）
+// 🔧 将时间转换为存储格式（本地时间字符串，空格分隔符）
+// ⚠️ WARNING: 不要使用 ISO 格式（T分隔符）！
+// 原因：数据会同步到 Outlook，ISO 格式会被误认为 UTC 时间，造成时区偏移
 export const formatTimeForStorage = (date: Date): string => {
-  // 使用本地时间创建ISO字符串，避免时区转换
+  // 使用本地时间创建字符串，用空格分隔日期和时间
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
@@ -13,7 +15,8 @@ export const formatTimeForStorage = (date: Date): string => {
   const minutes = String(date.getMinutes()).padStart(2, '0');
   const seconds = String(date.getSeconds()).padStart(2, '0');
   
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+  // ✅ 使用空格分隔符，不是 'T'
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 };
 
 // 🔧 解析本地时间字符串为Date对象 - 修复类型问题

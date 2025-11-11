@@ -327,8 +327,20 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   useEffect(() => {
     if (!isDebugEnabled() || !editorContainerRef.current) return;
     
+    // 🔧 只监听 Slate 编辑器区域（[contenteditable="true"]），过滤掉 checkbox 等元素
+    const slateEditable = editorContainerRef.current.querySelector('[contenteditable="true"]');
+    if (!slateEditable) {
+      console.warn('[MutationObserver] 未找到 Slate 编辑器区域');
+      return;
+    }
+    
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
+        // 🔧 过滤掉 checkbox 的变化（target 是 input 元素）
+        if (mutation.target instanceof HTMLInputElement) {
+          return; // 跳过 checkbox
+        }
+        
         if (mutation.type === 'childList') {
           logDOMChange('子节点变化', {
             addedNodes: mutation.addedNodes.length,
@@ -349,7 +361,8 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       });
     });
     
-    observer.observe(editorContainerRef.current, {
+    // ✅ 只监听 Slate 编辑器的 contenteditable 区域
+    observer.observe(slateEditable, {
       childList: true,
       characterData: true,
       characterDataOldValue: true,
@@ -635,6 +648,9 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   const autoSaveTimerRef = React.useRef<NodeJS.Timeout | null>(null);
   const pendingChangesRef = React.useRef<Descendant[] | null>(null);
   
+  // 🆕 v1.8: 跟踪最近保存的事件ID，避免增量更新覆盖
+  const recentlySavedEventsRef = React.useRef<Set<string>>(new Set());
+  
   const handleEditorChange = useCallback((newValue: Descendant[]) => {
     const timestamp = new Date().toISOString().split('T')[1].slice(0, 12);
     
@@ -765,6 +781,17 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
           item.description = '';
         }
       });
+      
+      // 🆕 v1.8: 记录保存的事件ID，避免增量更新覆盖
+      planItems.forEach(item => {
+        recentlySavedEventsRef.current.add(item.id);
+      });
+      // 1秒后清除（给 eventsUpdated 足够时间处理）
+      setTimeout(() => {
+        planItems.forEach(item => {
+          recentlySavedEventsRef.current.delete(item.id);
+        });
+      }, 1000);
       
       onChange(planItems);
       pendingChangesRef.current = null;

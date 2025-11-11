@@ -1004,12 +1004,31 @@ function App() {
   
   // 保存 Plan Event
   const handleSavePlanItem = useCallback(async (item: Event) => {
+    // 🔍 诊断：记录接收到的 item 数据
+    console.log('[App.handleSavePlanItem] 接收到的 item:', {
+      id: item.id,
+      title: item.title?.substring(0, 30),
+      tags: item.tags,
+      calendarIds: (item as any).calendarIds,
+      syncStatus: (item as any).syncStatus,
+      hasCalendarIds: !!((item as any).calendarIds && (item as any).calendarIds.length > 0)
+    });
+    
     // 标记为 Plan 事件
     const planEvent: Event = {
       ...item,
       isPlan: true,
       updatedAt: new Date().toISOString(),
     };
+    
+    console.log('[App.handleSavePlanItem] 准备保存的 planEvent:', {
+      id: planEvent.id,
+      title: planEvent.title?.substring(0, 30),
+      tags: planEvent.tags,
+      calendarIds: (planEvent as any).calendarIds,
+      syncStatus: (planEvent as any).syncStatus,
+      willSkipSync: (planEvent as any).syncStatus === 'local-only'
+    });
     
     // 🔧 [BUG FIX] 空行（刚点击graytext创建的行）不保存到EventService
     // 只保存到本地状态（items数组），等用户输入内容后再真正创建event
@@ -1047,6 +1066,15 @@ function App() {
 
   // 创建 UnifiedTimeline Event
   const handleCreateEvent = useCallback(async (event: Event) => {
+    console.log('[App] handleCreateEvent 被调用:', {
+      eventId: event.id,
+      title: event.title,
+      tags: event.tags,
+      calendarIds: event.calendarIds,
+      syncStatus: event.syncStatus,
+      hasCalendarIds: !!(event.calendarIds && event.calendarIds.length > 0)
+    });
+    
     const result = await EventService.createEvent(event);
     if (result.success) {
       // ✅ 不需要手动刷新 - EventService 已触发 eventsUpdated 事件
@@ -1058,6 +1086,17 @@ function App() {
 
   // 更新 UnifiedTimeline Event
   const handleUpdateEvent = useCallback(async (eventId: string, updates: Partial<Event>) => {
+    console.log('[App] handleUpdateEvent 被调用:', {
+      eventId,
+      updates: {
+        title: updates.title,
+        tags: updates.tags,
+        calendarIds: updates.calendarIds,
+        syncStatus: updates.syncStatus,
+        hasCalendarIds: !!(updates.calendarIds && updates.calendarIds.length > 0)
+      }
+    });
+    
     // 🔧 [BUG FIX] 检查事件是否存在，不存在则创建
     const existingEvent = EventService.getEventById(eventId);
     const result = existingEvent

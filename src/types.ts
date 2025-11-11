@@ -113,6 +113,14 @@ export interface Event {
   timeSpec?: import('./types/time').TimeSpec;
   displayHint?: string | null; // 🆕 v1.1: 模糊时间表述（"本周"、"下周"等），用于保留用户原始输入
   
+  // 🆕 v2.6: 模糊日期与时间字段状态
+  isFuzzyDate?: boolean;  // 是否为模糊日期（"下周"、"本周"等快捷按钮生成）
+  timeFieldState?: [number, number, number, number];  // [startTime, endTime, dueDate, allDay] - 1=用户设置，0=未设置/默认
+  
+  // 🆕 v2.7: 模糊时间段支持
+  isFuzzyTime?: boolean;  // 是否为模糊时间段（"上午"、"下午"、"晚上"等）
+  fuzzyTimeName?: string; // 模糊时间段名称（用于显示，如"上午"）
+  
   // 🔧 Plan 相关字段（从 PlanItem 合并）
   content?: string;      // 文本内容（用于富文本编辑）
   emoji?: string;        // emoji 图标
@@ -124,6 +132,9 @@ export interface Event {
   level?: number;        // 层级缩进（用于 Plan 页面显示）
   mode?: 'title' | 'description'; // 显示模式（title或description行）
   type?: 'todo' | 'task' | 'event'; // 事件类型（向后兼容）
+  
+  // 🆕 v1.8: Rich-text description support
+  timelog?: string;      // 富文本日志（HTML 格式，ReMarkable 内部展示用，支持标签、图片等）
   
   // 🆕 Issue #12: Timer ↔ Plan 集成
   parentEventId?: string;   // 父事件 ID（用于 Timer 子事件关联）

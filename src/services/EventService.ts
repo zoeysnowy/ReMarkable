@@ -202,8 +202,13 @@ export class EventService {
       // 同步到Outlook（如果不跳过且有同步管理器）
       if (!skipSync && syncManagerInstance && finalEvent.syncStatus !== 'local-only') {
         try {
-          eventLogger.log('🔍 [DEBUG-TIMER] 即将调用 recordLocalAction');
-          eventLogger.log('🔍 [DEBUG-TIMER] finalEvent.syncStatus:', finalEvent.syncStatus);
+          console.log('[EventService.createEvent] ✅ 触发同步:', {
+            eventId: finalEvent.id,
+            title: finalEvent.title?.substring(0, 30),
+            syncStatus: finalEvent.syncStatus,
+            calendarIds: (finalEvent as any).calendarIds,
+            tags: finalEvent.tags
+          });
           await syncManagerInstance.recordLocalAction('create', 'event', finalEvent.id, finalEvent);
           eventLogger.log('🔄 [EventService] Event synced to Outlook');
         } catch (syncError) {
@@ -214,7 +219,12 @@ export class EventService {
         if (skipSync) {
           eventLogger.log('⏭️ [EventService] Sync skipped (skipSync=true)');
         } else if (finalEvent.syncStatus === 'local-only') {
-          eventLogger.log('⏭️ [EventService] Sync skipped (syncStatus=local-only)');
+          console.log('[EventService.createEvent] ⏭️ 跳过同步 (syncStatus=local-only):', {
+            eventId: finalEvent.id,
+            title: finalEvent.title?.substring(0, 30),
+            calendarIds: (finalEvent as any).calendarIds,
+            tags: finalEvent.tags
+          });
         } else {
           eventLogger.warn('⚠️ [EventService] Sync manager not initialized');
         }
@@ -254,7 +264,8 @@ export class EventService {
         endTime: updates.endTime,
         title: updates.title,
         isAllDay: updates.isAllDay,
-        description: (updates.description || '').substring(0, 50)
+        description: (updates.description || '').substring(0, 50),
+        timelog: ((updates as any).timelog || '').substring(0, 50) // 🆕 v1.8: 显示 timelog 字段
       });
 
       const existingEvents = this.getAllEvents();
@@ -268,10 +279,62 @@ export class EventService {
 
       const originalEvent = existingEvents[eventIndex];
       
+      // 🆕 v1.8: 双向同步 description ↔ timelog
+      // 场景1: Outlook 同步回来的 description → 更新 timelog
+      // 场景2: ReMarkable 内部编辑 timelog → 提取纯文本更新 description
+      // 场景3: 初始状态 timelog 为空但 description 有内容 → 从 description 初始化 timelog
+      
+      const updatesWithSync = { ...updates };
+      
+      // 检测 description 的增量更新
+      if (updates.description !== undefined && updates.description !== originalEvent.description) {
+        // description 有变化 → 同步到 timelog（如果 timelog 未在本次更新中设置）
+        if ((updates as any).timelog === undefined) {
+          (updatesWithSync as any).timelog = updates.description; // 纯文本 → 富文本（简单复制）
+          console.log('[EventService] description 增量更新 → 同步到 timelog:', {
+            eventId,
+            description: updates.description.substring(0, 50),
+            timelog: (updatesWithSync as any).timelog.substring(0, 50)
+          });
+        }
+      }
+      
+      // 检测 timelog 的增量更新
+      if ((updates as any).timelog !== undefined && (updates as any).timelog !== (originalEvent as any).timelog) {
+        // timelog 有变化 → 提取纯文本同步到 description（如果 description 未在本次更新中设置）
+        if (updates.description === undefined) {
+          // 简单提取：移除 HTML 标签，保留纯文本
+          const plainText = ((updates as any).timelog as string).replace(/<[^>]*>/g, '');
+          updatesWithSync.description = plainText;
+          console.log('[EventService] timelog 增量更新 → 同步到 description:', {
+            eventId,
+            timelog: ((updates as any).timelog as string).substring(0, 50),
+            description: plainText.substring(0, 50)
+          });
+        }
+      }
+      
+      // 初始化场景：timelog 为空但 description 有内容
+      if (!(originalEvent as any).timelog && originalEvent.description && (updates as any).timelog === undefined) {
+        (updatesWithSync as any).timelog = originalEvent.description;
+        console.log('[EventService] 初始化 timelog 从 description:', {
+          eventId,
+          description: originalEvent.description.substring(0, 50)
+        });
+      }
+      
+      // 🆕 v1.8: 只合并非 undefined 的字段，避免覆盖已有数据
+      const filteredUpdates: Partial<Event> = {};
+      for (const key in updatesWithSync) {
+        if (updatesWithSync[key as keyof Event] !== undefined) {
+          filteredUpdates[key as keyof Event] = updatesWithSync[key as keyof Event] as any;
+        }
+      }
+      
       // 合并更新
       const updatedEvent: Event = {
         ...originalEvent,
-        ...updates,
+        ...filteredUpdates,  // 🆕 使用过滤后的 updates
         id: eventId, // 确保ID不被覆盖
         updatedAt: formatTimeForStorage(new Date())
       };

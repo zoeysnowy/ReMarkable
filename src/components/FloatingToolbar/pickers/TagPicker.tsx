@@ -11,6 +11,7 @@ interface TagPickerProps {
   selectedTags: string[];
   onSelect: (tagIds: string[]) => void;
   onClose: () => void;
+  editorMode?: 'title' | 'description'; // 🆕 编辑器模式
 }
 
 export const TagPicker: React.FC<TagPickerProps> = ({
@@ -18,6 +19,7 @@ export const TagPicker: React.FC<TagPickerProps> = ({
   selectedTags,
   onSelect,
   onClose,
+  editorMode,
 }) => {
   // 源头去抖：在极短时间内，若选择结果未变化，则不重复触发
   const lastEmitRef = useRef<{ key: string; time: number }>({ key: '', time: 0 });
@@ -33,7 +35,7 @@ export const TagPicker: React.FC<TagPickerProps> = ({
   }, [onSelect]);
 
   return (
-    <div className="floating-toolbar-tag-picker">
+    <div className={`floating-toolbar-tag-picker ${editorMode === 'description' ? 'description-mode' : ''}`}>
       <HierarchicalTagPicker
         availableTags={availableTags}
         selectedTagIds={selectedTags}

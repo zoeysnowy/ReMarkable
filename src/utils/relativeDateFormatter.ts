@@ -12,6 +12,8 @@
  * @version 1.0.0
  */
 
+import { parseLocalTimeString } from './timeUtils';
+
 /**
  * 获取一天的开始时间（00:00:00）
  */
@@ -257,10 +259,31 @@ export function formatRelativeTimeDisplay(
   displayHint?: string | null
 ): string {
   // 🎯 优先级 0: displayHint 优先（v1.1 模糊时间保留机制）
-  // 直接返回 displayHint，不添加额外的"全天"后缀
-  // 因为 displayHint 已经在设置时根据用户选择决定是否包含"全天"
   if (displayHint) {
-    return displayHint;
+    // 🆕 v1.2: 如果有 displayHint，检查是否有非零点的具体时间
+    const hasSpecificTime = startTime && (() => {
+      const date = parseLocalTimeString(startTime);
+      return date.getHours() !== 0 || date.getMinutes() !== 0;
+    })();
+    
+    if (!hasSpecificTime) {
+      // 模糊日期 + 无具体时间 → 只显示 displayHint
+      return displayHint;
+    }
+    
+    // 模糊日期 + 有具体时间 → displayHint + 时间
+    const startDate = parseLocalTimeString(startTime!);
+    const startTimeStr = formatTime(startDate);
+    
+    if (endTime) {
+      const endDate = parseLocalTimeString(endTime);
+      const hasSpecificEndTime = endDate.getHours() !== 0 || endDate.getMinutes() !== 0;
+      if (hasSpecificEndTime) {
+        const endTimeStr = formatTime(endDate);
+        return `${displayHint} ${startTimeStr} - ${endTimeStr}`;
+      }
+    }
+    return `${displayHint} ${startTimeStr}`;
   }
   
   const now = new Date();
@@ -272,7 +295,7 @@ export function formatRelativeTimeDisplay(
     return ''; // 没有任何日期信息
   }
   
-  const targetDate = new Date(primaryDate);
+  const targetDate = parseLocalTimeString(primaryDate);
   const relativeDate = formatRelativeDate(targetDate, now);
   
   // 全天事件
@@ -282,11 +305,11 @@ export function formatRelativeTimeDisplay(
   
   // 有明确时间的事件
   if (startTime) {
-    const startDate = new Date(startTime);
+    const startDate = parseLocalTimeString(startTime);
     const startTimeStr = formatTime(startDate);
     
     if (endTime) {
-      const endDate = new Date(endTime);
+      const endDate = parseLocalTimeString(endTime);
       const endTimeStr = formatTime(endDate);
       return `${relativeDate} ${startTimeStr} - ${endTimeStr}`;
     }

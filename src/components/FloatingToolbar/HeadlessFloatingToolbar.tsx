@@ -37,6 +37,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
   eventId,
   useTimeHub,
   onTimeApplied,
+  editorMode, // 🆕 接收编辑器模式
 }) => {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [activePicker, setActivePicker] = useState<string | null>(null);
@@ -268,6 +269,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
               <TagPicker
                 availableTags={availableTags}
                 selectedTags={currentTags}
+                editorMode={editorMode}
                 onSelect={(tagIds) => {
                   // 标签选择是多选模式，不应该在每次选择后关闭
                   onTagSelect?.(tagIds);

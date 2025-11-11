@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Time Field State Bitmap Architecture (v2.6)**:
+  - `isFuzzyDate` boolean field to explicitly mark fuzzy dates
+  - `timeFieldState: [number, number, number, number]` bitmap to track user-set fields
+  - Three-layer architecture: Data Layer (complete timestamps) → Metadata Layer (user intent) → Display Layer (accurate rendering)
+  - Fixes single time point display issue ("下周日中午" now shows "12:00" instead of "12:00 --> 00:00")
+  - Files: `types.ts`, `time.ts`, `TimeHub.ts`, `UnifiedDateTimePicker.tsx`, `PlanManager.tsx`
+  - Documentation: `TIME_PICKER_AND_DISPLAY_PRD.md` v2.6
+
 ### Reverted
 - **Tiptap Phase 2 Integration**: Rolled back due to runtime Schema conflicts
   - Error: "No node type or group 'paragraph' found"

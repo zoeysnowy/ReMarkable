@@ -24,6 +24,21 @@ import {
 export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
   const nodes: EventLineNode[] = [];
   
+  // 🔍 DEBUG: 检查加载时是否包含 timelog
+  if (items.length > 0) {
+    console.log('[planItemsToSlateNodes] 加载事件:', {
+      总数: items.length,
+      示例: items.slice(0, 3).map(item => ({
+        id: item.id?.substring(0, 30),
+        title: item.title?.substring(0, 20),
+        hasTimelog: !!(item.timelog),
+        hasDescription: !!(item.description),
+        timelogLength: (item.timelog || '').length,
+        descriptionLength: (item.description || '').length,
+      }))
+    });
+  }
+  
   items.forEach(item => {
     // 🆕 v1.6: 提取完整元数据（透传所有业务字段）
     const metadata: EventMetadata = {
@@ -80,7 +95,9 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
     nodes.push(titleNode);
     
     // Description 行（只有存在时才创建）
-    if (item.description) {
+    // 🆕 v1.8: 优先使用 timelog (富文本)，回退到 description (纯文本)
+    const descriptionContent = item.timelog || item.description;
+    if (descriptionContent) {
       const descNode: EventLineNode = {
         type: 'event-line',
         eventId: item.eventId || item.id,
@@ -90,7 +107,7 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
         children: [
           {
             type: 'paragraph',
-            children: htmlToSlateFragment(item.description),
+            children: htmlToSlateFragment(descriptionContent),
           },
         ],
         metadata,  // 🆕 透传元数据（description 行共享 metadata）
@@ -199,7 +216,14 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
   nodes.forEach(node => {
     if (node.type !== 'event-line') return;
     
-    const baseId = node.lineId.replace('-desc', '');
+    // 🔧 FIX: 使用 eventId 作为分组依据，而不是 lineId
+    // Description 行的 lineId 是 `${id}-desc`，但 eventId 是正确的完整 ID
+    const baseId = node.eventId;
+    
+    if (!baseId) {
+      console.warn('[slateNodesToPlanItems] Node missing eventId:', node);
+      return;
+    }
     
     if (!items.has(baseId)) {
       // 🆕 v1.6: 从第一个遇到的节点中提取完整 metadata
@@ -247,7 +271,7 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
     
     const item = items.get(baseId)!;
     
-    // 🔧 安全检查：确保节点结构正确，但不要跳过节点，只是使用安全的默认值
+    // 🔧 安全检查:确保节点结构正确，但不要跳过节点，只是使用安全的默认值
     const fragment = node.children?.[0]?.children;
     
     // 如果没有有效的 fragment，使用空数组（不会崩溃，但会正确处理）
@@ -258,7 +282,26 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
       item.title = fragment ? extractPlainText(fragment) : '';
       item.tags = fragment ? extractTags(fragment) : [];
     } else {
-      item.description = html;
+      // 🆕 v1.8: 描述行保存到 timelog (富文本) 和 description (纯文本)
+      // 双向同步策略：
+      // 1. 编辑器内容 → timelog (富文本) + description (纯文本)
+      // 2. 如果 timelog 为空但 description 有内容 → 从 description 初始化 timelog
+      // 3. 保持两个字段始终同步（增量更新）
+      
+      const newTimelog = html; // 当前编辑器的富文本内容
+      const newDescription = fragment ? extractPlainText(fragment) : ''; // 当前编辑器的纯文本内容
+      
+      item.timelog = newTimelog;
+      item.description = newDescription;
+      
+      // 🔍 调试日志
+      console.log('[slateNodesToPlanItems] Description 保存 (双向同步):', {
+        eventId: baseId,
+        lineId: node.lineId,
+        timelog: item.timelog,
+        description: item.description,
+        fragmentLength: fragment?.length || 0
+      });
     }
   });
   
@@ -270,6 +313,16 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
                    (!item.tags || item.tags.length === 0);
     return !isEmpty;  // 只保留非空节点
   });
+  
+  // 🔍 v1.8: 调试返回的 items
+  console.log('[slateNodesToPlanItems] 返回结果:', result.map(item => ({
+    id: item.id,
+    title: item.title?.substring(0, 20),
+    hasTimelog: !!item.timelog,
+    hasDescription: !!item.description,
+    timelogLength: item.timelog?.length || 0,
+    descriptionLength: item.description?.length || 0
+  })));
   
   return result;
 }
