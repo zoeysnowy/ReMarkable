@@ -1,0 +1,43 @@
+  const loadEvents = useCallback(() => {
+    if (!eventListenersAttachedRef.current) {
+      console.log('⏭️ [TimeCalendar] Skipping loadEvents - component unmounted');
+      return;
+    }
+    
+    console.log(`🔄 [TimeCalendar] loadEvents START at ${performance.now().toFixed(2)}ms`);
+    const startTime = performance.now();
+    try {
+      const viewStart = new Date(currentDate);
+      const viewEnd = new Date(currentDate);
+      
+      if (currentView === 'month') {
+        viewStart.setDate(1);
+        viewStart.setDate(viewStart.getDate() - 7);
+        viewEnd.setMonth(viewEnd.getMonth() + 1, 0);
+        viewEnd.setDate(viewEnd.getDate() + 7);
+      } else if (currentView === 'week') {
+        const dayOfWeek = viewStart.getDay();
+        viewStart.setDate(viewStart.getDate() - dayOfWeek - 7);
+        viewEnd.setDate(viewEnd.getDate() + (6 - dayOfWeek) + 7);
+      } else {
+        viewStart.setDate(viewStart.getDate() - 1);
+        viewEnd.setDate(viewEnd.getDate() + 1);
+      }
+      
+      console.log(`📅 [TimeCalendar] Loading events for ${currentView} view: ${viewStart.toLocaleDateString()} ~ ${viewEnd.toLocaleDateString()}`);
+      
+      const queryStart = performance.now();
+      const parsedEvents = EventService.getEventsByRange(viewStart, viewEnd);
+      const queryDuration = performance.now() - queryStart;
+      console.log(`🔍 [TimeCalendar] EventService.getEventsByRange took ${queryDuration.toFixed(2)}ms for ${parsedEvents.length} events`);
+      
+      const setEventsStart = performance.now();
+      setEvents(parsedEvents);
+      const setEventsDuration = performance.now() - setEventsStart;
+      console.log(`✅ [TimeCalendar] setEvents() took ${setEventsDuration.toFixed(2)}ms`);
+    } catch (error) {
+      console.error('❌ [LOAD] Failed to load events:', error);
+    }
+    const totalDuration = performance.now() - startTime;
+    console.log(`🏁 [TimeCalendar] loadEvents COMPLETE in ${totalDuration.toFixed(2)}ms`);
+  }, [currentDate, currentView]);

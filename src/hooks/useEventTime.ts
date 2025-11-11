@@ -13,12 +13,31 @@ const EMPTY_SNAPSHOT: Readonly<TimeGetResult> = Object.freeze({});
 export function useEventTime(eventId: string | undefined): UseEventTimeResult {
   const subscribe = useCallback((onChange: () => void) => {
     if (!eventId) return () => {};
-    return TimeHub.subscribe(eventId, onChange);
+    console.log(`%c[🎣 useEventTime.subscribe]`, 'background: #00BCD4; color: white; padding: 2px 6px;', { 
+      eventId,
+      订阅时间: new Date().toLocaleTimeString()
+    });
+    
+    const unsubscribe = TimeHub.subscribe(eventId, () => {
+      console.log(`%c[🔄 useEventTime 收到通知]`, 'background: #00ACC1; color: white; padding: 2px 6px;', { 
+        eventId,
+        通知时间: new Date().toLocaleTimeString()
+      });
+      onChange();
+    });
+    
+    return unsubscribe;
   }, [eventId]);
 
   const getSnapshot = useCallback(() => {
     if (!eventId) return EMPTY_SNAPSHOT as TimeGetResult;
-    return TimeHub.getSnapshot(eventId);
+    const snapshot = TimeHub.getSnapshot(eventId);
+    console.log(`%c[📸 useEventTime.getSnapshot]`, 'background: #0097A7; color: white; padding: 2px 6px;', { 
+      eventId,
+      snapshot,
+      获取时间: new Date().toLocaleTimeString()
+    });
+    return snapshot;
   }, [eventId]);
 
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);

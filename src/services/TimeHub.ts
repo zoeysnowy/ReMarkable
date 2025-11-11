@@ -20,6 +20,7 @@ export type SetEventTimeInput = {
   policy?: Partial<TimePolicy>;
   rawText?: string; // optional when updating intent
   timeSpec?: TimeSpec; // allow direct replacement
+  displayHint?: string | null; // 🆕 v1.1: 用户原始输入的模糊时间表述
 };
 
 class TimeHubImpl {
@@ -39,20 +40,54 @@ class TimeHubImpl {
     // Keep cache in sync with global event updates
     window.addEventListener('eventsUpdated', (e: any) => {
       try {
-        const id = e?.detail?.eventId as string | undefined;
+        const detail = e?.detail;
+        const id = detail?.eventId as string | undefined;
         if (!id) return;
-        // Invalidate and refresh lazily
-        this.cache.delete(id);
-        this.emit(id);
+        
+        // 🔧 优化：如果事件被删除，直接清除缓存但不通知订阅者
+        // 原因：被删除的事件不需要触发组件重新渲染，TimeCalendar 已经处理了 UI 更新
+        if (detail?.deleted || detail?.isDeleted) {
+          this.cache.delete(id);
+          dbg('timehub', '🗑️ 事件已删除，清除缓存但跳过通知订阅者', { eventId: id });
+          return;
+        }
+        
+        // 🚀 增量更新：如果 detail 包含完整事件数据，直接更新缓存，避免重新读取
+        if (detail?.event) {
+          const event = detail.event;
+          const snapshot: TimeGetResult = {
+            timeSpec: event.timeSpec,
+            start: event.startTime,
+            end: event.endTime,
+          };
+          this.cache.set(id, snapshot);
+          dbg('timehub', '🔄 从 eventsUpdated 增量更新缓存', { eventId: id, start: snapshot.start, end: snapshot.end });
+          this.emit(id);
+        } else {
+          // 降级：如果没有完整事件数据，清除缓存让组件重新读取
+          this.cache.delete(id);
+          dbg('timehub', '⚠️ 缺少事件数据，清除缓存并通知订阅者重新读取', { eventId: id });
+          this.emit(id);
+        }
       } catch {}
     });
   }
 
   private emit(eventId: string) {
     const set = this.listeners.get(eventId);
+    console.log(`%c[🔔 TimeHub.emit]`, 'background: #9C27B0; color: white; padding: 2px 6px;', {
+      eventId,
+      订阅者数量: set?.size ?? 0,
+      hasListeners: !!set
+    });
     if (!set) return;
     set.forEach((cb) => {
-      try { cb(); } catch { /* no-op */ }
+      try { 
+        console.log(`%c[📞 调用订阅者]`, 'background: #673AB7; color: white; padding: 2px 6px;', { eventId });
+        cb(); 
+      } catch (err) { 
+        console.error(`%c[❌ 订阅者回调失败]`, 'background: #F44336; color: white; padding: 2px 6px;', { eventId, error: err });
+      }
     });
   }
 
@@ -90,7 +125,8 @@ class TimeHubImpl {
       const start = ev.startTime;
       const end = ev.endTime;
       const timeSpec = (ev as any).timeSpec as TimeSpec | undefined;
-      return { timeSpec, start, end };
+      const displayHint = (ev as any).displayHint as string | null | undefined; // 🆕 v1.1
+      return { timeSpec, start, end, displayHint };
     } catch {
       return {};
     }
@@ -163,6 +199,11 @@ class TimeHubImpl {
 
     // Attach timeSpec (non-breaking)
     (updated as any).timeSpec = timeSpec;
+    
+    // 🆕 v1.1: 保存 displayHint（模糊时间表述）
+    if (input.displayHint !== undefined) {
+      (updated as any).displayHint = input.displayHint;
+    }
 
     dbg('timehub', '💾 准备持久化到 EventService', { 
       eventId, 
@@ -195,13 +236,9 @@ class TimeHubImpl {
         this.emit(eventId);
       });
       
-      // Broadcast a generic timeChanged event for any external listeners
-      try {
-        window.dispatchEvent(new CustomEvent('timeChanged', {
-          detail: { eventId, timeSpec, start: snapshot.start, end: snapshot.end }
-        }));
-        dbg('timehub', '📡 已广播 timeChanged 事件', { eventId });
-      } catch {}
+      // ✅ 架构优化：EventService 已经触发了 eventsUpdated 事件
+      // 不需要 TimeHub 再触发 timeChanged，避免重复事件
+      // 订阅者可以监听 eventsUpdated 获取时间变化信息
     } else {
       error('timehub', '❌ EventService.updateEvent 失败', { eventId, result });
     }
@@ -237,11 +274,8 @@ class TimeHubImpl {
         this.emit(eventId);
       });
       
-      try {
-        window.dispatchEvent(new CustomEvent('timeChanged', {
-          detail: { eventId, timeSpec, start: snapshot.start, end: snapshot.end }
-        }));
-      } catch {}
+      // ✅ 架构优化：EventService 已经触发了 eventsUpdated 事件
+      // 不需要 TimeHub 再触发 timeChanged
     }
     return result;
   }
@@ -296,11 +330,8 @@ class TimeHubImpl {
         this.emit(eventId);
       });
       
-      try {
-        window.dispatchEvent(new CustomEvent('timeChanged', {
-          detail: { eventId, timeSpec, start: snapshot.start, end: snapshot.end }
-        }));
-      } catch {}
+      // ✅ 架构优化：EventService 已经触发了 eventsUpdated 事件
+      // 不需要 TimeHub 再触发 timeChanged
     }
     return result;
   }

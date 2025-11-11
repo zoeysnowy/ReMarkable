@@ -1,0 +1,87 @@
+name: Publish Holiday Data
+
+# 当推送 holidays-YYYY 标签时触发
+on:
+  push:
+    tags:
+      - 'holidays-*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v3
+      
+      - name: 设置 Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: 提取年份
+        id: version
+        run: |
+          YEAR=${GITHUB_REF#refs/tags/holidays-}
+          echo "YEAR=$YEAR" >> $GITHUB_OUTPUT
+          echo "📅 将发布 $YEAR 年假日数据"
+      
+      - name: 构建假日数据 JSON
+        run: |
+          node scripts/buildHolidayData.js ${{ steps.version.outputs.YEAR }}
+      
+      - name: 验证生成的文件
+        run: |
+          if [ ! -f public/holidays/holidays-${{ steps.version.outputs.YEAR }}.json ]; then
+            echo "❌ 文件未生成"
+            exit 1
+          fi
+          echo "✅ 文件已生成"
+          cat public/holidays/holidays-${{ steps.version.outputs.YEAR }}.json
+      
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            public/holidays/holidays-${{ steps.version.outputs.YEAR }}.json
+          name: ${{ steps.version.outputs.YEAR }}年假日安排
+          body: |
+            ## 🎉 ${{ steps.version.outputs.YEAR }}年假日安排已发布
+            
+            根据**国务院办公厅**通知发布
+            
+            ### 📦 包含内容
+            - ✅ 法定节假日安排
+            - ✅ 调休工作日
+            - ✅ 假期天数统计
+            
+            ### 📥 如何使用
+            
+            #### 方法 1: 自动更新（推荐）
+            ReMarkable 应用会在后台自动检查更新，发现新版本后会弹出通知，点击"立即更新"即可。
+            
+            #### 方法 2: 手动下载
+            1. 下载 `holidays-${{ steps.version.outputs.YEAR }}.json` 文件
+            2. 打开 ReMarkable 应用
+            3. 进入设置 → 假日管理
+            4. 点击"导入假日数据"并选择下载的文件
+            
+            ### 📅 数据来源
+            - **官方来源**: 国务院办公厅
+            - **发布时间**: $(date +%Y-%m-%d)
+            - **数据版本**: ${{ steps.version.outputs.YEAR }}
+            
+            ### ⚠️ 注意事项
+            - 请在国务院正式发布假日安排后使用
+            - 建议在每年12月下旬检查更新
+            - 数据仅供参考，具体以国务院通知为准
+          tag_name: holidays-${{ steps.version.outputs.YEAR }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 发送通知
+        run: |
+          echo "🎉 ${{ steps.version.outputs.YEAR }}年假日数据已发布到 GitHub Release"
+          echo "📦 用户将在下次应用启动时收到更新通知"

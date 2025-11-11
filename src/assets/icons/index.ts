@@ -17,6 +17,7 @@ import stopSvg from './stop.svg';
 import cancelSvg from './cancel.svg';
 import emojiSvg from './emoji.svg';
 import moreSvg from './more.svg';
+import datetimeSvg from './datetime.svg';
 
 export const icons = {
   logo: logoSvg,
@@ -37,6 +38,7 @@ export const icons = {
   cancel: cancelSvg,
   emoji: emojiSvg,
   more: moreSvg,
+  datetime: datetimeSvg,
 };
 
 // 图标类型定义

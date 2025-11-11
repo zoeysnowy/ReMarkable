@@ -70,6 +70,7 @@ export interface TimeGetResult {
   timeSpec?: TimeSpec;
   start?: string;
   end?: string;
+  displayHint?: string | null; // 🆕 v1.1: 模糊时间表述
 }
 
 export type WithTimeSpec<T> = T & { timeSpec?: TimeSpec };

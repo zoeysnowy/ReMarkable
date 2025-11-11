@@ -1,9 +1,9 @@
 # Slate.js 编辑器开发指南
 
 > **状态**: ✅ 生产环境使用中  
-> **最后更新**: 2025-11-06  
+> **最后更新**: 2025-11-11  
 > **框架版本**: Slate.js 0.118+  
-> **重要更新**: PlanManager 已成功迁移到 UnifiedSlateEditor
+> **重要更新**: PlanManager 已成功迁移到 UnifiedSlateEditor，增量更新机制已优化
 
 ---
 
@@ -12,42 +12,208 @@
 1. [项目概述](#项目概述)
 2. [当前架构](#当前架构)
 3. [核心组件](#核心组件)
-4. [使用指南](#使用指南)
-5. [开发规范](#开发规范)
-6. [待完成功能](#待完成功能)
-7. [PlanManager 交互机制](#planmanager-交互机制) 🆕
+4. [数据流与增量更新](#数据流与增量更新) 🆕
+5. [使用指南](#使用指南)
+6. [开发规范](#开发规范)
+7. [待完成功能](#待完成功能)
+8. [PlanManager 交互机制](#planmanager-交互机制)
 
 ---
 
-## 项目概述
+## 数据流与增量更新
 
-### 迁移背景
+### 架构演进历史
 
-ReMarkable 项目正在从 Tiptap 编辑器迁移到 Slate.js，原因：
-- **更灵活的架构**：Slate.js 提供更底层的控制
-- **更好的跨行选择**：支持多行文字选择和操作
-- **更简单的数据结构**：纯 JSON，无需 ProseMirror Schema
-- **移动端优化**：集成 slate-android-plugin 解决输入法问题
+#### v1.0 - 初始实现（存在循环问题）
+```
+PlanManager items → UnifiedSlateEditor 
+→ useEffect 监听 items 变化 → setValue
+→ 用户编辑 → onChange → PlanManager items 更新
+→ 🔥 循环开始！导致光标丢失
+```
 
-### 技术栈
+#### v2.0 - 当前架构（单向数据流 + 事件驱动）✅
 
-```json
-{
-  "slate": "^0.118.1",
-  "slate-react": "^0.118.2",
-  "slate-dom": "^0.118.1",
-  "slate-history": "^0.113.1",
-  "slate-android-plugin": "^0.118.1"
+**1. 初始化（只执行一次）**
+```typescript
+PlanManager items 
+  → UnifiedSlateEditor 
+  → setValue(enhancedValue) 
+  → isInitializedRef.current = true
+```
+
+**2. 用户编辑（单向输出，无循环）**
+```typescript
+用户输入 
+  → handleEditorChange 
+  → 延迟保存（2秒 or Enter/失焦）
+  → onChange(planItems) 
+  → PlanManager items 更新
+  ❌ 不再触发 setValue（已删除监听 items 的 useEffect）
+```
+
+**3. EventService 增量更新（事件驱动）**
+```typescript
+EventService.updateEvent(eventId, updates)
+  ↓
+  localStorage 更新
+  ↓
+  window.dispatchEvent('eventsUpdated', { eventId, isDeleted, isNewEvent })
+  ↓
+  App.tsx 监听器：setAllEvents(增量更新单个 Event)
+  ↓
+  PlanManager items 更新（引用变化，但只有 1 个 Event 内容变了）
+  ↓
+  UnifiedSlateEditor 监听 'eventsUpdated' 事件
+  ↓
+  检测：用户正在编辑这个 Event？
+    → 是：跳过更新
+    → 否：EventService.getEventById(eventId)
+         → Transforms.setNodes(editor, updatedEvent, { at: [index] })
+         → ✅ 只更新单个节点，光标不丢失
+```
+
+### 关键设计决策
+
+**为什么删除监听 items 的 useEffect？**
+- ❌ **旧方案**：`useEffect(() => { setValue(enhancedValue) }, [items])` 
+  - 问题：用户编辑 → onChange → items 变化 → setValue → 光标丢失
+- ✅ **新方案**：订阅 EventService 事件
+  - 优势：精确知道哪个 Event 变了，增量更新，光标不丢失
+
+**为什么不用 EventHub？**
+- EventHub 的 updateFields 机制被认为冗余
+- 直接使用 EventService + window.dispatchEvent 更简单
+- App.tsx 已经实现了完整的增量更新监听
+
+**冲突解决策略（Last Write Wins）**
+```typescript
+// EventService 基于 updatedAt 时间戳
+if (cloudEvent.updatedAt > localEvent.updatedAt) {
+  updateLocalEvent(cloudEvent); // 云端更新更晚
+} else {
+  skipUpdate(); // 本地更新更晚
+}
+
+// UnifiedSlateEditor 基于用户编辑状态
+if (pendingChangesRef.current && isEditingThisEvent) {
+  skipUpdate(); // 用户正在编辑，跳过外部更新
 }
 ```
 
-### 安装命令
+---
 
-```bash
-npm install slate slate-react slate-history --legacy-peer-deps
-npm install --save-dev @types/slate @types/slate-react
-npm install slate-android-plugin --save --legacy-peer-deps
+## TimeHub 授权组件与写权限管理
+
+> 🆕 **最后更新**: 2025-11-21  
+> 📖 **完整文档**: [PlanManager PRD - TimeHub 授权组件](./PRD/PLANMANAGER_MODULE_PRD.md#40-有权向-timehub-提交时间修改的组件-)
+
+### TimeHub 架构原则
+
+**唯一真相源 (Single Source of Truth)**:
+- TimeHub 是时间数据的**唯一真相源**，所有时间读写必须通过它
+- 严格限制写权限：只有**4个授权组件**可调用 `TimeHub.setEventTime()`
+- 其他组件**只读**：通过 `useEventTime` hook 订阅更新，不能直接修改
+
+**设计目的**:
+- 防止数据不一致（多处修改时间导致冲突）
+- 简化调试（所有写操作集中在授权组件）
+- 保证数据流清晰（单向数据流）
+
+### 授权组件列表
+
+**有权向 TimeHub 提交时间修改的组件**:
+
+| 组件 | 文件路径 | 提交方式 | 用途 |
+|------|---------|---------|------|
+| **UnifiedDateTimePicker** | `components/TimePicker/UnifiedDateTimePicker.tsx` | `TimeHub.setEventTime()` | 主要时间选择入口 |
+| **DateMentionPicker** | `components/SlateEditor/DateMentionPicker.tsx` | `TimeHub.setEventTime()` | 自然语言解析（如"下周三"） |
+| **EventEditModal** | `components/EventEditModal/EventEditModal.tsx` | `TimeHub.setEventTime()` | 事件编辑弹窗 |
+| **DateMentionElement** | `components/SlateEditor/Elements/DateMentionElement.tsx` | `setEventTime()` (hook) | Slate 日期节点点击编辑 |
+
+**调用示例** (DateMentionElement):
+```typescript
+const DateMentionElement = ({ attributes, children, element }) => {
+  // ✅ 通过 useEventTime hook 获取 setEventTime 方法
+  const { timeSpec, start, end, loading, setEventTime } = useEventTime(eventId);
+
+  const handleClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!eventId) return;
+
+    // ✅ 调用 setEventTime 向 TimeHub 提交修改
+    await setEventTime({
+      start: '2025-11-21T14:00:00',
+      end: '2025-11-21T15:00:00',
+    });
+  };
+
+  return (
+    <span {...attributes} onClick={handleClick}>
+      {formatRelativeDate(start, end)}
+      {children}
+    </span>
+  );
+};
 ```
+
+### 禁止行为
+
+❌ **普通组件直接调用 TimeHub**:
+```typescript
+// ❌ 错误：PlanItemTimeDisplay 直接修改 TimeHub
+const PlanItemTimeDisplay = ({ eventId }) => {
+  const handleClick = () => {
+    TimeHub.setEventTime(eventId, { start: '...' }); // ❌ 无权限
+  };
+};
+```
+
+❌ **绕过 TimeHub 直接修改 EventService**:
+```typescript
+// ❌ 错误：绕过 TimeHub
+EventService.updateEvent(eventId, {
+  startTime: newStart,
+  endTime: newEnd,
+});
+```
+
+✅ **正确做法**:
+```typescript
+// ✅ 通过授权组件修改
+<UnifiedDateTimePicker
+  eventId={eventId}
+  onDateTimeSelect={(spec) => {
+    // UnifiedDateTimePicker 内部会调用 TimeHub.setEventTime()
+  }}
+/>
+```
+
+### 数据流
+
+```
+用户操作
+  ↓
+授权组件 (UnifiedDateTimePicker / DateMentionElement 等)
+  ↓
+TimeHub.setEventTime(eventId, { start, end })
+  ↓
+EventService.updateEvent(eventId, updates)
+  ↓
+localStorage 更新
+  ↓
+window.dispatchEvent('eventsUpdated', { eventId })
+  ↓
+所有订阅者收到通知 (PlanItemTimeDisplay / DateMentionElement / 等)
+  ↓
+UI 自动更新
+```
+
+**关键点**:
+- 只有授权组件可以**写入** TimeHub
+- 所有组件都可以**读取** TimeHub（通过 `useEventTime` hook）
+- EventService 更新后触发 `eventsUpdated` 事件，所有订阅者自动更新
+- UnifiedSlateEditor 监听 `eventsUpdated`，增量更新 DateMentionElement
 
 ---
 
@@ -764,7 +930,160 @@ const serializedContent = useMemo(() => {
 }, [editor.children]);
 ```
 
-### 4. 测试规范
+### 4. Void Inline 元素光标处理 🆕
+
+#### 问题背景
+
+**Slate Void 元素特性**:
+- Void 元素（如 Tag、DateMention）是不可编辑的原子单元
+- Slate 要求 void 元素必须有 `children: [{ text: '' }]` 
+- 用户无法在 void 元素内部放置光标
+
+**常见问题**:
+- 🐛 点击 Tag 后面，光标进入 Tag 内部而不是 Tag 之后
+- 🐛 插入 Tag 后，无法继续输入（光标被"吸"进 Tag）
+- 🐛 Tag 成为行末元素时，点击行尾光标位置错误
+
+**问题根源**:
+```typescript
+// 错误的结构（Tag 是段落最后一个元素）
+{
+  type: 'paragraph',
+  children: [
+    { text: '测试' },
+    { type: 'tag', tagName: '工作', children: [{ text: '' }] }
+    // ❌ 缺少 Tag 后的 text 节点，光标无处可放
+  ]
+}
+```
+
+#### 解决方案：normalizeNode 守护机制
+
+**核心思想**: 使用 Slate 的 `normalizeNode` API 自动检测并修复缺失的空格
+
+**实现位置**: `UnifiedSlateEditor.tsx` - `withCustom` 函数
+
+```typescript
+const withCustom = (editor: CustomEditor) => {
+  const { isInline, isVoid, normalizeNode } = editor;
+
+  // 1. 声明 void inline 元素
+  editor.isInline = element => {
+    const e = element as any;
+    return (e.type === 'tag' || e.type === 'dateMention') ? true : isInline(element);
+  };
+
+  editor.isVoid = element => {
+    const e = element as any;
+    return (e.type === 'tag' || e.type === 'dateMention') ? true : isVoid(element);
+  };
+
+  // 2. 🔥 normalizeNode 守护机制
+  editor.normalizeNode = entry => {
+    const [node, path] = entry;
+
+    // 检查 tag 或 dateMention 元素
+    if (SlateElement.isElement(node) && (node.type === 'tag' || node.type === 'dateMention')) {
+      const nextPath = Path.next(path);
+      let nextNode: Node | null = null;
+      
+      try {
+        nextNode = Node.get(editor, nextPath);
+      } catch (e) {
+        // 找不到下一个节点，说明是父节点的最后一个子元素
+      }
+
+      // 如果后面没有节点，或者下一个节点不是文本节点，或者不以空格开头
+      if (!nextNode || !SlateText.isText(nextNode) || !nextNode.text.startsWith(' ')) {
+        // 🔥 在 void 元素之后插入空格
+        const parent = Node.parent(editor, path);
+        const parentPath = Path.parent(path);
+        
+        if (SlateElement.isElement(parent)) {
+          const isLastChild = path[path.length - 1] === parent.children.length - 1;
+          
+          if (isLastChild) {
+            // 如果是最后一个，在父节点末尾插入
+            const endPoint = Editor.end(editor, parentPath);
+            Transforms.insertText(editor, ' ', { at: endPoint });
+          } else {
+            // 如果不是最后一个，在 void 元素之后插入
+            Transforms.insertText(editor, ' ', { at: nextPath });
+          }
+        }
+        
+        // 由于修改了树，立即返回让 Slate 重新 normalize
+        return;
+      }
+    }
+
+    // 对于其他节点，执行默认的 normalize
+    normalizeNode(entry);
+  };
+
+  return editor;
+};
+```
+
+**插入辅助函数**: `helpers.ts`
+
+```typescript
+export function insertTag(editor: CustomEditor, tagId: string, tagName: string) {
+  const tagNode: TagNode = {
+    type: 'tag',
+    tagId,
+    tagName,
+    children: [{ text: '' }],
+  };
+  
+  // 插入 tag
+  Transforms.insertNodes(editor, tagNode as any);
+  
+  // 🔥 插入空格（normalizeNode 会确保其存在）
+  Transforms.insertText(editor, ' ');
+  
+  return true;
+}
+```
+
+**工作流程**:
+
+1. **插入时**: `insertTag` 插入 Tag 节点 + 空格文本节点
+2. **编辑时**: 用户可能删除、粘贴、撤销等操作
+3. **守护时**: `normalizeNode` 在每次内容变更后自动检查
+   - 如果检测到 Tag 后面没有空格文本节点 → 自动插入
+   - 如果检测到 Tag 后面有空格 → 跳过，无需处理
+
+**最终结构**:
+```typescript
+// ✅ 正确的结构
+{
+  type: 'paragraph',
+  children: [
+    { text: '测试' },
+    { type: 'tag', tagName: '工作', children: [{ text: '' }] },
+    { text: ' ' }  // ✅ Tag 后总有空格，光标可以停留
+  ]
+}
+```
+
+**优势**:
+- ✅ **自动修复**: 无需手动处理各种边界情况
+- ✅ **健壮性**: 即使用户删除空格，normalizeNode 也会自动补回
+- ✅ **简洁性**: 不需要复杂的点击事件处理和光标位置计算
+- ✅ **标准方案**: Slate 官方推荐的处理方式
+
+**调试建议**:
+```typescript
+// 在 normalizeNode 中添加日志
+console.log('[normalizeNode] 检测到 void 元素后缺少空格', {
+  type: node.type,
+  path,
+  nextNode: nextNode ? 'exists' : 'null',
+});
+```
+
+### 5. 测试规范
 
 ```typescript
 // 单元测试示例

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * UnifiedSlateEditor - 统一的单实例 Slate 编辑器
  * 
  * 核心特性：
@@ -15,7 +15,7 @@
  */
 
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
-import { createEditor, Descendant, Editor, Transforms, Range, Point, Node, Element as SlateElement } from 'slate';
+import { createEditor, Descendant, Editor, Transforms, Range, Point, Node, Element as SlateElement, Text as SlateText, Path } from 'slate';
 import { Slate, Editable, withReact, RenderElementProps, RenderLeafProps, ReactEditor } from 'slate-react';
 import { withHistory } from 'slate-history';
 import { EventLineNode, ParagraphNode, TagNode, DateMentionNode, TextNode, CustomEditor } from './types';
@@ -23,6 +23,7 @@ import { EventLineElement } from './EventLineElement';
 import { TagElementComponent } from '../SlateEditor/elements/TagElement';
 import { DateMentionElementComponent } from '../SlateEditor/elements/DateMentionElement';
 import { SlateErrorBoundary } from './ErrorBoundary';
+import { EventService } from '../../services/EventService';
 import {
   planItemsToSlateNodes,
   slateNodesToPlanItems,
@@ -120,7 +121,7 @@ export interface UnifiedSlateEditorHandle {
 
 // 自定义编辑器配置
 const withCustom = (editor: CustomEditor) => {
-  const { isInline, isVoid } = editor;
+  const { isInline, isVoid, normalizeNode } = editor;
 
   editor.isInline = element => {
     const e = element as any;
@@ -130,6 +131,120 @@ const withCustom = (editor: CustomEditor) => {
   editor.isVoid = element => {
     const e = element as any;
     return (e.type === 'tag' || e.type === 'dateMention') ? true : isVoid(element);
+  };
+
+  // 🔥 normalizeNode 确保 void inline 元素后面总有空格
+  editor.normalizeNode = entry => {
+    const [node, path] = entry;
+
+    // 检查 tag 或 dateMention 元素
+    if (SlateElement.isElement(node) && (node.type === 'tag' || node.type === 'dateMention')) {
+      const tagInfo = node.type === 'tag' ? (node as any).tagName : 'dateMention';
+      console.log('%c[normalizeNode] 检查 void 元素', 'background: #673AB7; color: white;', {
+        type: (node as any).type,
+        tagName: tagInfo,
+        path: JSON.stringify(path),
+      });
+      
+      // 获取父节点和当前节点在父节点中的索引
+      const parentPath = Path.parent(path);
+      const parent = Node.get(editor, parentPath);
+      const nodeIndex = path[path.length - 1];
+      
+      if (!SlateElement.isElement(parent)) {
+        console.log('%c[normalizeNode] 父节点不是元素', 'background: #FFC107; color: black;');
+        normalizeNode(entry);
+        return;
+      }
+      
+      // 检查下一个兄弟节点
+      const nextSiblingIndex = nodeIndex + 1;
+      const nextSibling = nextSiblingIndex < parent.children.length 
+        ? parent.children[nextSiblingIndex] 
+        : null;
+      
+      console.log('%c[normalizeNode] 下一个兄弟节点信息', 'background: #2196F3; color: white;', {
+        nodeIndex,
+        nextSiblingIndex,
+        hasNextSibling: !!nextSibling,
+        isText: nextSibling ? SlateText.isText(nextSibling) : false,
+        text: nextSibling && SlateText.isText(nextSibling) ? nextSibling.text : 'N/A',
+        startsWithSpace: nextSibling && SlateText.isText(nextSibling) ? nextSibling.text.startsWith(' ') : false,
+      });
+
+      // 如果后面没有节点，或者下一个节点不是文本节点，或者不以空格开头
+      const needsSpace = !nextSibling || 
+                        !SlateText.isText(nextSibling) || 
+                        !nextSibling.text.startsWith(' ');
+      
+      if (needsSpace) {
+        console.log('%c[normalizeNode] ⚠️ 检测到 void 元素后缺少空格，准备修复', 'background: #FF5722; color: white;', {
+          type: (node as any).type,
+          path: JSON.stringify(path),
+          reason: !nextSibling ? 'no-next-sibling' : 
+                  !SlateText.isText(nextSibling) ? 'not-text' : 
+                  'no-space',
+        });
+
+        // 💾 保存当前光标位置
+        const currentSelection = editor.selection;
+        
+        //  在 void 元素之后插入空格文本节点
+        Editor.withoutNormalizing(editor, () => {
+          const insertPath = [...parentPath, nextSiblingIndex];
+          
+          console.log('%c[normalizeNode] 插入空格文本节点', 'background: #4CAF50; color: white;', {
+            insertPath: JSON.stringify(insertPath),
+            hasSelection: !!currentSelection,
+            currentSelectionPath: currentSelection?.anchor.path,
+            currentSelectionOffset: currentSelection?.anchor.offset,
+          });
+          
+          // 如果下一个节点是文本但不以空格开头，在文本开头插入空格
+          if (nextSibling && SlateText.isText(nextSibling)) {
+            Transforms.insertText(editor, ' ', { 
+              at: { path: insertPath, offset: 0 } 
+            });
+            
+            // 🔧 只在光标原本在文本节点开头时才调整偏移
+            // ⚠️ 不要在其他情况下移动光标！
+            if (currentSelection && 
+                Range.isCollapsed(currentSelection) &&
+                currentSelection.anchor.path.join(',') === insertPath.join(',') &&
+                currentSelection.anchor.offset === 0) {
+              Transforms.select(editor, {
+                anchor: { path: insertPath, offset: 1 },
+                focus: { path: insertPath, offset: 1 },
+              });
+              console.log('%c[normalizeNode] 光标原本在文本开头，已调整 offset +1', 'background: #4CAF50; color: white;');
+            } else {
+              console.log('%c[normalizeNode] 光标不在插入位置，保持不变', 'background: #2196F3; color: white;');
+            }
+          } else {
+            // 否则插入新的空格文本节点
+            Transforms.insertNodes(
+              editor,
+              { text: ' ' },
+              { at: insertPath }
+            );
+            
+            // 🔧 不移动光标！让 Slate 自动处理
+            // insertTag 已经通过 Transforms.insertText(' ') 将光标定位到正确位置
+            console.log('%c[normalizeNode] 插入新空格节点，光标位置由 Slate 自动处理', 'background: #2196F3; color: white;');
+          }
+        });
+        
+        console.log('%c[normalizeNode] ✅ 空格已插入', 'background: #4CAF50; color: white;');
+        
+        // 由于修改了树，立即返回让 Slate 重新 normalize
+        return;
+      }
+      
+      console.log('%c[normalizeNode] ✅ void 元素后已有空格，无需修复', 'background: #4CAF50; color: white;');
+    }
+
+    // 对于其他节点，执行默认的 normalize
+    normalizeNode(entry);
   };
 
   return editor;
@@ -203,11 +318,8 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   
   // 🆕 v1.8: 移除 shouldShowPlaceholder，改为在 renderLinePrefix 中渲染
   
-  // 🆕 用 ref 存储上次的 items，避免无限循环
-  const prevItemsRef = React.useRef<any[]>(items);
-  
-  // 🆕 标记是否正在内部更新（避免循环）
-  const isInternalUpdateRef = React.useRef(false);
+  // 🔥 标志位：跳过 syncFromExternal 触发的 onChange（因为是外部同步，不需要回调）
+  const skipNextOnChangeRef = React.useRef(false);
   
   // 🆕 DOM 变化监控
   const editorContainerRef = React.useRef<HTMLDivElement>(null);
@@ -260,15 +372,215 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     }
   }, []); // ✅ 空依赖，只执行一次
   
-  // 🆕 v1.8: 监听 items 变化，自动更新 value（保持 placeholder 行）
+  // 🔥 智能增量更新：逐个比较 items，只更新变化的 Events
+  
+  // 🔥 订阅 window.eventsUpdated 事件，接收增量更新通知
   useEffect(() => {
-    if (!isInitializedRef.current) return; // 跳过初始化阶段
+    if (!isInitializedRef.current) return;
     
-    if (!isInternalUpdateRef.current) {
-      logOperation('外部 items 变化，更新 value', { itemCount: items.length });
-      setValue(enhancedValue);
-    }
-  }, [enhancedValue]);
+    const handleEventUpdated = (e: any) => {
+      const { eventId, isDeleted, isNewEvent } = e.detail || {};
+      
+      console.log('%c[📡 eventsUpdated] 收到事件', 'background: #9C27B0; color: white; padding: 2px 6px;', {
+        eventId, isDeleted, isNewEvent
+      });
+      
+      // 🔥 增量处理新增/删除事件
+      if (isDeleted) {
+        console.log('[📡 eventsUpdated] 删除事件，增量移除节点');
+        
+        // 找到所有匹配的节点索引
+        const nodesToDelete: number[] = [];
+        value.forEach((node, index) => {
+          const eventLine = node as EventLineNode;
+          if (eventLine.eventId === eventId) {
+            nodesToDelete.push(index);
+          }
+        });
+        
+        if (nodesToDelete.length > 0) {
+          skipNextOnChangeRef.current = true;
+          Editor.withoutNormalizing(editor, () => {
+            // 从后往前删除（避免索引变化）
+            nodesToDelete.reverse().forEach(index => {
+              Transforms.removeNodes(editor, { at: [index] });
+            });
+          });
+        }
+        
+        return;
+      }
+      
+      if (isNewEvent) {
+        console.log('[📡 eventsUpdated] 新增事件，增量插入节点');
+        
+        // 从 items 中找到新事件
+        const newItem = items.find(item => item.id === eventId);
+        if (!newItem) {
+          console.warn('[📡 eventsUpdated] 找不到新事件:', eventId);
+          return;
+        }
+        
+        // 转换为 Slate 节点
+        const newNodes = planItemsToSlateNodes([newItem]);
+        if (newNodes.length === 0) return;
+        
+        // 在 placeholder 之前插入（placeholder 总是最后一个节点）
+        const insertIndex = value.length - 1; // placeholder 的索引
+        
+        skipNextOnChangeRef.current = true;
+        Editor.withoutNormalizing(editor, () => {
+          Transforms.insertNodes(editor, newNodes as any, { at: [insertIndex] });
+        });
+        
+        return;
+      }
+      
+      // 🔥 增量更新：检测用户是否正在编辑这个 Event
+      if (pendingChangesRef.current && editor.selection) {
+        const currentPath = editor.selection.anchor.path[0];
+        const currentNode = value[currentPath] as EventLineNode;
+        
+        console.log(`%c[🔍 增量更新检查]`, 'background: #FFC107; color: black; padding: 2px 6px;', {
+          hasPendingChanges: !!pendingChangesRef.current,
+          hasSelection: !!editor.selection,
+          currentPath,
+          currentEventId: currentNode?.eventId,
+          incomingEventId: eventId,
+          willSkip: currentNode?.eventId === eventId
+        });
+        
+        if (currentNode?.eventId === eventId) {
+          console.log(`%c[⏭️ 跳过 Slate 更新] 用户正在编辑 Event: ${eventId}`, 'color: #FF9800;');
+          console.log(`%c[ℹ️ UI 应该通过 useEventTime hook 自动更新]`, 'color: #2196F3;');
+          return;
+        }
+      }
+      
+      // 查找需要更新的节点
+      const nodesToUpdate: number[] = [];
+      value.forEach((node, index) => {
+        const eventLine = node as EventLineNode;
+        if (eventLine.eventId === eventId) {
+          nodesToUpdate.push(index);
+        }
+      });
+      
+      console.log(`%c[🔍 查找节点]`, 'background: #E91E63; color: white; padding: 2px 6px;', {
+        eventId,
+        totalNodes: value.length,
+        nodesToUpdate,
+        nodesToUpdateCount: nodesToUpdate.length,
+      });
+
+      if (nodesToUpdate.length === 0) return;
+      
+      // 🔥 直接从 EventService 获取最新数据
+      const updatedEvent = EventService.getEventById(eventId);
+      if (!updatedEvent) return;
+      
+      console.log(`%c[📝 增量更新] Event: ${eventId}`, 'background: #2196F3; color: white; padding: 2px 6px;');
+      
+      // 🔧 只更新 metadata 字段，不覆盖 children（避免破坏光标）
+      // 🆕 同时更新 children 中的 DateMentionNode
+      Editor.withoutNormalizing(editor, () => {
+        nodesToUpdate.forEach(index => {
+          const currentNode = value[index] as EventLineNode;
+          
+          // 构建新的 metadata（从 EventService 获取）
+          const newMetadata = {
+            startTime: updatedEvent.startTime,
+            endTime: updatedEvent.endTime,
+            dueDate: updatedEvent.dueDate,
+            isAllDay: updatedEvent.isAllDay,
+            timeSpec: updatedEvent.timeSpec,
+            emoji: updatedEvent.emoji,
+            color: updatedEvent.color,
+            priority: updatedEvent.priority,
+            category: updatedEvent.category,
+            isCompleted: updatedEvent.isCompleted,
+            isTask: updatedEvent.isTask,
+            type: updatedEvent.type,
+            isPlan: updatedEvent.isPlan,
+            isTimeCalendar: updatedEvent.isTimeCalendar,
+            calendarId: updatedEvent.calendarId,
+            calendarIds: updatedEvent.calendarIds,
+            source: updatedEvent.source,
+            syncStatus: updatedEvent.syncStatus,
+            externalId: updatedEvent.externalId,
+            remarkableSource: updatedEvent.remarkableSource,
+            createdAt: updatedEvent.createdAt,
+            updatedAt: updatedEvent.updatedAt,
+          };
+          
+          // 只更新 metadata，保持 children 不变
+          Transforms.setNodes(editor, { metadata: newMetadata } as any, { at: [index] });
+          
+          // 🆕 更新 children 中的 DateMentionNode
+          // 遍历所有 paragraph 节点，找到 dateMention 节点并更新
+          console.log(`%c[🔍 检查 DateMention]`, 'background: #FF9800; color: white; padding: 2px 6px;', {
+            eventId,
+            paragraphsCount: currentNode.children.length,
+            children: currentNode.children,
+          });
+          
+          currentNode.children.forEach((paragraph, paragraphIndex) => {
+            console.log(`%c[🔍 Paragraph ${paragraphIndex}]`, 'background: #FFC107; color: black; padding: 2px 6px;', {
+              childrenCount: paragraph.children.length,
+              children: paragraph.children,
+            });
+            
+            paragraph.children.forEach((child, childIndex) => {
+              console.log(`%c[🔍 Child ${childIndex}]`, 'background: #FFEB3B; color: black; padding: 2px 6px;', {
+                hasType: 'type' in child,
+                type: 'type' in child ? child.type : 'no-type',
+                child,
+              });
+              
+              // 类型守卫：检查是否是 DateMentionNode
+              if ('type' in child && child.type === 'dateMention') {
+                const dateMentionNode = child as DateMentionNode;
+                console.log(`%c[📅 找到 DateMention]`, 'background: #8BC34A; color: white; padding: 2px 6px;', {
+                  eventId: dateMentionNode.eventId,
+                  matchesEventId: dateMentionNode.eventId === eventId,
+                  startDate: dateMentionNode.startDate,
+                  endDate: dateMentionNode.endDate,
+                });
+                
+                if (dateMentionNode.eventId === eventId) {
+                  const dateMentionPath = [index, paragraphIndex, childIndex];
+                  const newDateMention = {
+                    startDate: updatedEvent.startTime || dateMentionNode.startDate,
+                    endDate: updatedEvent.endTime || dateMentionNode.endDate,
+                  };
+                  
+                  console.log(`%c[📅 更新 DateMention]`, 'background: #4CAF50; color: white; padding: 2px 6px;', {
+                    path: dateMentionPath,
+                    旧startDate: dateMentionNode.startDate,
+                    新startDate: newDateMention.startDate,
+                    旧endDate: dateMentionNode.endDate,
+                    新endDate: newDateMention.endDate,
+                  });
+                  
+                  Transforms.setNodes(
+                    editor,
+                    newDateMention as any,
+                    { at: dateMentionPath }
+                  );
+                }
+              }
+            });
+          });
+        });
+      });
+      
+      skipNextOnChangeRef.current = true;
+      setValue([...editor.children] as unknown as EventLineNode[]);
+    };
+    
+    window.addEventListener('eventsUpdated', handleEventUpdated);
+    return () => window.removeEventListener('eventsUpdated', handleEventUpdated);
+  }, [items, value, editor, enhancedValue]);
   
   // 通知编辑器就绪（传递带 syncFromExternal 方法的对象）
   useEffect(() => {
@@ -280,10 +592,10 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     
     if (onEditorReady) {
       onEditorReady({
+        // 🔥 全量替换（用于初始化或重置）
         syncFromExternal: (newItems: any[]) => {
-          logOperation('外部显式同步', { itemCount: newItems.length });
+          logOperation('外部全量同步', { itemCount: newItems.length });
           
-          isInternalUpdateRef.current = true;
           const baseNodes = planItemsToSlateNodes(newItems);
           
           // 🆕 v1.8: 添加 placeholder 行到末尾
@@ -305,13 +617,13 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
           };
           
           const newNodes = [...baseNodes, placeholderLine];
+          
+          // 🔥 设置标志位，跳过 onChange
+          skipNextOnChangeRef.current = true;
           setValue(newNodes);
           setEditorKey(prev => prev + 1);
-          
-          requestAnimationFrame(() => {
-            isInternalUpdateRef.current = false;
-          });
         },
+        
         getEditor: () => editor,
       });
     }
@@ -319,13 +631,41 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   
   // ==================== 内容变化处理 ====================
   
+  // 🆕 自动保存定时器
+  const autoSaveTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+  const pendingChangesRef = React.useRef<Descendant[] | null>(null);
+  
   const handleEditorChange = useCallback((newValue: Descendant[]) => {
     const timestamp = new Date().toISOString().split('T')[1].slice(0, 12);
     
-    // 🎯 修复防抖失效：跳过内部更新触发的 onChange
-    if (isInternalUpdateRef.current) {
+    // 🔥 调试：记录每次 onChange 的选区状态
+    console.log('%c[🔄 onChange]', 'background: #2196F3; color: white; padding: 2px 6px;', {
+      timestamp,
+      hasSelection: !!editor.selection,
+      selection: editor.selection ? {
+        anchor: editor.selection.anchor,
+        focus: editor.selection.focus
+      } : null,
+      operations: editor.operations.map(op => op.type)
+    });
+    
+    // 🎯 跳过外部同步触发的 onChange
+    if (skipNextOnChangeRef.current) {
+      skipNextOnChangeRef.current = false;
       if (isDebugEnabled()) {
-        window.console.log(`%c[⏭️ ${timestamp}] 跳过内部更新的 onChange`, 'color: #9E9E9E;');
+        window.console.log(`%c[⏭️ ${timestamp}] 跳过外部同步的 onChange`, 'color: #9E9E9E;');
+      }
+      return;
+    }
+    
+    // 🔥 检测是否只是选区变化（光标移动），而非内容变化
+    const isOnlySelectionChange = editor.operations.every(
+      op => op.type === 'set_selection'
+    );
+    
+    if (isOnlySelectionChange) {
+      if (isDebugEnabled()) {
+        window.console.log(`%c[⏭️ ${timestamp}] 跳过纯选区变化`, 'color: #9E9E9E;');
       }
       return;
     }
@@ -333,50 +673,50 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     // 使用增强的调试工具记录变化
     logValueChange(value, newValue as unknown as EventLineNode[]);
     
+    // 🔥 立即更新 UI（Slate 内部状态）
     setValue(newValue as unknown as EventLineNode[]);
     
-    // 🆕 v1.8: 过滤掉 placeholder 行再转换为 PlanItem
-    const filteredNodes = (newValue as unknown as EventLineNode[]).filter(node => {
-      return !(node.metadata as any)?.isPlaceholder && node.eventId !== '__placeholder__';
-    });
+    // 🔥 缓存待保存的变化，但不立即调用 onChange
+    pendingChangesRef.current = newValue;
     
-    // 转换为 PlanItem 并通知外部
-    const planItems = slateNodesToPlanItems(filteredNodes);
-    
-    // 🆕 检测 description 行删除，清空 item.description
-    planItems.forEach(item => {
-      const hasDescriptionNode = filteredNodes.some(node => {
-        const eventLine = node as EventLineNode;
-        return (eventLine.eventId === item.eventId || eventLine.lineId.startsWith(item.id)) 
-               && eventLine.mode === 'description';
-      });
-      
-      if (!hasDescriptionNode && item.description) {
-        item.description = ''; // 清空 description
-        if (isDebugEnabled()) {
-          console.log(`🧹 清空 description (节点已删除):`, { 
-            itemId: item.id.slice(-10) + '...',
-            oldDescription: item.description.slice(0, 20) + '...'
-          });
-        }
-      }
-    });
-    
-    if (isDebugEnabled()) {
-      console.log('📤 转换后的 PlanItems:', {
-        itemCount: planItems.length,
-        items: planItems.map(item => ({
-          id: item.id.slice(-10) + '...',
-          title: item.title ? `"${item.title}"` : '(空)',
-          description: item.description ? `"${item.description}"` : null,
-          isCompleted: item.isCompleted,
-        })),
-      });
+    // 🔥 清除之前的自动保存定时器
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
     }
     
-    onChange(planItems);
+    // 🔥 设置新的自动保存定时器（2秒后保存）
+    autoSaveTimerRef.current = setTimeout(() => {
+      if (pendingChangesRef.current) {
+        if (isDebugEnabled()) {
+          console.log(`%c[💾 ${new Date().toISOString().split('T')[1].slice(0, 12)}] 自动保存触发`, 
+            'background: #4CAF50; color: white; padding: 2px 6px; border-radius: 2px;');
+        }
+        
+        const filteredNodes = (pendingChangesRef.current as unknown as EventLineNode[]).filter(node => {
+          return !(node.metadata as any)?.isPlaceholder && node.eventId !== '__placeholder__';
+        });
+        
+        const planItems = slateNodesToPlanItems(filteredNodes);
+        
+        // 检测 description 行删除
+        planItems.forEach(item => {
+          const hasDescriptionNode = filteredNodes.some(node => {
+            const eventLine = node as EventLineNode;
+            return (eventLine.eventId === item.eventId || eventLine.lineId.startsWith(item.id)) 
+                   && eventLine.mode === 'description';
+          });
+          
+          if (!hasDescriptionNode && item.description) {
+            item.description = '';
+          }
+        });
+        
+        onChange(planItems);
+        pendingChangesRef.current = null;
+      }
+    }, 2000); // 2秒后自动保存
     
-    // 通知焦点变化（用于 FloatingBar 插入位置跟踪）
+    // 🔥 但是要立即通知焦点变化（用于 FloatingBar 和 TagPicker）
     if (onFocus && editor.selection) {
       try {
         const match = Editor.above(editor, {
@@ -393,6 +733,43 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       }
     }
   }, [onChange, onFocus, editor]);
+  
+  // 🆕 立即保存函数（用于 Enter 和失焦）
+  const flushPendingChanges = useCallback(() => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    
+    if (pendingChangesRef.current) {
+      if (isDebugEnabled()) {
+        console.log(`%c[💾 立即保存] 触发`, 
+          'background: #FF9800; color: white; padding: 2px 6px; border-radius: 2px;');
+      }
+      
+      const filteredNodes = (pendingChangesRef.current as unknown as EventLineNode[]).filter(node => {
+        return !(node.metadata as any)?.isPlaceholder && node.eventId !== '__placeholder__';
+      });
+      
+      const planItems = slateNodesToPlanItems(filteredNodes);
+      
+      // 检测 description 行删除
+      planItems.forEach(item => {
+        const hasDescriptionNode = filteredNodes.some(node => {
+          const eventLine = node as EventLineNode;
+          return (eventLine.eventId === item.eventId || eventLine.lineId.startsWith(item.id)) 
+                 && eventLine.mode === 'description';
+        });
+        
+        if (!hasDescriptionNode && item.description) {
+          item.description = '';
+        }
+      });
+      
+      onChange(planItems);
+      pendingChangesRef.current = null;
+    }
+  }, [onChange]);
   
   // ==================== 焦点变化处理 ====================
   
@@ -495,6 +872,9 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     // Enter 键 - 创建新的 EventLine 或 Description 行
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
+      
+      // 🔥 立即保存当前内容
+      flushPendingChanges();
       
       let insertIndex = currentPath[0] + 1;
       let newLine: EventLineNode;
@@ -977,6 +1357,10 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
               onClick={handleClick}
               onCopy={handleCopy}
               onPaste={handlePaste}
+              onBlur={() => {
+                // 🔥 失焦时立即保存
+                flushPendingChanges();
+              }}
               placeholder=""
               spellCheck={false}
               className="unified-editable"

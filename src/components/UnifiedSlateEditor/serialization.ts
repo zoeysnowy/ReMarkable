@@ -172,9 +172,11 @@ function htmlToSlateFragment(html: string): (TextNode | TagNode | DateMentionNod
  * 创建空的 EventLine 节点
  */
 export function createEmptyEventLine(level: number = 0): EventLineNode {
+  const lineId = `line-${Date.now()}-${Math.random()}`;
   return {
     type: 'event-line',
-    lineId: `line-${Date.now()}-${Math.random()}`,
+    lineId,
+    eventId: lineId, // 🔧 新行的 eventId 与 lineId 相同
     level,
     mode: 'title',
     children: [
@@ -244,12 +246,17 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
     }
     
     const item = items.get(baseId)!;
-    const html = slateFragmentToHtml(node.children[0].children);
+    
+    // 🔧 安全检查：确保节点结构正确，但不要跳过节点，只是使用安全的默认值
+    const fragment = node.children?.[0]?.children;
+    
+    // 如果没有有效的 fragment，使用空数组（不会崩溃，但会正确处理）
+    const html = fragment ? slateFragmentToHtml(fragment) : '';
     
     if (node.mode === 'title') {
       item.content = html;
-      item.title = extractPlainText(node.children[0].children);
-      item.tags = extractTags(node.children[0].children);
+      item.title = fragment ? extractPlainText(fragment) : '';
+      item.tags = fragment ? extractTags(fragment) : [];
     } else {
       item.description = html;
     }
@@ -271,6 +278,12 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
  * 将 Slate fragment 转换为 HTML
  */
 function slateFragmentToHtml(fragment: (TextNode | TagNode | DateMentionNode)[]): string {
+  // 🔧 安全检查：如果 fragment 为 undefined 或 null，返回空字符串
+  if (!fragment || !Array.isArray(fragment)) {
+    console.warn('[slateFragmentToHtml] fragment 不是数组', { fragment });
+    return '';
+  }
+  
   return fragment.map(node => {
     if ('text' in node) {
       let text = node.text;
@@ -314,6 +327,12 @@ function slateFragmentToHtml(fragment: (TextNode | TagNode | DateMentionNode)[])
  * 提取纯文本
  */
 function extractPlainText(fragment: (TextNode | TagNode | DateMentionNode)[]): string {
+  // 🔧 安全检查
+  if (!fragment || !Array.isArray(fragment)) {
+    console.warn('[extractPlainText] fragment 不是数组', { fragment });
+    return '';
+  }
+  
   return fragment.map(node => {
     if ('text' in node) return node.text;
     if (node.type === 'tag') return `#${node.tagName}`;
@@ -329,6 +348,12 @@ function extractPlainText(fragment: (TextNode | TagNode | DateMentionNode)[]): s
  * 提取标签
  */
 function extractTags(fragment: (TextNode | TagNode | DateMentionNode)[]): string[] {
+  // 🔧 安全检查
+  if (!fragment || !Array.isArray(fragment)) {
+    console.warn('[extractTags] fragment 不是数组', { fragment });
+    return [];
+  }
+  
   return fragment
     .filter((node): node is TagNode => 'type' in node && node.type === 'tag' && !node.mentionOnly)
     .map(node => node.tagName);

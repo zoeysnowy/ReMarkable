@@ -111,6 +111,7 @@ export interface Event {
   isTimeCalendar?: boolean; // 🆕 添加：标记为 TimeCalendar 页面创建的事件
   // 🆕 统一时间规范（不破坏现有 startTime/endTime，作为"意图+解析"来源）
   timeSpec?: import('./types/time').TimeSpec;
+  displayHint?: string | null; // 🆕 v1.1: 模糊时间表述（"本周"、"下周"等），用于保留用户原始输入
   
   // 🔧 Plan 相关字段（从 PlanItem 合并）
   content?: string;      // 文本内容（用于富文本编辑）

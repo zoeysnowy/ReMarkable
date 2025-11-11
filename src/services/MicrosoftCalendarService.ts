@@ -267,6 +267,11 @@ export class MicrosoftCalendarService {
       const cached = localStorage.getItem(STORAGE_KEYS.CALENDARS_CACHE);
       if (cached) {
         const calendars = JSON.parse(cached);
+        
+        // 🔧 [FIX v1.7.4] 同步更新内存中的 calendars 数组
+        // 确保 this.calendars 与 localStorage 保持一致
+        this.calendars = calendars;
+        
         MSCalendarLogger.log('📋 [Cache] Retrieved calendars from cache:', calendars.length, 'calendars');
         return calendars;
       }
@@ -294,6 +299,9 @@ export class MicrosoftCalendarService {
    */
   private setCachedCalendars(calendars: Calendar[]): void {
     try {
+      // 🔧 [FIX v1.7.4] 同时更新内存中的 calendars 数组
+      this.calendars = calendars;
+      
       localStorage.setItem(STORAGE_KEYS.CALENDARS_CACHE, JSON.stringify(calendars));
       MSCalendarLogger.log('💾 [Cache] Saved calendars to cache:', calendars.length, 'calendars');
     } catch (error) {
@@ -357,7 +365,10 @@ export class MicrosoftCalendarService {
         
         await this.calendarCacheLoadingPromise;
       } else {
-        MSCalendarLogger.log('✅ Calendar cache already exists, skipping sync');
+        MSCalendarLogger.log('✅ Calendar cache already exists, loading into memory...');
+        
+        // 🔧 [FIX v1.7.4] 从 localStorage 加载到内存（this.calendars）
+        this.getCachedCalendars(); // 这会更新 this.calendars
         
         // 🔄 检查是否需要增量同步（24小时检查一次）
         await this.checkCalendarListChanges();
@@ -1794,6 +1805,16 @@ export class MicrosoftCalendarService {
           this.accessToken = token;
           this.isAuthenticated = true;
           this.simulationMode = false;
+          
+          // 🔧 [FIX v1.7.4] 触发认证状态更新事件
+          // 确保 StatusBar 和其他组件能够实时更新状态
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('auth-state-changed', { 
+              detail: { isAuthenticated: true } 
+            }));
+            MSCalendarLogger.log('🔔 [ReloadToken] 触发了 auth-state-changed 事件');
+          }
+          
           return true;
         } else {
           MSCalendarLogger.log('⚠️ [ReloadToken] 访问令牌已过期');
@@ -1971,18 +1992,33 @@ export class MicrosoftCalendarService {
     }
 
     try {
-      // 先检查缓存
+      // 🔧 [FIX v1.7.4] 先确保日历缓存已加载到内存
+      // 避免缓存正在加载时直接发起 API 请求
+      if (!this.calendars || this.calendars.length === 0) {
+        MSCalendarLogger.log('📥 [validateCalendarExists] Calendar cache empty, loading from storage...');
+        await this.ensureCalendarCacheLoaded();
+      }
+      
+      // 检查缓存（现在应该已经加载到内存了）
       if (this.calendars && this.calendars.length > 0) {
         const existsInCache = this.calendars.some(cal => cal.id === calendarId);
         if (existsInCache) {
           MSCalendarLogger.log('✅ [validateCalendarExists] Calendar found in cache:', calendarId);
           return true;
         }
+        
+        // 🔧 缓存中找不到，记录详细信息用于调试
+        MSCalendarLogger.warn('⚠️ [validateCalendarExists] Calendar not in cache:', {
+          searchId: calendarId,
+          cachedCount: this.calendars.length,
+          cachedIds: this.calendars.map(c => c.id).slice(0, 5) // 只显示前5个
+        });
       }
 
       // 缓存中没有，尝试直接访问该日历
-      const url = `https://graph.microsoft.com/v1.0/me/calendars/${calendarId}`;
-      const calendar = await this.callGraphAPI(url, 'GET');
+      MSCalendarLogger.log('🔍 [validateCalendarExists] Checking via API...');
+      const endpoint = `/me/calendars/${calendarId}`;
+      const calendar = await this.callGraphAPI(endpoint, 'GET');
       
       if (calendar && calendar.id) {
         MSCalendarLogger.log('✅ [validateCalendarExists] Calendar exists:', {

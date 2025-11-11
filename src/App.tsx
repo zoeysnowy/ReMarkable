@@ -219,8 +219,10 @@ function App() {
     }
   }, []);
 
-  // 事件数据状态（用于首页统计）
-  const [allEvents, setAllEvents] = useState<Event[]>([]);
+  // ❌ [REMOVED] allEvents state - 不再由 App.tsx 维护
+  // 原因：违反增量更新架构，各组件应自己监听 eventsUpdated
+  // - DailyStatsCard 已自己监听
+  // - PlanManager 应自己监听（而非通过 props 接收）
 
   // 🔧 [PERFORMANCE FIX] 缓存层级标签，避免每次渲染时重新调用 TagService.getTags()
   // 现在只依赖 tagsVersion，TagService.getTags() 返回稳定引用
@@ -233,41 +235,11 @@ function App() {
     return getAvailableCalendarsForSettings();
   }, []); // 空依赖，日历列表应该是相对稳定的
 
-  // 加载所有事件数据
-  // ⚠️ [PERFORMANCE ISSUE] allEvents 主要用于首页 DailyStatsCard 统计
-  // 但任何事件变化都会触发 App 重渲染，建议后续优化：
-  // 1. 使用 Context 隔离 allEvents 状态
-  // 2. 只在首页时监听和更新
-  // 3. 使用按需加载策略
-  useEffect(() => {
-    const loadEvents = () => {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
-        if (saved) {
-          const events = JSON.parse(saved);
-          setAllEvents(events);
-          AppLogger.log('📊 [App] Loaded events for stats:', events.length);
-        }
-      } catch (error) {
-        AppLogger.error('🔧 [App] Failed to load events:', error);
-      }
-    };
+  // ❌ [REMOVED] loadEvents useEffect - 不再全局监听 eventsUpdated
+  // 原因：各组件自己监听，避免 App 不必要的重渲染
+  // 详见架构文档: docs/architecture/EVENTHUB_TIMEHUB_ARCHITECTURE.md § 1.2.1
 
-    loadEvents();
-
-    // 监听storage变化（当TimeCalendar更新事件时同步）
-    // ⚠️ 注意：storage 事件只在不同标签页触发，同页面修改不会触发
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEYS.EVENTS) {
-        loadEvents();
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
-
-  // 计时器编辑模态框状✅
+  // 计时器编辑模态框状态
   const [timerEditModal, setTimerEditModal] = useState<{
     isOpen: boolean;
     event: Event | null;
@@ -689,7 +661,7 @@ function App() {
     // 如果有计时器，使用当前计时器信息
     const tag = TagService.getFlatTags().find(t => t.id === globalTimer.tagId);
 
-    // 创建临时事件对象供编✅
+    // 创建临时事件对象供编辑
     const totalElapsed = globalTimer.elapsedTime + 
       (globalTimer.isRunning ? (Date.now() - globalTimer.startTime) : 0);
     const endTime = new Date();
@@ -748,40 +720,43 @@ function App() {
         return;
       }
 
-      // 确定计时起始时间:
+      // 确定计时起始时间
+      // 🔧 [BUG FIX] 默认使用点击确定时的当前时间
+      const confirmTime = new Date(); // 用户点击确定的时刻
       const eventStartTime = new Date(updatedEvent.startTime);
-      const now = new Date();
-      const timeDiff = Math.abs(now.getTime() - eventStartTime.getTime());
-      const useEventTime = timeDiff > 60000; // 超过1分钟认为用户修改了时✅
+      const timeDiff = Math.abs(confirmTime.getTime() - eventStartTime.getTime());
+      const useEventTime = timeDiff > 60000; // 超过1分钟认为用户手动修改了时间
       
-      const timerStartTime = useEventTime ? eventStartTime.getTime() : Date.now();
+      // 如果用户手动修改了开始时间，使用用户设置的时间；否则使用点击确定时的时间
+      const finalStartTime = useEventTime ? eventStartTime : confirmTime;
+      const timerStartTime = finalStartTime.getTime();
 
       AppLogger.log('🔧 [Timer Init] Determining start time:', {
         eventStartTime: eventStartTime.toISOString(),
-        currentTime: now.toISOString(),
+        confirmTime: confirmTime.toISOString(),
         timeDiff: `${(timeDiff / 1000).toFixed(1)}s`,
         useEventTime,
-        finalStartTime: new Date(timerStartTime).toISOString()
+        finalStartTime: finalStartTime.toISOString()
       });
 
-      // 🔧 [关键修复] 使用真实事件ID，与 useEffect 中的ID保持一✅
-      const realTimerEventId = `timer-${tagId}-${eventStartTime.getTime()}`;
+      // 🔧 [关键修复] 使用真实事件ID，与 useEffect 中的ID保持一致
+      const realTimerEventId = `timer-${tagId}-${finalStartTime.getTime()}`;
       
       // 🔧 使用 EventService 创建真实事件（使用真实ID），防止重复
       const eventTitle = updatedEvent.title || (tag.emoji ? `${tag.emoji} ${tag.name}` : tag.name);
       const timerEvent: Event = {
         id: realTimerEventId, // 使用真实ID
         title: eventTitle,
-        startTime: formatTimeForStorage(eventStartTime),
-        endTime: formatTimeForStorage(now), // 初始结束时间:为当前时✅
+        startTime: formatTimeForStorage(finalStartTime),
+        endTime: formatTimeForStorage(confirmTime), // 初始结束时间为点击确定的时间
         tags: [tagId],
         tagId: tagId,
         calendarId: (tag as any).calendarId || '',
         location: '',
         description: '计时中的事件',
         isAllDay: false,
-        createdAt: formatTimeForStorage(eventStartTime),
-        updatedAt: formatTimeForStorage(now),
+        createdAt: formatTimeForStorage(finalStartTime),
+        updatedAt: formatTimeForStorage(confirmTime),
         syncStatus: 'local-only', // 运行中不同步
         remarkableSource: true,
         isTimer: true
@@ -795,7 +770,7 @@ function App() {
         AppLogger.error('🔧 [Timer Init] EventService failed:', result.error);
       }
 
-      // 创建新的计时✅
+      // 创建新的计时器
       setGlobalTimer({
         isRunning: true,
         tagId: tagId,
@@ -803,7 +778,7 @@ function App() {
         tagEmoji: tag.emoji, // 添加标签emoji
         tagColor: tag.color, // 添加标签颜色
         startTime: timerStartTime,
-        originalStartTime: eventStartTime.getTime(), // 使用用户设置的事件开始时✅
+        originalStartTime: timerStartTime, // 使用最终确定的开始时间
         elapsedTime: 0,
         isPaused: false,
         eventEmoji: firstChar,
@@ -1051,10 +1026,11 @@ function App() {
       : await EventService.createEvent(planEvent);
     
     if (result.success) {
-      setAllEvents(EventService.getAllEvents());
+      // ✅ 不需要手动刷新 - EventService 已触发 eventsUpdated 事件
+      // App.tsx 的 useEffect 会监听该事件并增量更新 allEvents
       AppLogger.log('💾 [App] 保存 Plan 事件', item.title);
     } else {
-      AppLogger.error('� [App] 保存 Plan 事件失败', result.error);
+      AppLogger.error('❌ [App] 保存 Plan 事件失败', result.error);
     }
   }, []);
 
@@ -1062,10 +1038,10 @@ function App() {
   const handleDeletePlanItem = useCallback(async (id: string) => {
     const result = await EventService.deleteEvent(id);
     if (result.success) {
-      setAllEvents(EventService.getAllEvents());
-      AppLogger.log('�️ [App] 删除 Plan 事件', id);
+      // ✅ 不需要手动刷新 - EventService 已触发 eventsUpdated 事件
+      AppLogger.log('🗑️ [App] 删除 Plan 事件', id);
     } else {
-      AppLogger.error('� [App] 删除 Plan 事件失败', result.error);
+      AppLogger.error('❌ [App] 删除 Plan 事件失败', result.error);
     }
   }, []);
 
@@ -1073,7 +1049,7 @@ function App() {
   const handleCreateEvent = useCallback(async (event: Event) => {
     const result = await EventService.createEvent(event);
     if (result.success) {
-      setAllEvents(EventService.getAllEvents());
+      // ✅ 不需要手动刷新 - EventService 已触发 eventsUpdated 事件
       AppLogger.log('🔧 [App] Event created via EventService:', event.title);
     } else {
       AppLogger.error('🔧 [App] EventService failed:', result.error);
@@ -1089,7 +1065,7 @@ function App() {
       : await EventService.createEvent({ ...updates, id: eventId } as Event);
     
     if (result.success) {
-      setAllEvents(EventService.getAllEvents());
+      // ✅ 不需要手动刷新 - EventService 已触发 eventsUpdated 事件
       AppLogger.log('🔧 [App] Event updated via EventService:', eventId);
     } else {
       AppLogger.error('🔧 [App] EventService failed:', result.error);
@@ -1415,7 +1391,7 @@ function App() {
               />
               
               {/* 今日统计卡片 */}
-              <DailyStatsCard events={allEvents} />
+              <DailyStatsCard />
             </div>
           </PageContainer>
         );
@@ -1513,33 +1489,12 @@ function App() {
         break;
 
       case 'plan':
-        // 🔧 过滤 Plan 页面事件：
-        // 1. 显示标记为 isPlan=true 的事件
-        // 2. TimeCalendar 创建的事件（isTimeCalendar=true）只显示未过期的
-        // 3. 非 TimeCalendar 创建的事件不受时间限制，全部显示
-        // 4. 🆕 Issue #12: 排除 Timer 子事件（有 parentEventId 的事件）
-        const now = new Date();
-        const filteredPlanItems = allEvents.filter((event: Event) => {
-          // 只显示标记为 isPlan 的事件
-          if (!event.isPlan) return false;
-          
-          // 🆕 Issue #12: 排除 Timer 子事件（这些只在 TimeCalendar 显示）
-          if (event.parentEventId) return false;
-          
-          // TimeCalendar 创建的事件：只显示未过期的
-          if (event.isTimeCalendar) {
-            const endTime = new Date(event.endTime);
-            return now < endTime;
-          }
-          
-          // Task/Plan 创建的事件：不受时间限制，全部显示
-          return true;
-        });
-
+        // ❌ [REMOVED] filteredPlanItems 计算 - PlanManager 自己管理
+        // PlanManager 现在自己监听 eventsUpdated，不需要通过 props 接收 items
+        
         content = (
           <PageContainer title="计划" subtitle="我的任务与日程管理" className="plan-management">
             <PlanManager
-              items={filteredPlanItems}
               onSave={handleSavePlanItem}
               onDelete={handleDeletePlanItem}
               availableTags={availableTagsForEdit.map(t => t.name)}
@@ -1590,7 +1545,7 @@ function App() {
   }, [
     currentPage,
     globalTimer,
-    allEvents,
+    // ❌ [REMOVED] allEvents - 各组件自己监听 eventsUpdated
     microsoftService,
     syncManager,
     lastSyncTime,

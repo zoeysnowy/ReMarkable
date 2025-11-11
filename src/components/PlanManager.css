@@ -15,14 +15,27 @@
 
 /* ==================== Tippy 自定义主题 ==================== */
 .tippy-box[data-theme~='light'] {
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  background-color: transparent;
+  border-radius: 16px;
+  box-shadow: none;
   padding: 0;
 }
 
 .tippy-box[data-theme~='light'] .tippy-content {
   padding: 0;
+  background: transparent;
+  border-radius: 16px;
+}
+
+/* 移除所有 Tippy 默认背景和样式 */
+.tippy-box {
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.tippy-content {
+  padding: 0 !important;
+  background: transparent !important;
 }
 
 /* 仅针对 PlanManager 内部的日期类 Tippy，解除默认的 max-width 和裁剪，让面板不被截断 */

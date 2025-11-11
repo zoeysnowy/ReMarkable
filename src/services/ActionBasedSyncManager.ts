@@ -412,8 +412,8 @@ export class ActionBasedSyncManager {
   public async syncVisibleDateRangeFirst(visibleStart: Date, visibleEnd: Date) {
     try {
       syncLogger.log('📅 [Priority Sync] Starting sync for visible date range:', {
-        start: visibleStart.toISOString(),
-        end: visibleEnd.toISOString()
+        start: formatTimeForStorage(visibleStart),
+        end: formatTimeForStorage(visibleEnd)
       });
 
       // 0. 先推送本地未同步的更改（Local to Remote）
@@ -448,8 +448,8 @@ export class ActionBasedSyncManager {
 
     const priorityLabel = isHighPriority ? '[HIGH PRIORITY]' : '[BACKGROUND]';
     syncLogger.log(`📥 ${priorityLabel} Syncing date range:`, {
-      start: startDate.toISOString(),
-      end: endDate.toISOString()
+      start: formatTimeForStorage(startDate),
+      end: formatTimeForStorage(endDate)
     });
 
     try {
@@ -864,8 +864,12 @@ export class ActionBasedSyncManager {
         console.error('❌ [deduplicateEvents] Failed to rebuild IndexMap:', err);
       });
       
-      // 触发事件更新通知
-      window.dispatchEvent(new Event('local-events-changed'));
+      // ✅ 架构清理：使用 eventsUpdated 代替 local-events-changed
+      // 去重操作影响所有事件，触发完整重新加载
+      console.log('🔄 [deduplicateEvents] Triggering eventsUpdated for deduplicated events');
+      window.dispatchEvent(new CustomEvent('eventsUpdated', {
+        detail: { action: 'deduplicate', count: uniqueEvents.length }
+      }));
       
     } catch (error) {
       console.error('❌ [deduplicateEvents] Failed:', error);
@@ -1897,13 +1901,41 @@ private getUserSettings(): any {
     // 🚀 批量模式：一次性获取localEvents，在内存中修改，最后统一保存
     let localEvents = this.getLocalEvents();
     
+    // ⚡ 收集批量操作的详细信息，用于触发增量UI更新
+    const uiUpdates: Array<{ type: string; eventId: string; event?: any }> = [];
+    
     for (let i = 0; i < pendingRemoteActions.length; i++) {
       const action = pendingRemoteActions[i];
       try {
         if (i < 5) {
         }
         // 🚀 批量模式：传入localEvents，不触发UI更新，不立即保存
+        const beforeCount = localEvents.length;
         localEvents = await this.applyRemoteActionToLocal(action, false, localEvents);
+        const afterCount = localEvents.length;
+        
+        // ⚡ 记录操作类型和事件ID，用于增量UI更新
+        if (action.type === 'create' && afterCount > beforeCount) {
+          uiUpdates.push({ 
+            type: 'create', 
+            eventId: action.entityId,
+            event: localEvents[localEvents.length - 1] 
+          });
+        } else if (action.type === 'update') {
+          const updatedEvent = localEvents.find((e: any) => e.id === action.entityId || e.externalId === action.entityId);
+          if (updatedEvent) {
+            uiUpdates.push({ 
+              type: 'update', 
+              eventId: updatedEvent.id,
+              event: updatedEvent
+            });
+          }
+        } else if (action.type === 'delete') {
+          uiUpdates.push({ 
+            type: 'delete', 
+            eventId: action.entityId 
+          });
+        }
         
         action.synchronized = true;
         action.synchronizedAt = new Date();
@@ -1921,18 +1953,26 @@ private getUserSettings(): any {
       // 🔧 [IndexMap 优化] 批量同步时已经在循环中增量更新了 IndexMap
       // 不需要重建！只保存到 localStorage
       this.saveLocalEvents(localEvents, false); // rebuildIndex=false，使用增量更新
+      
+      // ⚡ 批量触发详细的 eventsUpdated 事件，支持 TimeCalendar 增量更新
+      console.log(`📡 [SyncRemote] Dispatching ${uiUpdates.length} eventsUpdated events for incremental UI update`);
+      uiUpdates.forEach(update => {
+        const detail: any = { eventId: update.eventId };
+        
+        if (update.type === 'create') {
+          detail.isNewEvent = true;
+          detail.tags = update.event?.tags || [];
+        } else if (update.type === 'update') {
+          detail.isUpdate = true;
+          detail.tags = update.event?.tags || [];
+        } else if (update.type === 'delete') {
+          detail.deleted = true;
+        }
+        
+        window.dispatchEvent(new CustomEvent('eventsUpdated', { detail }));
+      });
     }
     this.saveActionQueue();
-    
-    if (successCount > 0) {
-      window.dispatchEvent(new CustomEvent('local-events-changed', {
-        detail: { 
-          action: 'remote-sync', 
-          count: successCount,
-          timestamp: new Date() 
-        }
-      }));
-    }
   }
 
   private async syncSingleAction(action: SyncAction) {
@@ -2099,9 +2139,9 @@ private getUserSettings(): any {
             
             // 使用默认日历
             syncTargetCalendarId = fallbackCalendarId;
-          } else {
           }
-          const newEventId = await this.microsoftService.syncEventToCalendar(eventData, syncTargetCalendarId || 'primary');
+          
+          const newEventId = await this.microsoftService.syncEventToCalendar(eventData, syncTargetCalendarId);
           
           if (newEventId) {
             this.updateLocalEventExternalId(action.entityId, newEventId, createDescription);
@@ -2244,7 +2284,7 @@ private getUserSettings(): any {
               isAllDay: action.data.isAllDay || false
             };
             
-            const newEventId = await this.microsoftService.syncEventToCalendar(eventData, syncTargetCalendarId || 'primary');
+            const newEventId = await this.microsoftService.syncEventToCalendar(eventData, syncTargetCalendarId);
             
             if (newEventId) {
               this.updateLocalEventExternalId(action.entityId, newEventId, createDescription);
@@ -2483,7 +2523,7 @@ private getUserSettings(): any {
                 isAllDay: action.data.isAllDay || false
               };
               
-                const recreatedEventId = await this.microsoftService.syncEventToCalendar(recreateEventData, createCalendarId || 'primary');
+                const recreatedEventId = await this.microsoftService.syncEventToCalendar(recreateEventData, createCalendarId);
                 
                 if (recreatedEventId) {
                   this.updateLocalEventExternalId(action.entityId, recreatedEventId, recreateDescription);
@@ -2713,7 +2753,7 @@ private getUserSettings(): any {
                 localId: existingEvent.id,
                 remoteId: newEvent.externalId,
                 title: newEvent.title,
-                createTime: createTime.toISOString()
+                createTime: formatTimeForStorage(createTime)
               });
             }
           }
@@ -2849,24 +2889,18 @@ private getUserSettings(): any {
   }
 
   private triggerUIUpdate(actionType: string, eventData: any) {
-    // Triggering UI update
+    // ✅ 架构清理：triggerUIUpdate 已废弃
+    // EventService 的 CRUD 操作已经触发 eventsUpdated 事件
+    // 这里不需要重复触发，避免双重通知
     
-    // ❌ 移除：不应该在每个操作时触发同步完成事件
-    // window.dispatchEvent(new CustomEvent('outlook-sync-completed', {
-    //   detail: { action: actionType, event: eventData, timestamp: new Date() }
-    // }));
+    console.log('⏭️ [triggerUIUpdate] Skipping - EventService already triggered eventsUpdated:', {
+      action: actionType,
+      eventId: eventData?.id
+    });
     
-    // ❌ 移除：不应该在每个操作时触发同步完成事件
-    // window.dispatchEvent(new CustomEvent('action-sync-completed', {
-    //   detail: { action: actionType, event: eventData, timestamp: new Date() }
-    // }));
-    
-    // ✅ 只触发本地事件变更通知
-    window.dispatchEvent(new CustomEvent('local-events-changed', {
-      detail: { action: actionType, event: eventData, timestamp: new Date() }
-    }));
-    
-    // UI update events dispatched successfully
+    // ❌ 已移除：local-events-changed 事件（已废弃）
+    // ❌ 已移除：outlook-sync-completed 事件（不应该在每个操作时触发）
+    // ❌ 已移除：action-sync-completed 事件（不应该在每个操作时触发）
   }
 
   private async resolveConflicts() {
@@ -3208,8 +3242,15 @@ private getUserSettings(): any {
           // 🔧 [IndexMap 优化] 使用增量更新而非完全重建
           this.saveLocalEvents(events, false); // rebuildIndex=false
           
-          window.dispatchEvent(new CustomEvent('local-events-changed', {
-            detail: { eventId: localEventId, externalId, description }
+          // ✅ 架构清理：使用 eventsUpdated 代替 local-events-changed
+          window.dispatchEvent(new CustomEvent('eventsUpdated', {
+            detail: { 
+              eventId: localEventId, 
+              isUpdate: true,
+              action: 'update-external-id',
+              externalId, 
+              description 
+            }
           }));
         }
       }

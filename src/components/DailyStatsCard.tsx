@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Event } from '../types';
 import { TagService } from '../services/TagService';
+import { EventService } from '../services/EventService';
 import './DailyStatsCard.css';
 
 interface DailyStatsCardProps {
-  events: Event[]; // 所有事件数据
   selectedDate?: Date; // 选中的日期，默认为今天
   onDateChange?: (date: Date) => void; // 日期变化回调
 }
@@ -21,41 +21,54 @@ interface TagStats {
 }
 
 export const DailyStatsCard: React.FC<DailyStatsCardProps> = ({
-  events: propEvents, // 重命名以区分
   selectedDate = new Date(),
   onDateChange
 }) => {
   const [currentDate, setCurrentDate] = useState<Date>(selectedDate);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [events, setEvents] = useState<Event[]>(propEvents); // 使用本地 state
+  
+  // ✅ 自己维护 events state，从 EventService 初始化
+  const [events, setEvents] = useState<Event[]>(() => {
+    return EventService.getAllEvents();
+  });
 
   useEffect(() => {
-    const handleStorageChange = () => {
-      try {
-        const saved = localStorage.getItem('remarkable-events');
-        if (saved) {
-          const latestEvents = JSON.parse(saved);
-          setEvents(latestEvents);
+    // ✅ 增量更新事件列表
+    const handleEventUpdated = (e: any) => {
+      const { eventId, isDeleted, isNewEvent } = e.detail || {};
+      
+      if (isDeleted) {
+        // 增量删除
+        setEvents(prev => prev.filter(event => event.id !== eventId));
+      } else if (isNewEvent) {
+        // 增量添加
+        const newEvent = EventService.getEventById(eventId);
+        if (newEvent) {
+          setEvents(prev => [...prev, newEvent]);
         }
-      } catch (error) {
-        console.error('❌ [DailyStats] Failed to load events:', error);
+      } else {
+        // 增量更新
+        const updatedEvent = EventService.getEventById(eventId);
+        if (updatedEvent) {
+          setEvents(prev => 
+            prev.map(event => event.id === eventId ? updatedEvent : event)
+          );
+        }
       }
+      
       setRefreshKey(prev => prev + 1);
     };
 
-    window.addEventListener('eventsUpdated', handleStorageChange);
+    window.addEventListener('eventsUpdated', handleEventUpdated);
     
     return () => {
-      window.removeEventListener('eventsUpdated', handleStorageChange);
+      window.removeEventListener('eventsUpdated', handleEventUpdated);
     };
   }, []);
 
-  // 🔧 当 prop 变化时同步到本地 state
-  useEffect(() => {
-    setEvents(propEvents);
-  }, [propEvents]);
-
+  // ❌ [REMOVED] prop sync useEffect - 不再从 props 接收 events
+  
   // 格式化日期为输入框格式 YYYY-MM-DD
   const formatDateForInput = (date: Date): string => {
     const year = date.getFullYear();

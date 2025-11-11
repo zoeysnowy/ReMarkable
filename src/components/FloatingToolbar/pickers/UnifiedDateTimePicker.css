@@ -2,12 +2,12 @@
 .unified-datetime-picker {
   width: 100%;
   max-width: 600px;
-  background: none;
-  backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(10px);
   border-radius: 16px;
   box-shadow: 
-    0 20px 40px rgba(0, 0, 0, 0.12),
-    0 4px 12px rgba(0, 0, 0, 0.08);
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    0 2px 8px rgba(0, 0, 0, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.3);
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -15,8 +15,8 @@
 
 /* 顶部预览区域 */
 .unified-datetime-picker .picker-preview-header {
-  height: 61px;
-  padding: 16px 20px;
+  height: 50px;
+  padding: 8px 20px;
   background: linear-gradient(100deg, rgba(59, 130, 246, 0.10) 0%, rgba(147, 51, 234, 0.05) 100%);
   border-bottom: 1px solid rgba(226, 232, 240, 0.6);
   display: flex;
@@ -43,7 +43,7 @@
 .unified-datetime-picker .preview-end-time {
   font-size: 14px;
   font-weight: 500;
-  padding: 16px 6px;
+  padding: 8px 6px;
   color: #374151;
   font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   position: relative;
@@ -51,7 +51,7 @@
 
 .unified-datetime-picker .cross-day-badge {
   position: absolute;
-  top: 20px;
+  top: 12px;
   left: 100%;
   transform: translateY(-50%);
   margin-left: -3px;
@@ -86,6 +86,107 @@
 .unified-datetime-picker .arrow-icon {
   width: 51px;
   height: auto;
+  flex-shrink: 0;
+}
+
+/* 新增: chrono 搜索框和全天按钮容器 */
+.unified-datetime-picker .search-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 25px 10px;
+  gap: 12px;
+}
+
+.unified-datetime-picker .search-input-wrapper {
+  position: relative;
+  width: 287px;
+  display: flex;
+  align-items: center;
+}
+
+.unified-datetime-picker .search-input-wrapper svg {
+  position: absolute;
+  left: 12px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.unified-datetime-picker .search-input {
+  width: 100%;
+  height: 34px;
+  padding-left: 43px;
+  padding-right: 16px;
+  border: 2px solid transparent;
+  border-radius: 25px;
+  font-size: 14px;
+  color: #374151;
+  background: white;
+  outline: none;
+  position: relative;
+  background-clip: padding-box;
+}
+
+/* 搜索框渐变边框 */
+.unified-datetime-picker .search-input-wrapper::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 25px;
+  padding: 2px;
+  background: linear-gradient(90deg, #A855F7 0%, #3B82F6 75.48%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.unified-datetime-picker .search-input::placeholder {
+  color: #9ca3af;
+}
+
+.unified-datetime-picker .search-input:focus {
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.1);
+}
+
+/* 全天按钮 - 带圆形勾选框 */
+.unified-datetime-picker .all-day-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: #374151;
+  font-weight: 500;
+  white-space: nowrap;
+  padding: 0;
+}
+
+.unified-datetime-picker .all-day-button:hover {
+  opacity: 0.8;
+}
+
+/* 勾选图标 */
+.unified-datetime-picker .all-day-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+/* 圆形勾选框 */
+.unified-datetime-picker .all-day-checkbox {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #9ca3af;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  position: relative;
   flex-shrink: 0;
 }
 
@@ -157,12 +258,14 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 16px 10px;
+  padding: 6.5px 5px;
+  height: 40px;
+  box-sizing: border-box;
 }
 
 .unified-datetime-picker .quick-btn {
   height: 27px;
-  min-width: 48px;
+  min-width: 36px;
   padding: 0 12px;
   font-weight: 500;
   color: rgba(150, 163, 183, 0.80);
@@ -230,21 +333,22 @@
 .unified-datetime-picker .main-content {
   display: flex;
   gap: 1px;
-  background: rgba(226, 232, 240, 0.3);
+  margin-bottom: -20px;
 }
 
 /* 左侧日历部分 */
 .unified-datetime-picker .calendar-section {
   flex: 1.2;
-  padding: 10px 20px;
-  background: rgba(255, 255, 255, 0.7);
+  padding: 0px 10px 8px 20px;  
+  background: transparent;
 }
 
 .unified-datetime-picker .calendar-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-top: 8px;
+  margin-bottom: 4px;
   padding: 0 10px;
 }
 
@@ -428,8 +532,8 @@
 /* 右侧时间选择部分 */
 .unified-datetime-picker .time-section {
   flex: 0.8;
-  padding: 10px 20px;
-  background: rgba(255, 255, 255, 0.7);
+  padding: 0px 20px 0px 10px;
+  background: transparent;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -482,8 +586,6 @@
   justify-content: center;
   color: #3b82f6;
   font-size: 14px;
-  margin-bottom: 20px;
-  margin-top: 60px;
 }
 
 .unified-datetime-picker .start-time,
@@ -536,7 +638,8 @@
 .unified-datetime-picker .time-main-titles {
   display: flex;
   height: 30px;
-  margin-bottom: 16px;
+  margin-top: 8px;
+  margin-bottom: 8px;
   gap: 30px;
   padding: 10px 10px; /* 与 calendar-header 的 padding: 0 10px 对齐 */
 }
@@ -699,10 +802,11 @@
 .unified-datetime-picker .action-buttons {
   display: flex;
   justify-content: flex-end;
-  padding: 16px 24px;
+  padding: 8px 24px 8px;
   background: rgba(248, 250, 252, 0.5);
   border-top: 1px solid rgba(226, 232, 240, 0.4);
   gap: 12px;
+  border-radius: 0 0 16px 16px;
 }
 
 .unified-datetime-picker .action-buttons .ant-btn {
@@ -887,14 +991,11 @@
 /* 表情选择器 Tippy 内容样式 */
 .headless-emoji-tippy-content,
 .headless-picker-tippy-content {
-  background: rgba(255, 255, 255, 0.95);
+  background: transparent;
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 12px;
-  box-shadow: 
-    0 8px 32px rgba(0, 0, 0, 0.08),
-    0 4px 16px rgba(0, 0, 0, 0.04),
-    0 0 0 1px rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 16px;
+  box-shadow: none;
   padding: 0;
   overflow: hidden;
   transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
@@ -920,6 +1021,9 @@
 
 .tippy-box[data-theme~='transparent'] .tippy-content {
   padding: 0;
+  background: transparent;
+  border-radius: 16px;
+  overflow: hidden;
 }
 
 .tippy-arrow {

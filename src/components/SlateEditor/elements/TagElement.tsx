@@ -34,40 +34,38 @@ export const TagElementComponent: React.FC<RenderElementProps> = ({ attributes, 
   }, [tagElement.tagId]);
 
   return (
-    <>
-      {/* 可视部分：不可编辑 */}
-      <span
-        {...attributes}
-        contentEditable={false}
-        data-type="tag"
-        data-tag-id={tagElement.tagId}
-        data-tag-name={tagData.name}
-        data-tag-color={tagData.color}
-        data-tag-emoji={tagData.emoji}
-        data-mention-only={tagElement.mentionOnly ? 'true' : 'false'}
-        className={`inline-tag ${tagElement.mentionOnly ? 'mention-only' : ''}`}
-        style={{
-          display: 'inline',
-          margin: '0 2px',
-          padding: '2px 6px',
-          borderRadius: '4px',
-          backgroundColor: `${tagData.color}15`,
-          border: `1px solid ${tagData.color}40`,
-          color: tagData.color,
-          userSelect: 'none',
-          cursor: 'pointer',
-          transition: 'all 0.2s',
-          // ✅ 去掉选中时的蓝色边框
-          boxShadow: 'none',
-          outline: 'none',
-        }}
-      >
-        <span style={{ fontWeight: 700, color: tagData.color }}>#</span>
-        {tagData.emoji && <span style={{ fontWeight: 400, marginRight: '2px' }}>{tagData.emoji}</span>}
-        <span style={{ fontWeight: 700, color: tagData.color }}>{tagData.name}</span>
-      </span>
-      {/* 隐藏的 children，供 Slate 放置光标（void 节点要求）*/}
-      <span style={{ display: 'none' }}>{children}</span>
-    </>
+    <span
+      {...attributes}
+      contentEditable={false}
+      data-type="tag"
+      data-tag-id={tagElement.tagId}
+      data-tag-name={tagData.name}
+      data-tag-color={tagData.color}
+      data-tag-emoji={tagData.emoji}
+      data-mention-only={tagElement.mentionOnly ? 'true' : 'false'}
+      className={`inline-tag ${tagElement.mentionOnly ? 'mention-only' : ''}`}
+      style={{
+        display: 'inline-block',
+        margin: '0 2px',
+        padding: '2px 6px',
+        borderRadius: '4px',
+        backgroundColor: `${tagData.color}15`,
+        border: `1px solid ${tagData.color}40`,
+        color: tagData.color,
+        userSelect: 'none',
+        cursor: 'pointer',
+        transition: 'all 0.2s',
+        verticalAlign: 'baseline',
+        // ✅ 去掉选中时的蓝色边框
+        boxShadow: 'none',
+        outline: 'none',
+      }}
+    >
+      <span style={{ fontWeight: 700, color: tagData.color }}>#</span>
+      {tagData.emoji && <span style={{ fontWeight: 400, marginRight: '2px' }}>{tagData.emoji}</span>}
+      <span style={{ fontWeight: 700, color: tagData.color }}>{tagData.name}</span>
+      {/* ✅ children 必须在 void 元素内部，且不能隐藏（Slate 需要在这里放置光标）*/}
+      {children}
+    </span>
   );
 };

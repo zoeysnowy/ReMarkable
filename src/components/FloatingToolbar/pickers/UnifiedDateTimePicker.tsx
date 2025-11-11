@@ -4,10 +4,14 @@ import dayjs, { Dayjs } from 'dayjs';
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import 'dayjs/locale/zh-cn';
+import * as chrono from 'chrono-node';
 import './UnifiedDateTimePicker.css';
 import { useEventTime } from '../../../hooks/useEventTime';
 import { formatTimeForStorage } from '../../../utils/timeUtils';
 import { dbg, warn, error } from '../../../utils/debugLogger';
+import { SearchIcon } from './icons/Search';
+import { TaskGrayIcon } from './icons/TaskGray';
+import { TaskColorIcon } from './icons/TaskColor';
 
 dayjs.extend(isSameOrAfter);
 dayjs.extend(isSameOrBefore);
@@ -288,6 +292,13 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
   const [editMonth, setEditMonth] = useState((dayjs().month() + 1).toString());
   const [selectedQuickBtn, setSelectedQuickBtn] = useState<string | null>(null);
   const [scrollTrigger, setScrollTrigger] = useState<number>(0); // 用于强制重新滚动
+  
+  // 新增: chrono 搜索框和全天按钮状态
+  const [searchInput, setSearchInput] = useState('');
+  const [allDay, setAllDay] = useState(false);
+  
+  // 🆕 v1.1: displayHint 状态（保存用户原始输入的模糊时间）
+  const [displayHint, setDisplayHint] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const editContainerRef = useRef<HTMLDivElement>(null);
@@ -390,6 +401,7 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
 
   const handleDateClick = (date: Dayjs) => {
     setSelectedQuickBtn(null); // 清除快捷按钮选中状态
+    setDisplayHint(null); // 🆕 v1.1: 手动选择日期时清除 displayHint
     if (!selectedDates.start || (selectedDates.start && selectedDates.end)) {
       // 开始新的选择
       dbg('picker', '👆 用户点击日历: 开始选择', { 选择日期: date.format('YYYY-MM-DD') });
@@ -503,22 +515,35 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
     // 只在点击确定时才调用 onSelect
     if (selectedDates.start) {
       const startDateTime = startTime 
-        ? selectedDates.start.hour(startTime.hour).minute(startTime.minute)
+        ? selectedDates.start.hour(startTime.hour).minute(startTime.minute).second(0).millisecond(0)
         : selectedDates.start.startOf('day');
         
       const endDateTime = selectedDates.end
         ? (endTime 
-          ? selectedDates.end.hour(endTime.hour).minute(endTime.minute)
+          ? selectedDates.end.hour(endTime.hour).minute(endTime.minute).second(0).millisecond(0)
           : selectedDates.end.endOf('day'))
         : startDateTime;
       
       dbg('picker', '🎯 UnifiedDateTimePicker 点击确定', {
-        选择的日期: { start: selectedDates.start?.format('YYYY-MM-DD'), end: selectedDates.end?.format('YYYY-MM-DD') },
+        选择的日期: { 
+          start: selectedDates.start?.format('YYYY-MM-DD'), 
+          end: selectedDates.end?.format('YYYY-MM-DD') 
+        },
         选择的时间: { startTime, endTime },
         快捷按钮: selectedQuickBtn,
         计算后的DateTime: {
-          start: startDateTime.format('YYYY-MM-DD HH:mm'),
-          end: endDateTime.format('YYYY-MM-DD HH:mm')
+          start: startDateTime.format('YYYY-MM-DD HH:mm:ss'),
+          end: endDateTime.format('YYYY-MM-DD HH:mm:ss')
+        },
+        转换为Date对象: {
+          start: startDateTime.toDate(),
+          end: endDateTime.toDate(),
+        },
+        Date对象的时间: {
+          startHours: startDateTime.toDate().getHours(),
+          startMinutes: startDateTime.toDate().getMinutes(),
+          endHours: endDateTime.toDate().getHours(),
+          endMinutes: endDateTime.toDate().getMinutes(),
         }
       });
       
@@ -526,8 +551,11 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
       if (useTimeHub && eventId) {
         const startIso = formatTimeForStorage(startDateTime.toDate());
         const endIso = formatTimeForStorage(endDateTime.toDate());
-        const allDaySelected = !startTime && !endTime;
-        dbg('picker', '📝 准备写入 TimeHub', { eventId, startIso, endIso, allDaySelected, 原始startTime: startTime, 原始endTime: endTime });
+        // 🔧 使用组件的 allDay 状态，而不是自动推断
+        const allDaySelected = allDay;
+        // 🆕 v1.1: 如果有 displayHint 且用户勾选了全天，添加"全天"后缀
+        const finalDisplayHint = displayHint && allDaySelected ? `${displayHint} 全天` : displayHint;
+        dbg('picker', '📝 准备写入 TimeHub', { eventId, startIso, endIso, allDaySelected, displayHint: finalDisplayHint });
         // 写入后触发 onApplied，供外层插入可视化及保存其它字段
         try {
           const { TimeHub } = await import('../../../services/TimeHub');
@@ -537,6 +565,7 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
             kind: startIso !== endIso ? 'range' : 'fixed',
             allDay: allDaySelected,
             source: 'picker',
+            displayHint: finalDisplayHint, // 🆕 v1.1: 传递处理后的 displayHint
           });
           dbg('picker', '✅ TimeHub 写入成功，准备调用 onApplied', { eventId });
           onApplied?.(startIso, endIso, allDaySelected);
@@ -547,7 +576,8 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
         // TimeHub 模式但没有 eventId：先回调 onApplied，让外层创建 Event 并写入 TimeHub
         const startIso = formatTimeForStorage(startDateTime.toDate());
         const endIso = formatTimeForStorage(endDateTime.toDate());
-        const allDaySelected = !startTime && !endTime;
+        // 🔧 使用组件的 allDay 状态
+        const allDaySelected = allDay;
         dbg('picker', '🆕 TimeHub 模式但没有 eventId，先调用 onApplied', { startIso, endIso, allDaySelected });
         onApplied?.(startIso, endIso, allDaySelected);
       } else {
@@ -715,6 +745,8 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
     setEndTime(null);
     setSelectedQuickBtn('tomorrow');
     setCurrentMonth(tomorrow); // 切换到明天所在的月份
+    setAllDay(true); // 🆕 v1.1: 快捷按钮默认设置为全天
+    setDisplayHint('明天'); // 🆕 v1.1: 保存 displayHint
   };
 
   // 快捷选择：本周
@@ -730,6 +762,8 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
     setEndTime(null);
     setSelectedQuickBtn('thisWeek');
     setCurrentMonth(start); // 切换到本周开始的月份
+    setAllDay(true); // 🆕 v1.1: 快捷按钮默认设置为全天
+    setDisplayHint('本周'); // 🆕 v1.1: 保存 displayHint
   };
 
   // 快捷选择：下周
@@ -745,6 +779,8 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
     setEndTime(null);
     setSelectedQuickBtn('nextWeek');
     setCurrentMonth(start); // 切换到下周开始的月份
+    setAllDay(true); // 🆕 v1.1: 快捷按钮默认设置为全天
+    setDisplayHint('下周'); // 🆕 v1.1: 保存 displayHint
   };
 
   // 快捷选择：上午（保留已选日期，设置 00:00 - 12:00）
@@ -792,6 +828,75 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
     setScrollTrigger(prev => prev + 1); // 触发强制滚动
   };
 
+  // 新增: chrono 自然语言解析
+  const handleSearchBlur = () => {
+    if (!searchInput.trim()) {
+      dbg('picker', '🔍 搜索输入为空，跳过解析');
+      return;
+    }
+    
+    dbg('picker', '🔍 开始解析自然语言', { input: searchInput });
+    
+    try {
+      // 使用 chrono.zh 支持中文解析
+      const parsed = chrono.zh.parse(searchInput, new Date(), { forwardDate: true });
+      dbg('picker', '🔍 Chrono 解析结果', { parsed, count: parsed.length });
+      
+      if (parsed.length > 0) {
+        const result = parsed[0];
+        const start = dayjs(result.start.date());
+        setSelectedDates({ start, end: start });
+        
+        // 如果解析出时间，设置 startTime
+        if (result.start.get('hour') !== undefined && result.start.get('hour') !== null) {
+          setStartTime({
+            hour: result.start.get('hour')!,
+            minute: result.start.get('minute') || 0
+          });
+          setAllDay(false);
+        }
+        
+        // 如果解析出结束时间
+        if (result.end) {
+          const end = dayjs(result.end.date());
+          setSelectedDates(prev => ({ ...prev, end }));
+          setEndTime({
+            hour: result.end.get('hour') || 23,
+            minute: result.end.get('minute') || 59
+          });
+        }
+        
+        setScrollTrigger(prev => prev + 1);
+        setSelectedQuickBtn(null);
+        dbg('picker', '🔍 Chrono 解析成功', { input: searchInput, parsedDate: start.format('YYYY-MM-DD HH:mm') });
+      } else {
+        warn('picker', '⚠️ Chrono 无法解析该输入', { input: searchInput });
+      }
+    } catch (err) {
+      error('picker', '❌ Chrono 解析异常', { input: searchInput, error: err });
+    }
+  };
+
+  // 新增: 全天按钮切换
+  const toggleAllDay = () => {
+    const newAllDay = !allDay;
+    setAllDay(newAllDay);
+    
+    if (newAllDay) {
+      // 切换到全天：清除时间
+      setStartTime(null);
+      setEndTime(null);
+      dbg('picker', '🌅 切换到全天模式');
+    } else {
+      // 切换到非全天：设置默认时间
+      setStartTime({ hour: 9, minute: 0 });
+      setEndTime({ hour: 10, minute: 0 });
+      setScrollTrigger(prev => prev + 1);
+      dbg('picker', '⏰ 切换到非全天模式，默认时间 9:00-10:00');
+    }
+    setSelectedQuickBtn(null);
+  };
+
   return (
     <div 
       ref={containerRef} 
@@ -824,6 +929,38 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
             )}
           </span>
         </div>
+      </div>
+
+      {/* 新增: chrono 搜索框和全天按钮 */}
+      <div className="search-container">
+        <div className="search-input-wrapper">
+          <SearchIcon />
+          <input
+            className="search-input"
+            type="text"
+            placeholder="输入'明天下午3点'试试"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onBlur={handleSearchBlur}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleSearchBlur();
+                e.currentTarget.blur();
+              }
+            }}
+          />
+        </div>
+        <button 
+          className={`all-day-button ${allDay ? 'active' : ''}`}
+          onClick={toggleAllDay}
+        >
+          {allDay ? (
+            <TaskColorIcon className="all-day-icon" />
+          ) : (
+            <div className="all-day-checkbox"></div>
+          )}
+          <span>全天</span>
+        </button>
       </div>
 
       <div className="main-content">

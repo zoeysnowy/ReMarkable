@@ -18,6 +18,9 @@ export function insertTag(
   mentionOnly?: boolean
 ): boolean {
   try {
+    console.log('[insertTag] 开始插入 Tag:', tagName);
+    console.log('[insertTag] 当前 selection:', editor.selection);
+    
     const tagNode: TagNode = {
       type: 'tag',
       tagId,
@@ -28,18 +31,32 @@ export function insertTag(
       children: [{ text: '' }],
     };
     
-    // 🔧 只在没有选区时才设置焦点和选区
+    // 🔧 只在没有选区时才设置焦点
     if (!editor.selection) {
+      console.log('[insertTag] 无 selection，设置焦点');
       ReactEditor.focus(editor as ReactEditor);
-      const lastPath = [editor.children.length - 1, 0, 0];
-      Transforms.select(editor, {
-        anchor: { path: lastPath, offset: 0 },
-        focus: { path: lastPath, offset: 0 },
-      });
+      // 不再强制设置选区，让编辑器恢复上次光标位置
     }
     
-    Transforms.insertNodes(editor, tagNode as any);
-    Transforms.insertText(editor, ' ');
+    // 如果此时仍然没有 selection，说明编辑器状态异常，直接返回
+    if (!editor.selection) {
+      console.warn('[insertTag] No selection after focus, aborting');
+      return false;
+    }
+    
+    // 🔥 使用 Editor.withoutNormalizing 确保插入过程不被 normalize 打断
+    Editor.withoutNormalizing(editor, () => {
+      console.log('[insertTag] 插入节点前 selection:', JSON.stringify(editor.selection));
+      Transforms.insertNodes(editor, tagNode as any);
+      console.log('[insertTag] 插入节点后 selection:', JSON.stringify(editor.selection));
+      
+      // 🔥 插入空格，光标会自动移动到空格后
+      Transforms.insertText(editor, ' ');
+      console.log('[insertTag] 插入空格后 selection:', JSON.stringify(editor.selection));
+    });
+    
+    // ✅ 退出 withoutNormalizing 后，normalizeNode 会运行一次，确保结构正确
+    // 但此时光标已经在正确位置（空格后），不会再跳动
     
     return true;
   } catch (err) {
@@ -53,14 +70,15 @@ export function insertTag(
  */
 export function insertEmoji(editor: Editor, emoji: string): boolean {
   try {
-    // 🔧 只在没有选区时才设置焦点和选区
+    // 🔧 只在没有选区时才设置焦点
     if (!editor.selection) {
       ReactEditor.focus(editor as ReactEditor);
-      const lastPath = [editor.children.length - 1, 0, 0];
-      Transforms.select(editor, {
-        anchor: { path: lastPath, offset: 0 },
-        focus: { path: lastPath, offset: 0 },
-      });
+    }
+    
+    // 如果此时仍然没有 selection，说明编辑器状态异常，直接返回
+    if (!editor.selection) {
+      console.warn('[insertEmoji] No selection after focus, aborting');
+      return false;
     }
     
     Transforms.insertText(editor, emoji + ' ');
@@ -78,7 +96,8 @@ export function insertDateMention(
   editor: Editor,
   startDate: string,
   endDate?: string,
-  mentionOnly?: boolean
+  mentionOnly?: boolean,
+  eventId?: string  // 🆕 添加 eventId 参数，用于 TimeHub 同步
 ): boolean {
   try {
     const dateMentionNode: DateMentionNode = {
@@ -86,20 +105,24 @@ export function insertDateMention(
       startDate,
       endDate,
       mentionOnly,
+      eventId,  // 🆕 保存 eventId
       children: [{ text: '' }],
     };
     
-    // 🔧 只在没有选区时才设置焦点和选区
+    // 🔧 只在没有选区时才设置焦点
     if (!editor.selection) {
       ReactEditor.focus(editor as ReactEditor);
-      const lastPath = [editor.children.length - 1, 0, 0];
-      Transforms.select(editor, {
-        anchor: { path: lastPath, offset: 0 },
-        focus: { path: lastPath, offset: 0 },
-      });
+    }
+    
+    // 如果此时仍然没有 selection，说明编辑器状态异常，直接返回
+    if (!editor.selection) {
+      console.warn('[insertDateMention] No selection after focus, aborting');
+      return false;
     }
     
     Transforms.insertNodes(editor, dateMentionNode as any);
+    
+    // � Gemini方案：插入空格后，normalizeNode会确保dateMention后总有空格
     Transforms.insertText(editor, ' ');
     
     return true;
@@ -113,6 +136,12 @@ export function insertDateMention(
  * 将 Slate fragment 转换为 HTML（内部使用）
  */
 function slateFragmentToHtml(fragment: (TextNode | TagNode | DateMentionNode)[]): string {
+  // 🔧 安全检查
+  if (!fragment || !Array.isArray(fragment)) {
+    console.warn('[helpers.slateFragmentToHtml] fragment 不是数组', { fragment });
+    return '';
+  }
+  
   return fragment.map(node => {
     if ('text' in node) {
       let text = node.text;

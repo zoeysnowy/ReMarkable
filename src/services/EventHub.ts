@@ -120,17 +120,9 @@ class EventHubClass {
     // 5. 持久化到 EventService
     const result = await EventService.updateEvent(eventId, updatedEvent, skipSync);
 
-    if (result.success) {
-      // 6. 发出全局通知
-      window.dispatchEvent(new CustomEvent('eventUpdated', {
-        detail: { 
-          eventId, 
-          updates,
-          source,
-          event: updatedEvent
-        }
-      }));
-    }
+    // ✅ 架构优化：EventService 已经触发了 eventsUpdated 事件
+    // 不需要 EventHub 再触发 eventUpdated，避免重复事件
+    // 所有订阅者统一监听 eventsUpdated 事件即可
 
     return result;
   }
@@ -216,12 +208,8 @@ class EventHubClass {
     // 2. 持久化
     const result = await EventService.createEvent(event);
 
-    if (result.success) {
-      // 3. 发出通知
-      window.dispatchEvent(new CustomEvent('eventCreated', {
-        detail: { event }
-      }));
-    }
+    // ✅ 架构优化：EventService 已经触发了 eventsUpdated 事件
+    // 不需要 EventHub 再触发 eventCreated，避免重复事件
 
     return result;
   }
@@ -238,12 +226,8 @@ class EventHubClass {
     // 2. 删除持久化数据
     const result = await EventService.deleteEvent(eventId, skipSync);
 
-    if (result.success) {
-      // 3. 发出通知
-      window.dispatchEvent(new CustomEvent('eventDeleted', {
-        detail: { eventId }
-      }));
-    }
+    // ✅ 架构优化：EventService 已经触发了 eventsUpdated 事件
+    // 不需要 EventHub 再触发 eventDeleted，避免重复事件
 
     return result;
   }

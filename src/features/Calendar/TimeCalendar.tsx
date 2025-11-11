@@ -498,22 +498,18 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         return;
       }
       
-      // ✅ 同步完成后，重新加载事件以显示最新数据
-      if (syncDebounceTimer) {
-        clearTimeout(syncDebounceTimer);
+      // ✅ 同步完成后不需要手动重载
+      // 因为 syncPendingRemoteActions() 已经为每个变更触发了 eventsUpdated 事件
+      // TimeCalendar 通过 handleEventsUpdated 进行增量更新
+      console.log('✅ [SYNC] Sync completed, relying on eventsUpdated for incremental updates');
+      
+      // 标记初始同步完成
+      if (!initialSyncCompletedRef.current) {
+        initialSyncCompletedRef.current = true;
+        console.log('✅ [SYNC] Initial sync completed');
       }
       
-      syncDebounceTimer = setTimeout(() => {
-        loadEvents();
-        
-        // 标记初始同步完成
-        if (!initialSyncCompletedRef.current) {
-          initialSyncCompletedRef.current = true;
-          console.log('✅ [SYNC] Initial sync completed');
-        }
-        
-        isSyncingRef.current = false; // ✅ 同步完成
-      }, isWidgetMode ? 100 : 500); // Widget模式下减少延迟，提高实时性
+      isSyncingRef.current = false; // ✅ 同步完成
     };
 
     const handleSyncStarted = () => {
@@ -522,32 +518,8 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       console.log('🔄 [SYNC] Sync started, will ignore local-events-changed');
     };
 
-    const handleLocalEventsChanged = (event: unknown) => {
-      // ✅ 防止组件卸载后继续执行
-      if (!eventListenersAttachedRef.current) {
-        return;
-      }
-      
-      const customEvent = event as CustomEvent;
-      const detail = customEvent.detail;
-      
-      // ✅ 如果正在同步，忽略事件变化（防止无限循环）
-      if (isSyncingRef.current) {
-        console.log('⏭️ [EVENT] Ignoring during sync:', detail?.action || 'unknown');
-        return;
-      }
-      
-      console.log('🔄 [EVENT] Local events changed:', detail?.action || 'unknown');
-      
-      // ✅ 优化防抖处理：Widget模式下使用更短的延迟
-      if (syncDebounceTimer) {
-        clearTimeout(syncDebounceTimer);
-      }
-      
-      syncDebounceTimer = setTimeout(() => {
-        loadEvents();
-      }, isWidgetMode ? 100 : 300); // Widget模式下减少延迟，提高实时性
-    };
+    // ✅ 架构清理：移除 handleLocalEventsChanged，统一使用 eventsUpdated 事件
+    // const handleLocalEventsChanged = (event: unknown) => { ... }
 
     const handleEventsUpdated = (event: unknown) => {
       // ✅ 防止组件卸载后继续执行
@@ -560,35 +532,60 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       
       console.log('🔄 [EVENT] Events updated:', detail?.eventId || 'unknown', detail);
       
-      // ⚡ Timer 事件立即更新，跳过防抖
-      if (detail?.isTimerEvent) {
-        console.log('⚡ [EVENT] Timer event detected, updating immediately');
-        loadEvents();
-        return;
+      // ⚡ 增量更新优化：根据操作类型进行精确更新
+      const eventId = detail?.eventId;
+      if (eventId) {
+        if (detail?.deleted) {
+          // 删除操作：直接从 state 中移除
+          console.log('🗑️ [EVENT] Delete detected, removing from state:', eventId);
+          setEvents(prev => prev.filter(e => e.id !== eventId));
+          return;
+        } else if (detail?.isNewEvent || detail?.isUpdate) {
+          // 新建/更新操作：从 localStorage 读取单个事件并更新
+          console.log('✏️ [EVENT] Update/Create detected, fetching event:', eventId);
+          const savedEvents = localStorage.getItem(STORAGE_KEYS.EVENTS);
+          if (savedEvents) {
+            const parsedEvents = JSON.parse(savedEvents);
+            const updatedEvent = parsedEvents.find((e: Event) => e.id === eventId);
+            
+            if (updatedEvent) {
+              setEvents(prev => {
+                const index = prev.findIndex(e => e.id === eventId);
+                if (index >= 0) {
+                  // 更新现有事件
+                  const newEvents = [...prev];
+                  newEvents[index] = updatedEvent;
+                  return newEvents;
+                } else {
+                  // 新增事件
+                  return [...prev, updatedEvent];
+                }
+              });
+            }
+          }
+          return;
+        }
       }
       
-      // ✅ 优化防抖处理：Widget模式下使用更短的延迟
-      if (syncDebounceTimer) {
-        clearTimeout(syncDebounceTimer);
-      }
-      
-      syncDebounceTimer = setTimeout(() => {
-        loadEvents();
-      }, isWidgetMode ? 100 : 300); // Widget模式下减少延迟，提高实时性
+      // ⚠️ 降级方案：如果没有 eventId 或未知操作类型，记录警告
+      // 根据 PRD，所有 EventService 操作都应该携带 eventId 和操作标志
+      // 如果走到这里，说明事件通知格式不正确，需要排查事件源
+      console.warn('⚠️ [EVENT] Invalid event update notification - missing eventId or operation flag:', detail);
+      console.warn('⚠️ [EVENT] This should not happen if EventService is used correctly.');
     };
 
     window.addEventListener('action-sync-started', handleSyncStarted as any);
     window.addEventListener('action-sync-completed', handleSyncCompleted);
     // ❌ 移除：outlook-sync-completed 已经不再使用
     // window.addEventListener('outlook-sync-completed', handleSyncCompleted);
-    window.addEventListener('local-events-changed', handleLocalEventsChanged as any);
+    // ✅ 架构清理：local-events-changed 已废弃，统一使用 eventsUpdated
     window.addEventListener('eventsUpdated', handleEventsUpdated as any);
     
     eventListenersAttachedRef.current = true;
 
     // 初始加载 - 从缓存加载，确保离线可用（只加载一次）
     if (!eventsLoadedRef.current) {
-      console.log('� [INIT] Initial loading events from cache');
+      console.log('📂 [INIT] Initial loading events from cache');
       loadEvents();
       loadHierarchicalTags();
       eventsLoadedRef.current = true;
@@ -603,7 +600,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       window.removeEventListener('action-sync-completed', handleSyncCompleted);
       // ❌ 移除：outlook-sync-completed 已经不再使用
       // window.removeEventListener('outlook-sync-completed', handleSyncCompleted);
-      window.removeEventListener('local-events-changed', handleLocalEventsChanged as any);
+      // ✅ 架构清理：local-events-changed 已废弃
       window.removeEventListener('eventsUpdated', handleEventsUpdated as any);
       eventListenersAttachedRef.current = false;
     };
@@ -1780,17 +1777,18 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       // 更新 localStorage
       existingEvents[eventIndex] = updatedEvent;
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
-      setEvents(existingEvents);
+      
+      // ✅ 增量更新：只更新被修改的事件，避免重渲染全部 1150 个事件
+      setEvents(prevEvents => 
+        prevEvents.map(e => e.id === updatedEvent.id ? updatedEvent : e)
+      );
 
-      // 🔄 同步到 Outlook
+      // 🔄 同步到 Outlook（异步，不阻塞）
       const activeSyncManager = syncManager || (window as any).syncManager;
       if (activeSyncManager) {
-        try {
-          await activeSyncManager.recordLocalAction('update', 'event', updatedEvent.id, updatedEvent, originalEvent);
-          console.log('✅ [TimeCalendar] Event updated and synced');
-        } catch (error) {
-          console.error('❌ [TimeCalendar] Failed to sync updated event:', error);
-        }
+        activeSyncManager.recordLocalAction('update', 'event', updatedEvent.id, updatedEvent, originalEvent)
+          .then(() => console.log('✅ [TimeCalendar] Event updated and synced'))
+          .catch((error: unknown) => console.error('❌ [TimeCalendar] Failed to sync updated event:', error));
       }
     } catch (error) {
       console.error('❌ [TimeCalendar] Failed to update event:', error);
@@ -1820,9 +1818,11 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
 
       const updatedEvents = existingEvents.filter((e: Event) => e.id !== eventId);
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(updatedEvents));
-      setEvents(updatedEvents);
+      
+      // ✅ 增量更新：只从数组中移除该事件，避免重渲染全部 1150 个事件
+      setEvents(prevEvents => prevEvents.filter(e => e.id !== eventId));
 
-      // � 触发全局事件更新通知（通知DailyStatsCard等组件刷新）
+      // 触发全局事件更新通知（通知DailyStatsCard等组件刷新）
       console.log('🔔 [TimeCalendar] Dispatching eventsUpdated event after delete');
       window.dispatchEvent(new CustomEvent('eventsUpdated', {
         detail: { 
@@ -1832,15 +1832,12 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         }
       }));
 
-      // �🔄 同步删除到 Outlook
+      // 🔄 同步删除到 Outlook（异步，不阻塞）
       const activeSyncManager = syncManager || (window as any).syncManager;
       if (activeSyncManager) {
-        try {
-          await activeSyncManager.recordLocalAction('delete', 'event', eventId, null, eventToDelete);
-          console.log('✅ [TimeCalendar] Event deleted and synced');
-        } catch (error) {
-          console.error('❌ [TimeCalendar] Failed to sync deleted event:', error);
-        }
+        activeSyncManager.recordLocalAction('delete', 'event', eventId, null, eventToDelete)
+          .then(() => console.log('✅ [TimeCalendar] Event deleted and synced'))
+          .catch((error: unknown) => console.error('❌ [TimeCalendar] Failed to sync deleted event:', error));
       }
     } catch (error) {
       console.error('❌ [TimeCalendar] Failed to delete event:', error);
@@ -1880,15 +1877,9 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         }
       }
       
-      // 🎨 刷新 UI - 从 localStorage 重新加载所有事件
-      const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
-      const allEvents: Event[] = saved ? JSON.parse(saved) : [];
-      console.log('🎨 [TimeCalendar] Refreshing UI');
-      setEvents([...allEvents]);
-
-      // 🔔 触发全局事件更新通知（EventHub 已发出 eventUpdated/eventCreated 事件）
-      // DailyStatsCard 等组件应该监听 EventHub 的事件而不是这个旧事件
-      console.log('🔔 [TimeCalendar] Event saved via EventHub');
+      // ✅ 不需要刷新 UI - EventHub 已发出 eventUpdated/eventCreated 事件
+      // TimeCalendar 监听 eventsUpdated 事件会自动增量更新
+      console.log('🔔 [TimeCalendar] Event saved via EventHub, waiting for eventsUpdated event');
 
       // 🔄 同步到 Outlook（EventHub 已经调用了 EventService.updateEvent，会触发同步）
       // 不需要重复调用 recordLocalAction
@@ -1919,9 +1910,11 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
 
       const updatedEvents = existingEvents.filter((e: Event) => e.id !== eventId);
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(updatedEvents));
-      setEvents(updatedEvents);
+      
+      // ✅ 增量更新：只从数组中移除该事件，避免重渲染全部 1150 个事件
+      setEvents(prevEvents => prevEvents.filter(e => e.id !== eventId));
 
-      // � 触发全局事件更新通知（通知DailyStatsCard等组件刷新）
+      // 触发全局事件更新通知（通知DailyStatsCard等组件刷新）
       console.log('🔔 [TimeCalendar] Dispatching eventsUpdated event after delete from modal');
       window.dispatchEvent(new CustomEvent('eventsUpdated', {
         detail: { 
@@ -1934,12 +1927,14 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       // �🔄 同步到 Outlook
       const activeSyncManager = syncManager || (window as any).syncManager;
       if (activeSyncManager) {
-        try {
-          await activeSyncManager.recordLocalAction('delete', 'event', eventId, eventToDelete);
-          console.log('✅ [TimeCalendar] Event deleted and synced from modal');
-        } catch (error) {
-          console.error('❌ [TimeCalendar] Failed to sync deleted event:', error);
-        }
+        // ⚡ 移除阻塞 await - 让同步在后台异步执行
+        activeSyncManager.recordLocalAction('delete', 'event', eventId, eventToDelete)
+          .then(() => {
+            console.log('✅ [TimeCalendar] Event deleted and synced from modal');
+          })
+          .catch((error: Error) => {
+            console.error('❌ [TimeCalendar] Failed to sync deleted event:', error);
+          });
       }
     } catch (error) {
       console.error('❌ [TimeCalendar] Failed to delete event from modal:', error);

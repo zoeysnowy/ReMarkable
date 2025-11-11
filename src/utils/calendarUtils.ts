@@ -310,6 +310,12 @@ export function convertToCalendarEvent(
   // 🔧 修复：保持已有的"[专注中]"前缀，或为当前运行的timer添加前缀
   let displayTitle = event.title;
   
+  // 🆕 v1.1: 对于全天事件，优先使用 displayHint 作为标题
+  const eventWithHint = event as any;
+  if (eventWithHint.displayHint && event.isAllDay) {
+    displayTitle = eventWithHint.displayHint; // 使用 displayHint（如"本周"、"下周 全天"等）
+  }
+  
   if (isWidgetMode) {
     // 🆕 Widget模式：简化的前缀同步逻辑
     // 如果事件已经有[专注中]前缀，说明主程序认为它正在运行，Widget也应该显示前缀

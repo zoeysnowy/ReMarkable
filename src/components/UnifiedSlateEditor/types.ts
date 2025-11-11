@@ -115,6 +115,7 @@ export interface DateMentionNode {
   startDate: string;      // ISO string
   endDate?: string;       // ISO string
   mentionOnly?: boolean;  // description 模式下的只读提及
+  eventId?: string;       // 🆕 关联的事件 ID
   children: [{ text: '' }];
 }
 
