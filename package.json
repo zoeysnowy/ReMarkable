@@ -57,6 +57,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest",
+    "stop": "taskkill /F /IM node.exe /T & taskkill /F /IM electron.exe /T",
     "electron": "cd electron && npm start",
     "electron-dev": "cd electron && npm run electron-dev",
     "electron-pack": "cd electron && npm run pack",
