@@ -120,10 +120,9 @@ EventEditModal v2 支持两种视图模式，用户可根据使用场景切换�
 │   10:00 ──2h30min→ 12:00        │
 │   来自 ●Outlook: 默认            │
 │                                 │
-│   实际进展                       │
+│   实际进展         总时长：3小时  │ ← 标题左侧，总时长右侧
 │   🕐 10:00 ──2h30min→ 12:00     │
 │   🕐 23:00 ──2h→ 01:00 +1       │
-│   总时长：3小时                  │
 │   ⚫ Milestone完成于...          │
 │                                 │
 │ [取消]   [展开详情]   [保存修改]  │ ← 底部三个文字按钮
@@ -226,10 +225,10 @@ const handleSave = async () => {
 │                       │  │ 2025-10-19 10:21:18               │  │
 │  ┌─────────────────┐  │  │                                    │  │
 │  │【下 Section】    │  │  │ 处理完了一些出差的logistics...     │  │
-│  │ 实际进展         │  │  │ 准备先一个提纲丢给GPT...           │  │
+│  │实际进展 总时长:3h│  │  │ 准备先一个提纲丢给GPT...           │  │ ← 标题左侧，总时长右侧
 │  │ 🕐 10:00→12:00  │  │  │                                    │  │
 │  │ 🕐 23:00→01:00  │  │  │ ─────────────────────             │  │
-│  │ 总时长：3小时    │  │  │ 2025-10-19 10:35:18 | 16min later │  │
+│  │ 比计划多30min   │  │  │ 2025-10-19 10:35:18 | 16min later │  │
 │  │ 比计划多30min   │  │  │                                    │  │
 │  └─────────────────┘  │  │ 太强了！居然直接成稿了...          │  │
 │                       │  │                                    │  │
@@ -2115,25 +2114,45 @@ import { LocationIcon } from '@/assets/icons';
 
 ---
 
-#### 2.4 来源日历
+#### 2.4 来源日历 + 同步机制选择
+
+**位置**: 【中 Section】- 计划安排
+
+**设计理念**:
+- **"来自"** 表示事件的原始数据源（不可更改，只读显示）
+- **同步机制** 允许用户选择该计划与外部日历的同步方式
 
 **数据来源**: 
 ```typescript
-import { OutlookIcon, GoogleCalendarIcon, ICloudIcon } from '@/assets/icons';
+import { OutlookIcon, GoogleCalendarIcon, ICloudIcon, SyncIcon } from '@/assets/icons';
 
 const calendar = availableCalendars.find(cal => cal.id === event.calendarId);
+
+// 事件的同步配置
+type SyncConfig = {
+  mode: 'receive-only' | 'send-only' | 'bidirectional';  // 同步模式
+  targetCalendars: string[];  // 目标日历 ID 列表（实际进展专用）
+};
+
+// 获取同步配置（分为计划和实际）
+const planSyncConfig = event.planSyncConfig || { mode: 'receive-only', targetCalendars: [] };
+const actualSyncConfig = event.actualSyncConfig || null;  // null 表示继承计划配置
 ```
 
 **显示逻辑**:
 ```typescript
-function renderCalendarSource(event: Event, calendar?: Calendar): ReactNode {
-  // 1. 判断事件来源
+function renderCalendarSourceWithSync(
+  event: Event, 
+  calendar?: Calendar,
+  syncConfig?: SyncConfig,
+  isActualProgress: boolean = false
+): ReactNode {
+  // 1. 获取事件来源信息
   const getEventSource = (): { icon: string, name: string, emoji?: string } => {
     // 🆕 特殊情况：Timer 子事件，显示父事件的来源
     if (event.isTimer && event.parentEventId) {
       const parentEvent = EventService.getEventById(event.parentEventId);
       if (parentEvent) {
-        // 递归获取父事件的来源（父事件可能来自 Outlook/Google/iCloud/Plan 等）
         return getEventSourceForEvent(parentEvent);
       }
     }
@@ -2179,35 +2198,382 @@ function renderCalendarSource(event: Event, calendar?: Calendar): ReactNode {
   };
   
   const source = getEventSource();
+  const label = isActualProgress ? '同步' : '来自';
+  
+  // 2. 渲染来源/同步 + 同步机制选择器
+  return (
+    <div className="calendar-source-row">
+      {/* 左侧：来源/同步日历显示 */}
+      <div className="calendar-source">
+        <span className="label">{label}</span>
+        {calendar && (
+          <span 
+            className="calendar-dot" 
+            style={{ backgroundColor: calendar.color }}
+          >
+            ●
+          </span>
+        )}
+        {source.emoji && (
+          <span className="source-emoji">{source.emoji}</span>
+        )}
+        {source.icon && (
+          <img src={source.icon} alt={event.source || 'remarkable'} className="icon-platform" />
+        )}
+        <span className="source-name">{source.name}</span>
+      </div>
+      
+      {/* 右侧：同步机制选择器 */}
+      <SyncModeSelector
+        mode={syncConfig?.mode || 'receive-only'}
+        disabled={!isActualProgress && event.source !== 'local'}  // 计划安排外部事件来源不可更改
+        onChange={(newMode) => handleSyncModeChange(newMode, isActualProgress)}
+      />
+    </div>
+  );
+}
+
+/**
+ * 同步模式选择器组件
+ * 用于选择与外部日历的同步模式
+ */
+function SyncModeSelector({ 
+  mode, 
+  disabled = false, 
+  onChange 
+}: { 
+  mode: 'receive-only' | 'send-only' | 'bidirectional';
+  disabled?: boolean;
+  onChange: (mode: 'receive-only' | 'send-only' | 'bidirectional') => void;
+}) {
+  const modeConfig = {
+    'receive-only': { icon: '📥', label: '只接收同步', color: '#4CAF50' },
+    'send-only': { icon: '📤', label: '只发送同步', color: '#2196F3' },
+    'bidirectional': { icon: '🔄', label: '双向同步', color: '#FF9800' }
+  };
+  
+  const current = modeConfig[mode];
   
   return (
-    <div className="calendar-source">
-      <span>来自</span>
-      {calendar && (
-        <span 
-          className="calendar-dot" 
-          style={{ backgroundColor: calendar.color }}
-        >
-          ●
-        </span>
-      )}
-      {source.emoji && (
-        <span className="source-emoji">{source.emoji}</span>
-      )}
-      {source.icon && (
-        <img src={source.icon} alt={event.source || 'remarkable'} className="icon-platform" />
-      )}
-      <span>{source.name}</span>
+    <div className="sync-mode-selector">
+      <button 
+        className={`sync-mode-button ${disabled ? 'disabled' : ''}`}
+        onClick={() => !disabled && cycleSyncMode(mode, onChange)}
+        disabled={disabled}
+        style={{ borderColor: current.color }}
+      >
+        <span className="sync-icon">{current.icon}</span>
+        <span className="sync-label">{current.label}</span>
+      </button>
     </div>
   );
 }
-      {source.icon && (
-        <img src={source.icon} alt={event.source || 'remarkable'} className="icon-platform" />
-      )}
-      <span>{source.name}</span>
+
+/**
+ * 日历多选器组件
+ * 用于实际进展同步到多个日历
+ */
+function CalendarMultiSelector({ 
+  selectedCalendars, 
+  availableCalendars,
+  onChange 
+}: { 
+  selectedCalendars: string[];
+  availableCalendars: Calendar[];
+  onChange: (calendarIds: string[]) => void;
+}) {
+  return (
+    <div className="calendar-multi-selector">
+      {availableCalendars.map(cal => (
+        <label key={cal.id} className="calendar-checkbox">
+          <input
+            type="checkbox"
+            checked={selectedCalendars.includes(cal.id)}
+            onChange={(e) => {
+              if (e.target.checked) {
+                onChange([...selectedCalendars, cal.id]);
+              } else {
+                onChange(selectedCalendars.filter(id => id !== cal.id));
+              }
+            }}
+          />
+          <span className="calendar-dot" style={{ backgroundColor: cal.color }}>●</span>
+          <span>{cal.name}</span>
+        </label>
+      ))}
     </div>
   );
 }
+
+// 同步模式循环切换
+function cycleSyncMode(
+  currentMode: 'receive-only' | 'send-only' | 'bidirectional',
+  onChange: (mode: 'receive-only' | 'send-only' | 'bidirectional') => void
+) {
+  const modes: Array<'receive-only' | 'send-only' | 'bidirectional'> = ['receive-only', 'send-only', 'bidirectional'];
+  const currentIndex = modes.indexOf(currentMode);
+  const nextIndex = (currentIndex + 1) % modes.length;
+  onChange(modes[nextIndex]);
+}
+```
+
+**UI 样式**:
+
+```css
+/* 来源日历 + 同步机制选择器行 */
+.calendar-source-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f5f5f5;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+/* 左侧：来源/同步日历显示 */
+.calendar-source {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.calendar-source .label {
+  font-weight: 500;
+  color: #666;
+  min-width: 40px;
+}
+
+.calendar-source .calendar-dot {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.calendar-source .source-emoji {
+  font-size: 16px;
+}
+
+.calendar-source .icon-platform {
+  width: 16px;
+  height: 16px;
+}
+
+.calendar-source .source-name {
+  font-weight: 500;
+  color: #333;
+}
+
+/* 右侧：同步模式选择器 */
+.sync-mode-selector {
+  flex-shrink: 0;
+}
+
+.sync-mode-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 2px solid;
+  border-radius: 20px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 13px;
+}
+
+.sync-mode-button:hover:not(.disabled) {
+  background: #f0f0f0;
+  transform: scale(1.05);
+}
+
+.sync-mode-button.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sync-mode-button .sync-icon {
+  font-size: 16px;
+}
+
+.sync-mode-button .sync-label {
+  font-weight: 500;
+}
+
+/* 日历多选器 */
+.calendar-multi-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+}
+
+.calendar-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.calendar-checkbox:hover {
+  background: #f5f5f5;
+}
+
+.calendar-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.calendar-checkbox .calendar-dot {
+  font-size: 12px;
+}
+```
+
+**同步机制交互逻辑**:
+
+```typescript
+// 处理同步模式变更
+function handleSyncModeChange(
+  newMode: 'receive-only' | 'send-only' | 'bidirectional',
+  isActualProgress: boolean
+) {
+  if (isActualProgress) {
+    // 实际进展同步模式变更
+    event.actualSyncConfig = {
+      ...event.actualSyncConfig,
+      mode: newMode
+    };
+  } else {
+    // 计划安排同步模式变更
+    event.planSyncConfig = {
+      ...event.planSyncConfig,
+      mode: newMode
+    };
+  }
+  
+  // 触发同步
+  syncEventToExternalCalendars(event);
+}
+
+// 处理实际进展多日历选择
+function handleActualCalendarsChange(calendarIds: string[]) {
+  event.actualSyncConfig = {
+    ...event.actualSyncConfig,
+    targetCalendars: calendarIds
+  };
+  
+  // 自动应用标签映射
+  applyTagMapping(event, calendarIds);
+  
+  // 触发多日历同步
+  syncEventToMultipleCalendars(event);
+}
+```
+
+#### 2.4.1 实际进展同步机制
+
+**设计目标**:
+- **多日历同步**: 实际进展可同步到多个外部日历
+- **标签自动映射**: 根据日历类型自动应用对应标签
+- **双向同步**: 支持与外部日历的双向数据同步
+- **继承计划设置**: 默认继承计划安排的同步配置
+
+**数据结构**:
+
+```typescript
+type ActualSyncConfig = {
+  mode: 'receive-only' | 'send-only' | 'bidirectional';
+  targetCalendars: string[];  // 目标日历ID列表
+  tagMapping: { [calendarId: string]: string[] };  // 日历→标签映射
+} | null;  // null表示继承planSyncConfig
+
+event.actualSyncConfig = {
+  mode: 'bidirectional',
+  targetCalendars: ['outlook-work', 'google-personal'],
+  tagMapping: {
+    'outlook-work': ['工作', 'Outlook'],
+    'google-personal': ['生活', 'Google']
+  }
+};
+```
+
+**UI渲染** (在"实际进展"区域):
+
+```typescript
+function renderActualProgressSync(event: Event): ReactNode {
+  const actualConfig = event.actualSyncConfig || event.planSyncConfig;  // 继承计划配置
+  
+  return (
+    <div className="actual-sync-section">
+      {/* 1. 同步目标日历选择 */}
+      <CalendarMultiSelector
+        selectedCalendars={actualConfig.targetCalendars}
+        availableCalendars={availableExternalCalendars}
+        onChange={(calendarIds) => handleActualCalendarsChange(calendarIds)}
+      />
+      
+      {/* 2. 同步模式选择 */}
+      <SyncModeSelector
+        mode={actualConfig.mode}
+        disabled={false}  // 实际进展始终可更改同步模式
+        onChange={(newMode) => handleSyncModeChange(newMode, true)}
+      />
+      
+      {/* 3. 标签映射预览 */}
+      <div className="tag-mapping-preview">
+        {Object.entries(actualConfig.tagMapping).map(([calId, tags]) => (
+          <div key={calId} className="mapping-row">
+            <span className="calendar-name">{getCalendarName(calId)}</span>
+            <span className="arrow">→</span>
+            <div className="tags">
+              {tags.map(tag => (
+                <span key={tag} className="tag">{tag}</span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+**标签自动映射规则**:
+
+| 日历类型 | 自动添加标签 | 保留原有标签 |
+|---------|------------|------------|
+| Outlook | `['工作', 'Outlook']` | ✅ 保留 |
+| Google Calendar | `['生活', 'Google']` | ✅ 保留 |
+| iCloud | `['个人', 'iCloud']` | ✅ 保留 |
+
+**同步行为**:
+
+1. **添加标签**: 同步时自动为事件添加对应日历的标签
+2. **保留原标签**: 用户手动添加的标签不会被覆盖
+3. **去重处理**: 自动去除重复标签
+4. **双向同步**: 外部日历的标签变更也会同步回 ReMarkable
+
+**示例**:
+
+```typescript
+// 原事件标签
+event.tags = ['重要', '项目A'];
+
+// 同步到 Outlook 工作日历
+syncToCalendar(event, 'outlook-work');
+// → event.tags = ['重要', '项目A', '工作', 'Outlook']
+
+// 同时同步到 Google 个人日历
+syncToCalendar(event, 'google-personal');
+// → event.tags = ['重要', '项目A', '工作', 'Outlook', '生活', 'Google']
 ```
 
 **判断逻辑说明**:
@@ -2614,9 +2980,105 @@ function renderTimerSegments(segments: TimerSegment[]): ReactNode {
 
 ---
 
-#### 3.2 总时长
+#### 3.2 实际进展整体渲染结构
 
-**计算逻辑**:
+**UI 布局**（根据 Figma 设计）:
+
+```typescript
+function renderActualProgressSection(event: Event, activeTimers: Map<string, TimerState>): ReactNode {
+  if (!shouldShowActualProgress(event, activeTimers)) return null;
+  
+  const progressData = getActualProgressData(event, activeTimers);
+  const { segments, totalElapsed } = progressData;
+  
+  // 计算总时长显示文本
+  const hours = Math.floor(totalElapsed / (1000 * 60 * 60));
+  const minutes = Math.floor((totalElapsed % (1000 * 60 * 60)) / (1000 * 60));
+  const totalDurationText = hours > 0 
+    ? `${hours}小时${minutes > 0 ? minutes + '分钟' : ''}` 
+    : `${minutes}分钟`;
+  
+  return (
+    <div className="section section-bottom">
+      {/* 标题栏：左侧"实际进展"，右侧"总时长" */}
+      <div className="section-header">
+        <h4 className="section-title">实际进展</h4>
+        <span className="total-duration">总时长：{totalDurationText}</span>
+      </div>
+      
+      {/* 时间片段列表 */}
+      <div className="timer-segments-list">
+        {renderTimerSegments(segments)}
+      </div>
+      
+      {/* 同步机制（如果有） */}
+      {renderActualProgressSync(event)}
+      
+      {/* 时长对比（如果有计划安排） */}
+      {calculateDurationComparison(event, totalElapsed)}
+      
+      {/* ddl 完成状态（如果有 ddl） */}
+      {renderDdlStatus(event, totalElapsed)}
+    </div>
+  );
+}
+```
+
+**CSS 样式**:
+
+```css
+/* 实际进展 Section */
+.section-bottom {
+  margin-top: 24px;
+  padding: 16px 20px;
+  background: #fafafa;
+  border-radius: 12px;
+}
+
+/* 标题栏：左右布局 */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #374151;
+  margin: 0;
+}
+
+/* 总时长：显示在标题右侧 */
+.total-duration {
+  font-size: 14px;
+  font-weight: 500;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+/* 时间片段列表 */
+.timer-segments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+```
+
+**关键设计要点**:
+
+1. **总时长位置**：按照 Figma 设计，总时长显示在"实际进展"标题的右侧
+2. **响应式布局**：使用 `justify-content: space-between` 确保左右对齐
+3. **视觉层级**：标题更大更粗，总时长稍小，视觉上形成主次关系
+4. **灰色背景**：整个实际进展区域使用浅灰背景，区分于其他 Section
+
+---
+
+#### 3.3 总时长计算逻辑
+
+**计算函数**:
 ```typescript
 function calculateTotalElapsed(eventId: string, activeTimers: Map<string, TimerState>): number {
   const timer = activeTimers.get(eventId);
@@ -2640,22 +3102,9 @@ function calculateTotalElapsed(eventId: string, activeTimers: Map<string, TimerS
 }
 ```
 
-**显示逻辑**:
-```typescript
-const totalElapsed = calculateTotalElapsed(event.id, activeTimers);
-const hours = Math.floor(totalElapsed / (1000 * 60 * 60));
-const minutes = Math.floor((totalElapsed % (1000 * 60 * 60)) / (1000 * 60));
-
-return (
-  <div className="total-duration">
-    总时长：{hours > 0 ? `${hours}小时${minutes}分钟` : `${minutes}分钟`}
-  </div>
-);
-```
-
 ---
 
-#### 3.3 时长对比（如果有"计划安排"）
+#### 3.4 时长对比（如果有"计划安排"）
 
 **计算逻辑**:
 ```typescript
@@ -2709,7 +3158,7 @@ function calculateDurationComparison(event: Event, actualElapsed: number): React
 
 ---
 
-#### 3.4 ddl 完成状态（如果有 ddl）
+#### 3.5 ddl 完成状态（如果有 ddl）
 
 **数据来源**: `event.dueDate` + `actualElapsed` + `segments[]`
 

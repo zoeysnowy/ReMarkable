@@ -7,7 +7,8 @@ export const MICROSOFT_GRAPH_CONFIG = {
   scopes: [
     'User.Read',
     'Calendars.Read',
-    'Calendars.ReadWrite'
+    'Calendars.ReadWrite',
+    'Tasks.ReadWrite'  // 🆕 v1.7.5: To Do Lists 支持
   ]
 };
 

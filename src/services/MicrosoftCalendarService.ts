@@ -353,6 +353,7 @@ export class MicrosoftCalendarService {
 
     try {
       MSCalendarLogger.log('📥 Fetching todo lists from remote...');
+      MSCalendarLogger.log('🔑 Access token available:', !!this.accessToken);
       
       const response = await fetch('https://graph.microsoft.com/v1.0/me/todo/lists', {
         headers: {
@@ -361,11 +362,20 @@ export class MicrosoftCalendarService {
         }
       });
 
+      MSCalendarLogger.log('📥 Todo lists API response status:', response.status);
+
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        MSCalendarLogger.error('❌ Todo lists API error:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText
+        });
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
       }
 
       const data = await response.json();
+      MSCalendarLogger.log('📥 Todo lists API response data:', data);
 
       const todoLists: TodoList[] = data.value.map((list: any) => ({
         id: list.id,
