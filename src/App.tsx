@@ -9,7 +9,7 @@ import PageContainer from './components/PageContainer';
 import DesktopCalendarWidget from './pages/DesktopCalendarWidget';
 import { TimerCard } from './components/TimerCard'; // 计时卡片组件
 import { DailyStatsCard } from './components/DailyStatsCard'; // 今日统计卡片组件
-import { TimerSession, Event } from './types';
+import { TimerSession, Event, GlobalTimer } from './types';
 import { formatTimeForStorage } from './utils/timeUtils';
 import { getCalendarGroupColor, getAvailableCalendarsForSettings } from './utils/calendarUtils';
 import { STORAGE_KEYS, CacheManager } from './constants/storage';
@@ -171,21 +171,7 @@ function App() {
   const [showEventEditModal, setShowEventEditModal] = useState(false);
 
   // 全局计时器状态
-  const [globalTimer, setGlobalTimer] = useState<{
-    isRunning: boolean;
-    tagId: string;
-    tagName: string;
-    tagEmoji?: string; // 标签emoji
-    tagColor?: string; // 标签颜色
-    startTime: number; // 当前计时周期的开始时间:（用于计算当前运行时长）
-    originalStartTime: number; // 真正的开始时间:（用户设置或初始开始时间:）
-    elapsedTime: number;
-    isPaused: boolean;
-    eventEmoji?: string; // 用户自定义事件emoji
-    eventTitle?: string; // 用户自定义事件标题
-    eventId?: string; // 🔧 [BUG FIX] Timer 事件的真实ID
-    parentEventId?: string; // 🆕 Issue #12: 关联的父事件 ID（Timer 子事件关联到的父事件）
-  } | null>(null);
+  const [globalTimer, setGlobalTimer] = useState<GlobalTimer | null>(null);
 
   // 标签数据状态 - 用版本号触发 hierarchicalTags 更新
   // 🔧 [PERFORMANCE FIX] 移除冗余的 appTags state，直接使用 TagService
