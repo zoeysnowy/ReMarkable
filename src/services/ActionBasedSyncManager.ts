@@ -2098,24 +2098,58 @@ private getUserSettings(): any {
             isAllDay: action.data.isAllDay || false
           };
           
-          // 🔍 [FIXED] 获取目标日历ID - 按需求定义处理
-          syncTargetCalendarId = action.data.calendarId;
+          // 🔍 [UNIFIED v1.8] 获取目标日历ID - 统一优先使用数组字段
+          syncTargetCalendarId = undefined;
           
-          if (action.data.tagId) {
-            // 如果有标签，通过标签映射获取日历ID
+          console.log('[SYNC CREATE] 检查日历字段:', {
+            eventId: action.entityId,
+            title: action.data.title,
+            calendarIds: action.data.calendarIds,
+            calendarId: action.data.calendarId,
+            tags: action.data.tags,
+            tagId: action.data.tagId
+          });
+          
+          // 优先级 1: calendarIds 数组（新架构）
+          if (action.data.calendarIds && action.data.calendarIds.length > 0) {
+            syncTargetCalendarId = action.data.calendarIds[0];
+            console.log('[SYNC CREATE] ✅ 使用 calendarIds[0]:', syncTargetCalendarId);
+          }
+          // 优先级 2: 从 tags 数组映射获取日历ID
+          else if (action.data.tags && action.data.tags.length > 0) {
+            for (const tagId of action.data.tags) {
+              const mappedCalendarId = this.getCalendarIdForTag(tagId);
+              if (mappedCalendarId) {
+                syncTargetCalendarId = mappedCalendarId;
+                console.log('[SYNC CREATE] ✅ 从 tags 数组映射:', {
+                  tagId,
+                  calendarId: mappedCalendarId
+                });
+                break;
+              }
+            }
+          }
+          // 优先级 3: 向后兼容 - calendarId 单一字段
+          else if (action.data.calendarId) {
+            syncTargetCalendarId = action.data.calendarId;
+            console.log('[SYNC CREATE] ⚠️ 使用 calendarId (向后兼容):', syncTargetCalendarId);
+          }
+          // 优先级 4: 向后兼容 - tagId 单一字段
+          else if (action.data.tagId) {
             const mappedCalendarId = this.getCalendarIdForTag(action.data.tagId);
             if (mappedCalendarId) {
               syncTargetCalendarId = mappedCalendarId;
-            } else {
+              console.log('[SYNC CREATE] ⚠️ 从 tagId 映射 (向后兼容):', {
+                tagId: action.data.tagId,
+                calendarId: mappedCalendarId
+              });
             }
-          } else {
-            // 🚨 关键修复：如果没有标签，保持在原日历，不要移动到默认日历
           }
           
-          // 🚨 只有在真的没有任何日历信息时才使用默认日历（全新创建的事件）
+          // 如果都没有，使用默认日历
           if (!syncTargetCalendarId) {
-      // console.log('🔍 [SYNC] No calendar ID at all (new event), using default calendar');
             syncTargetCalendarId = this.microsoftService.getSelectedCalendarId();
+            console.log('[SYNC CREATE] ⚠️ 无任何日历信息，使用默认日历:', syncTargetCalendarId);
           }
           
           // 🔧 [NEW] 验证目标日历是否存在，不存在则降级到默认日历
@@ -2234,24 +2268,60 @@ private getUserSettings(): any {
               }
             }
             
-            // 🔍 [FIXED] 获取目标日历ID - 按需求定义处理（UPDATE → CREATE转换）
-            syncTargetCalendarId = action.data.calendarId;
+            // 🔍 [UNIFIED v1.8] UPDATE→CREATE: 获取目标日历ID - 优先使用数组字段
+            syncTargetCalendarId = undefined;
             
-            if (action.data.tagId) {
-              // 如果有标签，通过标签映射获取日历ID
+            console.log('[SYNC UPDATE→CREATE] 检查日历字段:', {
+              eventId: action.entityId,
+              title: action.data.title,
+              calendarIds: action.data.calendarIds,
+              calendarId: action.data.calendarId,
+              tags: action.data.tags,
+              tagId: action.data.tagId
+            });
+            
+            // 优先级 1: calendarIds 数组
+            if (action.data.calendarIds && action.data.calendarIds.length > 0) {
+              syncTargetCalendarId = action.data.calendarIds[0];
+              console.log('[SYNC UPDATE→CREATE] ✅ 使用 calendarIds[0]:', syncTargetCalendarId);
+            }
+            // 优先级 2: 从 tags 数组映射
+            else if (action.data.tags && action.data.tags.length > 0) {
+              for (const tagId of action.data.tags) {
+                const mappedCalendarId = this.getCalendarIdForTag(tagId);
+                if (mappedCalendarId) {
+                  syncTargetCalendarId = mappedCalendarId;
+                  console.log('[SYNC UPDATE→CREATE] ✅ 从 tags 数组映射:', {
+                    tagId,
+                    calendarId: mappedCalendarId
+                  });
+                  break;
+                }
+              }
+            }
+            // 优先级 3: calendarId 单一字段（向后兼容）
+            else if (action.data.calendarId) {
+              syncTargetCalendarId = action.data.calendarId;
+              console.log('[SYNC UPDATE→CREATE] ⚠️ 使用 calendarId (向后兼容):', syncTargetCalendarId);
+            }
+            // 优先级 4: tagId 单一字段（向后兼容）
+            else if (action.data.tagId) {
               const mappedCalendarId = this.getCalendarIdForTag(action.data.tagId);
               if (mappedCalendarId) {
                 syncTargetCalendarId = mappedCalendarId;
-              } else {
+                console.log('[SYNC UPDATE→CREATE] ⚠️ 从 tagId 映射 (向后兼容):', {
+                  tagId: action.data.tagId,
+                  calendarId: mappedCalendarId
+                });
               }
-            } else {
-              // 🚨 关键修复：如果没有标签，保持在原日历
             }
             
-            // 🚨 只有在真的没有任何日历信息时才使用默认日历
+            // 如果都没有，使用默认日历
             if (!syncTargetCalendarId) {
               syncTargetCalendarId = this.microsoftService.getSelectedCalendarId();
+              console.log('[SYNC UPDATE→CREATE] ⚠️ 无任何日历信息，使用默认日历:', syncTargetCalendarId);
             }
+            
             // 🔍 [NEW] 构建事件描述，保持原有的创建时间记录
             const originalCreateTime = this.extractOriginalCreateTime(action.data.description || '');
             const createDescription = this.processEventDescription(
