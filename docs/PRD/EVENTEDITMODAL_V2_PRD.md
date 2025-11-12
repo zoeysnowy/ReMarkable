@@ -119,27 +119,28 @@ EventEditModal v2 支持两种视图模式，用户可根据使用场景切换�
 │   参会人：                       │
 │   10:00 ──2h30min→ 12:00        │
 │   来自 ●Outlook: 默认            │
+│        📥 只接收同步             │ ← 来源日历 + 同步模式选择器
 │                                 │
 │   实际进展         总时长：3小时  │ ← 标题左侧，总时长右侧
 │   🕐 10:00 ──2h30min→ 12:00     │
 │   🕐 23:00 ──2h→ 01:00 +1       │
+│   同步 ●Outlook: 工作等          │
+│        🔄 双向同步               │ ← 同步日历 + 同步模式选择器
 │   ⚫ Milestone完成于...          │
 │                                 │
-│ [取消]   [展开详情]   [保存修改]  │ ← 底部三个文字按钮
+│ [取消]                [保存修改] │ ← 底部左右两个文字按钮
 └─────────────────────────────────┘
 ```
 
 **切换方式**:
-- 点击底部 "展开详情" 按钮 → 打开右侧 Event Log 视图，进入详情视图
+- 收缩视图默认显示，用户可以直接编辑和保存
+- 如需查看完整日志，可展开为详情视图（带右侧 Event Log）
 
 **底部按钮**:
 ```tsx
 <div className="compact-footer-buttons">
   <button className="footer-btn-text" onClick={handleCancel}>
     取消
-  </button>
-  <button className="footer-btn-text" onClick={handleExpandDetails}>
-    展开详情
   </button>
   <button className="footer-btn-text" onClick={handleSave}>
     保存修改
@@ -173,11 +174,6 @@ EventEditModal v2 支持两种视图模式，用户可根据使用场景切换�
 
 **交互逻辑**:
 ```typescript
-const handleExpandDetails = () => {
-  // 从收缩视图切换到详情视图
-  setViewMode('detail');
-  // 打开右侧 Event Log 区域
-};
 
 const handleCancel = () => {
   // 关闭 Modal，不保存修改
@@ -220,23 +216,74 @@ const handleSave = async () => {
 │  │ 👥 Zoey; Jenny  │  │                                         │
 │  │ 📅 10:00→12:00  │  │  ┌───────────────────────────────────┐  │
 │  │ 📍 静安嘉里...   │  │  │ 【Slate 编辑区】                   │  │
-│  │ 来自●Outlook    │  │  │                                    │  │
-│  └─────────────────┘  │  │ ─────────────────────             │  │
-│                       │  │ 2025-10-19 10:21:18               │  │
-│  ┌─────────────────┐  │  │                                    │  │
-│  │【下 Section】    │  │  │ 处理完了一些出差的logistics...     │  │
-│  │实际进展 总时长:3h│  │  │ 准备先一个提纲丢给GPT...           │  │ ← 标题左侧，总时长右侧
-│  │ 🕐 10:00→12:00  │  │  │                                    │  │
-│  │ 🕐 23:00→01:00  │  │  │ ─────────────────────             │  │
-│  │ 比计划多30min   │  │  │ 2025-10-19 10:35:18 | 16min later │  │
+│  │ 来自●Outlook:默认│  │  │                                    │  │
+│  │      📥只接收同步│  │  │ ─────────────────────             │  │ ← 来源日历+同步模式
+│  └─────────────────┘  │  │ 2025-10-19 10:21:18               │  │
+│                       │  │                                    │  │
+│  ┌─────────────────┐  │  │ 处理完了一些出差的logistics...     │  │
+│  │【下 Section】    │  │  │ 准备先一个提纲丢给GPT...           │  │ 
+│  │实际进展 总时长:3h│  │  │                                    │  │ ← 标题+总时长右侧
+│  │ 🕐 10:00→12:00  │  │  │ ─────────────────────             │  │
+│  │ 🕐 23:00→01:00  │  │  │ 2025-10-19 10:35:18 | 16min later │  │
+│  │ 同步●Outlook:工作│  │  │                                    │  │
+│  │      🔄双向同步  │  │  │                                    │  │ ← 同步日历+同步模式
 │  │ 比计划多30min   │  │  │                                    │  │
-│  └─────────────────┘  │  │ 太强了！居然直接成稿了...          │  │
+│  └─────────────────┘  │  │                                    │  │
+│                       │  │ 太强了！居然直接成稿了...          │  │
 │                       │  │                                    │  │
 │                       │  │ [😊 # 📅 • 🎨 ✓]  FloatingBar     │  │
 │                       │  └───────────────────────────────────┘  │
 └───────────────────────┴─────────────────────────────────────────┘
-│  [取消] [保存修改]                                               │
+│  [取消]                                           [保存修改]     │ ← 左右布局
 └─────────────────────────────────────────────────────────────────┘
+```
+
+**底部按钮**:
+```tsx
+<div className="modal-footer-buttons">
+  <button className="footer-btn-cancel" onClick={handleCancel}>
+    取消
+  </button>
+  <button className="footer-btn-save" onClick={handleSave}>
+    保存修改
+  </button>
+</div>
+```
+
+```css
+.modal-footer-buttons {
+  display: flex;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.footer-btn-cancel,
+.footer-btn-save {
+  font-family: 'Istok Web', sans-serif;
+  font-size: 15px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px 16px;
+  transition: color 0.2s;
+}
+
+.footer-btn-cancel {
+  color: #9ca3af;
+}
+
+.footer-btn-cancel:hover {
+  color: #6b7280;
+}
+
+.footer-btn-save {
+  color: #3b82f6;
+}
+
+.footer-btn-save:hover {
+  color: #2563eb;
+}
 ```
 
 ---
