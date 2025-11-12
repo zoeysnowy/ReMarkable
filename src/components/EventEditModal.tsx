@@ -300,8 +300,8 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
         endTime,
         location: event.location || '',
         isAllDay: isAllDay,
-        tags: event.tags || (event.tagId ? [event.tagId] : []),
-        calendarIds: event.calendarIds || (event.calendarId ? [event.calendarId] : []),
+        tags: event.tags || [],
+        calendarIds: event.calendarIds || [],
         organizer: event.organizer || { name: '', email: '' },
         attendees: event.attendees || [],
       });
@@ -535,8 +535,6 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
               location: formData.location,
               isAllDay: formData.isAllDay,
               tags: formData.tags,
-              tagId: formData.tags.length > 0 ? formData.tags[0] : undefined,
-              calendarId: targetCalendarId, // 🔧 使用计算后的 calendarId
               calendarIds: targetCalendarId ? [targetCalendarId] : formData.calendarIds, // 🔧 更新 calendarIds 数组
               organizer: formData.organizer.email ? formData.organizer : undefined, // 添加组织者
               attendees: formData.attendees.filter(a => a.email), // 添加参会人（过滤掉没有邮箱的）

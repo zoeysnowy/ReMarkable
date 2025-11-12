@@ -63,19 +63,13 @@ export function getEventColor(event: Event, tags: any[]): string {
     }
   }
 
-  // 优先级 2: 如果有 tagId（向后兼容），使用它的颜色
-  if (event.tagId) {
-    const color = getTagColor(event.tagId, tags);
-    if (color && color !== '#3788d8') return color; // 只有找到非默认颜色才返回
-  }
-
-  // 优先级 3: 回退到事件关联的日历分组颜色
-  if (event.calendarId) {
-    const calendarColor = getCalendarGroupColor(event.calendarId);
+  // 优先级 2: 回退到事件关联的日历分组颜色
+  if (event.calendarIds && event.calendarIds.length > 0) {
+    const calendarColor = getCalendarGroupColor(event.calendarIds[0]);
     if (calendarColor) return calendarColor;
   }
 
-  // 优先级 4: 默认蓝色
+  // 优先级 3: 默认蓝色
   return '#3788d8';
 }
 
@@ -268,14 +262,12 @@ export function convertToCalendarEvent(
   // 🎨 使用getEventColor获取正确的颜色（支持多标签和日历颜色）
   const eventColor = getEventColor(event, tags);
   
-  // 📋 确定 calendarId：优先使用第一个标签，然后是 tagId，最后是 calendarId
+  // 📋 确定 calendarId：使用第一个标签或 calendarId
   let calendarId = 'default';
   if (event.tags && event.tags.length > 0) {
     calendarId = event.tags[0]; // 使用第一个标签作为日历分组
-  } else if (event.tagId) {
-    calendarId = event.tagId;
-  } else if (event.calendarId) {
-    calendarId = event.calendarId;
+  } else if (event.calendarIds && event.calendarIds.length > 0) {
+    calendarId = event.calendarIds[0];
   }
   
   // 🎯 确定事件类型（category）
@@ -371,9 +363,8 @@ export function convertToCalendarEvent(
       remarkableEvent: event,
       externalId: event.externalId,
       syncStatus: event.syncStatus,
-      tagId: event.tagId,
       tags: event.tags,
-      calendarId: event.calendarId,
+      calendarIds: event.calendarIds,
       category: event.category
     }
   };
@@ -416,12 +407,12 @@ export function convertFromCalendarEvent(
     endTime: formatTimeForStorage(calendarEvent.end),
     isAllDay: calendarEvent.isAllday || false,
     location: calendarEvent.location || '',
-    tagId: calendarEvent.calendarId !== 'default' ? calendarEvent.calendarId : '',
+    tags: calendarEvent.calendarId !== 'default' ? [calendarEvent.calendarId] : [],
     category: originalEvent?.category || 'planning',
     // 继承原始事件的同步信息
     externalId: originalEvent?.externalId,
     syncStatus: originalEvent?.syncStatus,
-    calendarId: originalEvent?.calendarId,
+    calendarIds: originalEvent?.calendarIds,
     remarkableSource: true,
     // 时间戳
     createdAt: originalEvent?.createdAt || nowStr,

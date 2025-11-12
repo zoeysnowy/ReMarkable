@@ -90,9 +90,9 @@ export const DailyStatsCard: React.FC<DailyStatsCardProps> = ({
     const now = new Date();
 
     dayEvents.forEach(event => {
-      const tags = event.tags || (event.tagId ? [event.tagId] : []);
+      const tags = event.tags || [];
       
-      tags.forEach(tagId => {
+      tags.forEach((tagId: string) => {
         const start = new Date(event.startTime).getTime();
         const end = new Date(event.endTime).getTime();
         const nowTime = now.getTime();

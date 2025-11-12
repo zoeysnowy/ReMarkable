@@ -516,7 +516,6 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
             type: updatedEvent.type,
             isPlan: updatedEvent.isPlan,
             isTimeCalendar: updatedEvent.isTimeCalendar,
-            calendarId: updatedEvent.calendarId,
             calendarIds: updatedEvent.calendarIds,
             source: updatedEvent.source,
             syncStatus: updatedEvent.syncStatus,

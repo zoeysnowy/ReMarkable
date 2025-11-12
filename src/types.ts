@@ -89,16 +89,14 @@ export interface Event {
   attendees?: Contact[]; // 🔧 修改：使用统一的 Contact 接口
   reminder?: number;
   externalId?: string;
-  calendarId?: string;
-  calendarIds?: string[]; // 🆕 添加：多日历分组支持
+  calendarIds?: string[]; // 🆕 多日历分组支持
   source?: 'local' | 'outlook' | 'google' | 'icloud'; // 🆕 事件来源
   syncStatus?: SyncStatusType; // 🔧 unified: 'pending' 表示所有待同步状态（新建或更新）
   lastSyncTime?: string; // 🔧 修改：使用字符串存储本地时间
   createdAt: string;     // 🔧 修改：使用字符串存储本地时间
   updatedAt: string;     // 🔧 修改：使用字符串存储本地时间
   timerSessionId?: string;
-  tagId?: string;        // 🔧 保留向后兼容，单标签模式
-  tags?: string[];       // 🆕 添加：多标签支持
+  tags?: string[];       // 🆕 多标签支持
   category?: string;
   remarkableSource?: boolean;
   localVersion?: number;
@@ -165,12 +163,17 @@ export interface GlobalTimer {
   id?: string;
   taskTitle?: string;
   eventTitle?: string;   // 事件标题
-  tagId?: string;        // 标签ID
+  tagId: string;         // 主标签 ID（为向后兼容保留，但始终从 tags[0] 同步）
+  tags?: string[];       // 🆕 v1.8: 多标签支持
+  tagName: string;       // 标签名称
+  tagEmoji?: string;     // 标签图标
+  tagColor?: string;     // 标签颜色
+  eventEmoji?: string;   // 事件图标
+  eventId?: string;      // 关联的事件 ID
   parentEventId?: string;  // 🆕 Issue #12: 关联的父事件 ID（Timer 子事件关联到的父事件）
   startTime: number;     // Unix timestamp
-  originalStartTime?: number; // 原始开始时间
-  elapsedTime: number;   // 已经过的时间（秒）
+  originalStartTime: number; // 原始开始时间
+  elapsedTime: number;   // 已经过的时间（毫秒）
   isRunning: boolean;    // 是否正在运行
-  isPaused?: boolean;    // 是否暂停
-  lastUpdateTime?: number; // 上次更新时间
+  isPaused: boolean;     // 是否暂停
 }

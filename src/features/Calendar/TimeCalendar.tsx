@@ -1432,9 +1432,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       endTime: formatTimeForStorage(now), // 当前时间
       location: '',
       description: '实时计时事件',
-      tags: [currentTimer.tagId],
-      tagId: currentTimer.tagId,
-      calendarId: '',
+      tags: currentTimer.tags || [currentTimer.tagId],
       isAllDay: false,
       createdAt: formatTimeForStorage(timerStartTime),
       updatedAt: formatTimeForStorage(now),
@@ -1505,7 +1503,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     const filteredByTags = filteredByDateRange.filter(event => {
       // 标签筛选 - 当启用筛选时，匹配包含任一所选标签的事件
       if (hasTagFilter) {
-        const eventTags = event.tags || (event.tagId ? [event.tagId] : []);
+        const eventTags = event.tags || [];
         
         // ✅ 新逻辑：支持特殊标签选项
         // "no-tag" - 显示未定义标签的事件
@@ -1517,7 +1515,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         }
         
         // 有标签的事件：检查是否与筛选条件匹配
-        return eventTags.some(tagId => visibleTags.includes(tagId));
+        return eventTags.some((tagId: string) => visibleTags.includes(tagId));
       }
       return true;
     });
@@ -1527,7 +1525,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       if (hasCalendarFilter) {
         // ✅ 新逻辑：支持特殊日历选项
         // "local-created" - 显示本地创建的事件（source=local或remarkableSource=true）
-        // "not-synced" - 显示未同步至日历的事件（没有calendarId或没有externalId）
+        // "not-synced" - 显示未同步至日历的事件（没有calendarIds或没有externalId）
         const hasLocalCreatedOption = visibleCalendars.includes('local-created');
         const hasNotSyncedOption = visibleCalendars.includes('not-synced');
         
@@ -1535,18 +1533,18 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         const isLocalCreated = event.source === 'local' || event.remarkableSource === true;
         
         // 判断事件是否未同步至日历
-        const isNotSynced = !event.calendarId || !event.externalId;
+        const isNotSynced = !event.calendarIds?.length || !event.externalId;
         
         // 如果事件符合特殊选项，则显示
         if (isLocalCreated && hasLocalCreatedOption) return true;
         if (isNotSynced && hasNotSyncedOption) return true;
         
-        // 如果事件没有calendarId，但也不符合特殊选项，则隐藏
-        if (!event.calendarId) return false;
+        // 如果事件没有calendarIds，但也不符合特殊选项，则隐藏
+        if (!event.calendarIds?.length) return false;
         
-        // 正常的日历筛选：检查是否属于所选日历
+        // 正常的日历筛选：检查是否属于所选日历（检查任一 calendarId 匹配）
         // 如果 visibleCalendars 为空，说明用户取消了所有勾选，不显示任何日历
-        return visibleCalendars.includes(event.calendarId);
+        return event.calendarIds.some((calId: string) => visibleCalendars.includes(calId));
       }
       return true;
     });
@@ -1713,8 +1711,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       location: '',
       description: '',
       tags: [],
-      tagId: '',
-      calendarId: '', // 用户需要在模态框中选择
       isAllDay: isAllday || false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -1862,7 +1858,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
 
       // 🏷️ Bug Fix #4: 如果标题为空，使用标签名称（含emoji）作为标题
       if (!updatedEvent.title || updatedEvent.title.trim() === '') {
-        const tagId = updatedEvent.tags?.[0] || updatedEvent.tagId;
+        const tagId = updatedEvent.tags?.[0];
         if (tagId) {
           const flatTags = TagService.getFlatTags();
           const tag = flatTags.find(t => t.id === tagId);
@@ -2343,8 +2339,6 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
                   location: '',
                   description: '',
                   tags: [],
-                  tagId: '',
-                  calendarId: '',
                   isAllDay: false,
                   createdAt: new Date().toISOString(),
                   updatedAt: new Date().toISOString(),

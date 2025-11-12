@@ -1135,9 +1135,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           description: updatedItem.description,
           timelog: updatedItem.timelog ?? existingItem?.timelog, // 🆕 v1.8: 保留富文本描述（使用 ?? 避免覆盖）
           tags: tagIds, // 使用规范化的 tagIds
-          tagId: tagIds.length > 0 ? tagIds[0] : undefined, // 🆕 v1.8: 向后兼容 ActionBasedSyncManager
           calendarIds: calendarIds.length > 0 ? calendarIds : undefined, // 🆕 v1.8: 设置 calendarIds
-          calendarId: calendarIds.length > 0 ? calendarIds[0] : undefined, // 🆕 v1.8: 向后兼容 ActionBasedSyncManager
           level: updatedItem.level || 0,
           priority: updatedItem.priority || existingItem?.priority || 'medium',
           isCompleted: updatedItem.isCompleted ?? existingItem?.isCompleted ?? false,
@@ -1555,8 +1553,6 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       location: '', // Event 没有 location 字段，保留空值
       isAllDay: !item.startTime && !!item.dueDate,
       tags: mappedTags,
-      tagId: mappedTags.length > 0 ? mappedTags[0] : undefined,
-      calendarId: undefined,
       calendarIds: [],
       source: 'local',
       syncStatus: 'local-only',
