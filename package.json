@@ -52,10 +52,11 @@
     "yjs": "^13.6.27"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
+    "dev": "vite",
+    "start": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest",
     "electron": "cd electron && npm start",
     "electron-dev": "cd electron && npm run electron-dev",
     "electron-pack": "cd electron && npm run pack",
@@ -92,6 +93,10 @@
     "@types/slate-react": "^0.50.0",
     "@types/tinycolor2": "^1.4.6",
     "@types/unist": "^3.0.3",
-    "typescript": "^4.9.5"
+    "@vitejs/plugin-react": "^5.1.1",
+    "typescript": "^4.9.5",
+    "vite": "^7.2.2",
+    "vite-plugin-svgr": "^4.5.0",
+    "vite-tsconfig-paths": "^5.1.4"
   }
 }
