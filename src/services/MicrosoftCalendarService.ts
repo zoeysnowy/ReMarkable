@@ -2,7 +2,7 @@ import { PublicClientApplication } from '@azure/msal-browser';
 import { MICROSOFT_GRAPH_CONFIG } from '../config/calendar';
 import { formatTimeForStorage } from '../utils/timeUtils';
 import { STORAGE_KEYS } from '../constants/storage';
-import { Contact } from '../types';
+import { Contact, TodoList } from '../types';
 
 import { logger } from '../utils/logger';
 
@@ -308,6 +308,98 @@ export class MicrosoftCalendarService {
       MSCalendarLogger.error('❌ [Cache] Failed to save calendars to cache:', error);
     }
   }
+
+  // ========================================
+  // 🆕 To Do Lists 相关方法
+  // ========================================
+
+  /**
+   * 从缓存获取 To Do Lists
+   */
+  public getCachedTodoLists(): TodoList[] {
+    try {
+      const cached = localStorage.getItem('remarkable-todolists-cache');
+      if (!cached) return [];
+      
+      const parsed = JSON.parse(cached);
+      MSCalendarLogger.log('📋 [Cache] Retrieved todo lists from cache:', parsed.length, 'lists');
+      return parsed;
+    } catch (error) {
+      MSCalendarLogger.error('❌ Failed to get cached todo lists:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 写入 To Do Lists 缓存
+   */
+  private setCachedTodoLists(todoLists: TodoList[]): void {
+    try {
+      localStorage.setItem('remarkable-todolists-cache', JSON.stringify(todoLists));
+      MSCalendarLogger.log('💾 [Cache] Saved todo lists to cache:', todoLists.length, 'lists');
+    } catch (error) {
+      MSCalendarLogger.error('❌ Failed to cache todo lists:', error);
+    }
+  }
+
+  /**
+   * 从 Microsoft Graph API 获取所有 To Do Lists
+   * API: GET /me/todo/lists
+   */
+  public async getAllTodoListData(): Promise<{ todoLists: TodoList[] }> {
+    if (!this.isSignedIn()) {
+      throw new Error('User is not signed in');
+    }
+
+    try {
+      MSCalendarLogger.log('📥 Fetching todo lists from remote...');
+      
+      const response = await fetch('https://graph.microsoft.com/v1.0/me/todo/lists', {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      const todoLists: TodoList[] = data.value.map((list: any) => ({
+        id: list.id,
+        name: list.displayName,
+        isOwner: list.isOwner,
+        isShared: list.isShared,
+        wellknownListName: list.wellknownListName, // "none", "defaultList", "flaggedEmails"
+      }));
+
+      MSCalendarLogger.log('📥 Fetched todo lists from remote:', todoLists.length, 'lists');
+      this.setCachedTodoLists(todoLists);
+      
+      return { todoLists };
+    } catch (error) {
+      MSCalendarLogger.error('❌ Failed to fetch todo lists:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 同步 To Do Lists (远程 → 本地缓存)
+   */
+  public async syncTodoListsFromRemote(): Promise<{ todoLists: TodoList[] }> {
+    MSCalendarLogger.log('🔄 Starting todo lists sync...');
+    
+    const { todoLists } = await this.getAllTodoListData();
+    
+    MSCalendarLogger.log('✅ Todo lists sync complete:', todoLists.length, 'lists');
+    return { todoLists };
+  }
+
+  // ========================================
+  // End of To Do Lists methods
+  // ========================================
 
   /**
    * 获取同步元数据

@@ -178,3 +178,14 @@ export interface GlobalTimer {
   isRunning: boolean;    // 是否正在运行
   isPaused: boolean;     // 是否暂停
 }
+
+// 🆕 v1.7.5: Microsoft To Do List 接口
+export interface TodoList {
+  id: string;                // To Do List ID
+  name: string;              // 列表名称
+  displayName?: string;      // 显示名称
+  isOwner?: boolean;         // 是否为所有者
+  isShared?: boolean;        // 是否共享
+  wellknownListName?: 'none' | 'defaultList' | 'flaggedEmails';  // 系统列表类型
+  color?: string;            // 颜色（可能不存在）
+}

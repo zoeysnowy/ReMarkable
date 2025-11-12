@@ -140,7 +140,56 @@ export const SyncTargetPicker: React.FC<SyncTargetPickerProps> = ({
       console.warn('📅 SyncTargetPicker - 没有 microsoftService 或缺少 getCachedCalendars 方法');
       setAvailableCalendars([]);
     }
-  }, [microsoftService, propCalendars]); // 依赖稳定的引用
+
+    // 🆕 加载 To Do Lists
+    if (propTodoLists && propTodoLists.length > 0) {
+      console.log('📋 SyncTargetPicker - 使用传入的 propTodoLists:', propTodoLists.length);
+      setAvailableTodoLists(propTodoLists);
+    } else if (microsoftService && typeof microsoftService.getCachedTodoLists === 'function') {
+      setLoading(true);
+      try {
+        // 优先从缓存获取
+        const cachedTodoLists = microsoftService.getCachedTodoLists();
+        console.log('📋 SyncTargetPicker - getCachedTodoLists 返回:', cachedTodoLists?.length || 0);
+        
+        if (cachedTodoLists && cachedTodoLists.length > 0) {
+          const mappedTodoLists = cachedTodoLists.map((list: any) => ({
+            id: list.id,
+            name: list.name,
+            displayName: list.name,
+            color: '#3b82f6' // To Do Lists 默认蓝色
+          }));
+          setAvailableTodoLists(mappedTodoLists);
+          console.log('📋 SyncTargetPicker - 从缓存加载待办列表:', mappedTodoLists.length);
+        } else {
+          // 缓存为空，尝试从远程获取
+          console.log('📋 SyncTargetPicker - 缓存为空，尝试从远程获取...');
+          try {
+            const { todoLists } = await microsoftService.getAllTodoListData();
+            const mappedTodoLists = todoLists.map((list: any) => ({
+              id: list.id,
+              name: list.name,
+              displayName: list.name,
+              color: '#3b82f6'
+            }));
+            setAvailableTodoLists(mappedTodoLists);
+            console.log('📋 SyncTargetPicker - 从远程加载待办列表:', mappedTodoLists.length);
+          } catch (error) {
+            console.warn('📋 SyncTargetPicker - 远程获取失败，使用空列表:', error);
+            setAvailableTodoLists([]);
+          }
+        }
+      } catch (error) {
+        console.error('📋 SyncTargetPicker - 加载待办列表出错:', error);
+        setAvailableTodoLists([]);
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      console.warn('📋 SyncTargetPicker - 没有 microsoftService 或缺少 getCachedTodoLists 方法');
+      setAvailableTodoLists([]);
+    }
+  }, [microsoftService, propCalendars, propTodoLists]); // 依赖稳定的引用
 
   // 组件 mount 时加载日历
   useEffect(() => {

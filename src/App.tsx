@@ -1179,6 +1179,18 @@ function App() {
         
         setSyncManager(newSyncManager);
         
+        // 🆕 v1.7.5: 同步日历和 To Do Lists
+        (async () => {
+          try {
+            console.log('🔄 [App] 开始同步日历和待办列表...');
+            await microsoftService.syncCalendarGroupsFromRemote?.();
+            await microsoftService.syncTodoListsFromRemote?.();
+            console.log('✅ [App] 日历和待办列表同步完成');
+          } catch (error) {
+            console.warn('⚠️ [App] 日历/待办列表同步失败:', error);
+          }
+        })();
+        
         // 🔧 初始化 EventService（注入同步管理器）
         EventService.initialize(newSyncManager);
         
