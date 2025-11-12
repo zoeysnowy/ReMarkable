@@ -7,7 +7,7 @@ import 'dayjs/locale/zh-cn';
 import * as chrono from 'chrono-node';
 import './UnifiedDateTimePicker.css';
 import { useEventTime } from '../../../hooks/useEventTime';
-import { formatTimeForStorage } from '../../../utils/timeUtils';
+import { formatTimeForStorage, parseLocalTimeString } from '../../../utils/timeUtils';
 import { dbg, warn, error } from '../../../utils/debugLogger';
 import { SearchIcon } from './icons/Search';
 import { TaskGrayIcon } from './icons/TaskGray';
@@ -310,8 +310,11 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
   // 当绑定了事件且存在已保存时间时，用其初始化本地选择状态；否则尝试使用初始值
   useEffect(() => {
     if (!eventTime || eventTime.loading) return;
-    const start = eventTime.start ? dayjs(eventTime.start.replace(' ', 'T')) : null;
-    const end = eventTime.end ? dayjs(eventTime.end.replace(' ', 'T')) : start;
+    
+    // 🆕 v2.7.4: 使用统一的时间解析函数（符合 Time Architecture 约定）
+    const start = eventTime.start ? dayjs(parseLocalTimeString(eventTime.start)) : null;
+    const end = eventTime.end ? dayjs(parseLocalTimeString(eventTime.end)) : start;
+    
     dbg('picker', '🔄 从 TimeHub 快照初始化 Picker', { 
       eventId, 
       快照start: eventTime.start, 
@@ -324,7 +327,7 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
     if (start) {
       setSelectedDates({ start, end: end || start });
       
-      // 🆕 v2.7.4: 直接使用 timeFieldState 中存储的实际值
+      // 🆕 v2.7.4: 直接使用 timeFieldState 中存储的实际值（避免从 ISO 解析时间）
       const savedFieldState = eventTime.timeFieldState;
       if (savedFieldState) {
         const [startHour, startMinute, endHour, endMinute] = savedFieldState;
@@ -357,10 +360,13 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
   useEffect(() => {
     if (eventTime && (eventTime.start || eventTime.end)) return; // 已有 TimeHub 数据
     if (!initialStart) return; // 无初始值
-    const start = dayjs(typeof initialStart === 'string' ? initialStart.replace(' ', 'T') : initialStart);
+    
+    // 🆕 v2.7.4: 使用统一的时间解析函数（符合 Time Architecture 约定）
+    const start = dayjs(typeof initialStart === 'string' ? parseLocalTimeString(initialStart) : initialStart);
     const end = initialEnd
-      ? dayjs(typeof initialEnd === 'string' ? initialEnd.replace(' ', 'T') : initialEnd)
+      ? dayjs(typeof initialEnd === 'string' ? parseLocalTimeString(initialEnd) : initialEnd)
       : start;
+    
     dbg('picker', '🔄 使用 initialStart/initialEnd 初始化 Picker (无TimeHub快照)', { 
       eventId, 
       initialStart, 

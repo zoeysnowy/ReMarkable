@@ -218,7 +218,9 @@ function App() {
 
   // 🔧 [PERFORMANCE FIX] 缓存可用日历列表，避免每次渲染创建新数组
   const availableCalendars = useMemo(() => {
-    return getAvailableCalendarsForSettings();
+    const calendars = getAvailableCalendarsForSettings();
+    console.log('🗓️ App.tsx - availableCalendars:', calendars);
+    return calendars;
   }, []); // 空依赖，日历列表应该是相对稳定的
 
   // ❌ [REMOVED] loadEvents useEffect - 不再全局监听 eventsUpdated
@@ -1537,6 +1539,7 @@ function App() {
               availableTags={availableTagsForEdit.map(t => t.name)}
               onCreateEvent={handleCreateEvent}
               onUpdateEvent={handleUpdateEvent}
+              microsoftService={microsoftService}
             />
           </PageContainer>
         );
@@ -1618,7 +1621,7 @@ function App() {
         onClose={() => setShowSettingsModal(false)} 
       />
 
-      {/* 计时器事件编辑模态框 */}
+      {/* 计时器事件编辑模态框 - 移除 availableCalendars prop,让 SyncTargetPicker 自己从 microsoftService 加载 */}
       {timerEditModal.isOpen && timerEditModal.event && (
         <EventEditModal
           event={timerEditModal.event}
@@ -1628,7 +1631,7 @@ function App() {
           hierarchicalTags={hierarchicalTags}
           onStartTimeChange={handleStartTimeChange}
           globalTimer={globalTimer}
-          availableCalendars={availableCalendars}
+          microsoftService={microsoftService}
         />
       )}
 

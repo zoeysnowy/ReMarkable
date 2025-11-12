@@ -1,0 +1,91 @@
+/* ========== SyncTargetPicker - 完全复用 CalendarPicker 样式 ========== */
+
+.sync-target-picker-wrapper {
+  width: 100%;
+}
+
+/* 状态切换提示 */
+.sync-switch-hint {
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  background: linear-gradient(to right, #eff6ff, #f0fdf4);
+  border-left: 3px solid #3b82f6;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #1f2937;
+  line-height: 1.5;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 调试信息 */
+.sync-debug-info {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #1f2937;
+  border-radius: 6px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  cursor: pointer;
+}
+
+.sync-debug-info summary {
+  font-size: 11px;
+  color: #10b981;
+  font-weight: 600;
+  user-select: none;
+  list-style: none;
+}
+
+.sync-debug-info summary::-webkit-details-marker {
+  display: none;
+}
+
+.sync-debug-info[open] summary::after {
+  content: ' ▼';
+}
+
+.sync-debug-info:not([open]) summary::after {
+  content: ' ▶';
+}
+
+.sync-debug-info pre {
+  margin: 8px 0 0 0;
+  padding: 8px;
+  background: #111827;
+  border-radius: 4px;
+  font-size: 10px;
+  color: #e5e7eb;
+  overflow-x: auto;
+  line-height: 1.4;
+}
+
+/* 
+  以下样式完全依赖 CalendarPicker.css
+  - .calendar-picker
+  - .selected-calendars-with-search
+  - .calendar-chip
+  - .calendar-chip-dot
+  - .calendar-search-inline
+  - .calendar-dropdown
+  - .calendar-dropdown-header
+  - .calendar-dropdown-title
+  - .calendar-dropdown-close
+  - .calendar-dropdown-list
+  - .filter-item
+  - .calendar-content
+  - .calendar-dot
+  - .calendar-name
+  - .no-calendars
+  
+  确保 CalendarPicker.css 已被引入
+*/

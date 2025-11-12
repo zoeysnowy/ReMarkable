@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **SyncTargetPicker Performance & Rendering Issues** (2025-11-12):
+  - 🐛 修复 EventEditModal 疯狂闪烁问题(无限循环重渲染)
+  - 🐛 修复关闭 modal 后事件丢失问题
+  - 🎨 修复日历分组颜色显示为灰色的问题
+  - **根因**: Props 引用变化导致 useEffect 无限触发
+    - PlanManager/App.tsx 传入 `availableCalendars={[]}` 每次新引用
+    - SyncTargetPicker useEffect 依赖 `[microsoftService, propCalendars]`
+  - **解决方案**:
+    - 移除所有 `availableCalendars` props 传递
+    - SyncTargetPicker 改为从 `microsoftService` 内部加载
+    - 使用 `useCallback` + `hasLoadedRef` 防止重复加载
+    - 添加 `convertMicrosoftColorToHex()` 转换颜色名称为十六进制
+  - **架构对齐**: 参考 CalendarMappingPicker 的最佳实践
+  - Files: `SyncTargetPicker.tsx`, `EventEditModal.tsx`, `PlanManager.tsx`, `App.tsx`
+  - Documentation: `SYNCTARGETPICKER_PERFORMANCE_FIX.md`
+
 ### Added
 - **Time Field State Bitmap Architecture (v2.6)**:
   - `isFuzzyDate` boolean field to explicitly mark fuzzy dates

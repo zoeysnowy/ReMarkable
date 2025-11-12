@@ -517,7 +517,46 @@ const handleTimerAction = async (action: 'start' | 'pause' | 'resume' | 'stop' |
   switch (action) {
     case 'start':
       // ▶️ 为当前事件启动新的 Timer
-      await TimerService.start(event.id);
+      
+      // 🆕 特殊处理：独立 Timer 事件的二次计时
+      if (event.isTimer && !event.parentEventId && event.segments && event.segments.length > 0) {
+        // 检测到这是独立 Timer 的二次计时，自动升级为父子结构
+        
+        // Step 1: 创建父事件（继承原 Timer 的所有元数据）
+        const parentEvent = {
+          id: generateId(),
+          title: event.title,
+          description: event.description,
+          emoji: event.emoji,
+          tags: event.tags,
+          color: event.color,
+          source: 'local',
+          isTimer: false,          // ✅ 不再是 Timer
+          isTimeCalendar: true,    // 标记为 TimeCalendar 创建
+          timerChildEvents: [event.id], // 将原 Timer 作为第一个子事件
+          createdAt: event.createdAt,
+          updatedAt: new Date().toISOString(),
+          // 继承其他所有元数据...
+        };
+        
+        // Step 2: 将原 Timer 转为子事件
+        event.parentEventId = parentEvent.id;
+        await EventService.updateEvent(event);
+        
+        // Step 3: 保存父事件
+        await EventService.createEvent(parentEvent);
+        
+        // Step 4: 为父事件启动新 Timer（将生成第二个子事件）
+        await TimerService.start(parentEvent.id);
+        
+        // Step 5: 更新当前 Modal 显示的事件为父事件
+        // （让用户无感知地看到汇总数据）
+        setCurrentEvent(parentEvent);
+        
+      } else {
+        // 普通情况：直接启动 Timer
+        await TimerService.start(event.id);
+      }
       break;
       
     case 'pause':
@@ -547,6 +586,71 @@ const handleTimerAction = async (action: 'start' | 'pause' | 'resume' | 'stop' |
   }
 };
 ```
+
+**🆕 独立 Timer 事件二次计时自动升级机制**:
+
+**触发条件**:
+```typescript
+// 检测条件
+const shouldUpgradeToParentChild = (event: Event): boolean => {
+  return (
+    event.isTimer === true &&           // 是 Timer 事件
+    event.parentEventId == null &&      // 无父事件（独立 Timer）
+    event.segments &&                   // 已有计时记录
+    event.segments.length > 0           // 至少有一次完整计时
+  );
+};
+```
+
+**升级流程**:
+1. **创建父事件**：继承原 Timer 的所有元数据（标题、标签、emoji、描述等）
+2. **转换子事件**：将原 Timer 标记为子事件（设置 `parentEventId`）
+3. **更新关联**：父事件的 `timerChildEvents` 包含原 Timer ID
+4. **启动新计时**：为父事件启动新 Timer（将生成第二个子事件）
+5. **无缝切换**：Modal 自动切换显示父事件，用户无感知
+
+**数据示例**:
+```typescript
+// === 升级前 ===
+const timerBefore = {
+  id: 'timer-1',
+  title: '学习英语',
+  isTimer: true,
+  parentEventId: null,  // 独立 Timer
+  segments: [{ start: '10:00', end: '10:30', duration: 1800 }]
+};
+
+// === 升级后 ===
+const parentEvent = {
+  id: 'event-parent',
+  title: '学习英语',         // 继承
+  isTimer: false,
+  isTimeCalendar: true,
+  timerChildEvents: ['timer-1', 'timer-2']
+};
+
+const timerAfter = {
+  id: 'timer-1',
+  title: '学习英语',
+  isTimer: true,
+  parentEventId: 'event-parent', // ✅ 已挂载
+  segments: [{ start: '10:00', end: '10:30', duration: 1800 }]
+};
+
+const newTimer = {
+  id: 'timer-2',
+  title: '学习英语',
+  isTimer: true,
+  parentEventId: 'event-parent', // ✅ 挂载到父事件
+  segments: [{ start: '14:00', end: '14:45', duration: 2700 }]
+};
+```
+
+**用户体验保证**:
+- ✅ **完全无感知**：用户只看到计时继续，不知道发生了升级
+- ✅ **数据完整**：所有元数据（标题、标签、emoji、描述）完整保留
+- ✅ **视图一致**：Modal 自动切换显示父事件，汇总所有计时
+- ✅ **可追溯**：TimeCalendar 上显示父事件 + 所有子事件色块
 
 **多 Timer 支持说明**：
 - ✅ 支持多个 EventEditModal 同时打开，各自处于 Timer 状态
@@ -2252,10 +2356,15 @@ function shouldShowActualProgress(event: Event, activeTimers: Map<string, TimerS
 - ✅ **统一显示**：无论点击父事件还是 Timer 子事件，都显示**该事件的完整计时汇总**
 - 🔄 **多次计时**：同一事件可以多次计时，所有计时记录累加显示
 - 📊 **汇总数据**：显示所有计时的时间段、总时长、ddl 完成情况等
+- 🆕 **智能升级**：独立 Timer 事件二次计时时，自动升级为父子结构，无需用户感知
 
 **核心概念 - 父事件多次计时**（技术实现细节）:
 - ✅ 非 Timer 创建的事件（Remote/Plan/手动创建）可以被**多次计时**
 - ✅ 每次计时生成一个 **Timer 子事件**（`parentEventId` 指向父事件）
+- ✅ 🆕 **独立 Timer 事件二次计时自动升级**：
+  - 首次计时：创建独立 Timer 事件（`isTimer: true, parentEventId: null`）
+  - 二次计时：自动创建父事件 + 将首次计时转为 Timer 子事件
+  - 用户体验：无缝，依然看到完整的计时汇总
 - ✅ 所有 Timer 子事件的日志**合并显示**在父事件的 Slate 编辑区
 - ✅ TimeCalendar 上同时显示父事件色块 + 多个 Timer 子事件色块
 - ✅ 点击任意 Timer 子事件色块 → 打开 Modal，显示**父事件的完整计时汇总**（而不是单次计时）
@@ -2272,9 +2381,33 @@ function getActualProgressData(event: Event, activeTimers: Map<string, TimerStat
     }
   }
   
-  // 🆕 情况 2: 独立 Timer 事件（无父事件）- 显示自己的计时数据
+  // 🆕 情况 2: 独立 Timer 事件（无父事件，但可能有子事件）
+  // 注意：如果该 Timer 被二次计时，会自动升级为父事件
   if (event.isTimer && !event.parentEventId) {
     const activeTimer = activeTimers.get(event.id);
+    const childEvents = event.timerChildEvents || [];
+    
+    // 如果有子事件（已升级为父事件），显示汇总
+    if (childEvents.length > 0) {
+      const allSegments = [
+        ...(event.segments || []),        // 首次计时的数据
+        ...(activeTimer?.segments || []), // 当前活动计时
+        ...childEvents.flatMap(child => child.segments || []) // 后续计时
+      ];
+      
+      const totalElapsed = allSegments.reduce((sum, seg) => sum + seg.duration, 0);
+      
+      return {
+        segments: allSegments,
+        totalElapsed,
+        activeTimer,
+        childEvents,
+        isIndependentTimer: true,
+        hasBeenUpgraded: true  // 标记已升级为父子结构
+      };
+    }
+    
+    // 如果无子事件（纯粹的独立 Timer），显示自己的数据
     return {
       segments: event.segments || activeTimer?.segments || [],
       totalElapsed: event.duration || activeTimer?.elapsedTime || 0,
@@ -2352,26 +2485,92 @@ const timerChild2 = {
 //    显示：总时长 2.5h（= 1h + 1.5h），所有时间段列表（与点击父事件一致）
 ```
 
-**场景 2: 用户从 Timer 页面独立计时**
+**场景 2: 独立 Timer 事件 - 二次计时自动升级**
 ```typescript
-// 用户直接在 Timer 页面开始计时（没有关联任何事件）
+// === 首次计时 ===
+// 用户在 Timer 页面创建并开始计时（没有关联任何事件）
 const independentTimer = {
   id: 'timer-xyz',
-  title: '自由计时',
+  title: '学习英语',
+  tags: ['#学习/#英语'],
   isTimer: true,
-  parentEventId: null,  // 无父事件
+  parentEventId: null,  // ✅ 无父事件（独立 Timer）
   duration: 1800,
-  segments: [{ start: 16:00, end: 16:30, duration: 1800 }]
+  segments: [{ start: '10:00', end: '10:30', duration: 1800 }]
 };
 
 // 用户体验：
 // 点击该事件 → 显示：总时长 0.5h，单次时间段
+
+// === 二次计时 ===
+// 用户打开该 Timer 事件的 EditModal，点击"开始专注"按钮
+// 系统检测到：这是独立 Timer 的二次计时，自动升级为父子结构
+
+// Step 1: 创建父事件（继承原 Timer 的元数据）
+const parentEvent = {
+  id: 'event-abc',      // 🆕 新 ID
+  title: '学习英语',     // 继承标题
+  tags: ['#学习/#英语'], // 继承标签
+  source: 'local',
+  isTimer: false,       // ✅ 不再是 Timer
+  isTimeCalendar: true, // 标记为 TimeCalendar 创建
+  timerChildEvents: ['timer-xyz', 'timer-def'], // 子事件列表
+  // 继承其他元数据（emoji, description, 等）
+};
+
+// Step 2: 将原 Timer 转为子事件
+independentTimer.parentEventId = 'event-abc'; // ✅ 挂载到父事件
+
+// Step 3: 创建第二次计时的子事件
+const timerChild2 = {
+  id: 'timer-def',
+  title: '学习英语',
+  parentEventId: 'event-abc', // ✅ 挂载到父事件
+  isTimer: true,
+  duration: 2700,
+  segments: [{ start: '14:00', end: '14:45', duration: 2700 }]
+};
+
+// 用户体验（升级后）：
+// 1. 点击 parentEvent → 显示：总时长 1.25h（= 0.5h + 0.75h）
+// 2. 点击 timer-xyz（首次计时）→ 显示：总时长 1.25h（相同）
+// 3. 点击 timer-def（二次计时）→ 显示：总时长 1.25h（相同）
+// 
+// ✅ 用户完全无感知升级过程，只看到计时累加
+```
+
+**场景 3: 从其他平台同步的事件计时**
+```typescript
+// Outlook 同步的事件
+const outlookEvent = {
+  id: 'outlook-123',
+  title: '客户会议',
+  source: 'outlook',
+  calendarId: 'work-calendar',
+  // ...
+};
+
+// 用户对该事件进行计时
+// 系统自动创建 Timer 子事件
+const timerChild = {
+  id: 'timer-999',
+  title: '客户会议',
+  source: 'outlook',      // 继承父事件来源
+  parentEventId: 'outlook-123',
+  isTimer: true,
+  // ...
+};
+
+// 用户体验：
+// 点击任意入口 → 显示来源："Outlook: 工作"，总时长汇总
 ```
 
 **关键设计原则**:
 - ✅ **用户无感知**：用户不需要知道"父事件"和"子事件"的概念
 - ✅ **统一体验**：无论从哪个入口打开，都显示该事件的完整计时汇总
 - ✅ **数据一致**：同一事件的所有计时记录始终汇总显示
+- 🆕 **智能升级**：独立 Timer 二次计时自动升级，用户体验无缝衔接
+- 🆕 **信息保留**：升级时保留所有元数据（标题、标签、emoji、描述等）
 
 ---
 
@@ -2512,40 +2711,495 @@ function calculateDurationComparison(event: Event, actualElapsed: number): React
 
 #### 3.4 ddl 完成状态（如果有 ddl）
 
-**数据来源**: `event.dueDate`
+**数据来源**: `event.dueDate` + `actualElapsed` + `segments[]`
+
+**设计理念**: 
+- **彩蛋化提示**：根据用户的投入时间、完成进度、ddl距离等多维度数据，给予个性化的鼓励、庆祝或提醒
+- **情感共鸣**：让用户感受到被认可、被赞美、被陪伴的温暖感
+- **成就解锁**：通过不同的时长里程碑（1h、3h、5h、10h、15h+），营造"解锁成就"的愉悦感
 
 **显示逻辑**:
 ```typescript
-function renderDdlStatus(dueDate: string, actualElapsed: number, plannedEnd: string): ReactNode {
-  if (!dueDate) return null;
+function renderDdlStatus(event: Event, actualElapsed: number): ReactNode {
+  if (!event.dueDate) return null;
   
-  const ddlTime = new Date(dueDate).getTime();
-  const actualEndTime = new Date(plannedEnd).getTime() + actualElapsed;
+  const ddlTime = new Date(event.dueDate).getTime();
+  const now = Date.now();
+  const actualEndTime = event.segments && event.segments.length > 0
+    ? new Date(event.segments[event.segments.length - 1].endTime).getTime()
+    : now;
   
-  if (actualEndTime < ddlTime) {
-    // 提前完成
+  const totalInvestedHours = actualElapsed / (1000 * 60 * 60);
+  const isCompleted = event.segments && event.segments.length > 0 && 
+                      event.segments[event.segments.length - 1].endTime != null;
+  
+  // ========== 场景 1: 任务已完成 ==========
+  if (isCompleted) {
     const advanceTime = ddlTime - actualEndTime;
-    const hours = Math.floor(advanceTime / (1000 * 60 * 60));
-    return (
-      <div className="ddl-status completed">
-        🚩 ddl提前{hours}h完成于{formatDateTime(actualEndTime)}
-      </div>
-    );
-  } else if (actualEndTime > ddlTime) {
-    // 超期
-    return (
-      <div className="ddl-status overdue">
-        ❌ ddl超期，实际完成于{formatDateTime(actualEndTime)}
-      </div>
-    );
-  } else {
-    // 准时
-    return (
-      <div className="ddl-status ontime">
-        ✅ 准时完成ddl
-      </div>
-    );
+    const advanceHours = Math.floor(advanceTime / (1000 * 60 * 60));
+    const advanceDays = Math.floor(advanceHours / 24);
+    
+    // 1.1 提前完成 - 根据提前时间和投入时间给予不同提示
+    if (actualEndTime < ddlTime) {
+      // 提前3天以上 + 投入时间较短（<2h）
+      if (advanceDays >= 3 && totalInvestedHours < 2) {
+        return <div className="ddl-status completed-epic">
+          ⚡️ 闪电战！提前{advanceDays}天完成，仅用时{formatDuration(actualElapsed)}！效率之神！
+        </div>;
+      }
+      // 提前3天以上 + 投入时间较长（>=5h）
+      if (advanceDays >= 3 && totalInvestedHours >= 5) {
+        return <div className="ddl-status completed-epic">
+          🏆 提前{advanceDays}天完成大挑战！投入{formatDuration(actualElapsed)}，你的专注令人敬佩！
+        </div>;
+      }
+      // 提前1-3天 + 投入时间适中（1-5h）
+      if (advanceDays >= 1 && totalInvestedHours >= 1 && totalInvestedHours < 5) {
+        return <div className="ddl-status completed-great">
+          🎉 提前{advanceDays}天完工！{formatDuration(actualElapsed)}的投入换来从容，太棒了！
+        </div>;
+      }
+      // 提前1-3天 + 投入时间很长（>=10h）
+      if (advanceDays >= 1 && totalInvestedHours >= 10) {
+        return <div className="ddl-status completed-epic">
+          💎 史诗级成就解锁！提前{advanceDays}天完成，累计{formatDuration(actualElapsed)}专注时光！
+        </div>;
+      }
+      // 提前12-24小时
+      if (advanceHours >= 12 && advanceHours < 24) {
+        return <div className="ddl-status completed-great">
+          🌟 提前{advanceHours}小时完成！投入{formatDuration(actualElapsed)}，稳稳上岸！
+        </div>;
+      }
+      // 提前6-12小时 + 投入时间短（<1h）
+      if (advanceHours >= 6 && advanceHours < 12 && totalInvestedHours < 1) {
+        return <div className="ddl-status completed-good">
+          🚀 快准狠！提前{advanceHours}h完成，仅用{Math.floor(totalInvestedHours * 60)}分钟！
+        </div>;
+      }
+      // 提前6-12小时 + 投入时间长（>=3h）
+      if (advanceHours >= 6 && advanceHours < 12 && totalInvestedHours >= 3) {
+        return <div className="ddl-status completed-good">
+          ✨ 提前{advanceHours}h完成！{formatDuration(actualElapsed)}的努力没有白费！
+        </div>;
+      }
+      // 提前3-6小时
+      if (advanceHours >= 3 && advanceHours < 6) {
+        return <div className="ddl-status completed-good">
+          🎯 提前{advanceHours}h达成！投入{formatDuration(actualElapsed)}，完美收官！
+        </div>;
+      }
+      // 提前1-3小时 + 投入时间很长（>=15h）
+      if (advanceHours >= 1 && advanceHours < 3 && totalInvestedHours >= 15) {
+        return <div className="ddl-status completed-legendary">
+          🔥 传说级投入！{formatDuration(actualElapsed)}的坚持，提前{advanceHours}h完成！你是真正的勇士！
+        </div>;
+      }
+      // 提前1-3小时
+      if (advanceHours >= 1 && advanceHours < 3) {
+        return <div className="ddl-status completed-good">
+          ✅ 提前{advanceHours}h完成！{formatDuration(actualElapsed)}换来从容，干得漂亮！
+        </div>;
+      }
+      // 提前30分钟-1小时 + 投入时间长（>=5h）
+      if (advanceHours < 1 && advanceHours >= 0.5 && totalInvestedHours >= 5) {
+        return <div className="ddl-status completed-clutch">
+          💪 惊险上岸！投入{formatDuration(actualElapsed)}，踩点完成，你太强了！
+        </div>;
+      }
+      // 提前30分钟-1小时
+      if (advanceHours < 1 && advanceHours >= 0.5) {
+        return <div className="ddl-status completed-clutch">
+          🎊 险胜！提前{Math.floor(advanceHours * 60)}分钟完成，心跳加速的感觉真爽！
+        </div>;
+      }
+      // 提前不到30分钟 + 投入时间长（>=3h）
+      if (advanceHours < 0.5 && totalInvestedHours >= 3) {
+        return <div className="ddl-status completed-clutch">
+          🔥 压哨绝杀！{formatDuration(actualElapsed)}的投入，最后时刻完成，太刺激了！
+        </div>;
+      }
+      // 提前不到30分钟
+      if (advanceHours < 0.5) {
+        return <div className="ddl-status completed-clutch">
+          ⏰ 压线完成！提前{Math.floor(advanceHours * 60)}分钟，心跳瞬间！
+        </div>;
+      }
+    }
+    
+    // 1.2 准时完成（误差±10分钟内）
+    if (Math.abs(actualEndTime - ddlTime) <= 10 * 60 * 1000) {
+      if (totalInvestedHours >= 10) {
+        return <div className="ddl-status completed-ontime">
+          🎯 完美卡点！{formatDuration(actualElapsed)}的专注，准时达成！时间管理大师！
+        </div>;
+      }
+      if (totalInvestedHours >= 5) {
+        return <div className="ddl-status completed-ontime">
+          🎉 分秒不差！投入{formatDuration(actualElapsed)}，准时完成，太稳了！
+        </div>;
+      }
+      return <div className="ddl-status completed-ontime">
+        ✨ 准时完成！踩点达成，完美！
+      </div>;
+    }
+    
+    // 1.3 超期完成 - 根据超期时间和投入时间给予鼓励
+    if (actualEndTime > ddlTime) {
+      const overdueTime = actualEndTime - ddlTime;
+      const overdueHours = Math.floor(overdueTime / (1000 * 60 * 60));
+      const overdueDays = Math.floor(overdueHours / 24);
+      
+      // 超期但投入时间非常长（>=15h）
+      if (totalInvestedHours >= 15) {
+        return <div className="ddl-status completed-overdue-effort">
+          💪 虽然晚了{overdueDays > 0 ? `${overdueDays}天` : `${overdueHours}h`}，但{formatDuration(actualElapsed)}的坚持让人动容！完成就是胜利！
+        </div>;
+      }
+      // 超期但投入时间很长（>=10h）
+      if (totalInvestedHours >= 10) {
+        return <div className="ddl-status completed-overdue-effort">
+          🌟 晚了{overdueDays > 0 ? `${overdueDays}天` : `${overdueHours}h`}，但{formatDuration(actualElapsed)}的努力值得肯定！继续加油！
+        </div>;
+      }
+      // 超期但投入时间中等（>=5h）
+      if (totalInvestedHours >= 5) {
+        return <div className="ddl-status completed-overdue-effort">
+          ✊ ddl虽过，但{formatDuration(actualElapsed)}的投入没有白费！下次提前规划，你一定能做得更好！
+        </div>;
+      }
+      // 超期且投入时间较短（<2h）
+      if (totalInvestedHours < 2) {
+        return <div className="ddl-status completed-overdue-light">
+          ⚠️ 晚了{overdueDays > 0 ? `${overdueDays}天` : `${overdueHours}h`}完成。下次试试提前开始？ReMarkable会陪你一起进步！
+        </div>;
+      }
+      // 超期一般情况
+      return <div className="ddl-status completed-overdue">
+        📌 ddl已过，但完成了就是好样的！投入{formatDuration(actualElapsed)}，继续保持！
+      </div>;
+    }
   }
+  
+  // ========== 场景 2: 任务进行中 ==========
+  if (!isCompleted) {
+    const timeUntilDdl = ddlTime - now;
+    const hoursUntilDdl = timeUntilDdl / (1000 * 60 * 60);
+    const daysUntilDdl = Math.floor(hoursUntilDdl / 24);
+    
+    // 2.1 ddl已过，但用户还在继续
+    if (timeUntilDdl < 0) {
+      // ddl已过 + 投入时间很长（>=10h）
+      if (totalInvestedHours >= 10) {
+        return <div className="ddl-status ongoing-overdue-effort">
+          💪 ddl虽过，但你已投入{formatDuration(actualElapsed)}！坚持就是胜利，冲刺到底！
+        </div>;
+      }
+      // ddl已过 + 投入时间中等（>=3h）
+      if (totalInvestedHours >= 3) {
+        return <div className="ddl-status ongoing-overdue-effort">
+          ✊ ddl已过，但{formatDuration(actualElapsed)}的努力不会白费！继续加油，完成它！
+        </div>;
+      }
+      // ddl已过 + 投入时间很少（<1h）
+      if (totalInvestedHours < 1) {
+        return <div className="ddl-status ongoing-overdue-warning">
+          ⏰ ddl已过，但还没开始发力？现在行动，还来得及！
+        </div>;
+      }
+      // ddl已过，一般情况
+      return <div className="ddl-status ongoing-overdue">
+        📍 ddl已过，已投入{formatDuration(actualElapsed)}。加把劲，尽快完成吧！
+      </div>;
+    }
+    
+    // 2.2 ddl临近（<24h）
+    if (hoursUntilDdl < 24) {
+      // 距离ddl不到6小时 + 投入时间很少（<30分钟）
+      if (hoursUntilDdl < 6 && totalInvestedHours < 0.5) {
+        return <div className="ddl-status ongoing-urgent-warning">
+          🚨 距ddl仅剩{Math.floor(hoursUntilDdl)}h，才投入{Math.floor(totalInvestedHours * 60)}分钟！快快快，时间不等人！
+        </div>;
+      }
+      // 距离ddl不到6小时 + 投入时间中等（>=2h）
+      if (hoursUntilDdl < 6 && totalInvestedHours >= 2) {
+        return <div className="ddl-status ongoing-urgent-effort">
+          🔥 最后{Math.floor(hoursUntilDdl)}h冲刺！已投入{formatDuration(actualElapsed)}，加把劲冲过终点！
+        </div>;
+      }
+      // 距离ddl不到6小时
+      if (hoursUntilDdl < 6) {
+        return <div className="ddl-status ongoing-urgent">
+          ⚡️ 仅剩{Math.floor(hoursUntilDdl)}h！已投入{formatDuration(actualElapsed)}，最后冲刺！
+        </div>;
+      }
+      // 距离ddl 6-12小时 + 投入时间很少（<1h）
+      if (hoursUntilDdl < 12 && totalInvestedHours < 1) {
+        return <div className="ddl-status ongoing-warning">
+          ⏳ 距ddl剩{Math.floor(hoursUntilDdl)}h，才投入{Math.floor(totalInvestedHours * 60)}分钟。该认真对待了！
+        </div>;
+      }
+      // 距离ddl 6-12小时 + 投入时间充足（>=5h）
+      if (hoursUntilDdl < 12 && totalInvestedHours >= 5) {
+        return <div className="ddl-status ongoing-good">
+          💪 距ddl剩{Math.floor(hoursUntilDdl)}h，已投入{formatDuration(actualElapsed)}！稳扎稳打，胜利在望！
+        </div>;
+      }
+      // 距离ddl 12-24小时 + 投入时间少（<2h）
+      if (hoursUntilDdl < 24 && totalInvestedHours < 2) {
+        return <div className="ddl-status ongoing-reminder">
+          ⏰ 距ddl还有{Math.floor(hoursUntilDdl)}h，已投入{formatDuration(actualElapsed)}。要加速了哦！
+        </div>;
+      }
+      // 距离ddl 12-24小时 + 投入时间充足（>=5h）
+      if (hoursUntilDdl < 24 && totalInvestedHours >= 5) {
+        return <div className="ddl-status ongoing-great">
+          ✨ 距ddl还有{Math.floor(hoursUntilDdl)}h，已投入{formatDuration(actualElapsed)}！节奏很好，继续保持！
+        </div>;
+      }
+    }
+    
+    // 2.3 ddl较远（1-3天）
+    if (daysUntilDdl >= 1 && daysUntilDdl <= 3) {
+      // 投入时间很少（<1h）
+      if (totalInvestedHours < 1) {
+        return <div className="ddl-status ongoing-early-warning">
+          📅 距ddl还有{daysUntilDdl}天，才投入{Math.floor(totalInvestedHours * 60)}分钟。早点开始，后面更从容！
+        </div>;
+      }
+      // 投入时间中等（1-5h）
+      if (totalInvestedHours >= 1 && totalInvestedHours < 5) {
+        return <div className="ddl-status ongoing-early-good">
+          👍 距ddl还有{daysUntilDdl}天，已投入{formatDuration(actualElapsed)}。节奏不错，继续！
+        </div>;
+      }
+      // 投入时间充足（>=5h）
+      if (totalInvestedHours >= 5) {
+        return <div className="ddl-status ongoing-early-great">
+          🌟 距ddl还有{daysUntilDdl}天，已投入{formatDuration(actualElapsed)}！提前布局，稳操胜券！
+        </div>;
+      }
+    }
+    
+    // 2.4 ddl很远（>3天）
+    if (daysUntilDdl > 3) {
+      // 投入时间已经很长（>=10h）
+      if (totalInvestedHours >= 10) {
+        return <div className="ddl-status ongoing-far-epic">
+          🏆 距ddl还有{daysUntilDdl}天，已投入{formatDuration(actualElapsed)}！你是时间管理的典范！
+        </div>;
+      }
+      // 投入时间中等（>=3h）
+      if (totalInvestedHours >= 3) {
+        return <div className="ddl-status ongoing-far-good">
+          ✨ 距ddl还有{daysUntilDdl}天，已投入{formatDuration(actualElapsed)}。提前行动，智者之选！
+        </div>;
+      }
+      // 投入时间较少（<3h）
+      if (totalInvestedHours < 3) {
+        return <div className="ddl-status ongoing-far-start">
+          � 距ddl还有{daysUntilDdl}天，已投入{formatDuration(actualElapsed)}。时间充裕，稳扎稳打！
+        </div>;
+      }
+    }
+  }
+  
+  return null;
+}
+
+// 辅助函数：格式化时长
+function formatDuration(ms: number): string {
+  const hours = Math.floor(ms / (1000 * 60 * 60));
+  const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+  
+  if (hours >= 1) {
+    return minutes > 0 ? `${hours}h${minutes}min` : `${hours}h`;
+  }
+  return `${minutes}min`;
+}
+```
+
+**样式定义**:
+```css
+/* 完成状态 - 不同等级 */
+.ddl-status.completed-epic {
+  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+  color: #7c2d12;
+  font-weight: 600;
+  animation: celebrate 0.6s ease-out;
+}
+
+.ddl-status.completed-legendary {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ffd93d 50%, #6bcf7f 100%);
+  color: #fff;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  animation: celebrate 0.8s ease-out;
+}
+
+.ddl-status.completed-great {
+  background: #d1fae5;
+  color: #065f46;
+  font-weight: 600;
+}
+
+.ddl-status.completed-good {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.ddl-status.completed-clutch {
+  background: #fef3c7;
+  color: #92400e;
+  font-weight: 600;
+}
+
+.ddl-status.completed-ontime {
+  background: #e0e7ff;
+  color: #3730a3;
+  font-weight: 600;
+}
+
+.ddl-status.completed-overdue-effort {
+  background: #fce7f3;
+  color: #831843;
+}
+
+.ddl-status.completed-overdue-light {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.ddl-status.completed-overdue {
+  background: #fecaca;
+  color: #7f1d1d;
+}
+
+/* 进行中状态 - 不同紧急度 */
+.ddl-status.ongoing-overdue-effort {
+  background: #fce7f3;
+  color: #831843;
+  border-left: 4px solid #db2777;
+}
+
+.ddl-status.ongoing-overdue-warning {
+  background: #fee2e2;
+  color: #991b1b;
+  border-left: 4px solid #dc2626;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.ddl-status.ongoing-overdue {
+  background: #fecaca;
+  color: #7f1d1d;
+  border-left: 4px solid #b91c1c;
+}
+
+.ddl-status.ongoing-urgent-warning {
+  background: #fee2e2;
+  color: #991b1b;
+  font-weight: 700;
+  border-left: 4px solid #dc2626;
+  animation: urgent-pulse 1s ease-in-out infinite;
+}
+
+.ddl-status.ongoing-urgent-effort {
+  background: #fed7aa;
+  color: #7c2d12;
+  font-weight: 600;
+  border-left: 4px solid #ea580c;
+}
+
+.ddl-status.ongoing-urgent {
+  background: #fef3c7;
+  color: #92400e;
+  border-left: 4px solid #f59e0b;
+}
+
+.ddl-status.ongoing-warning {
+  background: #fef3c7;
+  color: #92400e;
+  border-left: 4px solid #f59e0b;
+}
+
+.ddl-status.ongoing-good {
+  background: #dbeafe;
+  color: #1e40af;
+  border-left: 4px solid #3b82f6;
+}
+
+.ddl-status.ongoing-great {
+  background: #d1fae5;
+  color: #065f46;
+  border-left: 4px solid #10b981;
+}
+
+.ddl-status.ongoing-reminder {
+  background: #e0e7ff;
+  color: #3730a3;
+  border-left: 4px solid #6366f1;
+}
+
+.ddl-status.ongoing-early-warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.ddl-status.ongoing-early-good {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.ddl-status.ongoing-early-great {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.ddl-status.ongoing-far-epic {
+  background: linear-gradient(135deg, #e0e7ff 0%, #dbeafe 100%);
+  color: #1e3a8a;
+  font-weight: 600;
+}
+
+.ddl-status.ongoing-far-good {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.ddl-status.ongoing-far-start {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+/* 动画效果 */
+@keyframes celebrate {
+  0% { transform: scale(0.9); opacity: 0; }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes urgent-pulse {
+  0%, 100% { 
+    opacity: 1; 
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4);
+  }
+  50% { 
+    opacity: 0.9;
+    box-shadow: 0 0 0 6px rgba(220, 38, 38, 0);
+  }
+}
+
+.ddl-status {
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.5;
 }
 ```
 
@@ -2557,30 +3211,1438 @@ function renderDdlStatus(dueDate: string, actualElapsed: number, plannedEnd: str
 
 **数据来源**: `event.tags[]`
 
+**核心设计**: 标签区域本质是一个 **Slate Editor**，用户可以像编辑文本一样编辑标签（删除、插入）
+
 **显示逻辑**:
 ```typescript
-<div className="event-log-tags">
-  {event.tags.map(tagId => {
-    const tag = getTagById(tagId);
-    if (!tag) return null;
-    
-    return (
-      <span 
-        key={tagId} 
-        className="tag-chip"
-        style={{ color: tag.color }}
-        onClick={() => jumpToTagManager(tagId)}
-      >
-        {tag.emoji}#{tag.name}
-      </span>
-    );
-  })}
+// 标签以完整层级路径展示
+// 例如：#🎯工作/#💼项目/#🚀产品迭代
+
+<div className="event-log-tags-container">
+  <SlateEditor
+    ref={tagEditorRef}
+    value={tagSlateValue}
+    onChange={handleTagSlateChange}
+    placeholder="添加标签..."
+    className="tag-slate-editor"
+    readOnly={false}
+    // 集成 TagPicker
+    onKeyDown={(e) => {
+      if (e.key === '#') {
+        // 触发 TagPicker
+        showTagPicker();
+      }
+    }}
+  >
+    {event.tags.map(tagId => {
+      const tag = getTagById(tagId);
+      if (!tag) return null;
+      
+      // 构建完整层级路径
+      const fullPath = buildTagPath(tag);
+      // 例如：#🎯工作/#💼项目/#🚀产品迭代
+      
+      return (
+        <TagMention
+          key={tagId}
+          tagId={tagId}
+          fullPath={fullPath}
+          color={tag.color}
+          onHover={() => showTagPopover(tagId)}
+          onClick={() => showTagPopover(tagId)}
+        >
+          {fullPath}
+        </TagMention>
+      );
+    })}
+  </SlateEditor>
 </div>
+
+// 构建标签完整路径
+function buildTagPath(tag: Tag): string {
+  const path: string[] = [];
+  let currentTag = tag;
+  
+  // 递归向上查找父标签
+  while (currentTag) {
+    path.unshift(`#${currentTag.emoji}${currentTag.name}`);
+    currentTag = currentTag.parentId ? getTagById(currentTag.parentId) : null;
+  }
+  
+  return path.join('/');
+}
 ```
 
-**交互**:
-- 点击标签跳转到 TagManager 的该标签页面
-- Hover 显示标签的完整层级路径
+**交互 1: Slate 编辑能力**
+
+参考 [SLATE_DEVELOPMENT_GUIDE.md](../SLATE_DEVELOPMENT_GUIDE.md)
+
+- **删除标签**: 
+  - 光标定位到标签末尾，按 `Backspace` 删除整个标签
+  - 光标定位到标签内部，按 `Delete` 删除整个标签
+  - 选中标签，按 `Backspace` 或 `Delete` 删除
+
+- **插入标签**:
+  - 在标签末尾或标签之间输入 `#` → 自动呼出 TagPicker
+  - 在空白处输入 `#` → 自动呼出 TagPicker
+  - **直接输入标签名称** → TagPicker 实时搜索并过滤
+  - TagPicker 支持层级导航、智能搜索、快速选择
+
+- **光标导航**:
+  - 使用方向键 `←` `→` 在标签之间移动光标
+  - 使用 `Home` / `End` 跳转到行首/行尾
+
+**TagPicker 智能搜索逻辑**:
+
+```typescript
+interface TagPickerProps {
+  anchorElement: HTMLElement;
+  onSelect: (tagId: string) => void;
+  onClose: () => void;
+  excludeIds?: string[]; // 已选标签，避免重复
+}
+
+function TagPicker({ anchorElement, onSelect, onClose, excludeIds = [] }: TagPickerProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filteredTags, setFilteredTags] = useState<Tag[]>([]);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  
+  // 获取所有标签
+  const allTags = getAllTags();
+  
+  // 智能搜索过滤
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      // 无搜索词：显示常用标签 + 层级树
+      const frequentTags = getFrequentTags(10);
+      setFilteredTags(frequentTags);
+      return;
+    }
+    
+    // 有搜索词：智能过滤
+    const results = smartFilterTags(allTags, searchQuery, excludeIds);
+    setFilteredTags(results);
+  }, [searchQuery, allTags, excludeIds]);
+  
+  // 键盘导航
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex(prev => (prev + 1) % filteredTags.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex(prev => (prev - 1 + filteredTags.length) % filteredTags.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (filteredTags[selectedIndex]) {
+        onSelect(filteredTags[selectedIndex].id);
+        onClose();
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      onClose();
+    }
+  };
+  
+  return (
+    <Popover 
+      anchorElement={anchorElement} 
+      placement="bottom-start"
+      onClose={onClose}
+    >
+      <div className="tag-picker" onKeyDown={handleKeyDown}>
+        {/* 搜索输入框 */}
+        <div className="tag-picker-search">
+          <input
+            type="text"
+            placeholder="输入标签名称搜索..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            autoFocus
+            className="tag-search-input"
+          />
+          {searchQuery && (
+            <button 
+              className="clear-search-btn"
+              onClick={() => setSearchQuery('')}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        
+        {/* 搜索结果列表 */}
+        <div className="tag-picker-results">
+          {filteredTags.length > 0 ? (
+            filteredTags.map((tag, index) => (
+              <TagPickerItem
+                key={tag.id}
+                tag={tag}
+                isSelected={index === selectedIndex}
+                searchQuery={searchQuery}
+                onSelect={() => {
+                  onSelect(tag.id);
+                  onClose();
+                }}
+                onHover={() => setSelectedIndex(index)}
+              />
+            ))
+          ) : (
+            <div className="tag-picker-empty">
+              <p>未找到匹配的标签</p>
+              {searchQuery && (
+                <button 
+                  className="create-tag-btn"
+                  onClick={() => {
+                    const newTagId = createNewTag(searchQuery);
+                    onSelect(newTagId);
+                    onClose();
+                  }}
+                >
+                  创建新标签 "{searchQuery}"
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        
+        {/* 底部提示 */}
+        <div className="tag-picker-footer">
+          <span className="keyboard-hint">
+            ↑↓ 导航 · Enter 选择 · Esc 关闭
+          </span>
+        </div>
+      </div>
+    </Popover>
+  );
+}
+
+// ========== 智能过滤算法 ==========
+
+/**
+ * 智能过滤标签
+ * 
+ * 过滤规则：
+ * 1. 过滤掉完全无关的标签
+ * 2. 若匹配到子标签，保留完整的父标签树路径
+ * 3. 按相关度排序（完全匹配 > 前缀匹配 > 包含匹配）
+ */
+function smartFilterTags(
+  allTags: Tag[], 
+  query: string, 
+  excludeIds: string[]
+): Tag[] {
+  const normalizedQuery = query.toLowerCase().trim();
+  
+  // 第一步：找到所有匹配的标签
+  const matchedTags = allTags.filter(tag => {
+    if (excludeIds.includes(tag.id)) return false;
+    
+    const tagName = tag.name.toLowerCase();
+    const tagEmoji = tag.emoji;
+    
+    // 匹配标签名称或 emoji
+    return tagName.includes(normalizedQuery) || 
+           tagEmoji.includes(normalizedQuery);
+  });
+  
+  // 第二步：收集所有需要显示的标签（包括父标签）
+  const tagsToShow = new Set<string>();
+  
+  matchedTags.forEach(tag => {
+    // 添加匹配的标签
+    tagsToShow.add(tag.id);
+    
+    // 添加完整的父标签链
+    let currentTag = tag;
+    while (currentTag.parentId) {
+      tagsToShow.add(currentTag.parentId);
+      currentTag = allTags.find(t => t.id === currentTag.parentId);
+      if (!currentTag) break;
+    }
+  });
+  
+  // 第三步：构建结果列表（保持层级结构）
+  const results = allTags.filter(tag => tagsToShow.has(tag.id));
+  
+  // 第四步：排序（相关度 + 层级）
+  const sortedResults = results.sort((a, b) => {
+    const aName = a.name.toLowerCase();
+    const bName = b.name.toLowerCase();
+    
+    // 优先级 1: 完全匹配
+    const aExactMatch = aName === normalizedQuery;
+    const bExactMatch = bName === normalizedQuery;
+    if (aExactMatch && !bExactMatch) return -1;
+    if (!aExactMatch && bExactMatch) return 1;
+    
+    // 优先级 2: 前缀匹配
+    const aStartsWith = aName.startsWith(normalizedQuery);
+    const bStartsWith = bName.startsWith(normalizedQuery);
+    if (aStartsWith && !bStartsWith) return -1;
+    if (!aStartsWith && bStartsWith) return 1;
+    
+    // 优先级 3: 包含匹配位置（越靠前越优先）
+    const aIndex = aName.indexOf(normalizedQuery);
+    const bIndex = bName.indexOf(normalizedQuery);
+    if (aIndex !== bIndex) return aIndex - bIndex;
+    
+    // 优先级 4: 标签层级（顶层优先）
+    const aDepth = getTagDepth(a);
+    const bDepth = getTagDepth(b);
+    if (aDepth !== bDepth) return aDepth - bDepth;
+    
+    // 优先级 5: 字母顺序
+    return aName.localeCompare(bName);
+  });
+  
+  return sortedResults;
+}
+
+// 获取标签层级深度
+function getTagDepth(tag: Tag): number {
+  let depth = 0;
+  let currentTag = tag;
+  
+  while (currentTag.parentId) {
+    depth++;
+    currentTag = getTagById(currentTag.parentId);
+    if (!currentTag) break;
+  }
+  
+  return depth;
+}
+
+// ========== TagPickerItem 组件 ==========
+
+interface TagPickerItemProps {
+  tag: Tag;
+  isSelected: boolean;
+  searchQuery: string;
+  onSelect: () => void;
+  onHover: () => void;
+}
+
+function TagPickerItem({ 
+  tag, 
+  isSelected, 
+  searchQuery, 
+  onSelect, 
+  onHover 
+}: TagPickerItemProps) {
+  const fullPath = buildTagPath(tag);
+  const depth = getTagDepth(tag);
+  
+  // 高亮匹配文本
+  const highlightText = (text: string, query: string) => {
+    if (!query) return text;
+    
+    const normalizedText = text.toLowerCase();
+    const normalizedQuery = query.toLowerCase();
+    const index = normalizedText.indexOf(normalizedQuery);
+    
+    if (index === -1) return text;
+    
+    return (
+      <>
+        {text.slice(0, index)}
+        <mark className="search-highlight">
+          {text.slice(index, index + query.length)}
+        </mark>
+        {text.slice(index + query.length)}
+      </>
+    );
+  };
+  
+  return (
+    <div
+      className={`tag-picker-item ${isSelected ? 'selected' : ''}`}
+      onClick={onSelect}
+      onMouseEnter={onHover}
+      style={{ paddingLeft: `${12 + depth * 16}px` }}
+    >
+      <span className="tag-emoji">{tag.emoji}</span>
+      <div className="tag-info">
+        <div className="tag-name">
+          {highlightText(tag.name, searchQuery)}
+        </div>
+        {depth > 0 && (
+          <div className="tag-path-hint">{fullPath}</div>
+        )}
+      </div>
+      <div className="tag-usage-count">
+        {getTagUsageCount(tag.id)}
+      </div>
+    </div>
+  );
+}
+```
+
+**样式定义（TagPicker）**:
+
+```css
+/* ========== TagPicker ========== */
+.tag-picker {
+  width: 360px;
+  max-height: 400px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tag-picker-search {
+  position: relative;
+  padding: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.tag-search-input {
+  width: 100%;
+  padding: 8px 32px 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+}
+
+.tag-search-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.clear-search-btn {
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: #9ca3af;
+  color: white;
+  border-radius: 50%;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.clear-search-btn:hover {
+  background: #6b7280;
+}
+
+.tag-picker-results {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 300px;
+}
+
+.tag-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-left: 3px solid transparent;
+}
+
+.tag-picker-item:hover {
+  background: #f9fafb;
+}
+
+.tag-picker-item.selected {
+  background: #eff6ff;
+  border-left-color: #3b82f6;
+}
+
+.tag-picker-item .tag-emoji {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.tag-picker-item .tag-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.tag-picker-item .tag-name {
+  font-size: 14px;
+  color: #1f2937;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-picker-item .tag-path-hint {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-picker-item .tag-usage-count {
+  font-size: 12px;
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+.search-highlight {
+  background: #fef3c7;
+  color: #92400e;
+  font-weight: 600;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+.tag-picker-empty {
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.tag-picker-empty p {
+  font-size: 14px;
+  color: #9ca3af;
+  margin-bottom: 16px;
+}
+
+.create-tag-btn {
+  padding: 8px 16px;
+  border: 1px dashed #d1d5db;
+  background: #f9fafb;
+  color: #374151;
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.create-tag-btn:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+  color: #1f2937;
+}
+
+.tag-picker-footer {
+  padding: 8px 12px;
+  border-top: 1px solid #e5e7eb;
+  background: #fafafa;
+}
+
+.keyboard-hint {
+  font-size: 11px;
+  color: #9ca3af;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+```
+
+**交互 2: Hover/点击标签 → 展示标签卡片**
+
+```typescript
+interface TagPopoverProps {
+  tagId: string;
+  anchorElement: HTMLElement;
+}
+
+function TagPopover({ tagId, anchorElement }: TagPopoverProps) {
+  const tag = getTagById(tagId);
+  const fullPath = buildTagPath(tag);
+  
+  // 获取该标签下的事件
+  const upcomingEvents = getUpcomingEventsByTag(tagId, 5);
+  const recentEvents = getRecentEventsByTag(tagId, 5);
+  
+  return (
+    <Popover anchorElement={anchorElement} placement="bottom-start">
+      <div className="tag-popover">
+        {/* 卡片首行 */}
+        <div className="tag-popover-header">
+          <div className="tag-full-path">{fullPath}</div>
+          <button 
+            className="tag-edit-btn"
+            onClick={() => openTagManagerFloating(tagId)}
+          >
+            编辑标签
+          </button>
+        </div>
+        
+        {/* 卡片内容 */}
+        <div className="tag-popover-content">
+          {/* 即将发生 */}
+          <section className="upcoming-section">
+            <h4 className="section-title">即将发生</h4>
+            {upcomingEvents.length > 0 ? (
+              <ul className="event-list">
+                {upcomingEvents.map(event => (
+                  <li key={event.id} className="event-item">
+                    <span className="event-emoji">{event.emoji}</span>
+                    <span className="event-title">{event.title}</span>
+                    <span className="event-time">
+                      {formatRelativeTime(event.startTime)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="empty-hint">暂无即将发生的事项</p>
+            )}
+          </section>
+          
+          {/* 最近发生 */}
+          <section className="recent-section">
+            <h4 className="section-title">最近发生</h4>
+            {recentEvents.length > 0 ? (
+              <ul className="event-list">
+                {recentEvents.map(event => (
+                  <li key={event.id} className="event-item">
+                    <span className="event-emoji">{event.emoji}</span>
+                    <span className="event-title">{event.title}</span>
+                    <span className="event-time">
+                      {formatRelativeTime(event.endTime || event.startTime)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="empty-hint">暂无最近发生的事项</p>
+            )}
+          </section>
+        </div>
+        
+        {/* 卡片底部 */}
+        <div className="tag-popover-footer">
+          <button 
+            className="view-all-btn"
+            onClick={() => openTagTimelineView(tagId)}
+          >
+            查看全部
+          </button>
+        </div>
+      </div>
+    </Popover>
+  );
+}
+```
+
+**交互 3: 编辑标签按钮 → TagManager 浮窗**
+
+点击卡片首行右侧的 "编辑标签" 按钮，呼出 **TagManager 的简化浮窗**：
+
+```typescript
+interface TagManagerFloatingProps {
+  tagId: string;
+  onClose: () => void;
+}
+
+function TagManagerFloating({ tagId, onClose }: TagManagerFloatingProps) {
+  const tag = getTagById(tagId);
+  
+  return (
+    <Modal 
+      isOpen={true} 
+      onClose={onClose}
+      className="tag-manager-floating"
+    >
+      <div className="tag-manager-floating-content">
+        {/* 只包含编辑区和日历映射按钮 */}
+        
+        {/* 编辑区 */}
+        <div className="tag-edit-section">
+          <div className="field">
+            <label>标签名称</label>
+            <input 
+              type="text" 
+              value={tag.name}
+              onChange={(e) => updateTagName(tagId, e.target.value)}
+            />
+          </div>
+          
+          <div className="field">
+            <label>Emoji</label>
+            <EmojiPicker
+              value={tag.emoji}
+              onChange={(emoji) => updateTagEmoji(tagId, emoji)}
+            />
+          </div>
+          
+          <div className="field">
+            <label>颜色</label>
+            <ColorPicker
+              value={tag.color}
+              onChange={(color) => updateTagColor(tagId, color)}
+            />
+          </div>
+          
+          <div className="field">
+            <label>父标签</label>
+            <TagPicker
+              value={tag.parentId}
+              onChange={(parentId) => updateTagParent(tagId, parentId)}
+              excludeIds={[tagId]} // 避免循环引用
+            />
+          </div>
+        </div>
+        
+        {/* 日历映射按钮 */}
+        <div className="calendar-mapping-section">
+          <button 
+            className="calendar-mapping-btn"
+            onClick={() => openCalendarMappingDialog(tagId)}
+          >
+            📅 配置日历映射
+          </button>
+          <p className="hint">
+            将此标签的事件自动同步到指定日历
+          </p>
+        </div>
+        
+        {/* 底部按钮 */}
+        <div className="floating-footer">
+          <button className="btn-secondary" onClick={onClose}>
+            取消
+          </button>
+          <button 
+            className="btn-primary" 
+            onClick={() => {
+              saveTagChanges(tagId);
+              onClose();
+            }}
+          >
+            保存
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+```
+
+**交互 4: 查看全部按钮 → 时光日志标签视图（待开发）**
+
+点击卡片底部的 "查看全部" 按钮，展开 **时光日志的标签视图**：
+
+```typescript
+interface TagTimelineViewProps {
+  tagId: string;
+}
+
+function TagTimelineView({ tagId }: TagTimelineViewProps) {
+  const tag = getTagById(tagId);
+  const fullPath = buildTagPath(tag);
+  
+  // 获取该标签的所有事件（按时间排序）
+  const allEvents = getEventsByTag(tagId, { sortBy: 'time', order: 'desc' });
+  
+  // 获取该标签的时间统计
+  const timeStats = calculateTagTimeStats(tagId);
+  
+  return (
+    <div className="tag-timeline-view">
+      {/* 左侧 */}
+      <aside className="tag-timeline-sidebar">
+        {/* 上方：月度日历 DatePicker */}
+        <section className="calendar-section">
+          <h3>日历</h3>
+          <DatePicker
+            mode="month"
+            selectedDate={selectedDate}
+            onDateChange={setSelectedDate}
+            // 高亮有该标签事件的日期
+            highlightDates={getTagEventDates(tagId)}
+          />
+        </section>
+        
+        {/* 下方：时间统计 */}
+        <section className="stats-section">
+          <h3>时间统计</h3>
+          
+          {/* By Range: 按时间范围统计 */}
+          <div className="stats-by-range">
+            <h4>By Range</h4>
+            <div className="stat-item">
+              <span className="label">本周</span>
+              <span className="value">{timeStats.thisWeek}</span>
+            </div>
+            <div className="stat-item">
+              <span className="label">本月</span>
+              <span className="value">{timeStats.thisMonth}</span>
+            </div>
+            <div className="stat-item">
+              <span className="label">今年</span>
+              <span className="value">{timeStats.thisYear}</span>
+            </div>
+            <div className="stat-item">
+              <span className="label">总计</span>
+              <span className="value">{timeStats.total}</span>
+            </div>
+          </div>
+          
+          {/* By Event: 按事件数统计 */}
+          <div className="stats-by-event">
+            <h4>By Event</h4>
+            <div className="stat-item">
+              <span className="label">已完成</span>
+              <span className="value">{timeStats.completedCount} 个</span>
+            </div>
+            <div className="stat-item">
+              <span className="label">进行中</span>
+              <span className="value">{timeStats.ongoingCount} 个</span>
+            </div>
+            <div className="stat-item">
+              <span className="label">即将开始</span>
+              <span className="value">{timeStats.upcomingCount} 个</span>
+            </div>
+          </div>
+        </section>
+      </aside>
+      
+      {/* 中间：主内容区 - 时间轴 */}
+      <main className="tag-timeline-main">
+        <header className="timeline-header">
+          <h2>{fullPath}</h2>
+          <p className="subtitle">所有相关事项</p>
+        </header>
+        
+        <div className="timeline-container">
+          {allEvents.map((event, index) => {
+            const isNewDay = index === 0 || 
+              !isSameDay(event.startTime, allEvents[index - 1].startTime);
+            
+            return (
+              <React.Fragment key={event.id}>
+                {/* 日期分隔线 */}
+                {isNewDay && (
+                  <div className="timeline-date-divider">
+                    <span className="date-text">
+                      {formatDate(event.startTime)}
+                    </span>
+                  </div>
+                )}
+                
+                {/* 事件卡片 */}
+                <div 
+                  className={`timeline-event-card ${
+                    event.isCompleted ? 'completed' : 
+                    isUpcoming(event) ? 'upcoming' : 'ongoing'
+                  }`}
+                  onClick={() => openEventEditModal(event.id)}
+                >
+                  <div className="event-card-header">
+                    <span className="event-emoji">{event.emoji}</span>
+                    <span className="event-title">{event.title}</span>
+                    <span className="event-time">
+                      {formatTime(event.startTime)}
+                      {event.endTime && ` - ${formatTime(event.endTime)}`}
+                    </span>
+                  </div>
+                  
+                  {/* 展示 description（富文本预览） */}
+                  {event.description && (
+                    <div className="event-description-preview">
+                      <RichTextPreview content={event.description} maxLines={3} />
+                    </div>
+                  )}
+                  
+                  {/* 其他标签 */}
+                  {event.tags.length > 1 && (
+                    <div className="event-other-tags">
+                      {event.tags
+                        .filter(id => id !== tagId)
+                        .map(id => {
+                          const otherTag = getTagById(id);
+                          return (
+                            <span 
+                              key={id} 
+                              className="tag-chip-small"
+                              style={{ color: otherTag.color }}
+                            >
+                              {otherTag.emoji}
+                            </span>
+                          );
+                        })
+                      }
+                    </div>
+                  )}
+                </div>
+              </React.Fragment>
+            );
+          })}
+        </div>
+      </main>
+      
+      {/* 右侧：简明版即将开始 */}
+      <aside className="tag-timeline-upcoming">
+        <h3>即将开始</h3>
+        <div className="upcoming-list">
+          {getUpcomingEventsByTag(tagId, 10).map(event => (
+            <div 
+              key={event.id} 
+              className="upcoming-item"
+              onClick={() => openEventEditModal(event.id)}
+            >
+              <div className="upcoming-time">
+                {formatRelativeTime(event.startTime)}
+              </div>
+              <div className="upcoming-content">
+                <span className="event-emoji">{event.emoji}</span>
+                <span className="event-title">{event.title}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </aside>
+    </div>
+  );
+}
+```
+
+**样式定义**:
+
+```css
+/* ========== 标签 Slate 编辑器 ========== */
+.event-log-tags-container {
+  margin-bottom: 16px;
+}
+
+.tag-slate-editor {
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.6;
+  cursor: text;
+}
+
+.tag-slate-editor:hover {
+  border-color: #d1d5db;
+}
+
+.tag-slate-editor:focus-within {
+  border-color: #3b82f6;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* 标签 Mention 样式 */
+.tag-slate-editor [data-slate-node="element"][data-type="tag-mention"] {
+  display: inline-block;
+  padding: 2px 8px;
+  margin: 0 4px;
+  border-radius: 4px;
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--tag-color);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tag-slate-editor [data-slate-node="element"][data-type="tag-mention"]:hover {
+  background: rgba(59, 130, 246, 0.2);
+  transform: translateY(-1px);
+}
+
+/* ========== 标签卡片 Popover ========== */
+.tag-popover {
+  width: 380px;
+  max-height: 520px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.tag-popover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #f3f4f6;
+  background: #fafafa;
+}
+
+.tag-full-path {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.tag-edit-btn {
+  padding: 6px 12px;
+  border: none;
+  background: #3b82f6;
+  color: white;
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.tag-edit-btn:hover {
+  background: #2563eb;
+}
+
+.tag-popover-content {
+  padding: 16px 20px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.upcoming-section,
+.recent-section {
+  margin-bottom: 20px;
+}
+
+.upcoming-section:last-child,
+.recent-section:last-child {
+  margin-bottom: 0;
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.event-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.event-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.event-item:last-child {
+  border-bottom: none;
+}
+
+.event-item:hover {
+  background: #f9fafb;
+  margin: 0 -8px;
+  padding-left: 8px;
+  padding-right: 8px;
+  border-radius: 6px;
+}
+
+.event-item .event-emoji {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.event-item .event-title {
+  flex: 1;
+  font-size: 14px;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-item .event-time {
+  font-size: 12px;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.empty-hint {
+  font-size: 13px;
+  color: #9ca3af;
+  text-align: center;
+  padding: 20px 0;
+}
+
+.tag-popover-footer {
+  padding: 12px 20px;
+  border-top: 1px solid #f3f4f6;
+  background: white;
+  text-align: center;
+}
+
+.view-all-btn {
+  width: 100%;
+  padding: 8px 16px;
+  border: 1px solid #d1d5db;
+  background: white;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.view-all-btn:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+/* ========== TagManager 浮窗 ========== */
+.tag-manager-floating {
+  width: 480px;
+}
+
+.tag-manager-floating-content {
+  padding: 24px;
+}
+
+.tag-edit-section {
+  margin-bottom: 24px;
+}
+
+.tag-edit-section .field {
+  margin-bottom: 16px;
+}
+
+.tag-edit-section .field:last-child {
+  margin-bottom: 0;
+}
+
+.tag-edit-section label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 6px;
+}
+
+.tag-edit-section input[type="text"] {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.calendar-mapping-section {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.calendar-mapping-btn {
+  width: 100%;
+  padding: 10px 16px;
+  border: 1px solid #d1d5db;
+  background: white;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.calendar-mapping-btn:hover {
+  background: #fafafa;
+  border-color: #9ca3af;
+}
+
+.calendar-mapping-section .hint {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+.floating-footer {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.floating-footer .btn-secondary,
+.floating-footer .btn-primary {
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.floating-footer .btn-secondary {
+  border: 1px solid #d1d5db;
+  background: white;
+  color: #374151;
+}
+
+.floating-footer .btn-secondary:hover {
+  background: #f9fafb;
+}
+
+.floating-footer .btn-primary {
+  border: none;
+  background: #3b82f6;
+  color: white;
+}
+
+.floating-footer .btn-primary:hover {
+  background: #2563eb;
+}
+
+/* ========== 时光日志标签视图 ========== */
+.tag-timeline-view {
+  display: grid;
+  grid-template-columns: 280px 1fr 240px;
+  gap: 24px;
+  height: 100vh;
+  background: #fafafa;
+  padding: 24px;
+}
+
+/* 左侧边栏 */
+.tag-timeline-sidebar {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.tag-timeline-sidebar h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 16px;
+}
+
+.calendar-section {
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.stats-section h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stats-by-range,
+.stats-by-event {
+  margin-bottom: 20px;
+}
+
+.stat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  font-size: 14px;
+}
+
+.stat-item .label {
+  color: #6b7280;
+}
+
+.stat-item .value {
+  color: #1f2937;
+  font-weight: 600;
+}
+
+/* 中间主内容区 */
+.tag-timeline-main {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.timeline-header {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #f3f4f6;
+}
+
+.timeline-header h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 4px;
+}
+
+.timeline-header .subtitle {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.timeline-date-divider {
+  position: sticky;
+  top: 0;
+  background: white;
+  padding: 12px 0;
+  margin: 16px 0;
+  z-index: 10;
+}
+
+.timeline-date-divider .date-text {
+  display: inline-block;
+  padding: 4px 12px;
+  background: #f3f4f6;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 12px;
+}
+
+.timeline-event-card {
+  padding: 16px;
+  margin-bottom: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.timeline-event-card:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+  transform: translateY(-1px);
+}
+
+.timeline-event-card.completed {
+  opacity: 0.7;
+}
+
+.timeline-event-card.upcoming {
+  border-left: 4px solid #10b981;
+}
+
+.timeline-event-card.ongoing {
+  border-left: 4px solid #3b82f6;
+}
+
+.event-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.event-card-header .event-emoji {
+  font-size: 18px;
+}
+
+.event-card-header .event-title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.event-card-header .event-time {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.event-description-preview {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.event-other-tags {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tag-chip-small {
+  font-size: 14px;
+}
+
+/* 右侧边栏 */
+.tag-timeline-upcoming {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.tag-timeline-upcoming h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 16px;
+}
+
+.upcoming-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.upcoming-item {
+  padding: 12px;
+  background: white;
+  border: 1px solid #f3f4f6;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upcoming-item:hover {
+  background: #fafafa;
+  border-color: #e5e7eb;
+  transform: translateX(2px);
+}
+
+.upcoming-item .upcoming-time {
+  font-size: 11px;
+  color: #6b7280;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.upcoming-item .upcoming-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.upcoming-item .event-emoji {
+  font-size: 16px;
+}
+
+.upcoming-item .event-title {
+  font-size: 14px;
+  color: #1f2937;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+```
 
 ---
 
@@ -2605,11 +4667,22 @@ function shouldShowPlanPrompt(event: Event): boolean {
 ```typescript
 import { DdlWarnIcon, DdlCheckedIcon } from '@/assets/icons';
 
+interface PromptContext {
+  createdHoursAgo: number;           // 创建时长（小时）
+  ddlRemainingHours: number | null;  // DDL 剩余时长（小时，null = 无 DDL）
+  isOverdue: boolean;                // 是否超期
+  focusedHours: number;              // 用户在该事件上的累计专注时长（小时）
+  todayEventCount: number;           // 今天的事件总数
+  todayTotalFocusHours: number;      // 今天的累计专注时长（小时）
+  recentCompletionCount: number;     // 最近 3 天完成的任务数
+  lastCompletedDaysAgo: number;      // 距离上次完成任务的天数
+  isCompleted: boolean;              // 当前任务是否已完成
+}
+
 function renderPlanPrompt(event: Event): ReactNode {
-  const createdAgo = calculateRelativeTime(event.createdAt);
-  const ddlRemaining = event.dueDate ? calculateRemainingTime(event.dueDate) : null;
+  const context = buildPromptContext(event);
+  const promptMessage = generateSmartPrompt(context);
   
-  // ✅ 修正：ddl 和 checkbox 合并到同一行
   return (
     <label className="plan-prompt-row">
       <input 
@@ -2618,11 +4691,6 @@ function renderPlanPrompt(event: Event): ReactNode {
         onChange={(e) => handleCompletedChange(e.target.checked)}
       />
       <span className="prompt-icons">
-        <img 
-          src={event.dueDate ? DdlWarnIcon : null} 
-          alt="时间" 
-          className="icon-inline" 
-        />
         {event.dueDate && (
           <img 
             src={event.isCompleted ? DdlCheckedIcon : DdlWarnIcon} 
@@ -2631,40 +4699,291 @@ function renderPlanPrompt(event: Event): ReactNode {
           />
         )}
       </span>
-      <span className="prompt-text">
-        创建于{createdAgo}
-        {ddlRemaining && `，ddl还有${ddlRemaining}`}
-      </span>
+      <span className="prompt-text" dangerouslySetInnerHTML={{ __html: promptMessage }} />
     </label>
   );
 }
 
-function calculateRelativeTime(timestamp: string): string {
+// 构建提示词上下文
+function buildPromptContext(event: Event): PromptContext {
   const now = Date.now();
-  const created = new Date(timestamp).getTime();
-  const diffHours = Math.floor((now - created) / (1000 * 60 * 60));
+  const created = new Date(event.createdAt).getTime();
+  const createdHoursAgo = Math.floor((now - created) / (1000 * 60 * 60));
   
-  if (diffHours < 24) return `${diffHours}h前`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}天前`;
+  let ddlRemainingHours: number | null = null;
+  let isOverdue = false;
+  if (event.dueDate) {
+    const due = new Date(event.dueDate).getTime();
+    const diffMs = due - now;
+    ddlRemainingHours = Math.floor(diffMs / (1000 * 60 * 60));
+    isOverdue = ddlRemainingHours < 0;
+  }
+  
+  // 获取该事件的累计专注时长
+  const focusedHours = calculateEventFocusTime(event);
+  
+  // 获取今天的整体数据
+  const todayStats = getTodayStats();
+  
+  // 获取最近完成任务的数据
+  const completionStats = getRecentCompletionStats();
+  
+  return {
+    createdHoursAgo,
+    ddlRemainingHours,
+    isOverdue,
+    focusedHours,
+    todayEventCount: todayStats.eventCount,
+    todayTotalFocusHours: todayStats.totalFocusHours,
+    recentCompletionCount: completionStats.count,
+    lastCompletedDaysAgo: completionStats.daysAgo,
+    isCompleted: event.isCompleted || false,
+  };
 }
 
-function calculateRemainingTime(dueDate: string): string {
-  const now = Date.now();
-  const due = new Date(dueDate).getTime();
-  const diffMs = due - now;
+// 智能生成彩蛋提示词（30+ 场景）
+function generateSmartPrompt(ctx: PromptContext): string {
+  // ==================== 完成状态场景 ====================
   
-  if (diffMs < 0) return '已超期';
-  
-  const hours = Math.floor(diffMs / (1000 * 60 * 60));
-  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-  
-  if (hours < 24) {
-    return `${hours}h${minutes}min`;
+  if (ctx.isCompleted) {
+    // 场景 1: 刚刚完成，DDL 还很远
+    if (ctx.ddlRemainingHours && ctx.ddlRemainingHours > 72) {
+      return `🎉 太棒了！提前${Math.floor(ctx.ddlRemainingHours / 24)}天完成，你是时间管理大师！`;
+    }
+    
+    // 场景 2: DDL 前完成，投入时间很长
+    if (ctx.focusedHours > 8 && ctx.ddlRemainingHours && ctx.ddlRemainingHours > 0) {
+      return `💪 投入${Math.floor(ctx.focusedHours)}h完成，这份专注和努力真的很了不起！`;
+    }
+    
+    // 场景 3: 压线完成（DDL 前 24h 内）
+    if (ctx.ddlRemainingHours !== null && ctx.ddlRemainingHours >= 0 && ctx.ddlRemainingHours <= 24) {
+      return `🏆 惊险完成！虽然时间紧张，但你做到了，给自己一个大大的赞！`;
+    }
+    
+    // 场景 4: 超期后完成
+    if (ctx.isOverdue) {
+      return `✨ 虽然晚了一点，但完成比完美更重要，继续加油！`;
+    }
+    
+    // 场景 5: 快速完成（创建后 2h 内）
+    if (ctx.createdHoursAgo < 2) {
+      return `⚡️ 哇！创建后立即完成，这执行力简直无敌！`;
+    }
+    
+    // 场景 6: 今天很忙但还是完成了
+    if (ctx.todayEventCount > 8) {
+      return `🌟 今天${ctx.todayEventCount}个任务，你依然完成了这个，真的超厉害！`;
+    }
+    
+    // 场景 7: 连续完成多个任务
+    if (ctx.recentCompletionCount >= 5) {
+      return `🔥 最近完成${ctx.recentCompletionCount}个任务，你正处于巅峰状态！`;
+    }
+    
+    // 默认完成提示
+    return `✅ 任务完成！每一个勾选都是进步的脚印 🎈`;
   }
-  const days = Math.floor(hours / 24);
-  return `${days}天`;
+  
+  // ==================== 未完成 - 紧急/压力场景 ====================
+  
+  // 场景 8: DDL 在 2 小时内
+  if (ctx.ddlRemainingHours !== null && ctx.ddlRemainingHours >= 0 && ctx.ddlRemainingHours <= 2) {
+    return `🚨 DDL 还有${ctx.ddlRemainingHours}h！深呼吸，专注此刻，你可以的！`;
+  }
+  
+  // 场景 9: DDL 在 24 小时内
+  if (ctx.ddlRemainingHours !== null && ctx.ddlRemainingHours > 2 && ctx.ddlRemainingHours <= 24) {
+    const hours = Math.floor(ctx.ddlRemainingHours);
+    return `⏰ 还有${hours}小时，时间刚好，稳住节奏就能完成！`;
+  }
+  
+  // 场景 10: 已经超期
+  if (ctx.isOverdue) {
+    const overdueHours = Math.abs(ctx.ddlRemainingHours!);
+    if (overdueHours < 24) {
+      return `💙 超期${Math.floor(overdueHours)}h，别慌，现在开始依然来得及挽回`;
+    } else {
+      const overdueDays = Math.floor(overdueHours / 24);
+      return `🌸 已经延迟${overdueDays}天了，要不要给自己一个重新开始的机会？`;
+    }
+  }
+  
+  // 场景 11: 今天日程特别满（8+ 事件）
+  if (ctx.todayEventCount >= 8 && ctx.todayTotalFocusHours > 6) {
+    return `🫂 今天${ctx.todayEventCount}个任务，已专注${Math.floor(ctx.todayTotalFocusHours)}h，记得休息哦`;
+  }
+  
+  // 场景 12: 今天专注时间很长（10h+）
+  if (ctx.todayTotalFocusHours >= 10) {
+    return `🌙 今天已经专注${Math.floor(ctx.todayTotalFocusHours)}h了，累了就休息，明天继续加油！`;
+  }
+  
+  // 场景 13: 今天专注时间很长但任务还没完成
+  if (ctx.todayTotalFocusHours >= 8 && ctx.focusedHours > 4) {
+    return `💖 你已经投入${Math.floor(ctx.focusedHours)}h了，坚持住，胜利就在前方！`;
+  }
+  
+  // ==================== 未完成 - 拖延/愧疚场景 ====================
+  
+  // 场景 14: 创建很久（7+ 天）但没动过
+  if (ctx.createdHoursAgo > 168 && ctx.focusedHours === 0) {
+    const days = Math.floor(ctx.createdHoursAgo / 24);
+    return `🥺 这个任务已经躺了${days}天了呢...要不要给它一点关注？`;
+  }
+  
+  // 场景 15: 创建很久（3-7 天）且有 DDL，但没动过
+  if (ctx.createdHoursAgo > 72 && ctx.createdHoursAgo <= 168 && ctx.ddlRemainingHours && ctx.ddlRemainingHours < 48 && ctx.focusedHours === 0) {
+    return `😢 DDL 快到了，但还没开始...现在动手还来得及，我相信你！`;
+  }
+  
+  // 场景 16: 很久没完成任何任务（7+ 天）
+  if (ctx.lastCompletedDaysAgo >= 7) {
+    return `🌧️ 已经${ctx.lastCompletedDaysAgo}天没完成任务了，是不是遇到困难了？要不从这个开始试试？`;
+  }
+  
+  // 场景 17: 最近没完成任务（3-7 天）
+  if (ctx.lastCompletedDaysAgo >= 3 && ctx.lastCompletedDaysAgo < 7) {
+    return `🍃 ${ctx.lastCompletedDaysAgo}天没打勾了，好想看到你完成任务的样子...`;
+  }
+  
+  // 场景 18: 创建后 1 天没动
+  if (ctx.createdHoursAgo >= 24 && ctx.createdHoursAgo < 48 && ctx.focusedHours === 0) {
+    return `🐱 创建一天了还没开始，是不是忘记我了？点一下开始计时吧～`;
+  }
+  
+  // ==================== 未完成 - 正常/鼓励场景 ====================
+  
+  // 场景 19: 刚创建（2h 内）且有 DDL
+  if (ctx.createdHoursAgo < 2 && ctx.ddlRemainingHours && ctx.ddlRemainingHours > 24) {
+    return `🌱 新任务已创建，距离 DDL 还有${Math.floor(ctx.ddlRemainingHours / 24)}天，从容规划吧！`;
+  }
+  
+  // 场景 20: 刚创建（2h 内）没 DDL
+  if (ctx.createdHoursAgo < 2 && !ctx.ddlRemainingHours) {
+    return `📝 新任务，新开始！什么时候想做都可以，我会陪着你的`;
+  }
+  
+  // 场景 21: 已投入时间（2-4h）
+  if (ctx.focusedHours >= 2 && ctx.focusedHours < 4) {
+    return `🎯 已专注${Math.floor(ctx.focusedHours)}h，进展不错，继续保持！`;
+  }
+  
+  // 场景 22: 已投入较长时间（4-8h）
+  if (ctx.focusedHours >= 4 && ctx.focusedHours < 8) {
+    return `💎 投入${Math.floor(ctx.focusedHours)}h了，这份坚持会有回报的！`;
+  }
+  
+  // 场景 23: 投入时间很长（8h+）但还没完成
+  if (ctx.focusedHours >= 8) {
+    return `🏅 已经专注${Math.floor(ctx.focusedHours)}h，这是一场马拉松，你做得很棒！`;
+  }
+  
+  // 场景 24: DDL 还很远（7+ 天）
+  if (ctx.ddlRemainingHours && ctx.ddlRemainingHours > 168) {
+    return `🌈 DDL 还有${Math.floor(ctx.ddlRemainingHours / 24)}天，时间充裕，慢慢来没关系`;
+  }
+  
+  // 场景 25: DDL 适中（3-7 天）
+  if (ctx.ddlRemainingHours && ctx.ddlRemainingHours > 72 && ctx.ddlRemainingHours <= 168) {
+    return `📅 还有${Math.floor(ctx.ddlRemainingHours / 24)}天，合理安排时间，一切都会顺利的！`;
+  }
+  
+  // 场景 26: 最近完成了一些任务（2-4 个）
+  if (ctx.recentCompletionCount >= 2 && ctx.recentCompletionCount < 5) {
+    return `🌟 最近完成${ctx.recentCompletionCount}个任务，状态不错！再接再厉～`;
+  }
+  
+  // 场景 27: 今天任务不多（1-3 个）
+  if (ctx.todayEventCount >= 1 && ctx.todayEventCount <= 3) {
+    return `☀️ 今天只有${ctx.todayEventCount}个任务，轻松愉快的一天！`;
+  }
+  
+  // 场景 28: 今天任务适中（4-6 个）
+  if (ctx.todayEventCount >= 4 && ctx.todayEventCount <= 6) {
+    return `💼 今天${ctx.todayEventCount}个任务，节奏刚好，加油！`;
+  }
+  
+  // 场景 29: 刚开始投入（< 1h）
+  if (ctx.focusedHours > 0 && ctx.focusedHours < 1) {
+    return `🌸 刚开始${Math.floor(ctx.focusedHours * 60)}分钟，良好的开端是成功的一半！`;
+  }
+  
+  // 场景 30: 创建后 2-24h，没 DDL，没动过
+  if (ctx.createdHoursAgo >= 2 && ctx.createdHoursAgo < 24 && !ctx.ddlRemainingHours && ctx.focusedHours === 0) {
+    return `🎈 创建${Math.floor(ctx.createdHoursAgo)}h了，要不要现在开始呢？`;
+  }
+  
+  // 默认提示（兜底）
+  if (ctx.ddlRemainingHours !== null) {
+    const days = Math.floor(ctx.ddlRemainingHours / 24);
+    const hours = Math.floor(ctx.ddlRemainingHours % 24);
+    if (days > 0) {
+      return `📌 DDL 还有${days}天${hours}h，一步步来，你能做到的！`;
+    } else if (hours > 0) {
+      return `📌 DDL 还有${hours}h，专注当下，加油！`;
+    }
+  }
+  
+  return `✨ 每一次努力都算数，ReMarkable 陪你一起前行`;
 }
+
+// 辅助函数：计算事件累计专注时长
+function calculateEventFocusTime(event: Event): number {
+  // 获取该事件的所有 Timer 记录
+  const timerRecords = TimerService.getTimerRecordsByEventId(event.id);
+  const totalMs = timerRecords.reduce((sum, record) => {
+    if (record.endTime) {
+      const start = new Date(record.startTime).getTime();
+      const end = new Date(record.endTime).getTime();
+      return sum + (end - start);
+    }
+    return sum;
+  }, 0);
+  
+  return totalMs / (1000 * 60 * 60); // 转换为小时
+}
+
+// 辅助函数：获取今天的整体统计
+function getTodayStats(): { eventCount: number; totalFocusHours: number } {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const todayEvents = EventService.getEventsByDateRange(today, new Date());
+  const eventCount = todayEvents.length;
+  
+  const totalFocusMs = todayEvents.reduce((sum, evt) => {
+    const focusMs = calculateEventFocusTime(evt) * 1000 * 60 * 60;
+    return sum + focusMs;
+  }, 0);
+  
+  return {
+    eventCount,
+    totalFocusHours: totalFocusMs / (1000 * 60 * 60),
+  };
+}
+
+// 辅助函数：获取最近完成任务的统计
+function getRecentCompletionStats(): { count: number; daysAgo: number } {
+  const recentCompletedEvents = EventService.getRecentCompletedEvents(30); // 最近 30 天
+  const count = recentCompletedEvents.filter(evt => {
+    const completedDate = new Date(evt.completedAt!);
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    return completedDate >= threeDaysAgo;
+  }).length;
+  
+  // 计算距离上次完成的天数
+  let daysAgo = 999;
+  if (recentCompletedEvents.length > 0) {
+    const lastCompleted = new Date(recentCompletedEvents[0].completedAt!);
+    const now = new Date();
+    daysAgo = Math.floor((now.getTime() - lastCompleted.getTime()) / (1000 * 60 * 60 * 24));
+  }
+  
+  return { count, daysAgo };
+}
+
 ```
 
 **UI 样式**:
@@ -2678,6 +4997,7 @@ function calculateRemainingTime(dueDate: string): string {
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.2s;
+  user-select: none;
 }
 
 .plan-prompt-row:hover {
@@ -2688,28 +5008,71 @@ function calculateRemainingTime(dueDate: string): string {
   width: 18px;
   height: 18px;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .prompt-icons {
   font-size: 16px;
   line-height: 1;
+  flex-shrink: 0;
 }
 
 .prompt-text {
   font-size: 14px;
   color: #374151;
   flex: 1;
+  line-height: 1.5;
+}
+
+/* 不同情绪状态的文字颜色 */
+.prompt-text.urgent {
+  color: #dc2626; /* 紧急红色 */
+  font-weight: 500;
+}
+
+.prompt-text.encouraging {
+  color: #059669; /* 鼓励绿色 */
+}
+
+.prompt-text.celebrating {
+  color: #7c3aed; /* 庆祝紫色 */
+  font-weight: 500;
+}
+
+.prompt-text.gentle-guilt {
+  color: #6b7280; /* 温柔灰色 */
+  font-style: italic;
+}
+
+.prompt-text.caring {
+  color: #0891b2; /* 关怀青色 */
 }
 ```
 
-**交互**:
-- 勾选 checkbox → 设置 `event.isCompleted = true`
-- 自动同步到 Plan 页面（刷新列表状态）
-
 **显示示例**:
-```
-☑ ⏰ 🚩 创建于12h前，ddl还有2h30min
-```
+
+**完成状态**:
+- `🎉 太棒了！提前3天完成，你是时间管理大师！`
+- `💪 投入12h完成，这份专注和努力真的很了不起！`
+- `🏆 惊险完成！虽然时间紧张，但你做到了，给自己一个大大的赞！`
+
+**紧急状态**:
+- `� DDL 还有1h！深呼吸，专注此刻，你可以的！`
+- `⏰ 还有18小时，时间刚好，稳住节奏就能完成！`
+
+**拖延/愧疚状态**:
+- `🥺 这个任务已经躺了7天了呢...要不要给它一点关注？`
+- `😢 DDL 快到了，但还没开始...现在动手还来得及，我相信你！`
+- `🌧️ 已经7天没完成任务了，是不是遇到困难了？要不从这个开始试试？`
+
+**压力关怀状态**:
+- `🫂 今天8个任务，已专注10h，记得休息哦`
+- `🌙 今天已经专注12h了，累了就休息，明天继续加油！`
+
+**鼓励状态**:
+- `🎯 已专注3h，进展不错，继续保持！`
+- `🌟 最近完成3个任务，状态不错！再接再厉～`
+- `☀️ 今天只有2个任务，轻松愉快的一天！`
 
 ---
 
@@ -2724,7 +5087,7 @@ function shouldShowRelatedTasks(event: Event): boolean {
 
 ---
 
-#### 5.1 上级任务
+#### 5.1 上级任务与关联区域
 
 **数据来源**: 
 ```typescript
@@ -2747,33 +5110,1141 @@ function renderParentTask(event: Event): ReactNode {
     ? `${event.childTaskCompletedCount}/${event.childTaskCount}`
     : '';
   
+  // 🆕 展开/收缩状态（默认展开）
+  const [isExpanded, setIsExpanded] = useState(true);
+  
   return (
-    <div 
-      className="parent-task-link"
-      onClick={() => jumpToTask(event.parentTaskId)}
-    >
-      <img src={LinkColorIcon} alt="关联" className="icon-link" />
-      <span>
-        上级任务：{parentEvent.title}
-        {progress && `，同级任务已完成${progress}`}
-        ，点击查看和修改任务群
-      </span>
+    <div className="parent-task-section">
+      {/* 收缩时：一行描述 */}
+      {!isExpanded && (
+        <div 
+          className="parent-task-link collapsed"
+          onClick={() => setIsExpanded(true)}
+        >
+          <button className="expand-btn" title="展开任务树">
+            ▶
+          </button>
+          <img src={LinkColorIcon} alt="关联" className="icon-link" />
+          <span className="parent-task-summary">
+            上级任务：{parentEvent.title}
+            {progress && `，同级任务已完成${progress}`}
+            ，点击查看和修改任务群
+          </span>
+        </div>
+      )}
+      
+      {/* 展开时：完整 EventTree */}
+      {isExpanded && (
+        <div className="parent-task-expanded">
+          <div className="parent-task-header">
+            <button 
+              className="collapse-btn" 
+              onClick={() => setIsExpanded(false)}
+              title="收起任务树"
+            >
+              ▼
+            </button>
+            <img src={LinkColorIcon} alt="关联" className="icon-link" />
+            <span className="header-title">关联任务树</span>
+            {progress && (
+              <span className="progress-badge">
+                {event.childTaskCompletedCount}/{event.childTaskCount}
+              </span>
+            )}
+          </div>
+          
+          {/* EventTree 完整显示 */}
+          {renderRelatedTasksSection(event)}
+        </div>
+      )}
     </div>
   );
 }
 ```
 
-**交互**:
-- 点击跳转到父任务或任务群视图
-- Hover 显示父任务的详细信息
+**样式定义**:
+```css
+/* ========== 关联区域容器 ========== */
+.parent-task-section {
+  margin-bottom: 20px;
+}
+
+/* 收缩状态：一行描述 */
+.parent-task-link.collapsed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: white;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid #e5e7eb;
+}
+
+.parent-task-link.collapsed:hover {
+  background: #fafafa;
+  border-color: #d1d5db;
+}
+
+.expand-btn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #6b7280;
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.expand-btn:hover {
+  color: #1f2937;
+  transform: scale(1.1);
+}
+
+.icon-link {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.parent-task-summary {
+  font-size: 14px;
+  color: #374151;
+  flex: 1;
+  line-height: 1.5;
+}
+
+/* 展开状态：完整树形结构 */
+.parent-task-expanded {
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+}
+
+.parent-task-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: white;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.collapse-btn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #6b7280;
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.collapse-btn:hover {
+  color: #1f2937;
+  transform: scale(1.1);
+}
+
+.header-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  flex: 1;
+}
+
+.progress-badge {
+  padding: 2px 8px;
+  background: #3b82f6;
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+```
 
 ---
 
-### 【Slate 编辑区】
+**交互 1: 点击跳转到父任务的 EditModal**:
 
-#### 6.1 核心组件集成 - 多 Timer 日志时间轴
+```typescript
+// 点击跳转到父任务，打开 EditModal 时的特殊行为
+function openParentTaskModal(parentTaskId: string) {
+  const parentEvent = EventService.getEventById(parentTaskId);
+  
+  // 1. 获取用户对该 eventTree 的收缩状态（LocalStorage 持久化）
+  const treeCollapseState = getEventTreeCollapseState(parentTaskId);
+  
+  // 2. 获取子任务的 TimeLog 显示状态
+  const timeLogVisibility = getTimeLogVisibilityState(parentTaskId);
+  
+  // 3. 打开 Modal，传递状态
+  openEventEditModal({
+    event: parentEvent,
+    initialState: {
+      showEventTree: true,                    // 默认展开关联区域
+      eventTreeCollapseState: treeCollapseState,  // 记住的收缩状态
+      timeLogVisibility: timeLogVisibility,    // 子任务日志显示状态
+    }
+  });
+}
 
-**设计理念**: **"一个事件，多次处理，连续日志"**
+// LocalStorage 持久化收缩状态
+interface EventTreeCollapseState {
+  [eventId: string]: boolean;  // true = 收缩，false = 展开
+}
+
+function getEventTreeCollapseState(rootEventId: string): EventTreeCollapseState {
+  const key = `eventTree.collapse.${rootEventId}`;
+  const stored = localStorage.getItem(key);
+  return stored ? JSON.parse(stored) : {};
+}
+
+function saveEventTreeCollapseState(rootEventId: string, state: EventTreeCollapseState) {
+  const key = `eventTree.collapse.${rootEventId}`;
+  localStorage.setItem(key, JSON.stringify(state));
+}
+
+// TimeLog 可见性状态
+interface TimeLogVisibilityState {
+  [childEventId: string]: boolean;  // true = 显示，false = 隐藏
+}
+
+function getTimeLogVisibilityState(rootEventId: string): TimeLogVisibilityState {
+  const key = `eventTree.timeLogVisibility.${rootEventId}`;
+  const stored = localStorage.getItem(key);
+  
+  // 默认所有子任务的 TimeLog 都显示
+  if (!stored) {
+    const parentEvent = EventService.getEventById(rootEventId);
+    const allChildIds = getAllChildEventIds(parentEvent);
+    const defaultState: TimeLogVisibilityState = {};
+    allChildIds.forEach(id => defaultState[id] = true);
+    return defaultState;
+  }
+  
+  return JSON.parse(stored);
+}
+
+function saveTimeLogVisibilityState(rootEventId: string, state: TimeLogVisibilityState) {
+  const key = `eventTree.timeLogVisibility.${rootEventId}`;
+  localStorage.setItem(key, JSON.stringify(state));
+}
+```
+
+**交互 2: Hover 显示 EventTree 浮窗卡片**:
+
+```typescript
+interface EventTreePopoverProps {
+  rootEventId: string;
+  anchorElement: HTMLElement;
+  onEventClick: (eventId: string) => void;
+  onCheckChange: (eventId: string, checked: boolean) => void;
+  onVisibilityToggle: (eventId: string, visible: boolean) => void;
+}
+
+function EventTreePopover({ 
+  rootEventId, 
+  anchorElement, 
+  onEventClick,
+  onCheckChange,
+  onVisibilityToggle 
+}: EventTreePopoverProps) {
+  const rootEvent = EventService.getEventById(rootEventId);
+  const eventTree = buildEventTree(rootEvent);
+  const [visibilityState, setVisibilityState] = useState<TimeLogVisibilityState>(
+    () => getTimeLogVisibilityState(rootEventId)
+  );
+  
+  const handleVisibilityToggle = (eventId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newState = !visibilityState[eventId];
+    const updatedState = { ...visibilityState, [eventId]: newState };
+    setVisibilityState(updatedState);
+    saveTimeLogVisibilityState(rootEventId, updatedState);
+    onVisibilityToggle(eventId, newState);
+  };
+  
+  const handleCheckChange = (eventId: string, checked: boolean, e: React.MouseEvent) => {
+    e.stopPropagation();
+    onCheckChange(eventId, checked);
+  };
+  
+  return (
+    <div className="event-tree-popover">
+      <div className="event-tree-header">
+        <span className="tree-title">📋 任务树</span>
+        <span className="tree-count">{eventTree.totalCount} 个任务</span>
+      </div>
+      
+      <div className="event-tree-list">
+        {renderEventTreeNodes(eventTree.root, 0)}
+      </div>
+    </div>
+  );
+  
+  function renderEventTreeNodes(node: EventTreeNode, depth: number): ReactNode {
+    return (
+      <>
+        <div 
+          className={`event-tree-item depth-${depth}`}
+          onClick={() => onEventClick(node.event.id)}
+        >
+          {/* 勾选框 */}
+          <input
+            type="checkbox"
+            className="event-checkbox"
+            checked={node.event.isCompleted || false}
+            onChange={(e) => handleCheckChange(node.event.id, e.target.checked, e as any)}
+            onClick={(e) => e.stopPropagation()}
+          />
+          
+          {/* Hide/Unhide 眼睛按钮 */}
+          <button
+            className="visibility-toggle"
+            onClick={(e) => handleVisibilityToggle(node.event.id, e)}
+            title={visibilityState[node.event.id] ? '隐藏时间日志' : '显示时间日志'}
+          >
+            {visibilityState[node.event.id] ? '👁️' : '👁️‍🗨️'}
+          </button>
+          
+          {/* 事件内容 */}
+          <div className="event-content">
+            {/* Emoji */}
+            {node.event.emoji && (
+              <span className="event-emoji">{node.event.emoji}</span>
+            )}
+            
+            {/* 标题 */}
+            <span className="event-title">{node.event.title}</span>
+            
+            {/* 标签（仅显示第一个） */}
+            {node.event.tags && node.event.tags.length > 0 && (
+              <span className="event-tag-simple">
+                #{getFirstTagEmoji(node.event.tags[0])}{getFirstTagName(node.event.tags[0])}
+              </span>
+            )}
+            
+            {/* 计划时间 */}
+            {renderPlannedTime(node.event)}
+            
+            {/* 实际时长 */}
+            {renderActualDuration(node.event)}
+          </div>
+        </div>
+        
+        {/* 递归渲染子节点 */}
+        {node.children.length > 0 && (
+          <div className="event-tree-children">
+            {node.children.map(child => renderEventTreeNodes(child, depth + 1))}
+          </div>
+        )}
+      </>
+    );
+  }
+}
+
+// 渲染计划时间
+function renderPlannedTime(event: Event): ReactNode {
+  if (event.startTime && event.endTime) {
+    return (
+      <span className="planned-time">
+        📅 {formatTime(event.startTime)} - {formatTime(event.endTime)}
+      </span>
+    );
+  }
+  
+  if (event.fuzzyDate) {
+    return (
+      <span className="planned-time">
+        📅 {event.fuzzyDate}
+        {event.fuzzyTime && ` ${event.fuzzyTime}`}
+      </span>
+    );
+  }
+  
+  if (event.date) {
+    return (
+      <span className="planned-time">
+        📅 {formatDate(event.date)}
+      </span>
+    );
+  }
+  
+  return null;
+}
+
+// 渲染实际时长
+function renderActualDuration(event: Event): ReactNode {
+  const totalDuration = calculateEventFocusTime(event);
+  if (totalDuration === 0) return null;
+  
+  const hours = Math.floor(totalDuration);
+  const minutes = Math.floor((totalDuration - hours) * 60);
+  
+  return (
+    <span className="actual-duration">
+      ⏱️ {hours > 0 ? `${hours}h` : ''}{minutes > 0 ? `${minutes}m` : ''}
+    </span>
+  );
+}
+
+// 构建事件树
+interface EventTreeNode {
+  event: Event;
+  children: EventTreeNode[];
+}
+
+interface EventTree {
+  root: EventTreeNode;
+  totalCount: number;
+}
+
+function buildEventTree(rootEvent: Event): EventTree {
+  let totalCount = 0;
+  
+  function buildNode(event: Event): EventTreeNode {
+    totalCount++;
+    
+    const childEvents = EventService.getChildEvents(event.id);
+    const children = childEvents.map(child => buildNode(child));
+    
+    return {
+      event,
+      children,
+    };
+  }
+  
+  return {
+    root: buildNode(rootEvent),
+    totalCount,
+  };
+}
+
+// 获取所有子事件 ID（递归）
+function getAllChildEventIds(event: Event): string[] {
+  const childEvents = EventService.getChildEvents(event.id);
+  const ids = childEvents.map(child => child.id);
+  
+  childEvents.forEach(child => {
+    ids.push(...getAllChildEventIds(child));
+  });
+  
+  return ids;
+}
+
+// 获取第一个标签的 emoji
+function getFirstTagEmoji(tagId: string): string {
+  const tag = TagService.getTagById(tagId);
+  return tag?.emoji || '';
+}
+
+// 获取第一个标签的名称（不含层级）
+function getFirstTagName(tagId: string): string {
+  const tag = TagService.getTagById(tagId);
+  return tag?.name || '';
+}
+
+function formatTime(timestamp: string): string {
+  return dayjs(timestamp).format('HH:mm');
+}
+
+function formatDate(timestamp: string): string {
+  return dayjs(timestamp).format('MM-DD');
+}
+```
+
+**交互 3: EventTree 在关联区域的显示**:
+
+```typescript
+function renderRelatedTasksSection(event: Event): ReactNode {
+  if (!shouldShowRelatedTasks(event)) return null;
+  
+  const [showEventTree, setShowEventTree] = useState(true);
+  const [collapseState, setCollapseState] = useState<EventTreeCollapseState>(
+    () => getEventTreeCollapseState(event.id)
+  );
+  const [timeLogVisibility, setTimeLogVisibility] = useState<TimeLogVisibilityState>(
+    () => getTimeLogVisibilityState(event.id)
+  );
+  
+  const handleCollapseToggle = (eventId: string) => {
+    const newState = { ...collapseState, [eventId]: !collapseState[eventId] };
+    setCollapseState(newState);
+    saveEventTreeCollapseState(event.id, newState);
+  };
+  
+  const handleVisibilityToggle = (eventId: string, visible: boolean) => {
+    const newState = { ...timeLogVisibility, [eventId]: visible };
+    setTimeLogVisibility(newState);
+    saveTimeLogVisibilityState(event.id, newState);
+    
+    // 刷新 Slate 编辑器内容
+    refreshSlateEditorWithVisibleTimeLogs(newState);
+  };
+  
+  const handleEventCheck = (eventId: string, checked: boolean) => {
+    EventService.updateEvent(eventId, { isCompleted: checked });
+    // 刷新界面
+    forceUpdate();
+  };
+  
+  return (
+    <div className="related-tasks-section">
+      <div className="section-header">
+        <h4>📋 关联任务树</h4>
+        <button 
+          className="collapse-all-btn"
+          onClick={() => setShowEventTree(!showEventTree)}
+        >
+          {showEventTree ? '收起' : '展开'}
+        </button>
+      </div>
+      
+      {showEventTree && (
+        <div className="event-tree-compact">
+          {renderCompactEventTree(event, 0)}
+        </div>
+      )}
+    </div>
+  );
+  
+  function renderCompactEventTree(parentEvent: Event, depth: number): ReactNode {
+    const childEvents = EventService.getChildEvents(parentEvent.id);
+    const isCollapsed = collapseState[parentEvent.id] || false;
+    const isVisible = timeLogVisibility[parentEvent.id] !== false;
+    
+    return (
+      <>
+        <div className={`event-tree-compact-item depth-${depth}`}>
+          {/* 收缩箭头（如果有子任务） */}
+          {childEvents.length > 0 && (
+            <button 
+              className="collapse-arrow"
+              onClick={() => handleCollapseToggle(parentEvent.id)}
+            >
+              {isCollapsed ? '▶' : '▼'}
+            </button>
+          )}
+          
+          {/* 勾选框 */}
+          <input
+            type="checkbox"
+            className="event-checkbox-compact"
+            checked={parentEvent.isCompleted || false}
+            onChange={(e) => handleEventCheck(parentEvent.id, e.target.checked)}
+          />
+          
+          {/* Hide/Unhide 眼睛 */}
+          <button
+            className="visibility-toggle-compact"
+            onClick={() => handleVisibilityToggle(parentEvent.id, !isVisible)}
+            title={isVisible ? '隐藏时间日志' : '显示时间日志'}
+          >
+            {isVisible ? '👁️' : '👁️‍🗨️'}
+          </button>
+          
+          {/* Emoji */}
+          {parentEvent.emoji && (
+            <span className="event-emoji-compact">{parentEvent.emoji}</span>
+          )}
+          
+          {/* 标题 */}
+          <span 
+            className="event-title-compact"
+            onClick={() => openEventEditModal({ event: parentEvent })}
+          >
+            {parentEvent.title}
+          </span>
+          
+          {/* 第一个标签 */}
+          {parentEvent.tags && parentEvent.tags.length > 0 && (
+            <span className="event-tag-compact">
+              #{getFirstTagEmoji(parentEvent.tags[0])}{getFirstTagName(parentEvent.tags[0])}
+            </span>
+          )}
+          
+          {/* 计划时间 */}
+          <span className="planned-time-compact">
+            {renderPlannedTimeCompact(parentEvent)}
+          </span>
+          
+          {/* 实际时长 */}
+          <span className="actual-duration-compact">
+            {renderActualDurationCompact(parentEvent)}
+          </span>
+        </div>
+        
+        {/* 子任务（递归） */}
+        {!isCollapsed && childEvents.length > 0 && (
+          <div className="event-tree-children-compact">
+            {childEvents.map(child => renderCompactEventTree(child, depth + 1))}
+          </div>
+        )}
+      </>
+    );
+  }
+}
+
+function renderPlannedTimeCompact(event: Event): string {
+  if (event.startTime && event.endTime) {
+    return `📅 ${formatTime(event.startTime)}-${formatTime(event.endTime)}`;
+  }
+  if (event.fuzzyDate) {
+    return `📅 ${event.fuzzyDate}${event.fuzzyTime ? ' ' + event.fuzzyTime : ''}`;
+  }
+  if (event.date) {
+    return `📅 ${formatDate(event.date)}`;
+  }
+  return '';
+}
+
+function renderActualDurationCompact(event: Event): string {
+  const totalDuration = calculateEventFocusTime(event);
+  if (totalDuration === 0) return '';
+  
+  const hours = Math.floor(totalDuration);
+  const minutes = Math.floor((totalDuration - hours) * 60);
+  
+  return `⏱️ ${hours > 0 ? `${hours}h` : ''}${minutes > 0 ? `${minutes}m` : ''}`;
+}
+
+// 根据可见性状态刷新 Slate 编辑器
+function refreshSlateEditorWithVisibleTimeLogs(visibilityState: TimeLogVisibilityState) {
+  const visibleEventIds = Object.entries(visibilityState)
+    .filter(([_, visible]) => visible)
+    .map(([eventId, _]) => eventId);
+  
+  // 重新组装 Slate 内容：只包含可见事件的 TimeLog
+  const allLogs: PlanItem[] = [];
+  
+  visibleEventIds.forEach(eventId => {
+    const event = EventService.getEventById(eventId);
+    if (event?.description) {
+      const logs = parseExternalHtml(event.description);
+      
+      // 添加事件分隔标识
+      allLogs.push({
+        type: 'event-log-divider',
+        eventId: eventId,
+        eventTitle: event.title,
+        eventEmoji: event.emoji,
+      });
+      
+      allLogs.push(...logs);
+    }
+  });
+  
+  setSlateItems(allLogs);
+}
+```
+
+**样式定义**:
+
+```css
+/* ========== EventTree Popover ========== */
+.event-tree-popover {
+  width: 480px;
+  max-height: 600px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.event-tree-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: white;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.tree-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.tree-count {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.event-tree-list {
+  padding: 12px 0;
+  overflow-y: auto;
+  max-height: 520px;
+}
+
+.event-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  cursor: pointer;
+  transition: background 0.2s;
+  border-left: 3px solid transparent;
+}
+
+.event-tree-item:hover {
+  background: #f9fafb;
+  border-left-color: #3b82f6;
+}
+
+.event-tree-item.depth-0 {
+  padding-left: 20px;
+}
+
+.event-tree-item.depth-1 {
+  padding-left: 40px;
+}
+
+.event-tree-item.depth-2 {
+  padding-left: 60px;
+}
+
+.event-tree-item.depth-3 {
+  padding-left: 80px;
+}
+
+.event-checkbox {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.visibility-toggle {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.visibility-toggle:hover {
+  opacity: 1;
+}
+
+.event-content {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.event-emoji {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.event-title {
+  font-size: 14px;
+  color: #1f2937;
+  font-weight: 500;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-tag-simple {
+  font-size: 12px;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.planned-time {
+  font-size: 12px;
+  color: #059669;
+  flex-shrink: 0;
+}
+
+.actual-duration {
+  font-size: 12px;
+  color: #dc2626;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.event-tree-children {
+  /* 子节点容器 */
+}
+
+/* ========== EventTree Compact (关联区域) ========== */
+.related-tasks-section {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.section-header h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  margin: 0;
+}
+
+.collapse-all-btn {
+  padding: 4px 12px;
+  border: 1px solid #d1d5db;
+  background: white;
+  color: #6b7280;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.collapse-all-btn:hover {
+  background: #fafafa;
+  border-color: #9ca3af;
+}
+
+.event-tree-compact {
+  background: white;
+  border-radius: 6px;
+  padding: 8px 0;
+  border: 1px solid #f3f4f6;
+}
+
+.event-tree-compact-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  transition: background 0.2s;
+  border-left: 2px solid transparent;
+}
+
+.event-tree-compact-item:hover {
+  background: #f9fafb;
+  border-left-color: #3b82f6;
+}
+
+.event-tree-compact-item.depth-0 {
+  padding-left: 12px;
+}
+
+.event-tree-compact-item.depth-1 {
+  padding-left: 32px;
+}
+
+.event-tree-compact-item.depth-2 {
+  padding-left: 52px;
+}
+
+.event-tree-compact-item.depth-3 {
+  padding-left: 72px;
+}
+
+.collapse-arrow {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #6b7280;
+  font-size: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+
+.collapse-arrow:hover {
+  color: #1f2937;
+}
+
+.event-checkbox-compact {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.visibility-toggle-compact {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+
+.visibility-toggle-compact:hover {
+  opacity: 1;
+}
+
+.event-emoji-compact {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.event-title-compact {
+  font-size: 13px;
+  color: #1f2937;
+  font-weight: 500;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  min-width: 80px;
+}
+
+.event-title-compact:hover {
+  color: #3b82f6;
+  text-decoration: underline;
+}
+
+.event-tag-compact {
+  font-size: 11px;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 2px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.planned-time-compact {
+  font-size: 11px;
+  color: #059669;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.actual-duration-compact {
+  font-size: 11px;
+  color: #dc2626;
+  font-weight: 500;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.event-tree-children-compact {
+  /* 紧凑子节点容器 */
+}
+
+/* ========== Event Log Divider（编辑区分隔线）========== */
+.event-log-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  margin: 16px 0;
+  background: linear-gradient(to right, #eff6ff, transparent);
+  border-left: 4px solid #3b82f6;
+  border-radius: 4px;
+  user-select: none;
+}
+
+.event-log-divider-emoji {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.event-log-divider-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+  flex: 1;
+}
+
+.event-log-divider-toggle {
+  padding: 4px 8px;
+  border: 1px solid #d1d5db;
+  background: white;
+  color: #6b7280;
+  font-size: 11px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.event-log-divider-toggle:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+```
+
+---
+
+### 【Slate 编辑区】- TimeLog 集成
+
+EventEditModal 的右侧编辑区直接集成 **TimeLog 模块**的 `UnifiedSlateEditor` 组件。
+
+> **详细实现参见**: [TimeLog & Description PRD](./TimeLog_&_Description_PRD.md)
+
+**集成要点**:
+
+#### 1. TimeLog 数据初始化
+
+```typescript
+import { UnifiedSlateEditor } from '@/components/UnifiedSlateEditor/UnifiedSlateEditor';
+import { parseExternalHtml, slateNodesToRichHtml } from '@/components/UnifiedSlateEditor/serialization';
+
+// 从 event.description 解析 TimeLog 数据
+const [slateItems, setSlateItems] = useState<PlanItem[]>(() => {
+  return event?.description 
+    ? parseExternalHtml(event.description)
+    : [{ id: 'line-1', level: 0, title: '', content: '', tags: [] }];
+});
+
+const handleSlateChange = useCallback((updatedItems: PlanItem[]) => {
+  setSlateItems(updatedItems);
+  const htmlContent = slateNodesToRichHtml(updatedItems);
+  setFormData({ ...formData, description: htmlContent });
+}, [formData]);
+```
+
+#### 2. FloatingToolbar 集成
+
+```typescript
+import { HeadlessFloatingToolbar } from '@/components/HeadlessFloatingToolbar';
+import { useFloatingToolbar } from '@/hooks/useFloatingToolbar';
+
+const rightPanelRef = useRef<HTMLDivElement>(null);
+const slateEditorRef = useRef<Editor>(null);
+
+const floatingToolbar = useFloatingToolbar({
+  editorRef: rightPanelRef,
+  enabled: true,
+  menuItemCount: 6,
+  onMenuSelect: (index) => setActivePickerIndex(index),
+});
+
+// FloatingBar 图标配置
+const floatingBarIcons = [
+  { icon: EmojiIcon, alt: '表情' },
+  { icon: TagSharpIcon, alt: '标签' },
+  { icon: DdlAddIcon, alt: '日期' },
+  { icon: BulletpointsIcon, alt: '列表' },
+  { icon: BackgroundColorIcon, alt: '颜色' },
+  { icon: AddTaskColorIcon, alt: '添加任务' }
+];
+
+return (
+  <div ref={rightPanelRef} className="modal-right-panel">
+    {/* Slate 编辑器 */}
+    <UnifiedSlateEditor
+      items={slateItems}
+      onChange={handleSlateChange}
+      placeholder="输入'/'召唤表情、格式等，点击右下方问号浮窗查看更多高效快捷键哦"
+      onEditorReady={(editor) => { slateEditorRef.current = editor; }}
+    />
+    
+    {/* FloatingBar */}
+    <HeadlessFloatingToolbar
+      position={floatingToolbar.position}
+      mode="menu_floatingbar"
+      config={{ features: ['emoji', 'tag', 'dateRange', 'bullet', 'color', 'addTask'] }}
+      icons={floatingBarIcons}
+      activePickerIndex={activePickerIndex}
+      onEmojiSelect={(emoji) => insertEmoji(slateEditorRef.current, emoji)}
+      onTagSelect={(tagIds) => {
+        const tag = getTagById(tagIds[0]);
+        insertTag(slateEditorRef.current, tag.id, tag.name, tag.color, tag.emoji);
+      }}
+      onDateRangeSelect={(start, end) => {
+        insertDateMention(slateEditorRef.current, formatTimeForStorage(start), formatTimeForStorage(end));
+      }}
+      availableTags={hierarchicalTags}
+      currentTags={formData.tags}
+    />
+  </div>
+);
+```
+
+#### 3. 特殊场景：多 Timer 日志合并显示
+
+当事件存在多个 Timer 子事件时，EventEditModal 会**合并显示所有 Timer 的日志**，形成完整的时间轴：
+
+```typescript
+// 🆕 合并父事件 + 所有 Timer 子事件的日志
+const [slateItems, setSlateItems] = useState<PlanItem[]>(() => {
+  let allLogs: PlanItem[] = [];
+  
+  // 1. 父事件的基础日志
+  if (event?.description) {
+    allLogs = parseExternalHtml(event.description);
+  }
+  
+  // 2. 所有 Timer 子事件的日志（按时间排序）
+  if (event?.timerChildEvents?.length > 0) {
+    const sortedTimers = [...event.timerChildEvents].sort((a, b) => 
+      new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    );
+    
+    sortedTimers.forEach(timerEvent => {
+      if (timerEvent.description) {
+        // 插入时间戳分隔线（见 TimeLog PRD 6.2 节）
+        allLogs.push({
+          type: 'event-log-divider',
+          eventId: timerEvent.id,
+          emoji: getEventEmoji(timerEvent),
+          title: timerEvent.title,
+          timestamp: timerEvent.startTime,
+          children: [{ text: '' }],
+        } as any);
+        
+        // 插入该 Timer 的日志
+        allLogs.push(...parseExternalHtml(timerEvent.description));
+      }
+    });
+  }
+  
+  return allLogs.length > 0 
+    ? allLogs 
+    : [{ id: 'line-1', level: 0, title: '', content: '', tags: [] }];
+});
+```
+
+**用户体验**:
+- ✅ 一个事件多次计时，所有日志按时间顺序合并显示
+- ✅ 每个 Timer 日志段前有蓝色分隔线，标注时间和时长
+- ✅ 点击 TimeCalendar 上的 Timer 色块 → 打开父事件 Modal → 自动滚动到对应日志位置
+- ✅ 支持在任意 Timer 日志段中编辑，保存时自动分配到对应的 Timer 子事件
+
+**关联文档**:
+- [TimeLog & Description PRD](./TimeLog_&_Description_PRD.md) - UnifiedSlateEditor 详细实现
+- [Timer 模块 PRD](./TIMER_MODULE_PRD.md) - Timer 子事件管理
+- [SLATE_DEVELOPMENT_GUIDE.md](../SLATE_DEVELOPMENT_GUIDE.md) - Slate 开发指南
+
+---
+
+## 数据字段扩展
 
 ```typescript
 import { UnifiedSlateEditor } from '@/components/UnifiedSlateEditor/UnifiedSlateEditor';

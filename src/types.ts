@@ -89,7 +89,8 @@ export interface Event {
   attendees?: Contact[]; // 🔧 修改：使用统一的 Contact 接口
   reminder?: number;
   externalId?: string;
-  calendarIds?: string[]; // 🆕 多日历分组支持
+  calendarIds?: string[]; // 🆕 多日历分组支持（用于事件同步到 Calendar）
+  todoListIds?: string[]; // 🆕 To Do List 分组支持（用于任务同步到 To Do）
   source?: 'local' | 'outlook' | 'google' | 'icloud'; // 🆕 事件来源
   syncStatus?: SyncStatusType; // 🔧 unified: 'pending' 表示所有待同步状态（新建或更新）
   lastSyncTime?: string; // 🔧 修改：使用字符串存储本地时间

@@ -539,6 +539,7 @@ export interface PlanManagerProps {
   availableTags?: string[];
   onCreateEvent?: (event: Event) => void;
   onUpdateEvent?: (eventId: string, updates: Partial<Event>) => void;
+  microsoftService?: any; // 🆕 Microsoft 服务实例
 }
 
 // 🔍 调试开关 - 通过 window.SLATE_DEBUG = true 开启
@@ -583,6 +584,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   availableTags = [],
   onCreateEvent,
   onUpdateEvent,
+  microsoftService, // 🆕 接收 Microsoft 服务
 }) => {
   // ✅ PlanManager 自己维护 items state
   const [items, setItems] = useState<Event[]>(() => {
@@ -820,7 +822,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     } catch (err) {
       console.error('[TagPicker Sync] Failed:', err);
     }
-  }, [activePickerIndex, currentFocusedMode]); // 🔥 添加 currentFocusedMode 依赖
+  }, [activePickerIndex, currentFocusedMode, currentFocusedLineId]); // 🔥 添加 currentFocusedLineId 依赖
 
   // 将文本格式命令路由到当前 Slate 编辑器
   const handleTextFormat = useCallback((command: string) => {
@@ -884,26 +886,13 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           const actualItemId = lineId.replace('-desc', ''); // 移除 -desc 后缀获取真实 item id
           const item = items.find(i => i.id === actualItemId);
           if (item) {
-            // 更新标签
-            if (item.tags) {
-              const tagIds = item.tags
-                .map(tagName => {
-                  const tag = TagService.getFlatTags().find(t => t.name === tagName);
-                  return tag?.id;
-                })
-                .filter(Boolean) as string[];
-              setCurrentSelectedTags(tagIds);
-              currentSelectedTagsRef.current = tagIds;
-            } else {
-              setCurrentSelectedTags([]);
-              currentSelectedTagsRef.current = [];
-            }
-            
             // 🆕 更新 isTask 状态
             setCurrentIsTask(item.isTask || false);
+            
+            // 🔥 标签状态由 useEffect (L776-822) 从 Slate 节点同步，不在这里设置
+            // 避免使用过时的 item.tags 覆盖 Slate 中最新的标签状态
           } else {
-            setCurrentSelectedTags([]);
-            currentSelectedTagsRef.current = []; // 同步更新 ref
+            // 🔥 新行没有 item，标签状态会在 useEffect 中自动清空
             setCurrentIsTask(false);
           }
         }
@@ -1544,18 +1533,27 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       const tag = TagService.getFlatTags().find(x => x.id === t || x.name === t);
       return tag ? tag.id : t;
     });
+    
+    // 🆕 v1.8: 从标签中提取 calendarIds
+    const calendarIds = mappedTags
+      .map((tagId: string) => {
+        const tag = TagService.getFlatTags().find(t => t.id === tagId);
+        return tag?.calendarMapping?.calendarId;
+      })
+      .filter((id: string | undefined): id is string => !!id);
+    
     return {
       id: item.id || `event-${Date.now()}`,
       title: item.title,
       description: item.notes || sanitize(item.description || item.content || ''),
-      startTime: item.startTime || item.dueDate || formatTimeForStorage(new Date()),
-      endTime: item.endTime || item.dueDate || formatTimeForStorage(new Date()),
+      startTime: item.startTime || item.dueDate || '', // 🔧 没有时间的任务保持为空字符串
+      endTime: item.endTime || item.dueDate || '', // 🔧 没有时间的任务保持为空字符串
       location: '', // Event 没有 location 字段，保留空值
       isAllDay: !item.startTime && !!item.dueDate,
       tags: mappedTags,
-      calendarIds: [],
+      calendarIds: calendarIds.length > 0 ? calendarIds : undefined, // 🆕 v1.8: 设置 calendarIds
       source: 'local',
-      syncStatus: 'local-only',
+      syncStatus: calendarIds.length > 0 ? 'pending' : 'local-only', // 🆕 v1.8: 根据日历映射设置同步状态
       createdAt: formatTimeForStorage(new Date()),
       updatedAt: formatTimeForStorage(new Date()),
       remarkableSource: true,
@@ -1920,7 +1918,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             setEditingItem(null);
           }}
           hierarchicalTags={existingTags}
-          availableCalendars={[]} // 可以从 props 传入
+          microsoftService={microsoftService} // 🆕 传递 Microsoft 服务
+          // 移除 availableCalendars - 让 SyncTargetPicker 自己从 microsoftService 加载
           draggable={true}
           resizable={true}
         />
@@ -2230,6 +2229,29 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                             dbg('mention', 'Updated existing event (non-time fields) after mention insert', { eventId: updatedItem.id });
                           } else {
                             const newId = generateEventId();
+                            
+                            // 🆕 v1.8: 从标签中提取 calendarIds（与 executeBatchUpdate 一致）
+                            const tagIds = (updatedItem.tags || []).map((t: string) => {
+                              const tag = TagService.getFlatTags().find(x => x.id === t || x.name === t);
+                              return tag ? tag.id : t;
+                            });
+                            
+                            const calendarIds = tagIds
+                              .map((tagId: string) => {
+                                const tag = TagService.getFlatTags().find(t => t.id === tagId);
+                                return tag?.calendarMapping?.calendarId;
+                              })
+                              .filter((id: string | undefined): id is string => !!id);
+                            
+                            console.log('[PlanManager] 日期提及创建事件 - 标签到日历映射:', {
+                              eventId: newId,
+                              title: updatedItem.title?.substring(0, 20),
+                              tags: updatedItem.tags,
+                              tagIds,
+                              calendarIds,
+                              hasSyncMapping: calendarIds.length > 0
+                            });
+                            
                             // ✅ 使用 EventHub.createEvent 替代直接调用
                             const createRes = await EventHub.createEvent({
                               id: newId,
@@ -2238,11 +2260,13 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                               startTime: formatTimeForStorage(startDate),
                               endTime: formatTimeForStorage(endDate || startDate),
                               isAllDay: false,
-                              tags: updatedItem.tags || [],
+                              tags: tagIds, // 使用规范化的 tagIds
+                              calendarIds: calendarIds.length > 0 ? calendarIds : undefined, // 🆕 v1.8: 设置 calendarIds
                               createdAt: formatTimeForStorage(new Date()),
                               updatedAt: formatTimeForStorage(new Date()),
                               remarkableSource: true,
                               isPlan: true, // 🆕 标记为 Plan 事件
+                              syncStatus: calendarIds.length > 0 ? 'pending' : 'local-only', // 🆕 v1.8: 根据日历映射设置同步状态
                             } as Event);
                             if (createRes.success && createRes.event) {
                               // Event 已创建，直接保存（id已经是newId）

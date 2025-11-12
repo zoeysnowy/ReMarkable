@@ -3,6 +3,7 @@ import { Event, Contact } from '../types';
 // import { STORAGE_KEYS } from '../constants/storage';
 import { formatTimeForStorage, parseLocalTimeString, formatDateForInput } from '../utils/timeUtils';
 import { CalendarPicker } from '../features/Calendar/components/CalendarPicker';
+import { SyncTargetPicker } from './EventEditModal/SyncTargetPicker'; // 🆕 智能同步目标选择器
 import { ContactPicker } from './common/ContactPicker';
 import { Avatar, AvatarGroup } from './common/Avatar';
 import { ConflictDetectionService, ConflictInfo } from '../services/ConflictDetectionService';
@@ -53,7 +54,9 @@ interface EventEditModalProps {
   hierarchicalTags: any[];
   onStartTimeChange?: (newStartTime: number) => void;
   globalTimer?: { startTime: number; originalStartTime?: number; elapsedTime: number; isRunning: boolean } | null;
-  availableCalendars?: any[];
+  microsoftService?: any; // 🆕 Microsoft 服务实例
+  availableCalendars?: any[]; // ⚠️ 已废弃，保留用于向后兼容
+  availableTodoLists?: any[]; // 🆕 可用的 To Do Lists
   draggable?: boolean; // 是否可拖拽
   resizable?: boolean; // 是否可调整大小
 }
@@ -67,7 +70,9 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
   hierarchicalTags,
   onStartTimeChange,
   globalTimer,
+  microsoftService, // 🆕 接收 Microsoft 服务
   availableCalendars = [],
+  availableTodoLists = [], // 🆕 默认空数组
   draggable = false,
   resizable = false,
 }) => {
@@ -81,6 +86,7 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
     isAllDay: false,
     tags: [] as string[],
     calendarIds: [] as string[],
+    todoListIds: [] as string[], // 🆕 To Do List 映射
     organizer: { name: '', email: '' } as Contact,
     attendees: [] as Contact[],
   });
@@ -302,8 +308,19 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
         isAllDay: isAllDay,
         tags: event.tags || [],
         calendarIds: event.calendarIds || [],
+        todoListIds: event.todoListIds || [], // 🆕 初始化 To Do List IDs
         organizer: event.organizer || { name: '', email: '' },
         attendees: event.attendees || [],
+      });
+
+      // 🐛 DEBUG: 输出事件的日历和任务列表 IDs
+      console.log('📝 EventEditModal - 初始化事件:', {
+        eventId: event.id,
+        title: event.title,
+        calendarIds: event.calendarIds,
+        todoListIds: event.todoListIds,
+        hasStartTime: !!event.startTime,
+        hasEndTime: !!event.endTime
       });
 
       if (draggable || resizable) {
@@ -477,9 +494,7 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
               location: formData.location,
               isAllDay: formData.isAllDay,
               tags: formData.tags,
-              tagId: formData.tags.length > 0 ? formData.tags[0] : undefined,
-              calendarId: targetCalendarId, // 🔧 使用计算后的 calendarId
-              calendarIds: targetCalendarId ? [targetCalendarId] : formData.calendarIds, // 🔧 更新 calendarIds 数组
+              calendarIds: targetCalendarId ? [targetCalendarId] : formData.calendarIds, // 🆕 v1.8: 使用 calendarIds 数组
               organizer: formData.organizer.email ? formData.organizer : undefined, // 只保存有邮箱的组织者
               attendees: formData.attendees.filter(a => a.email), // 只保存有邮箱的参会人
               createdAt: event.createdAt || formatTimeForStorage(new Date()),
@@ -581,9 +596,8 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
         location: formData.location,
         isAllDay: formData.isAllDay,
         tags: formData.tags,
-        tagId: formData.tags.length > 0 ? formData.tags[0] : undefined,
-        calendarId: targetCalendarId, // 🔧 使用计算后的 calendarId
-        calendarIds: targetCalendarId ? [targetCalendarId] : formData.calendarIds, // 🔧 更新 calendarIds 数组
+        calendarIds: targetCalendarId ? [targetCalendarId] : formData.calendarIds, // 🆕 v1.8: 使用 calendarIds 数组
+        todoListIds: formData.todoListIds, // 🆕 保存 To Do List IDs
         organizer: formData.organizer.email ? formData.organizer : undefined,
         attendees: formData.attendees.filter(a => a.email),
         updatedAt: formatTimeForStorage(new Date()),
@@ -1001,16 +1015,21 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
             </div>
           </div>
 
-          {/* 日历分组（多选） */}
+          {/* 同步目标（智能切换 Calendar/To Do List） */}
           <div className="form-group form-group-inline">
-            <label>日历</label>
-            <CalendarPicker
-              availableCalendars={availableCalendars}
-              selectedCalendarIds={formData.calendarIds}
-              onSelectionChange={(selectedIds) => {
-                setFormData(prev => ({ ...prev, calendarIds: selectedIds }));
+            <label>{!formData.startTime || !formData.endTime ? '待办事项' : '日历'}</label>
+            <SyncTargetPicker
+              startTime={formData.startTime}
+              endTime={formData.endTime}
+              selectedCalendarIds={formData.calendarIds || []}
+              selectedTodoListIds={formData.todoListIds || []}
+              onCalendarIdsChange={(calendarIds) => {
+                setFormData(prev => ({ ...prev, calendarIds }));
               }}
-              maxSelection={5}
+              onTodoListIdsChange={(todoListIds) => {
+                setFormData(prev => ({ ...prev, todoListIds }));
+              }}
+              microsoftService={microsoftService}
             />
           </div>
 
