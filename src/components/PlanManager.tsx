@@ -602,15 +602,24 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     // 🔍 DEBUG: 检查 EventService 返回的数据
     console.log('[PlanManager] 初始化 - 从 EventService 加载:', {
       总事件数: allEvents.length,
-      示例事件: allEvents.slice(0, 3).map(e => ({
-        id: e.id?.substring(0, 30),
-        title: e.title?.substring(0, 20),
-        isPlan: e.isPlan,
-        hasEventlog: !!(e as any).eventlog,
-        hasDescription: !!e.description,
-        eventlogLength: ((e as any).eventlog || '').length,
-        descriptionLength: (e.description || '').length,
-      }))
+      示例事件: allEvents.slice(0, 3).map(e => {
+        const eventlog = (e as any).eventlog;
+        const eventlogType = typeof eventlog;
+        const eventlogContent = eventlogType === 'object' && eventlog !== null
+          ? eventlog.descriptionHtml || eventlog.content || ''
+          : eventlog || '';
+        
+        return {
+          id: e.id?.substring(0, 30),
+          title: e.title?.substring(0, 20),
+          isPlan: e.isPlan,
+          eventlogType,
+          hasEventlog: !!eventlog,
+          hasDescription: !!e.description,
+          eventlogContentLength: eventlogContent.length,
+          descriptionLength: (e.description || '').length,
+        };
+      })
     });
     
     const filtered = allEvents.filter((event: Event) => {
@@ -626,14 +635,23 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     // 🔍 DEBUG: 检查过滤后的数据
     console.log('[PlanManager] 初始化 - 过滤后的 Plan 事件:', {
       过滤后数量: filtered.length,
-      示例: filtered.slice(0, 3).map(e => ({
-        id: e.id?.substring(0, 30),
-        title: e.title?.substring(0, 20),
-        hasEventlog: !!(e as any).eventlog,
-        hasDescription: !!e.description,
-        eventlogLength: ((e as any).eventlog || '').length,
-        descriptionLength: (e.description || '').length,
-      }))
+      示例: filtered.slice(0, 3).map(e => {
+        const eventlog = (e as any).eventlog;
+        const eventlogType = typeof eventlog;
+        const eventlogContent = eventlogType === 'object' && eventlog !== null
+          ? eventlog.descriptionHtml || eventlog.content || ''
+          : eventlog || '';
+        
+        return {
+          id: e.id?.substring(0, 30),
+          title: e.title?.substring(0, 20),
+          eventlogType,
+          hasEventlog: !!eventlog,
+          hasDescription: !!e.description,
+          eventlogContentLength: eventlogContent.length,
+          descriptionLength: (e.description || '').length,
+        };
+      })
     });
     
     return filtered;

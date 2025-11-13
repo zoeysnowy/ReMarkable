@@ -28,14 +28,22 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
   if (items.length > 0) {
     console.log('[planItemsToSlateNodes] 加载事件:', {
       总数: items.length,
-      示例: items.slice(0, 3).map(item => ({
-        id: item.id?.substring(0, 30),
-        title: item.title?.substring(0, 20),
-        hasEventlog: !!(item.eventlog),
-        hasDescription: !!(item.description),
-        eventlogLength: (item.eventlog || '').length,
-        descriptionLength: (item.description || '').length,
-      }))
+      示例: items.slice(0, 3).map(item => {
+        const eventlogType = typeof item.eventlog;
+        const eventlogContent = eventlogType === 'object' && item.eventlog !== null
+          ? item.eventlog.descriptionHtml || item.eventlog.content || ''
+          : item.eventlog || '';
+        
+        return {
+          id: item.id?.substring(0, 30),
+          title: item.title?.substring(0, 20),
+          eventlogType,
+          hasEventlog: !!item.eventlog,
+          hasDescription: !!item.description,
+          eventlogContentLength: eventlogContent.length,
+          descriptionLength: (item.description || '').length,
+        };
+      })
     });
   }
   
@@ -96,7 +104,20 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
     
     // Description 行（只有存在时才创建）
     // 🆕 v1.8: 优先使用 eventlog (富文本)，回退到 description (纯文本)
-    const descriptionContent = item.eventlog || item.description;
+    // 🔧 v1.8.1: 支持 EventLog 对象格式
+    let descriptionContent = '';
+    if (item.eventlog) {
+      if (typeof item.eventlog === 'object' && item.eventlog !== null) {
+        // 新格式：EventLog 对象
+        descriptionContent = item.eventlog.descriptionHtml || item.eventlog.descriptionPlainText || '';
+      } else {
+        // 旧格式：字符串
+        descriptionContent = item.eventlog;
+      }
+    } else if (item.description) {
+      descriptionContent = item.description;
+    }
+    
     if (descriptionContent) {
       const descNode: EventLineNode = {
         type: 'event-line',

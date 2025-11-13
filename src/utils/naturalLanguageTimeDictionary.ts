@@ -13,6 +13,23 @@ import { dbg } from './debugLogger';
 dayjs.extend(quarterOfYear);
 
 /**
+ * 🔧 安全地将 Date 对象转换为 dayjs，避免 UTC 时区转换
+ * 
+ * 问题：dayjs(new Date()) 会触发 UTC 转换，导致日期偏移
+ * 解决：从 Date 对象提取组件值，手动构造 dayjs
+ */
+function safelyConvertDateToDayjs(date: Date): Dayjs {
+  return dayjs()
+    .year(date.getFullYear())
+    .month(date.getMonth())  // 0-11
+    .date(date.getDate())
+    .hour(date.getHours())
+    .minute(date.getMinutes())
+    .second(date.getSeconds())
+    .millisecond(date.getMilliseconds());
+}
+
+/**
  * 中文数字转阿拉伯数字
  * 支持："零一二三四五六七八九十"、"12"、"3"等
  */
@@ -429,7 +446,7 @@ export const DATE_RANGE_DICTIONARY: Record<string, (referenceDate?: Date) => Dat
 export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => PointInTime> = {
   // 相对天数
   '大后天': (ref = new Date()) => {
-    const target = dayjs(ref).add(3, 'day').startOf('day');
+    const target = safelyConvertDateToDayjs(ref).add(3, 'day').startOf('day');
     return {
       date: target,
       displayHint: '大后天',
@@ -443,7 +460,7 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '大前天': (ref = new Date()) => {
-    const target = dayjs(ref).subtract(3, 'day').startOf('day');
+    const target = safelyConvertDateToDayjs(ref).subtract(3, 'day').startOf('day');
     return {
       date: target,
       displayHint: '大前天',
@@ -458,7 +475,7 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   
   // 月份相关
   '月底': (ref = new Date()) => {
-    const target = dayjs(ref).endOf('month').startOf('day');
+    const target = safelyConvertDateToDayjs(ref).endOf('month').startOf('day');
     return {
       date: target,
       displayHint: '月底',
@@ -479,7 +496,7 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   '月末': (ref = new Date()) => POINT_IN_TIME_DICTIONARY['月底'](ref),
   
   '月初': (ref = new Date()) => {
-    const target = dayjs(ref).startOf('month');
+    const target = safelyConvertDateToDayjs(ref).startOf('month');
     return {
       date: target,
       displayHint: '月初',
@@ -499,7 +516,7 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   
   // 年份相关
   '年底': (ref = new Date()) => {
-    const target = dayjs(ref).endOf('year').startOf('day');
+    const target = safelyConvertDateToDayjs(ref).endOf('year').startOf('day');
     return {
       date: target,
       displayHint: '年底',
@@ -611,7 +628,7 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   '周报': (ref = new Date()) => POINT_IN_TIME_DICTIONARY['周报日'](ref),
   
   '下周一': (ref = new Date()) => {
-    const target = dayjs(ref).add(1, 'week').day(1).startOf('day');
+    const target = safelyConvertDateToDayjs(ref).add(1, 'week').day(1).startOf('day');
     return {
       date: target,
       displayHint: '下周一',
@@ -631,7 +648,7 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   
   // 🆕 下周二到下周日
   '下周二': (ref = new Date()) => {
-    const target = dayjs(ref).add(1, 'week').day(2).startOf('day');
+    const target = safelyConvertDateToDayjs(ref).add(1, 'week').day(2).startOf('day');
     dbg('dict', '🎯 解析"下周二"', {
       输入ref: ref.toISOString(),
       ref本地时间: ref.toString(),
@@ -658,7 +675,7 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '下周三': (ref = new Date()) => {
-    const target = dayjs(ref).add(1, 'week').day(3).startOf('day');
+    const target = safelyConvertDateToDayjs(ref).add(1, 'week').day(3).startOf('day');
     return {
       date: target,
       displayHint: '下周三',
@@ -677,7 +694,7 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '下周四': (ref = new Date()) => {
-    const target = dayjs(ref).add(1, 'week').day(4).startOf('day');
+    const target = safelyConvertDateToDayjs(ref).add(1, 'week').day(4).startOf('day');
     return {
       date: target,
       displayHint: '下周四',
@@ -696,7 +713,7 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '下周五': (ref = new Date()) => {
-    const target = dayjs(ref).add(1, 'week').day(5).startOf('day');
+    const target = safelyConvertDateToDayjs(ref).add(1, 'week').day(5).startOf('day');
     return {
       date: target,
       displayHint: '下周五',
@@ -715,7 +732,7 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '下周六': (ref = new Date()) => {
-    const target = dayjs(ref).add(1, 'week').day(6).startOf('day');
+    const target = safelyConvertDateToDayjs(ref).add(1, 'week').day(6).startOf('day');
     return {
       date: target,
       displayHint: '下周六',
@@ -734,7 +751,7 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '下周日': (ref = new Date()) => {
-    const target = dayjs(ref).add(1, 'week').day(0).startOf('day');
+    const target = safelyConvertDateToDayjs(ref).add(1, 'week').day(0).startOf('day');
     return {
       date: target,
       displayHint: '下周日',
