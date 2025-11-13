@@ -3654,6 +3654,239 @@ db.event_history.createIndex({ source: 1, timestamp: -1 });
 db.event_history.createIndex({ contentHash: 1 });
 ```
 
+### 6.6 快照查看器集成：DailySnapshotViewer
+
+> **现有实现**: `src/components/DailySnapshotViewer.tsx`  
+> **状态**: 🟡 部分实现（使用简化数据结构）  
+> **迁移需求**: 需要适配 TimeLog 嵌入式架构
+
+#### 6.6.1 现有功能概述
+
+`DailySnapshotViewer` 组件用于显示和追踪用户每天的任务状态和变化，当前实现：
+
+**核心功能**:
+- 📅 显示指定日期的 todo-list 状态
+- 📊 追踪任务变化（新增/完成/搁置/删除）
+- 🔄 支持"只显示变化"模式
+- 📝 任务卡片展示（标题/描述/标签/时间）
+
+**数据依赖**:
+```typescript
+interface DailySnapshot {
+  date: string;
+  items: Event[];
+  changes: {
+    added: Event[];
+    checked: Event[];
+    dropped: Event[];
+    deleted: string[];
+  };
+}
+```
+
+**当前实现问题**:
+1. ❌ 使用简化的 `Event.content` 字段（应为 `Event.timelog.description`）
+2. ❌ 无法展示 TimeLog 的版本历史
+3. ❌ 缺少 Slate 富文本渲染
+4. ❌ 未集成 EventHistoryService
+
+#### 6.6.2 迁移到 TimeLog 架构的改造方案
+
+**Phase 1: 数据结构适配**
+
+```typescript
+// services/snapshotService.ts (需要修改)
+
+interface DailySnapshotV2 {
+  date: string;
+  items: Event[];  // 包含完整的 timelog 字段
+  changes: {
+    added: Event[];
+    checked: Event[];
+    dropped: Event[];
+    deleted: string[];
+    timelogUpdated: Array<{  // 🆕 新增：TimeLog 内容变化
+      eventId: string;
+      title: string;
+      changedFields: string[];
+      versionCount: number;
+    }>;
+  };
+}
+
+class SnapshotService {
+  /**
+   * 获取每日快照（集成 EventHistoryService）
+   */
+  async getDailySnapshotV2(date: string): Promise<DailySnapshotV2> {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    // 1. 获取当天的所有 Event 历史记录
+    const historyEntries = await EventHistoryService.getChangesInPeriod(
+      startOfDay,
+      endOfDay
+    );
+    
+    // 2. 分析变化类型
+    const added: Event[] = [];
+    const checked: Event[] = [];
+    const dropped: Event[] = [];
+    const deleted: string[] = [];
+    const timelogUpdated: Array<any> = [];
+    
+    for (const entry of historyEntries) {
+      if (entry.operation === 'create') {
+        added.push(entry.snapshot);
+      } else if (entry.operation === 'update') {
+        // 检查是否是 TimeLog 内容更新
+        if (entry.changedFields.some(f => f.startsWith('timelog'))) {
+          timelogUpdated.push({
+            eventId: entry.eventId,
+            title: entry.snapshot.title,
+            changedFields: entry.changedFields,
+            versionCount: entry.snapshot.timelog?.versions?.length || 0,
+          });
+        }
+        // 检查是否标记为完成
+        if (entry.changedFields.includes('isCompleted') && entry.snapshot.isCompleted) {
+          checked.push(entry.snapshot);
+        }
+      } else if (entry.operation === 'delete') {
+        deleted.push(entry.eventId);
+      }
+    }
+    
+    // 3. 获取当天结束时的所有 Event 状态
+    const currentItems = await EventService.getEventsByDate(date);
+    
+    return {
+      date,
+      items: currentItems,
+      changes: { added, checked, dropped, deleted, timelogUpdated },
+    };
+  }
+}
+```
+
+**Phase 2: UI 组件升级**
+
+```typescript
+// components/DailySnapshotViewer.tsx (需要修改)
+
+import { SlatePreview } from './UnifiedSlateEditor/SlatePreview';
+
+const TaskCard: React.FC<TaskCardProps> = ({ item, highlight }) => {
+  // 🆕 渲染 TimeLog 富文本内容
+  const renderDescription = () => {
+    if (!item.timelog?.content) {
+      return null;
+    }
+    
+    // 使用 Slate 预览组件（只读模式）
+    return (
+      <div className="task-timelog">
+        <SlatePreview 
+          content={item.timelog.content} 
+          maxHeight={200}
+          showTimestamps={false}  // 快照视图不显示时间戳
+        />
+      </div>
+    );
+  };
+  
+  return (
+    <div className={`task-card ${highlight || ''}`}>
+      {/* ... 标题和状态 ... */}
+      
+      {/* 🆕 TimeLog 内容展示 */}
+      {renderDescription()}
+      
+      {/* 🆕 版本历史指示器 */}
+      {item.timelog?.versions && item.timelog.versions.length > 1 && (
+        <div className="version-indicator">
+          📝 {item.timelog.versions.length} 个版本
+        </div>
+      )}
+      
+      {/* ... 标签和时间 ... */}
+    </div>
+  );
+};
+
+// 🆕 新增：TimeLog 更新列表
+{snapshot.changes.timelogUpdated.length > 0 && (
+  <section className="changes-section timelog-updated">
+    <h4>📝 内容更新 ({snapshot.changes.timelogUpdated.length})</h4>
+    <div className="items-list">
+      {snapshot.changes.timelogUpdated.map((item) => (
+        <div key={item.eventId} className="timelog-change-item">
+          <span className="title">{item.title}</span>
+          <span className="changed-fields">
+            {item.changedFields.join(', ')}
+          </span>
+          <span className="version-count">
+            {item.versionCount} 个版本
+          </span>
+        </div>
+      ))}
+    </div>
+  </section>
+)}
+```
+
+**Phase 3: 性能优化**
+
+```typescript
+// 1. 投影查询（避免加载完整 timelog.versions）
+async getEventsByDate(date: string): Promise<Event[]> {
+  return db.events.find(
+    { startTime: { $gte: startOfDay, $lt: endOfDay } },
+    {
+      projection: {
+        'timelog.versions': 0,  // 排除版本历史（减少数据量）
+      }
+    }
+  );
+}
+
+// 2. 懒加载版本详情
+const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+
+const loadVersionDetails = async (eventId: string) => {
+  const event = await EventService.getEventById(eventId);
+  setExpandedEventId(eventId);
+  // 显示版本历史面板
+};
+```
+
+#### 6.6.3 迁移清单
+
+**代码修改**:
+- [ ] `services/snapshotService.ts`: 集成 EventHistoryService
+- [ ] `components/DailySnapshotViewer.tsx`: 
+  - [ ] 替换 `item.content` → `item.timelog.description`
+  - [ ] 添加 `SlatePreview` 组件渲染
+  - [ ] 添加版本历史指示器
+  - [ ] 添加 TimeLog 更新列表
+- [ ] `components/DailySnapshotViewer.css`: 
+  - [ ] 添加 `.task-timelog` 样式
+  - [ ] 添加 `.version-indicator` 样式
+  - [ ] 添加 `.timelog-updated` 样式
+
+**测试场景**:
+1. 查看历史日期的快照（恢复 Event 状态）
+2. 查看当天的快照（显示实时数据）
+3. 查看包含 TimeLog 编辑的日期（展示富文本内容）
+4. 点击版本指示器查看完整版本历史
+
+**依赖关系**:
+- 依赖 EventHistoryService 实现（Section 6）
+- 依赖 SlatePreview 组件（假设已实现）
+- 依赖 Event.timelog 字段迁移（Conflict #1 解决方案）
+
 ---
 
 ## 7. 第二层：VersionControlService
