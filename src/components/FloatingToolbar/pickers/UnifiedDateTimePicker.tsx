@@ -1078,7 +1078,31 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
       
       if (parsed.length > 0) {
         const result = parsed[0];
-        const start = dayjs(result.start.date());
+        const rawDate = result.start.date();
+        
+        // 🔧 修复：从 chrono 的组件值手动构造日期，避免时区转换
+        const year = result.start.get('year');
+        const month = result.start.get('month'); // 1-12
+        const day = result.start.get('day');
+        const hour = result.start.get('hour') ?? 0;
+        const minute = result.start.get('minute') ?? 0;
+        
+        dbg('picker', '🎯 Chrono 解析的日期组件', {
+          原始Date对象: rawDate.toString(),
+          原始ISO: rawDate.toISOString(),
+          组件值: { year, month, day, hour, minute },
+          输入文本: searchInput
+        });
+        
+        // 使用 dayjs 构造本地时间（避免 UTC 转换）
+        const start = dayjs().year(year!).month(month! - 1).date(day!).hour(hour).minute(minute).second(0).millisecond(0);
+        
+        dbg('picker', '✅ 构造的本地时间', {
+          dayjs格式: start.format('YYYY-MM-DD HH:mm:ss'),
+          星期几: start.day(),
+          星期名: ['日', '一', '二', '三', '四', '五', '六'][start.day()]
+        });
+        
         setSelectedDates({ start, end: start });
         
         // 清除自定义 displayHint（chrono 解析的不是模糊日期）
@@ -1096,11 +1120,18 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
         
         // 如果解析出结束时间
         if (result.end) {
-          const end = dayjs(result.end.date());
+          const endYear = result.end.get('year');
+          const endMonth = result.end.get('month');
+          const endDay = result.end.get('day');
+          const endHour = result.end.get('hour') ?? 23;
+          const endMinute = result.end.get('minute') ?? 59;
+          
+          const end = dayjs().year(endYear!).month(endMonth! - 1).date(endDay!).hour(endHour).minute(endMinute).second(0).millisecond(0);
+          
           setSelectedDates(prev => ({ ...prev, end }));
           setEndTime({
-            hour: result.end.get('hour') || 23,
-            minute: result.end.get('minute') || 59
+            hour: endHour,
+            minute: endMinute
           });
         }
         

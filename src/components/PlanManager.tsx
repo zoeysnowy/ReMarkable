@@ -865,27 +865,22 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           Editor.removeMark(editor, 'strikethrough');
           break;
         case 'toggleBulletList':
-          // 🆕 Toggle bullet list
-          const [match] = Editor.nodes(editor, {
-            match: (n: any) => !Editor.isEditor(n) && Element.isElement(n) && (n as any).type === 'bulleted-list',
+          // 🆕 Toggle bullet list（设置/取消段落的 bullet 属性）
+          const [paraMatch] = Editor.nodes(editor, {
+            match: (n: any) => !Editor.isEditor(n) && Element.isElement(n) && (n as any).type === 'paragraph',
           });
           
-          if (match) {
-            // 已是列表，转换回段落
-            Transforms.unwrapNodes(editor, {
-              match: (n: any) => !Editor.isEditor(n) && Element.isElement(n) && (n as any).type === 'bulleted-list',
-              split: true,
-            });
-            Transforms.setNodes(editor, { type: 'paragraph' });
-          } else {
-            // 转换为列表
-            const level = 0; // 默认为第一层
-            Transforms.wrapNodes(editor, { type: 'list-item', level, children: [] } as any, {
-              mode: 'all',
-            });
-            Transforms.wrapNodes(editor, { type: 'bulleted-list', children: [] } as any, {
-              mode: 'all',
-            });
+          if (paraMatch) {
+            const [node] = paraMatch;
+            const para = node as any;
+            
+            if (para.bullet) {
+              // 已是 bullet，取消
+              Transforms.setNodes(editor, { bullet: undefined, bulletLevel: undefined } as any);
+            } else {
+              // 设置为 bullet（默认 level 0）
+              Transforms.setNodes(editor, { bullet: true, bulletLevel: 0 } as any);
+            }
           }
           break;
         default:

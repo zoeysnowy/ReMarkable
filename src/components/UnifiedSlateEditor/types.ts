@@ -76,28 +76,13 @@ export interface EventMetadata {
 }
 
 /**
- * Paragraph - 段落节点
+ * Paragraph - 段落节点（内部包含文本和 inline 元素）
  */
 export interface ParagraphNode {
   type: 'paragraph';
-  children: (TextNode | TagNode | DateMentionNode | BulletedListNode)[];
-}
-
-/**
- * BulletedList - 无序列表节点
- */
-export interface BulletedListNode {
-  type: 'bulleted-list';
-  children: ListItemNode[];
-}
-
-/**
- * ListItem - 列表项节点
- */
-export interface ListItemNode {
-  type: 'list-item';
-  level?: number;  // 嵌套层级 (0-4)
-  children: (ParagraphNode | BulletedListNode)[];
+  bullet?: boolean;        // 是否为 bullet list item
+  bulletLevel?: number;    // bullet 层级 (0-4)
+  children: (TextNode | TagNode | DateMentionNode)[];
 }
 
 /**
@@ -139,7 +124,7 @@ export interface DateMentionNode {
 
 // ==================== 类型导出 ====================
 
-export type CustomElement = EventLineNode | ParagraphNode | TagNode | DateMentionNode | BulletedListNode | ListItemNode;
+export type CustomElement = EventLineNode | ParagraphNode | TagNode | DateMentionNode;
 export type CustomText = TextNode;
 
 // ==================== 工具类型 ====================
