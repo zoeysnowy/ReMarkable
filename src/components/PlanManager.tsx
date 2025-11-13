@@ -1551,7 +1551,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       location: '', // Event 没有 location 字段，保留空值
       isAllDay: !item.startTime && !!item.dueDate,
       tags: mappedTags,
-      calendarIds: calendarIds.length > 0 ? calendarIds : undefined, // 🆕 v1.8: 设置 calendarIds
+      calendarIds: item.calendarIds || (calendarIds.length > 0 ? calendarIds : undefined), // 🔧 优先保留已有值，否则使用标签映射
+      todoListIds: item.todoListIds, // 🔧 保留 To Do Lists 映射
       source: 'local',
       syncStatus: calendarIds.length > 0 ? 'pending' : 'local-only', // 🆕 v1.8: 根据日历映射设置同步状态
       createdAt: formatTimeForStorage(new Date()),
@@ -1638,7 +1639,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         return false;
       })(),
       tags: tagIds,
-      calendarIds: calendarIds.length > 0 ? calendarIds : undefined, // 🆕 v1.8: 添加日历分组
+      calendarIds: calendarIds.length > 0 ? calendarIds : item.calendarIds, // 🆕 v1.8: 优先使用标签映射，否则保留原有值
+      todoListIds: item.todoListIds, // 🔧 保留 To Do Lists 映射
       source: 'local',
       syncStatus: calendarIds.length > 0 ? 'pending' : 'local-only', // 🆕 v1.8: 有日历映射时标记为待同步（但不立即同步，由 ActionBasedSyncManager 统一处理）
       createdAt: formatTimeForStorage(new Date()),
@@ -1652,6 +1654,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       eventId: event.id,
       title: event.title,
       calendarIds: event.calendarIds,
+      todoListIds: event.todoListIds, // 🔍 添加 todoListIds 调试
       syncStatus: event.syncStatus,
       willTriggerSync: event.syncStatus === 'pending'
     });
@@ -1900,12 +1903,26 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             setEditingItem(null);
           }}
           onSave={(updatedEvent) => {
+            // 🔍 调试：检查 todoListIds 是否被正确传递
+            console.log('🔍 [PlanManager] EventEditModal onSave:', {
+              updatedEvent_todoListIds: updatedEvent.todoListIds,
+              updatedEvent_calendarIds: updatedEvent.calendarIds,
+              editingItem_todoListIds: editingItem.todoListIds,
+              editingItem_id: editingItem.id
+            });
+            
             // 更新 Event
             const updatedPlanItem: Event = {
               ...editingItem,
               ...updatedEvent, // 直接合并所有字段
               content: updatedEvent.description || editingItem.content,
             };
+            
+            console.log('🔍 [PlanManager] 合并后的 updatedPlanItem:', {
+              id: updatedPlanItem.id,
+              todoListIds: updatedPlanItem.todoListIds,
+              calendarIds: updatedPlanItem.calendarIds
+            });
             
             onSave(updatedPlanItem);
             syncToUnifiedTimeline(updatedPlanItem);

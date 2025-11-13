@@ -2,7 +2,7 @@ import { PublicClientApplication } from '@azure/msal-browser';
 import { MICROSOFT_GRAPH_CONFIG } from '../config/calendar';
 import { formatTimeForStorage } from '../utils/timeUtils';
 import { STORAGE_KEYS } from '../constants/storage';
-import { Contact, TodoList } from '../types';
+import { Contact } from '../types';
 
 import { logger } from '../utils/logger';
 
@@ -283,6 +283,36 @@ export class MicrosoftCalendarService {
   }
 
   /**
+   * 🆕 获取缓存的 To Do Lists（永不过期，直到手动刷新）
+   */
+  public getCachedTodoLists(): any[] {
+    try {
+      const cached = localStorage.getItem(STORAGE_KEYS.TODO_LISTS_CACHE);
+      if (cached) {
+        const todoLists = JSON.parse(cached);
+        MSCalendarLogger.log('📋 [Cache] Retrieved To Do Lists from cache:', todoLists.length, 'lists');
+        return todoLists;
+      }
+      return [];
+    } catch (error) {
+      MSCalendarLogger.error('❌ [Cache] Failed to get cached To Do Lists:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 🆕 缓存 To Do Lists 到 localStorage
+   */
+  private setCachedTodoLists(todoLists: any[]): void {
+    try {
+      localStorage.setItem(STORAGE_KEYS.TODO_LISTS_CACHE, JSON.stringify(todoLists));
+      MSCalendarLogger.log('💾 [Cache] Saved To Do Lists to cache:', todoLists.length, 'lists');
+    } catch (error) {
+      MSCalendarLogger.error('❌ [Cache] Failed to save To Do Lists to cache:', error);
+    }
+  }
+
+  /**
    * 缓存日历分组到 localStorage（永久存储）
    */
   private setCachedCalendarGroups(groups: CalendarGroup[]): void {
@@ -308,108 +338,6 @@ export class MicrosoftCalendarService {
       MSCalendarLogger.error('❌ [Cache] Failed to save calendars to cache:', error);
     }
   }
-
-  // ========================================
-  // 🆕 To Do Lists 相关方法
-  // ========================================
-
-  /**
-   * 从缓存获取 To Do Lists
-   */
-  public getCachedTodoLists(): TodoList[] {
-    try {
-      const cached = localStorage.getItem('remarkable-todolists-cache');
-      if (!cached) return [];
-      
-      const parsed = JSON.parse(cached);
-      MSCalendarLogger.log('📋 [Cache] Retrieved todo lists from cache:', parsed.length, 'lists');
-      return parsed;
-    } catch (error) {
-      MSCalendarLogger.error('❌ Failed to get cached todo lists:', error);
-      return [];
-    }
-  }
-
-  /**
-   * 写入 To Do Lists 缓存
-   */
-  private setCachedTodoLists(todoLists: TodoList[]): void {
-    try {
-      localStorage.setItem('remarkable-todolists-cache', JSON.stringify(todoLists));
-      MSCalendarLogger.log('💾 [Cache] Saved todo lists to cache:', todoLists.length, 'lists');
-    } catch (error) {
-      MSCalendarLogger.error('❌ Failed to cache todo lists:', error);
-    }
-  }
-
-  /**
-   * 从 Microsoft Graph API 获取所有 To Do Lists
-   * API: GET /me/todo/lists
-   */
-  public async getAllTodoListData(): Promise<{ todoLists: TodoList[] }> {
-    if (!this.isSignedIn()) {
-      throw new Error('User is not signed in');
-    }
-
-    try {
-      MSCalendarLogger.log('📥 Fetching todo lists from remote...');
-      MSCalendarLogger.log('🔑 Access token available:', !!this.accessToken);
-      
-      const response = await fetch('https://graph.microsoft.com/v1.0/me/todo/lists', {
-        headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      MSCalendarLogger.log('📥 Todo lists API response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        MSCalendarLogger.error('❌ Todo lists API error:', {
-          status: response.status,
-          statusText: response.statusText,
-          body: errorText
-        });
-        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-      }
-
-      const data = await response.json();
-      MSCalendarLogger.log('📥 Todo lists API response data:', data);
-
-      const todoLists: TodoList[] = data.value.map((list: any) => ({
-        id: list.id,
-        name: list.displayName,
-        isOwner: list.isOwner,
-        isShared: list.isShared,
-        wellknownListName: list.wellknownListName, // "none", "defaultList", "flaggedEmails"
-      }));
-
-      MSCalendarLogger.log('📥 Fetched todo lists from remote:', todoLists.length, 'lists');
-      this.setCachedTodoLists(todoLists);
-      
-      return { todoLists };
-    } catch (error) {
-      MSCalendarLogger.error('❌ Failed to fetch todo lists:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * 同步 To Do Lists (远程 → 本地缓存)
-   */
-  public async syncTodoListsFromRemote(): Promise<{ todoLists: TodoList[] }> {
-    MSCalendarLogger.log('🔄 Starting todo lists sync...');
-    
-    const { todoLists } = await this.getAllTodoListData();
-    
-    MSCalendarLogger.log('✅ Todo lists sync complete:', todoLists.length, 'lists');
-    return { todoLists };
-  }
-
-  // ========================================
-  // End of To Do Lists methods
-  // ========================================
 
   /**
    * 获取同步元数据
@@ -633,6 +561,119 @@ export class MicrosoftCalendarService {
       MSCalendarLogger.log('🗑️ [Cache] Cleared all calendar cache');
     } catch (error) {
       MSCalendarLogger.error('❌ [Cache] Failed to clear calendar cache:', error);
+    }
+  }
+
+  /**
+   * 🆕 获取所有 To Do Lists（优先使用缓存）
+   */
+  public async getAllTodoListData(forceRefresh: boolean = false): Promise<{ todoLists: any[] }> {
+    // 先尝试从缓存获取
+    const cachedTodoLists = this.getCachedTodoLists();
+
+    // 如果有缓存，直接返回
+    if (cachedTodoLists.length > 0 && !forceRefresh) {
+      MSCalendarLogger.log('📋 [Cache] Using cached To Do Lists');
+      return { todoLists: cachedTodoLists };
+    }
+
+    // 缓存为空或强制刷新，从远程同步
+    MSCalendarLogger.log('📋 [Cache] No cached To Do Lists or force refresh, syncing from remote...');
+    return await this.syncTodoListsFromRemote();
+  }
+
+  /**
+   * 🆕 从远程同步 To Do Lists（覆盖缓存）
+   */
+  public async syncTodoListsFromRemote(): Promise<{ todoLists: any[] }> {
+    MSCalendarLogger.log('🔄 [Sync] Starting remote To Do Lists sync...');
+    
+    try {
+      if (!this.isAuthenticated) {
+        throw new Error('Not authenticated');
+      }
+
+      // 获取所有 To Do Lists
+      const response = await fetch('https://graph.microsoft.com/v1.0/me/todo/lists', {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch To Do Lists: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const todoLists = data.value || [];
+
+      // 🔍 调试：检查第一个 To Do List 的数据结构
+      if (todoLists.length > 0) {
+        MSCalendarLogger.log('🔍 [Debug] First To Do List structure:', todoLists[0]);
+      }
+
+      // 更新缓存
+      this.setCachedTodoLists(todoLists);
+
+      MSCalendarLogger.log('✅ [Sync] Remote To Do Lists sync completed:', todoLists.length, 'lists');
+      return { todoLists };
+      
+    } catch (error) {
+      MSCalendarLogger.error('❌ [Sync] Failed to sync To Do Lists from remote:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 🆕 创建任务到指定的 To Do List
+   */
+  public async syncTaskToTodoList(todoListId: string, task: { title: string; body?: string; dueDate?: string }): Promise<any> {
+    MSCalendarLogger.log('📝 [To Do] Creating task in list:', todoListId, task);
+    
+    try {
+      if (!this.isAuthenticated) {
+        throw new Error('Not authenticated');
+      }
+
+      const taskData: any = {
+        title: task.title
+      };
+
+      if (task.body) {
+        taskData.body = {
+          content: task.body,
+          contentType: 'text'
+        };
+      }
+
+      if (task.dueDate) {
+        taskData.dueDateTime = {
+          dateTime: task.dueDate,
+          timeZone: 'UTC'
+        };
+      }
+
+      const response = await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${todoListId}/tasks`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(taskData)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to create task: ${response.status} - ${errorText}`);
+      }
+
+      const createdTask = await response.json();
+      MSCalendarLogger.log('✅ [To Do] Task created successfully:', createdTask.id);
+      return createdTask;
+      
+    } catch (error) {
+      MSCalendarLogger.error('❌ [To Do] Failed to create task:', error);
+      throw error;
     }
   }
 
@@ -1323,7 +1364,7 @@ export class MicrosoftCalendarService {
           isAllDay: outlookEvent.isAllDay || false,
           reminder: 0,
           externalId: outlookEvent.id,
-          calendarId: 'microsoft',
+          calendarIds: ['microsoft'], // 🔧 使用数组格式，与类型定义保持一致
           source: 'outlook',
           remarkableSource: true,
           category: 'ongoing',
@@ -1526,7 +1567,7 @@ export class MicrosoftCalendarService {
           isAllDay: outlookEvent.isAllDay || false,
           reminder: 0,
           externalId: outlookEvent.id,
-          calendarId: calendarId, // 使用实际的日历ID
+          calendarIds: [calendarId], // 🔧 使用数组格式，与类型定义保持一致
           source: 'outlook',
           remarkableSource: true,
           category: 'ongoing',
@@ -2119,8 +2160,8 @@ export class MicrosoftCalendarService {
 
       // 缓存中没有，尝试直接访问该日历
       MSCalendarLogger.log('🔍 [validateCalendarExists] Checking via API...');
-      const endpoint = `/me/calendars/${calendarId}`;
-      const calendar = await this.callGraphAPI(endpoint, 'GET');
+      const url = `https://graph.microsoft.com/v1.0/me/calendars/${calendarId}`;
+      const calendar = await this.callGraphAPI(url, 'GET');
       
       if (calendar && calendar.id) {
         MSCalendarLogger.log('✅ [validateCalendarExists] Calendar exists:', {

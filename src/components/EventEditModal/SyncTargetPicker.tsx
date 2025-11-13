@@ -75,134 +75,149 @@ export const SyncTargetPicker: React.FC<SyncTargetPickerProps> = ({
   const [availableCalendars, setAvailableCalendars] = useState<Array<{ id: string; name?: string; displayName?: string; color?: string }>>([]);
   const [availableTodoLists, setAvailableTodoLists] = useState<Array<{ id: string; name?: string; displayName?: string; color?: string }>>([]);
   const [loading, setLoading] = useState(false);
-  const hasLoadedRef = useRef(false); // 🔒 防止重复加载
 
   // 🔄 从 microsoftService 加载日历列表（参考 CalendarMappingPicker 的实现）
   const loadCalendars = useCallback(async () => {
-    if (hasLoadedRef.current) return; // 防止重复加载
-    hasLoadedRef.current = true;
-
     console.log('📅 SyncTargetPicker - loadCalendars 开始执行', {
       hasPropCalendars: !!(propCalendars && propCalendars.length > 0),
+      hasPropTodoLists: !!(propTodoLists && propTodoLists.length > 0),
       hasMicrosoftService: !!microsoftService,
-      hasGetCachedMethod: !!(microsoftService && typeof microsoftService.getCachedCalendars === 'function')
+      hasGetCachedCalendars: !!(microsoftService && typeof microsoftService.getCachedCalendars === 'function'),
+      hasGetCachedTodoLists: !!(microsoftService && typeof microsoftService.getCachedTodoLists === 'function')
     });
 
-    // 如果传入了 prop，优先使用
-    if (propCalendars && propCalendars.length > 0) {
-      console.log('📅 SyncTargetPicker - 使用传入的 propCalendars:', propCalendars.length);
-      setAvailableCalendars(propCalendars);
-      return;
-    }
+    // 🔧 统一管理 loading 状态
+    setLoading(true);
 
-    // 如果有 microsoftService，从缓存或远程获取
-    if (microsoftService && typeof microsoftService.getCachedCalendars === 'function') {
-      setLoading(true);
-      try {
-        // 优先从缓存获取
-        const cachedCalendars = microsoftService.getCachedCalendars();
-        console.log('📅 SyncTargetPicker - getCachedCalendars 返回:', cachedCalendars?.length || 0);
-        
-        if (cachedCalendars && cachedCalendars.length > 0) {
-          const mappedCalendars = cachedCalendars.map((cal: any) => ({
-            id: cal.id,
-            name: cal.name,
-            displayName: cal.name,
-            color: convertMicrosoftColorToHex(cal.color) // 🎨 转换颜色名称为十六进制
-          }));
-          setAvailableCalendars(mappedCalendars);
-          console.log('📅 SyncTargetPicker - 从缓存加载日历:', mappedCalendars.length, mappedCalendars.slice(0, 2));
-        } else {
-          // 缓存为空，尝试从远程获取
-          console.log('📅 SyncTargetPicker - 缓存为空，尝试从远程获取...');
-          try {
-            const { calendars } = await microsoftService.getAllCalendarData();
-            const mappedCalendars = calendars.map((cal: any) => ({
+    try {
+      // === 加载日历 ===
+      // 如果传入了 prop，优先使用
+      if (propCalendars && propCalendars.length > 0) {
+        console.log('📅 SyncTargetPicker - 使用传入的 propCalendars:', propCalendars.length);
+        setAvailableCalendars(propCalendars);
+      } else if (microsoftService && typeof microsoftService.getCachedCalendars === 'function') {
+        // 如果有 microsoftService，从缓存或远程获取
+        try {
+          // 优先从缓存获取
+          const cachedCalendars = microsoftService.getCachedCalendars();
+          console.log('📅 SyncTargetPicker - getCachedCalendars 返回:', cachedCalendars?.length || 0);
+          
+          if (cachedCalendars && cachedCalendars.length > 0) {
+            const mappedCalendars = cachedCalendars.map((cal: any) => ({
               id: cal.id,
               name: cal.name,
               displayName: cal.name,
               color: convertMicrosoftColorToHex(cal.color) // 🎨 转换颜色名称为十六进制
             }));
             setAvailableCalendars(mappedCalendars);
-            console.log('📅 SyncTargetPicker - 从远程加载日历:', mappedCalendars.length);
-          } catch (error) {
-            console.warn('📅 SyncTargetPicker - 远程获取失败，使用空列表:', error);
-            setAvailableCalendars([]);
+            console.log('📅 SyncTargetPicker - 从缓存加载日历:', mappedCalendars.length, mappedCalendars.slice(0, 2));
+          } else {
+            // 缓存为空，尝试从远程获取
+            console.log('📅 SyncTargetPicker - 缓存为空，尝试从远程获取...');
+            try {
+              const { calendars } = await microsoftService.getAllCalendarData();
+              const mappedCalendars = calendars.map((cal: any) => ({
+                id: cal.id,
+                name: cal.name,
+                displayName: cal.name,
+                color: convertMicrosoftColorToHex(cal.color) // 🎨 转换颜色名称为十六进制
+              }));
+              setAvailableCalendars(mappedCalendars);
+              console.log('📅 SyncTargetPicker - 从远程加载日历:', mappedCalendars.length);
+            } catch (error) {
+              console.warn('📅 SyncTargetPicker - 远程获取失败，使用空列表:', error);
+              setAvailableCalendars([]);
+            }
           }
+        } catch (error) {
+          console.error('📅 SyncTargetPicker - 加载日历出错:', error);
+          setAvailableCalendars([]);
         }
-      } catch (error) {
-        console.error('📅 SyncTargetPicker - 加载日历出错:', error);
+      } else {
+        console.warn('📅 SyncTargetPicker - 没有 microsoftService 或缺少 getCachedCalendars 方法');
         setAvailableCalendars([]);
-      } finally {
-        setLoading(false);
       }
-    } else {
-      console.warn('📅 SyncTargetPicker - 没有 microsoftService 或缺少 getCachedCalendars 方法');
-      setAvailableCalendars([]);
-    }
 
-    // 🆕 加载 To Do Lists
-    if (propTodoLists && propTodoLists.length > 0) {
-      console.log('📋 SyncTargetPicker - 使用传入的 propTodoLists:', propTodoLists.length);
-      setAvailableTodoLists(propTodoLists);
-    } else if (microsoftService && typeof microsoftService.getCachedTodoLists === 'function') {
-      setLoading(true);
-      try {
-        // 优先从缓存获取
-        const cachedTodoLists = microsoftService.getCachedTodoLists();
-        console.log('📋 SyncTargetPicker - getCachedTodoLists 返回:', cachedTodoLists?.length || 0);
-        
-        if (cachedTodoLists && cachedTodoLists.length > 0) {
-          const mappedTodoLists = cachedTodoLists.map((list: any) => ({
-            id: list.id,
-            name: list.name,
-            displayName: list.name,
-            color: '#3b82f6' // To Do Lists 默认蓝色
-          }));
-          setAvailableTodoLists(mappedTodoLists);
-          console.log('📋 SyncTargetPicker - 从缓存加载待办列表:', mappedTodoLists.length);
-        } else {
-          // 缓存为空，尝试从远程获取
-          console.log('📋 SyncTargetPicker - 缓存为空，尝试从远程获取...');
-          try {
-            const { todoLists } = await microsoftService.getAllTodoListData();
-            const mappedTodoLists = todoLists.map((list: any) => ({
+      // === 加载 To Do Lists ===
+      if (propTodoLists && propTodoLists.length > 0) {
+        console.log('📋 SyncTargetPicker - 使用传入的 propTodoLists:', propTodoLists.length);
+        setAvailableTodoLists(propTodoLists);
+      } else if (microsoftService && typeof microsoftService.getCachedTodoLists === 'function') {
+        try {
+          // 优先从缓存获取
+          const cachedTodoLists = microsoftService.getCachedTodoLists();
+          console.log('📋 SyncTargetPicker - getCachedTodoLists 返回:', cachedTodoLists?.length || 0);
+          
+          if (cachedTodoLists && cachedTodoLists.length > 0) {
+            const mappedTodoLists = cachedTodoLists.map((list: any) => ({
               id: list.id,
-              name: list.name,
-              displayName: list.name,
-              color: '#3b82f6'
+              name: list.displayName || list.name,
+              displayName: list.displayName || list.name,
+              color: '#3b82f6' // To Do Lists 默认蓝色
             }));
             setAvailableTodoLists(mappedTodoLists);
-            console.log('📋 SyncTargetPicker - 从远程加载待办列表:', mappedTodoLists.length);
-          } catch (error) {
-            console.warn('📋 SyncTargetPicker - 远程获取失败，使用空列表:', error);
-            setAvailableTodoLists([]);
+            console.log('📋 SyncTargetPicker - 从缓存加载待办列表:', mappedTodoLists.length);
+          } else {
+            // 缓存为空，尝试从远程获取
+            console.log('📋 SyncTargetPicker - 缓存为空，尝试从远程获取...');
+            try {
+              const { todoLists } = await microsoftService.getAllTodoListData();
+              const mappedTodoLists = todoLists.map((list: any) => ({
+                id: list.id,
+                name: list.displayName || list.name,
+                displayName: list.displayName || list.name,
+                color: '#3b82f6'
+              }));
+              setAvailableTodoLists(mappedTodoLists);
+              console.log('📋 SyncTargetPicker - 从远程加载待办列表:', mappedTodoLists.length);
+            } catch (error) {
+              console.warn('📋 SyncTargetPicker - 远程获取失败，使用空列表:', error);
+              setAvailableTodoLists([]);
+            }
           }
+        } catch (error) {
+          console.error('📅 SyncTargetPicker - 加载待办列表出错:', error);
+          setAvailableTodoLists([]);
         }
-      } catch (error) {
-        console.error('📋 SyncTargetPicker - 加载待办列表出错:', error);
+      } else {
+        console.warn('📋 SyncTargetPicker - 没有 microsoftService 或缺少 getCachedTodoLists 方法');
         setAvailableTodoLists([]);
-      } finally {
-        setLoading(false);
       }
-    } else {
-      console.warn('📋 SyncTargetPicker - 没有 microsoftService 或缺少 getCachedTodoLists 方法');
-      setAvailableTodoLists([]);
+    } finally {
+      // 🔧 统一在最后关闭 loading
+      setLoading(false);
     }
   }, [microsoftService, propCalendars, propTodoLists]); // 依赖稳定的引用
 
-  // 组件 mount 时加载日历
+  // 组件 mount 时加载日历，并在 microsoftService 可用时重新加载
   useEffect(() => {
-    loadCalendars();
-  }, [loadCalendars]);
+    // 🔧 只有在 microsoftService 存在或有 prop 数据时才加载
+    if (microsoftService || propCalendars || propTodoLists) {
+      console.log('🔄 SyncTargetPicker - useEffect 触发 loadCalendars', {
+        hasMicrosoftService: !!microsoftService,
+        hasPropCalendars: !!(propCalendars && propCalendars.length > 0),
+        hasPropTodoLists: !!(propTodoLists && propTodoLists.length > 0)
+      });
+      loadCalendars();
+    } else {
+      console.warn('⚠️ SyncTargetPicker - useEffect 跳过 loadCalendars（条件不满足）');
+    }
+  }, [loadCalendars, microsoftService]); // 🔧 添加 microsoftService 作为显式依赖
 
   // 🔄 同步外部 props 到内部状态（当打开已有事件时）
+  // 🔧 [FIX] 只在数组真正不同时才更新，避免循环渲染
   useEffect(() => {
-    setCalendarIds(selectedCalendarIds || []);
+    const propsChanged = JSON.stringify(selectedCalendarIds) !== JSON.stringify(calendarIds);
+    if (propsChanged) {
+      setCalendarIds(selectedCalendarIds || []);
+    }
   }, [selectedCalendarIds]);
 
   useEffect(() => {
-    setTodoListIds(selectedTodoListIds || []);
+    const propsChanged = JSON.stringify(selectedTodoListIds) !== JSON.stringify(todoListIds);
+    if (propsChanged) {
+      setTodoListIds(selectedTodoListIds || []);
+    }
   }, [selectedTodoListIds]);
 
   // UI 状态
@@ -211,40 +226,24 @@ export const SyncTargetPicker: React.FC<SyncTargetPickerProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // 🔄 同步到父组件
-  useEffect(() => {
-    if (isTask) {
-      onTodoListIdsChange(todoListIds);
-    } else {
-      onCalendarIdsChange(calendarIds);
-    }
-  }, [isTask, calendarIds, todoListIds, onCalendarIdsChange, onTodoListIdsChange]);
-
+  // 🔧 [FIX] 移除会导致循环渲染的 useEffect
+  // 改为在状态改变时直接调用回调函数
+  
   // 获取当前激活的列表和选中的 IDs
   const activeItems = isTask ? availableTodoLists : availableCalendars;
   const activeSelectedIds = isTask ? todoListIds : calendarIds;
   const activeSetSelectedIds = isTask ? setTodoListIds : setCalendarIds;
 
-  // 🐛 DEBUG: 输出可用的日历/任务列表
+  // 🐛 DEBUG: 输出可用的日历/任务列表（仅在组件挂载和 isTask 改变时）
   useEffect(() => {
-    console.log('🎯 SyncTargetPicker Debug:', {
+    console.log('🎯 SyncTargetPicker Mode Change:', {
       isTask,
-      startTime,
-      endTime,
-      microsoftService: !!microsoftService,
-      hasMicrosoftServiceMethod: !!(microsoftService && typeof microsoftService.getCachedCalendars === 'function'),
       availableCalendarsCount: availableCalendars.length,
-      availableCalendars: availableCalendars.slice(0, 3), // 只显示前3个
       availableTodoListsCount: availableTodoLists.length,
-      activeItemsCount: activeItems.length,
-      selectedCalendarIds,
-      selectedTodoListIds,
-      internalCalendarIds: calendarIds,
-      internalTodoListIds: todoListIds,
-      propCalendars: propCalendars?.length || 0,
-      propTodoLists: propTodoLists?.length || 0
+      selectedCalendarIds: calendarIds,
+      selectedTodoListIds: todoListIds
     });
-  }, [isTask, availableCalendars, availableTodoLists, activeItems, selectedCalendarIds, selectedTodoListIds, calendarIds, todoListIds, startTime, endTime, microsoftService, propCalendars, propTodoLists]);
+  }, [isTask]); // 🔧 只在模式切换时触发
 
   // 过滤列表
   const filteredItems = activeItems.filter(item => {
@@ -271,14 +270,31 @@ export const SyncTargetPicker: React.FC<SyncTargetPickerProps> = ({
       newSelection = [...activeSelectedIds, itemId];
     }
 
+    // 🔧 [FIX] 直接更新状态并调用回调，避免 useEffect 循环
     activeSetSelectedIds(newSelection);
+    
+    // 立即通知父组件
+    if (isTask) {
+      onTodoListIdsChange(newSelection);
+    } else {
+      onCalendarIdsChange(newSelection);
+    }
   };
 
   // 移除选中的项
   const removeItem = (itemId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const newSelection = activeSelectedIds.filter(id => id !== itemId);
+    
+    // 🔧 [FIX] 直接更新状态并调用回调，避免 useEffect 循环
     activeSetSelectedIds(newSelection);
+    
+    // 立即通知父组件
+    if (isTask) {
+      onTodoListIdsChange(newSelection);
+    } else {
+      onCalendarIdsChange(newSelection);
+    }
   };
 
   // 点击外部关闭下拉

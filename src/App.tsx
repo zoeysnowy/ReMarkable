@@ -9,7 +9,7 @@ import PageContainer from './components/PageContainer';
 import DesktopCalendarWidget from './pages/DesktopCalendarWidget';
 import { TimerCard } from './components/TimerCard'; // 计时卡片组件
 import { DailyStatsCard } from './components/DailyStatsCard'; // 今日统计卡片组件
-import { TimerSession, Event, GlobalTimer } from './types';
+import { TimerSession, Event } from './types';
 import { formatTimeForStorage } from './utils/timeUtils';
 import { getCalendarGroupColor, getAvailableCalendarsForSettings } from './utils/calendarUtils';
 import { STORAGE_KEYS, CacheManager } from './constants/storage';
@@ -171,7 +171,21 @@ function App() {
   const [showEventEditModal, setShowEventEditModal] = useState(false);
 
   // 全局计时器状态
-  const [globalTimer, setGlobalTimer] = useState<GlobalTimer | null>(null);
+  const [globalTimer, setGlobalTimer] = useState<{
+    isRunning: boolean;
+    tagId: string;
+    tagName: string;
+    tagEmoji?: string; // 标签emoji
+    tagColor?: string; // 标签颜色
+    startTime: number; // 当前计时周期的开始时间:（用于计算当前运行时长）
+    originalStartTime: number; // 真正的开始时间:（用户设置或初始开始时间:）
+    elapsedTime: number;
+    isPaused: boolean;
+    eventEmoji?: string; // 用户自定义事件emoji
+    eventTitle?: string; // 用户自定义事件标题
+    eventId?: string; // 🔧 [BUG FIX] Timer 事件的真实ID
+    parentEventId?: string; // 🆕 Issue #12: 关联的父事件 ID（Timer 子事件关联到的父事件）
+  } | null>(null);
 
   // 标签数据状态 - 用版本号触发 hierarchicalTags 更新
   // 🔧 [PERFORMANCE FIX] 移除冗余的 appTags state，直接使用 TagService
@@ -218,9 +232,7 @@ function App() {
 
   // 🔧 [PERFORMANCE FIX] 缓存可用日历列表，避免每次渲染创建新数组
   const availableCalendars = useMemo(() => {
-    const calendars = getAvailableCalendarsForSettings();
-    console.log('🗓️ App.tsx - availableCalendars:', calendars);
-    return calendars;
+    return getAvailableCalendarsForSettings();
   }, []); // 空依赖，日历列表应该是相对稳定的
 
   // ❌ [REMOVED] loadEvents useEffect - 不再全局监听 eventsUpdated
@@ -498,8 +510,7 @@ function App() {
     
     AppLogger.log('⏹️ 停止计时，总时长', totalElapsed, 'ms');
     AppLogger.log('⏹️ 计时器信息', {
-      tags: globalTimer.tags || [globalTimer.tagId],
-      tagId: globalTimer.tagId, // 向后兼容
+      tagId: globalTimer.tagId,
       tagName: globalTimer.tagName,
       startTime: startTime,
       endTime: endTime,
@@ -509,23 +520,14 @@ function App() {
 
     // 🎯 自动创建日历事件
     try {
-      // 🆕 v1.8: 使用 tags 数组（如果存在），否则降级到 tagId
-      const timerTags = globalTimer.tags || [globalTimer.tagId];
-      const primaryTagId = timerTags[0];
-      
-      if (!primaryTagId) {
-        AppLogger.error('❌ 计时器没有标签信息');
-        return;
-      }
-      
-      const tag = TagService.getFlatTags().find(t => t.id === primaryTagId);
+      const tag = TagService.getFlatTags().find(t => t.id === globalTimer.tagId);
       if (!tag) {
-        AppLogger.error('标签未找到', primaryTagId);
+        AppLogger.error('标签未找到', globalTimer.tagId);
         return;
       }
 
       // 🔧 使用与实时保存相同的事件ID
-      const timerEventId = `timer-${primaryTagId}-${startTime.getTime()}`;
+      const timerEventId = `timer-${globalTimer.tagId}-${startTime.getTime()}`;
       
       // 🔧 [BUG FIX] 读取现有事件，保留用户的 description 和 location
       const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
@@ -552,21 +554,14 @@ function App() {
         finalDescription = timerSignature;
       }
       
-      // 🆕 v1.8: 从 tags 数组提取 calendarIds
-      const calendarIds = timerTags
-        .map((tagId: string) => {
-          const t = TagService.getFlatTags().find(x => x.id === tagId);
-          return t?.calendarMapping?.calendarId;
-        })
-        .filter((id): id is string => !!id);
-      
       const finalEvent: Event = {
         id: timerEventId,
         title: eventTitle, // 🔧 移除"[专注中]"标记
         startTime: formatTimeForStorage(startTime),
         endTime: formatTimeForStorage(new Date(startTime.getTime() + totalElapsed)),
-        tags: timerTags, // 🆕 v1.8: 使用多标签
-        calendarIds: calendarIds.length > 0 ? calendarIds : undefined, // 🆕 v1.8: 多日历
+        tags: [globalTimer.tagId],
+        tagId: globalTimer.tagId,
+        calendarId: (tag as any).calendarId || '', // 🔧 [BUG FIX] 必须包含 calendarId，否则updateEvent会丢失此字段
         location: existingEvent?.location || '', // 🔧 保留location
         description: finalDescription, // 🔧 保留用户内容 + 追加计时签名
         isAllDay: false,
@@ -685,7 +680,8 @@ function App() {
       title: globalTimer.eventTitle || (tag?.name || ''),
       startTime: formatTimeForStorage(startTime),
       endTime: formatTimeForStorage(endTime),
-      tags: globalTimer.tags || [globalTimer.tagId],
+      tags: [globalTimer.tagId],
+      tagId: globalTimer.tagId,
       description: existingEvent?.description || '', // 🔧 保留用户输入的 description
       location: existingEvent?.location || '', // 🔧 保留 location
       isAllDay: false,
@@ -753,7 +749,9 @@ function App() {
         title: eventTitle,
         startTime: formatTimeForStorage(finalStartTime),
         endTime: formatTimeForStorage(confirmTime), // 初始结束时间为点击确定的时间
-        tags: updatedEvent.tags || [tagId],
+        tags: [tagId],
+        tagId: tagId,
+        calendarId: (tag as any).calendarId || '',
         location: '',
         description: '计时中的事件',
         isAllDay: false,
@@ -775,8 +773,7 @@ function App() {
       // 创建新的计时器
       setGlobalTimer({
         isRunning: true,
-        tags: updatedEvent.tags || [tagId], // 🆕 v1.8: 支持多标签
-        tagId: tagId, // 🔧 向后兼容（保留第一个标签作为主标签）
+        tagId: tagId,
         tagName: tag.name,
         tagEmoji: tag.emoji, // 添加标签emoji
         tagColor: tag.color, // 添加标签颜色
@@ -805,12 +802,11 @@ function App() {
       ...globalTimer,
       eventTitle: updatedEvent.title,
       eventEmoji: possibleEmoji,
-      // 如果标签改变了，也更新标签及其emoji和颜色
+      // 如果标签改变了，也更新标签及其emoji和颜✅
       ...(updatedEvent.tags && updatedEvent.tags.length > 0 && updatedEvent.tags[0] !== globalTimer.tagId ? (() => {
         const newTag = TagService.getFlatTags().find(t => t.id === updatedEvent.tags![0]);
         return {
-          tags: updatedEvent.tags, // 🆕 v1.8: 更新多标签
-          tagId: updatedEvent.tags[0], // 🔧 向后兼容
+          tagId: updatedEvent.tags[0],
           tagName: newTag?.name || globalTimer.tagName,
           tagEmoji: newTag?.emoji || globalTimer.tagEmoji,
           tagColor: newTag?.color || globalTimer.tagColor
@@ -894,7 +890,9 @@ function App() {
           endTime: formatTimeForStorage(endTime),
           location: existingEvent?.location || '', // 🔧 保留location
           description: existingEvent?.description || '计时中的事件', // 🔧 保留用户输入的description
-          tags: globalTimer.tags || [globalTimer.tagId],
+          tags: [globalTimer.tagId],
+          tagId: globalTimer.tagId,
+          calendarId: (tag as any).calendarId || '', // 向后兼容旧版标签
           isAllDay: false,
           createdAt: existingEvent?.createdAt || formatTimeForStorage(startTime),
           updatedAt: formatTimeForStorage(new Date()),
@@ -962,7 +960,9 @@ function App() {
               endTime: formatTimeForStorage(endTime),
               location: existingEvent?.location || '', // 🔧 保留location
               description: existingEvent?.description || '计时事件（已自动保存）', // 🔧 保留用户输入的description
-              tags: globalTimer.tags || [globalTimer.tagId],
+              tags: [globalTimer.tagId],
+              tagId: globalTimer.tagId,
+              calendarId: (tag as any).calendarId || '', // 向后兼容旧版标签
               isAllDay: false,
               createdAt: existingEvent?.createdAt || formatTimeForStorage(startTime),
               updatedAt: formatTimeForStorage(new Date()),
@@ -1004,31 +1004,12 @@ function App() {
   
   // 保存 Plan Event
   const handleSavePlanItem = useCallback(async (item: Event) => {
-    // 🔍 诊断：记录接收到的 item 数据
-    console.log('[App.handleSavePlanItem] 接收到的 item:', {
-      id: item.id,
-      title: item.title?.substring(0, 30),
-      tags: item.tags,
-      calendarIds: (item as any).calendarIds,
-      syncStatus: (item as any).syncStatus,
-      hasCalendarIds: !!((item as any).calendarIds && (item as any).calendarIds.length > 0)
-    });
-    
     // 标记为 Plan 事件
     const planEvent: Event = {
       ...item,
       isPlan: true,
       updatedAt: new Date().toISOString(),
     };
-    
-    console.log('[App.handleSavePlanItem] 准备保存的 planEvent:', {
-      id: planEvent.id,
-      title: planEvent.title?.substring(0, 30),
-      tags: planEvent.tags,
-      calendarIds: (planEvent as any).calendarIds,
-      syncStatus: (planEvent as any).syncStatus,
-      willSkipSync: (planEvent as any).syncStatus === 'local-only'
-    });
     
     // 🔧 [BUG FIX] 空行（刚点击graytext创建的行）不保存到EventService
     // 只保存到本地状态（items数组），等用户输入内容后再真正创建event
@@ -1066,15 +1047,6 @@ function App() {
 
   // 创建 UnifiedTimeline Event
   const handleCreateEvent = useCallback(async (event: Event) => {
-    console.log('[App] handleCreateEvent 被调用:', {
-      eventId: event.id,
-      title: event.title,
-      tags: event.tags,
-      calendarIds: event.calendarIds,
-      syncStatus: event.syncStatus,
-      hasCalendarIds: !!(event.calendarIds && event.calendarIds.length > 0)
-    });
-    
     const result = await EventService.createEvent(event);
     if (result.success) {
       // ✅ 不需要手动刷新 - EventService 已触发 eventsUpdated 事件
@@ -1086,17 +1058,6 @@ function App() {
 
   // 更新 UnifiedTimeline Event
   const handleUpdateEvent = useCallback(async (eventId: string, updates: Partial<Event>) => {
-    console.log('[App] handleUpdateEvent 被调用:', {
-      eventId,
-      updates: {
-        title: updates.title,
-        tags: updates.tags,
-        calendarIds: updates.calendarIds,
-        syncStatus: updates.syncStatus,
-        hasCalendarIds: !!(updates.calendarIds && updates.calendarIds.length > 0)
-      }
-    });
-    
     // 🔧 [BUG FIX] 检查事件是否存在，不存在则创建
     const existingEvent = EventService.getEventById(eventId);
     const result = existingEvent
@@ -1178,18 +1139,6 @@ function App() {
         console.log('🔍 [App] forceSync 方法:', typeof newSyncManager.forceSync);
         
         setSyncManager(newSyncManager);
-        
-        // 🆕 v1.7.5: 同步日历和 To Do Lists
-        (async () => {
-          try {
-            console.log('🔄 [App] 开始同步日历和待办列表...');
-            await microsoftService.syncCalendarGroupsFromRemote?.();
-            await microsoftService.syncTodoListsFromRemote?.();
-            console.log('✅ [App] 日历和待办列表同步完成');
-          } catch (error) {
-            console.warn('⚠️ [App] 日历/待办列表同步失败:', error);
-          }
-        })();
         
         // 🔧 初始化 EventService（注入同步管理器）
         EventService.initialize(newSyncManager);
@@ -1551,7 +1500,7 @@ function App() {
               availableTags={availableTagsForEdit.map(t => t.name)}
               onCreateEvent={handleCreateEvent}
               onUpdateEvent={handleUpdateEvent}
-              microsoftService={microsoftService}
+              microsoftService={microsoftService} // 🆕 传递 Microsoft 服务，支持 To Do Lists
             />
           </PageContainer>
         );
@@ -1633,7 +1582,7 @@ function App() {
         onClose={() => setShowSettingsModal(false)} 
       />
 
-      {/* 计时器事件编辑模态框 - 移除 availableCalendars prop,让 SyncTargetPicker 自己从 microsoftService 加载 */}
+      {/* 计时器事件编辑模态框 */}
       {timerEditModal.isOpen && timerEditModal.event && (
         <EventEditModal
           event={timerEditModal.event}
@@ -1643,7 +1592,7 @@ function App() {
           hierarchicalTags={hierarchicalTags}
           onStartTimeChange={handleStartTimeChange}
           globalTimer={globalTimer}
-          microsoftService={microsoftService}
+          availableCalendars={availableCalendars}
         />
       )}
 

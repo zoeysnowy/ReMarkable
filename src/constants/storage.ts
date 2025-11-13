@@ -22,6 +22,9 @@ export const STORAGE_KEYS = {
   CALENDARS_CACHE: 'remarkable-calendars-cache',
   CALENDAR_SYNC_META: 'remarkable-calendar-sync-meta',
   
+  // To Do Lists 缓存相关
+  TODO_LISTS_CACHE: 'remarkable-todolists-cache',
+  
   // 标签相关（TagManager）
   TAGS: 'remarkable_tags',
   CHECKIN_COUNTS: 'remarkable_checkin_counts',

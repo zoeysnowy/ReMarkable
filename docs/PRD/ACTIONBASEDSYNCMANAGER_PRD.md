@@ -1826,4 +1826,130 @@ window.debugSyncManager.syncVisibleDateRangeFirst(
 
 ---
 
+### v1.1.1 (2025-11-13)
+
+**🔧 calendarIds 字段统一修复**
+
+**问题**: 远程事件在 TimeCalendar 中显示默认蓝色，无法按日历分组显示颜色
+
+**根本原因**:
+- ❌ Event 类型定义要求 `calendarIds: string[]` (数组格式)
+- ❌ ActionBasedSyncManager 在 `convertRemoteEventToLocal()` 中使用了 `calendarId` (单数)
+- ❌ MicrosoftCalendarService 返回的 `calendarIds` 被转换为 `calendarId`
+- ❌ TimeCalendar 中 `getEventColor()` 查找 `event.calendarIds[0]` 时得到 `undefined`
+
+**修复范围**:
+
+1. **ActionBasedSyncManager.ts L3326** - `convertRemoteEventToLocal()`
+   ```typescript
+   // ❌ 修复前
+   calendarId: remoteEvent.calendarId || 'microsoft',
+   
+   // ✅ 修复后
+   calendarIds: remoteEvent.calendarIds || ['microsoft'],
+   ```
+
+2. **MicrosoftCalendarService.ts L1367** - `getEvents()`
+   ```typescript
+   // ✅ 确保返回数组格式
+   calendarIds: ['microsoft'],
+   ```
+
+3. **MicrosoftCalendarService.ts L1570** - `getEventsFromCalendar()`
+   ```typescript
+   // ✅ 确保返回数组格式
+   calendarIds: [calendarId],
+   ```
+
+**颜色显示链路**:
+```
+MicrosoftCalendarService.getEvents()
+  → 返回 calendarIds: ['AQMkAD...']
+  → ActionBasedSyncManager.convertRemoteEventToLocal()
+  → 转换为本地事件 calendarIds: ['AQMkAD...']
+  → 存储到 localStorage
+  → TimeCalendar.loadEvents()
+  → convertToCalendarEvent()
+  → getEventColor(event, tags)
+  → getCalendarGroupColor(event.calendarIds[0])
+  → 从 localStorage 读取日历颜色
+  → 返回正确的颜色值 ✅
+```
+
+**测试验证**:
+- ✅ 清除缓存后重新同步，事件正确显示日历颜色
+- ✅ 控制台日志显示 `calendarIds: ['AQMkAD...']` 而非 `undefined`
+- ✅ 多个日历的事件显示各自的颜色
+
+**影响范围**:
+- 所有从 Outlook 同步的远程事件
+- TimeCalendar 日历视图的颜色显示
+- 日历分组筛选功能
+
+---
+
+---
+
+### v1.1.1 (2025-11-13)
+
+**🔧 calendarIds 字段统一修复**
+
+**问题**: 远程事件在 TimeCalendar 中显示默认蓝色，无法按日历分组显示颜色
+
+**根本原因**:
+- ❌ Event 类型定义要求 `calendarIds: string[]` (数组格式)
+- ❌ ActionBasedSyncManager 在 `convertRemoteEventToLocal()` 中使用了 `calendarId` (单数)
+- ❌ MicrosoftCalendarService 返回的 `calendarIds` 被转换为 `calendarId`
+- ❌ TimeCalendar 中 `getEventColor()` 查找 `event.calendarIds[0]` 时得到 `undefined`
+
+**修复范围**:
+
+1. **ActionBasedSyncManager.ts L3326** - `convertRemoteEventToLocal()`
+   ```typescript
+   // ❌ 修复前
+   calendarId: remoteEvent.calendarId || 'microsoft',
+   
+   // ✅ 修复后
+   calendarIds: remoteEvent.calendarIds || ['microsoft'],
+   ```
+
+2. **MicrosoftCalendarService.ts L1367** - `getEvents()`
+   ```typescript
+   // ✅ 确保返回数组格式
+   calendarIds: ['microsoft'],
+   ```
+
+3. **MicrosoftCalendarService.ts L1570** - `getEventsFromCalendar()`
+   ```typescript
+   // ✅ 确保返回数组格式
+   calendarIds: [calendarId],
+   ```
+
+**颜色显示链路**:
+```
+MicrosoftCalendarService.getEvents()
+  → 返回 calendarIds: ['AQMkAD...']
+  → ActionBasedSyncManager.convertRemoteEventToLocal()
+  → 转换为本地事件 calendarIds: ['AQMkAD...']
+  → 存储到 localStorage
+  → TimeCalendar.loadEvents()
+  → convertToCalendarEvent()
+  → getEventColor(event, tags)
+  → getCalendarGroupColor(event.calendarIds[0])
+  → 从 localStorage 读取日历颜色
+  → 返回正确的颜色值 ✅
+```
+
+**测试验证**:
+- ✅ 清除缓存后重新同步，事件正确显示日历颜色
+- ✅ 控制台日志显示 `calendarIds: ['AQMkAD...']` 而非 `undefined`
+- ✅ 多个日历的事件显示各自的颜色
+
+**影响范围**:
+- 所有从 Outlook 同步的远程事件
+- TimeCalendar 日历视图的颜色显示
+- 日历分组筛选功能
+
+---
+
 **文档结束**

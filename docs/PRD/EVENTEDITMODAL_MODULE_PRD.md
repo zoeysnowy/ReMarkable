@@ -1,9 +1,10 @@
 # ReMarkable EventEditModal 模块产品需求文档 (PRD)
 
 > **AI 生成时间**: 2025-11-05  
+> **最后更新**: 2025-11-13 (v1.8 - SyncTargetPicker 升级)  
 > **关联代码版本**: master  
 > **文档类型**: 功能模块 PRD  
-> **依赖模块**: EventHub, TimeHub, TagManager, CalendarPicker  
+> **依赖模块**: EventHub, TimeHub, TagManager, SyncTargetPicker  
 > **关联文档**: [Timer 模块 PRD](./TIMER_MODULE_PRD.md), [TimeCalendar 模块 PRD](./TIMECALENDAR_MODULE_PRD.md)
 
 ---
@@ -910,7 +911,7 @@ useEffect(() => {
 - 标题：单行文本输入（`required`）
 - 时间：开始/结束在同一行，控件类型根据 `isAllDay` 在 `date` 和 `datetime-local` 之间切换；输入变化会触发 `handleStartTimeEdit`（Timer 场景）或直接更新 `formData`。
 - 标签：集成 inline 搜索 + 已选标签 chips + 下拉层级列表（带缩进和颜色/emoji 显示）
-- 日历分组：使用 `CalendarPicker` 子组件（支持多选，`maxSelection=5`）
+- **同步目标选择器 (SyncTargetPicker)**：统一的日历与待办列表选择组件（支持多选，详见 12.7）
 - 位置：文本输入
 - 描述：`textarea`（rows=4），用于日志/会议纪要
 
@@ -933,19 +934,492 @@ useEffect(() => {
   - 对 `.tag-dropdown` 的高度使用 `max-height` 并启用滚动，以避免在标签数量多时撑开模态框。  
   - 为移动设备/窄屏提供全屏模态样式（`@media` 查询），避免 datetime-local 控件在部分移动浏览器表现不一致。
 
+### 12.7 同步目标选择器 (SyncTargetPicker) - v1.8 新增
+
+**功能概述**：
+SyncTargetPicker 是 EventEditModal 中用于选择同步目标的统一组件，支持 **Outlook 日历** 和 **Microsoft To Do Lists** 的多选。
+
+**代码位置**：`src/components/EventEditModal/SyncTargetPicker.tsx`
+
+**核心特性**：
+- ✅ **双模式切换**：根据事件类型自动切换
+  - 非任务事件：显示 Outlook 日历列表
+  - 任务事件 (`isTask=true`)：显示 To Do Lists
+- ✅ **智能加载**：优先使用缓存，支持从 `microsoftService` 动态加载
+- ✅ **搜索过滤**：实时搜索日历/待办列表
+- ✅ **多选支持**：可同时选择多个目标（日历/待办列表）
+- ✅ **数据持久化**：选择结果保存到 `event.calendarIds` 和 `event.todoListIds`
+
+**数据流链路**：
+
+```mermaid
+graph LR
+    A[EventEditModal] --> B[SyncTargetPicker]
+    B --> C{数据来源}
+    C -->|优先| D[Props传入<br/>propCalendars<br/>propTodoLists]
+    C -->|备用| E[microsoftService<br/>getCachedCalendars<br/>getCachedTodoLists]
+    
+    B --> F[用户选择]
+    F --> G[onCalendarIdsChange]
+    F --> H[onTodoListIdsChange]
+    
+    G --> I[formData.calendarIds]
+    H --> J[formData.todoListIds]
+    
+    I --> K[EventEditModal.onSave]
+    J --> K
+    
+    K --> L[PlanManager/TimeCalendar]
+    L --> M[EventService.updateEvent]
+    M --> N[localStorage]
+```
+
+**Props 接口**：
+
+```typescript
+interface SyncTargetPickerProps {
+  // 🔌 数据源
+  microsoftService?: MicrosoftCalendarService;  // Microsoft Graph API 服务
+  propCalendars?: Calendar[];                   // 外部传入的日历列表（优先级高）
+  propTodoLists?: TodoList[];                   // 外部传入的待办列表（优先级高）
+  
+  // 🎯 选择状态
+  selectedCalendarIds: string[];                // 已选日历 ID 数组
+  selectedTodoListIds: string[];                // 已选待办列表 ID 数组
+  
+  // 🔄 回调
+  onCalendarIdsChange: (ids: string[]) => void; // 日历选择变化回调
+  onTodoListIdsChange: (ids: string[]) => void; // 待办列表选择变化回调
+  
+  // 🎨 显示控制
+  isTask: boolean;                              // 是否为任务（决定显示日历/待办列表）
+}
+```
+
+**使用示例（EventEditModal 中）**：
+
+```typescript
+// 1. 状态管理
+const [formData, setFormData] = useState({
+  calendarIds: event.calendarIds || [],      // 日历 ID 数组
+  todoListIds: event.todoListIds || [],      // 待办列表 ID 数组
+  // ...
+});
+
+// 2. 回调处理
+const handleCalendarIdsChange = useCallback((calendarIds: string[]) => {
+  setFormData(prev => ({ ...prev, calendarIds }));
+}, []);
+
+const handleTodoListIdsChange = useCallback((todoListIds: string[]) => {
+  setFormData(prev => ({ ...prev, todoListIds }));
+}, []);
+
+// 3. 组件渲染
+<SyncTargetPicker
+  microsoftService={microsoftService}
+  selectedCalendarIds={formData.calendarIds || []}
+  selectedTodoListIds={formData.todoListIds || []}
+  onCalendarIdsChange={handleCalendarIdsChange}
+  onTodoListIdsChange={handleTodoListIdsChange}
+  isTask={formData.isTask || false}
+/>
+
+// 4. 保存时合并到事件对象
+const updatedEvent: Event = {
+  ...event,
+  calendarIds: formData.calendarIds,          // 保存日历 ID 数组
+  todoListIds: formData.todoListIds,          // 保存待办列表 ID 数组
+  // ...
+};
+onSave(updatedEvent);
+```
+
+**数据格式**：
+
+```typescript
+// Event 对象中的同步目标字段
+interface Event {
+  // ...
+  calendarIds?: string[];   // Outlook 日历 ID 数组
+  todoListIds?: string[];   // Microsoft To Do Lists ID 数组
+  // ...
+}
+
+// 日历对象格式
+interface Calendar {
+  id: string;               // 日历 ID
+  name: string;             // 日历名称
+  color?: string;           // 颜色（Microsoft Graph 返回）
+  isDefaultCalendar?: boolean;
+}
+
+// 待办列表对象格式
+interface TodoList {
+  id: string;               // 待办列表 ID
+  displayName: string;      // 显示名称
+  isOwner?: boolean;
+  isShared?: boolean;
+  wellknownListName?: string; // 预定义列表名称（如 "defaultList"）
+}
+```
+
+**加载优先级**：
+
+1. **Props 传入**（优先）：
+   ```typescript
+   if (propCalendars) {
+     setAvailableCalendars(propCalendars);
+   }
+   ```
+
+2. **MicrosoftService 缓存**（备用）：
+   ```typescript
+   else if (microsoftService?.getCachedCalendars) {
+     const cached = microsoftService.getCachedCalendars();
+     setAvailableCalendars(cached);
+   }
+   ```
+
+3. **远程加载**（兜底）：
+   ```typescript
+   else if (microsoftService?.getAllCalendarsData) {
+     const { calendars } = await microsoftService.getAllCalendarsData();
+     setAvailableCalendars(calendars);
+   }
+   ```
+
+**PlanManager 集成示例**：
+
+```typescript
+// PlanManager.tsx 中的 EventEditModal 调用
+<EventEditModal
+  event={convertPlanItemToEvent(editingItem)}
+  onSave={(updatedEvent) => {
+    const updatedPlanItem: Event = {
+      ...editingItem,
+      ...updatedEvent,              // 包含 calendarIds 和 todoListIds
+    };
+    onSave(updatedPlanItem);        // 保存到 EventService
+    syncToUnifiedTimeline(updatedPlanItem); // 触发同步
+  }}
+  microsoftService={microsoftService} // 传递服务实例
+  hierarchicalTags={existingTags}
+/>
+```
+
+**syncToUnifiedTimeline 数据保留**：
+
+```typescript
+// PlanManager.tsx - syncToUnifiedTimeline 函数
+const event: Event = {
+  // ...
+  calendarIds: item.calendarIds || calendarIds, // 优先保留已有值
+  todoListIds: item.todoListIds,                 // 保留待办列表映射
+  // ...
+};
+```
+
+**convertPlanItemToEvent 数据恢复**：
+
+```typescript
+// PlanManager.tsx - convertPlanItemToEvent 函数
+return {
+  // ...
+  calendarIds: item.calendarIds || (calendarIds.length > 0 ? calendarIds : undefined),
+  todoListIds: item.todoListIds, // 🔧 保留已保存的待办列表
+  // ...
+};
+```
+
+---
+
+### 12.8 完整集成场景对比
+
+EventEditModal 在以下 4 个场景中被使用，数据链路各有特点：
+
+#### **场景 1: PlanManager（计划管理）**
+
+**触发时机**：用户点击 Plan 列表中的事件
+
+**数据流**：
+```
+PlanManager.items → convertPlanItemToEvent() → EventEditModal
+                                                    ↓ onSave
+                  PlanManager.onSave ← 合并 updatedEvent
+                       ↓
+              App.handleSavePlanItem → EventService.updateEvent
+                       ↓
+              syncToUnifiedTimeline → EventService.updateEvent (再次保存)
+                       ↓
+                  localStorage
+```
+
+**关键代码**：
+```typescript
+// 1. 打开 Modal
+<EventEditModal
+  event={convertPlanItemToEvent(editingItem)}
+  microsoftService={microsoftService}
+  hierarchicalTags={existingTags}
+/>
+
+// 2. convertPlanItemToEvent - 恢复已保存的同步目标
+return {
+  calendarIds: item.calendarIds || (fromTagMapping ? calendarIds : undefined),
+  todoListIds: item.todoListIds, // ✅ 关键：保留已保存的值
+};
+
+// 3. onSave - 合并所有字段
+const updatedPlanItem: Event = {
+  ...editingItem,
+  ...updatedEvent, // ✅ 包含 calendarIds 和 todoListIds
+};
+
+// 4. syncToUnifiedTimeline - 再次保留
+const event: Event = {
+  calendarIds: item.calendarIds || calendarIds,
+  todoListIds: item.todoListIds, // ✅ 必须保留
+};
+```
+
+**注意事项**：
+- ⚠️ **双重保存**：`handleSavePlanItem` 和 `syncToUnifiedTimeline` 都会调用 EventService
+- ⚠️ **数据一致性**：两个保存点都必须保留 `calendarIds` 和 `todoListIds`
+
+---
+
+#### **场景 2: TimeCalendar（日历视图）**
+
+**触发时机**：
+- 用户点击日历上的事件
+- 用户拖拽创建新事件
+
+**数据流**：
+```
+TimeCalendar.events → EventEditModal
+                           ↓ onSave
+      handleSaveEventFromModal → EventHub.updateFields (增量更新)
+                           ↓
+                   EventService.updateEvent
+                           ↓
+                      localStorage
+```
+
+**关键代码**：
+```typescript
+// 1. 打开 Modal
+<EventEditModal
+  event={editingEvent}
+  microsoftService={microsoftService}
+  hierarchicalTags={getAvailableTagsForSettings()}
+  availableCalendars={getAvailableCalendarsForSettings()}
+/>
+
+// 2. onSave - 通过 EventHub 增量更新
+const handleSaveEventFromModal = async (updatedEvent: Event) => {
+  // EventHub 已经通过 EventService 完成了所有更新
+  // TimeCalendar 只需要等待 eventsUpdated 事件
+  
+  // ✅ calendarIds 和 todoListIds 已在 EventEditModal.onSave 中保存
+};
+```
+
+**注意事项**：
+- ✅ **单次保存**：EventEditModal 内部通过 EventHub 保存，不需要重复调用
+- ✅ **增量更新**：监听 `eventsUpdated` 事件自动刷新 UI
+- ✅ **无需额外处理**：EventEditModal 的 onSave 已经处理了所有字段
+
+---
+
+#### **场景 3: App.tsx（Timer 事件编辑）**
+
+**触发时机**：用户编辑正在运行的 Timer 事件
+
+**数据流**：
+```
+timerEditModal.event → EventEditModal
+                            ↓ onSave
+        handleTimerEditSave → 创建/更新 Timer
+                            ↓
+                EventService.createEvent (skipSync=true)
+                            ↓
+                       localStorage
+```
+
+**关键代码**：
+```typescript
+// 1. 打开 Modal
+{timerEditModal.isOpen && timerEditModal.event && (
+  <EventEditModal
+    event={timerEditModal.event}
+    onSave={handleTimerEditSave}
+    hierarchicalTags={hierarchicalTags}
+    availableCalendars={availableCalendars}
+    globalTimer={globalTimer}
+    onStartTimeChange={handleStartTimeChange}
+  />
+)}
+
+// 2. onSave - 创建 Timer 事件
+const handleTimerEditSave = async (updatedEvent: Event) => {
+  const timerEvent: Event = {
+    id: realTimerEventId,
+    title: updatedEvent.title,
+    tags: [tagId],
+    calendarIds: updatedEvent.calendarIds,    // ✅ 保留用户选择
+    todoListIds: updatedEvent.todoListIds,    // ✅ 保留用户选择
+    syncStatus: 'local-only', // 运行中不同步
+    // ...
+  };
+  
+  await EventService.createEvent(timerEvent, true); // skipSync=true
+};
+```
+
+**注意事项**：
+- ⚠️ **skipSync=true**：Timer 运行中不同步到 Outlook
+- ✅ **停止时同步**：Timer 停止时会将 `syncStatus` 改为 `'pending'` 并触发同步
+- ✅ **保留同步目标**：用户在 Timer 运行时选择的日历/待办列表会在停止后同步
+
+---
+
+#### **场景 4: TaskManager（任务管理）**
+
+**触发时机**：用户编辑任务
+
+**数据流**：
+```
+Task → convertToEvent() → EventEditModal
+                               ↓ onSave
+          saveTaskFromModal → convertToTask()
+                               ↓
+                      updateTask()
+                               ↓
+                          localStorage
+```
+
+**关键代码**：
+```typescript
+// 1. 转换 Task → Event
+const taskAsEvent: Event = {
+  id: task.id,
+  title: task.title,
+  description: task.description,
+  tags: task.tags || [],
+  endTime: task.dueDate || '',
+  // ⚠️ 当前未设置 calendarIds 和 todoListIds
+};
+
+// 2. 打开 Modal
+<EventEditModal
+  event={editingTaskAsEvent}
+  onSave={saveTaskFromModal}
+  hierarchicalTags={[]}
+/>
+
+// 3. onSave - 转换回 Task
+const saveTaskFromModal = (updatedEvent: Event) => {
+  updateTask(updatedEvent.id, {
+    title: updatedEvent.title,
+    description: updatedEvent.description,
+    tags: updatedEvent.tags || [],
+    dueDate: updatedEvent.endTime,
+    // ⚠️ 丢失了 calendarIds 和 todoListIds
+  });
+};
+```
+
+**问题与建议**：
+- ❌ **数据丢失**：`saveTaskFromModal` 未保留 `calendarIds` 和 `todoListIds`
+- ⚠️ **Task 类型定义不完整**：Task 类型可能缺少这两个字段
+- 💡 **建议修复**：
+  ```typescript
+  const saveTaskFromModal = (updatedEvent: Event) => {
+    updateTask(updatedEvent.id, {
+      title: updatedEvent.title,
+      description: updatedEvent.description,
+      tags: updatedEvent.tags || [],
+      dueDate: updatedEvent.endTime,
+      calendarIds: updatedEvent.calendarIds,     // ✅ 添加
+      todoListIds: updatedEvent.todoListIds,     // ✅ 添加
+    });
+  };
+  ```
+
+---
+
+### 12.9 数据链路对比总结
+
+| 场景 | 保存次数 | calendarIds 保留 | todoListIds 保留 | 同步触发 |
+|------|---------|-----------------|-----------------|---------|
+| **PlanManager** | 2次（handleSavePlanItem + syncToUnifiedTimeline） | ✅ 两处都保留 | ✅ 两处都保留 | ✅ ActionBasedSyncManager |
+| **TimeCalendar** | 1次（EventHub.updateFields） | ✅ 自动保留 | ✅ 自动保留 | ✅ EventService 触发 |
+| **App.tsx (Timer)** | 1次（EventService.createEvent） | ✅ 手动保留 | ✅ 手动保留 | ⚠️ skipSync=true（停止时同步） |
+| **TaskManager** | 1次（updateTask） | ❌ **丢失** | ❌ **丢失** | ❌ 未实现 |
+
+**修复优先级**：
+1. ✅ **PlanManager** - 已修复（v1.8）
+2. ✅ **TimeCalendar** - 无需修改（EventHub 自动处理）
+3. ✅ **Timer** - 无需修改（已正确保留）
+4. ❌ **TaskManager** - 需要修复（建议添加字段保留）
+
+---
+
+**关键注意事项**：
+
+1. **数据持久化**：
+   - `calendarIds` 和 `todoListIds` 必须在所有数据转换函数中保留
+   - `convertPlanItemToEvent()` 和 `syncToUnifiedTimeline()` 都需要保留这两个字段
+
+2. **显示名称映射**：
+   - To Do Lists 使用 `displayName` 字段（不是 `name`）
+   - 日历使用 `name` 字段
+
+3. **同步状态**：
+   - 有 `calendarIds` 或 `todoListIds` 时，`syncStatus` 应设为 `'pending'`
+   - ActionBasedSyncManager 会自动处理同步
+
+4. **兼容性**：
+   - 旧版本可能使用单数 `calendarId`，需要在读取时转换为数组
+   - EventService 保存时会自动合并所有字段
+
 ---
 
 ## 13. 已发现的问题与建议汇总（需要后续动作）
 
-1. EventHub.createEvent 的返回值应明确：建议返回创建后的完整事件对象，避免依赖外部 snapshot 查询（见第 8.2）。  
+1. ~~EventHub.createEvent 的返回值应明确：建议返回创建后的完整事件对象，避免依赖外部 snapshot 查询（见第 8.2）。~~ 
 2. 将 `syncStatus` 的枚举值在项目级别定义并统一使用（`local-only`、`pending`、`synced`）；为运行中 Timer 的识别提供统一工具函数。  
 3. `onStartTimeChange` 回调应防抖/节流以避免高频回调带来的性能问题。  
 4. 建议为保存操作提供 loading/disabled 状态，防止重复提交。  
 5. 可访问性改进：增加 aria 属性、label 对齐、键盘快捷支持。
+6. ✅ **v1.8 已解决**：SyncTargetPicker 替代 CalendarPicker，支持日历和待办列表的统一选择
 
 ---
 
-## 14. 完成度与下一步计划
+## 14. 版本更新记录
+
+### v1.8 (2025-11-13) - SyncTargetPicker 升级
+
+**新增功能**：
+- ✅ **SyncTargetPicker 组件**：替代旧的 CalendarPicker，支持 Outlook 日历和 Microsoft To Do Lists 的统一选择
+- ✅ **多目标同步**：事件可同时同步到多个日历和待办列表
+- ✅ **智能模式切换**：根据事件类型自动显示日历或待办列表选择器
+- ✅ **数据持久化**：`calendarIds` 和 `todoListIds` 完整保存和恢复
+
+**修复问题**：
+- 🔧 **PlanManager 数据丢失**：修复 `convertPlanItemToEvent()` 和 `syncToUnifiedTimeline()` 忽略同步目标字段的问题
+- 🔧 **calendarIds 数组格式**：统一使用数组格式替代单数 `calendarId`
+- 🔧 **To Do Lists 名称显示**：修复使用 `displayName` 而非 `name` 字段
+
+**数据链路优化**：
+```
+EventEditModal → formData → onSave → PlanManager/TimeCalendar → EventService → localStorage
+```
+
+---
+
+## 15. 完成度与下一步计划
 
 - 当前 PRD 覆盖了 `EventEditModal.tsx` 的完整实现细节（873 行），包括：界面布局、拖拽/调整大小、标签扁平化、时间处理、保存/删除流程与 Timer 集成。
 - 下一步（可立即执行）：

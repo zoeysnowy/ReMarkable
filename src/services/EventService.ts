@@ -257,7 +257,7 @@ export class EventService {
       eventLogger.log('� [DEBUG-TIMER] 调用来源:', caller);
       eventLogger.log('🔍 [DEBUG-TIMER] skipSync:', skipSync);
       eventLogger.log('🔍 [DEBUG-TIMER] updates.syncStatus:', (updates as any).syncStatus);
-      eventLogger.log('�📋 [EventService] 更新字段:', {
+      eventLogger.log('📋 [EventService] 更新字段:', {
         eventId,
         更新的字段: Object.keys(updates),
         startTime: updates.startTime,
@@ -265,7 +265,9 @@ export class EventService {
         title: updates.title,
         isAllDay: updates.isAllDay,
         description: (updates.description || '').substring(0, 50),
-        timelog: ((updates as any).timelog || '').substring(0, 50) // 🆕 v1.8: 显示 timelog 字段
+        timelog: ((updates as any).timelog || '').substring(0, 50), // 🆕 v1.8: 显示 timelog 字段
+        calendarIds: (updates as any).calendarIds, // 🔍 检查 calendarIds
+        todoListIds: (updates as any).todoListIds  // 🔍 检查 todoListIds
       });
 
       const existingEvents = this.getAllEvents();

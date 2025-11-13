@@ -61,6 +61,7 @@ export interface EventMetadata {
   // 同步字段
   calendarId?: string;
   calendarIds?: string[];
+  todoListIds?: string[]; // 🆕 To Do List IDs
   source?: string;
   syncStatus?: string;
   externalId?: string;

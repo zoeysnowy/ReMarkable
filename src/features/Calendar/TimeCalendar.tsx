@@ -2774,6 +2774,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         onDelete={handleDeleteEventFromModal}
         hierarchicalTags={getAvailableTagsForSettings()}
         availableCalendars={getAvailableCalendarsForSettings()}
+        microsoftService={microsoftService}
       />
 
       {/* ⚙️ 设置面板 */}

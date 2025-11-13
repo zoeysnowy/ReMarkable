@@ -75,12 +75,14 @@
 .unified-datetime-picker .duration-text {
   font-size: 12px;
   font-weight: 600;
+  color: #3b82f6; /* Fallback color for Electron */
   background: linear-gradient(135deg, #22d3ee, #3b82f6);
   -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
   background-clip: text;
+  -webkit-text-fill-color: transparent;
   font-family: 'Inter', 'Roboto', sans-serif;
   line-height: 1;
+  display: inline-block; /* 确保渐变正确应用 */
 }
 
 .unified-datetime-picker .arrow-icon {
@@ -610,6 +612,7 @@
 .unified-datetime-picker .duration-text {
   font-size: 12px;
   font-weight: 500;
+  color: #3b82f6; /* Fallback color for Electron */
   background: linear-gradient(90deg, #22D3EE 0%, #3B82F6 100%);
   background-clip: text;
   -webkit-text-fill-color: transparent;

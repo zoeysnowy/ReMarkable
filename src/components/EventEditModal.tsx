@@ -251,6 +251,15 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
 
   const flatTags = flatTagsCache;
 
+  // 🔧 [FIX] 使用 useCallback 稳定回调函数，防止子组件重渲染
+  const handleCalendarIdsChange = useCallback((calendarIds: string[]) => {
+    setFormData(prev => ({ ...prev, calendarIds }));
+  }, []);
+
+  const handleTodoListIdsChange = useCallback((todoListIds: string[]) => {
+    setFormData(prev => ({ ...prev, todoListIds }));
+  }, []);
+
   // 搜索过滤标签
   const filteredTags = useMemo(() => {
     const start = performance.now();
@@ -495,6 +504,7 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
               isAllDay: formData.isAllDay,
               tags: formData.tags,
               calendarIds: targetCalendarId ? [targetCalendarId] : formData.calendarIds, // 🆕 v1.8: 使用 calendarIds 数组
+              todoListIds: formData.todoListIds, // 🆕 保存 To Do List IDs
               organizer: formData.organizer.email ? formData.organizer : undefined, // 只保存有邮箱的组织者
               attendees: formData.attendees.filter(a => a.email), // 只保存有邮箱的参会人
               createdAt: event.createdAt || formatTimeForStorage(new Date()),
@@ -551,6 +561,7 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
               isAllDay: formData.isAllDay,
               tags: formData.tags,
               calendarIds: targetCalendarId ? [targetCalendarId] : formData.calendarIds, // 🔧 更新 calendarIds 数组
+              todoListIds: formData.todoListIds, // 🆕 更新 To Do List IDs
               organizer: formData.organizer.email ? formData.organizer : undefined, // 添加组织者
               attendees: formData.attendees.filter(a => a.email), // 添加参会人（过滤掉没有邮箱的）
             }, { source: 'EventEditModal', skipSync: shouldSkipSync });
@@ -1023,12 +1034,8 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
               endTime={formData.endTime}
               selectedCalendarIds={formData.calendarIds || []}
               selectedTodoListIds={formData.todoListIds || []}
-              onCalendarIdsChange={(calendarIds) => {
-                setFormData(prev => ({ ...prev, calendarIds }));
-              }}
-              onTodoListIdsChange={(todoListIds) => {
-                setFormData(prev => ({ ...prev, todoListIds }));
-              }}
+              onCalendarIdsChange={handleCalendarIdsChange}
+              onTodoListIdsChange={handleTodoListIdsChange}
               microsoftService={microsoftService}
             />
           </div>
