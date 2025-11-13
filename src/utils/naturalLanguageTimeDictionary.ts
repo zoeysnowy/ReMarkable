@@ -466,9 +466,11 @@ export const DATE_RANGE_DICTIONARY: Record<string, (referenceDate?: Date) => Dat
 export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => PointInTime> = {
   // 相对天数
   '大后天': (ref = new Date()) => {
-    const target = safelyConvertDateToDayjs(ref).add(3, 'day').startOf('day');
+    const target = new Date(ref);
+    target.setDate(target.getDate() + 3);
+    target.setHours(0, 0, 0, 0);
     return {
-      date: target,
+      date: dateToDayjs(target),
       displayHint: '大后天',
       isFuzzyDate: false
     };
@@ -480,9 +482,11 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '大前天': (ref = new Date()) => {
-    const target = safelyConvertDateToDayjs(ref).subtract(3, 'day').startOf('day');
+    const target = new Date(ref);
+    target.setDate(target.getDate() - 3);
+    target.setHours(0, 0, 0, 0);
     return {
-      date: target,
+      date: dateToDayjs(target),
       displayHint: '大前天',
       isFuzzyDate: false
     };
@@ -495,9 +499,10 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   
   // 月份相关
   '月底': (ref = new Date()) => {
-    const target = safelyConvertDateToDayjs(ref).endOf('month').startOf('day');
+    const target = new Date(ref.getFullYear(), ref.getMonth() + 1, 0); // +1月的0日=当月最后一天
+    target.setHours(0, 0, 0, 0);
     return {
-      date: target,
+      date: dateToDayjs(target),
       displayHint: '月底',
       isFuzzyDate: false
     };
@@ -516,9 +521,10 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   '月末': (ref = new Date()) => POINT_IN_TIME_DICTIONARY['月底'](ref),
   
   '月初': (ref = new Date()) => {
-    const target = safelyConvertDateToDayjs(ref).startOf('month');
+    const target = new Date(ref.getFullYear(), ref.getMonth(), 1); // 当月1日
+    target.setHours(0, 0, 0, 0);
     return {
-      date: target,
+      date: dateToDayjs(target),
       displayHint: '月初',
       isFuzzyDate: false
     };
@@ -536,9 +542,10 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   
   // 年份相关
   '年底': (ref = new Date()) => {
-    const target = safelyConvertDateToDayjs(ref).endOf('year').startOf('day');
+    const target = new Date(ref.getFullYear(), 11, 31); // 12月31日
+    target.setHours(0, 0, 0, 0);
     return {
-      date: target,
+      date: dateToDayjs(target),
       displayHint: '年底',
       isFuzzyDate: false
     };
@@ -555,9 +562,10 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '年初': (ref = new Date()) => {
-    const target = safelyConvertDateToDayjs(ref).startOf('year');
+    const target = new Date(ref.getFullYear(), 0, 1); // 1月1日
+    target.setHours(0, 0, 0, 0);
     return {
-      date: target,
+      date: dateToDayjs(target),
       displayHint: '年初',
       isFuzzyDate: false
     };
@@ -574,9 +582,10 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '明年': (ref = new Date()) => {
-    const target = safelyConvertDateToDayjs(ref).add(1, 'year').startOf('year');
+    const target = new Date(ref.getFullYear() + 1, 0, 1); // 明年1月1日
+    target.setHours(0, 0, 0, 0);
     return {
-      date: target,
+      date: dateToDayjs(target),
       displayHint: '明年',
       isFuzzyDate: false
     };
@@ -593,9 +602,10 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '后年': (ref = new Date()) => {
-    const target = safelyConvertDateToDayjs(ref).add(2, 'year').startOf('year');
+    const target = new Date(ref.getFullYear() + 2, 0, 1); // 后年1月1日
+    target.setHours(0, 0, 0, 0);
     return {
-      date: target,
+      date: dateToDayjs(target),
       displayHint: '后年',
       isFuzzyDate: false
     };
@@ -607,9 +617,10 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '去年': (ref = new Date()) => {
-    const target = safelyConvertDateToDayjs(ref).subtract(1, 'year').startOf('year');
+    const target = new Date(ref.getFullYear() - 1, 0, 1); // 去年1月1日
+    target.setHours(0, 0, 0, 0);
     return {
-      date: target,
+      date: dateToDayjs(target),
       displayHint: '去年',
       isFuzzyDate: false
     };

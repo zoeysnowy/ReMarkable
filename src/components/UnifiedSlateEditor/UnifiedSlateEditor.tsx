@@ -810,12 +810,12 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       
       const planItems = slateNodesToPlanItems(filteredNodes);
       
-      // 检测 description 行删除
+      // 检测 eventlog 行删除
       planItems.forEach(item => {
         const hasDescriptionNode = filteredNodes.some(node => {
           const eventLine = node as EventLineNode;
           return (eventLine.eventId === item.eventId || eventLine.lineId.startsWith(item.id)) 
-                 && eventLine.mode === 'description';
+                 && eventLine.mode === 'eventlog';
         });
         
         if (!hasDescriptionNode && item.description) {
