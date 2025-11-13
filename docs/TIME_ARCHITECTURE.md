@@ -241,8 +241,8 @@ const updatedHTML = editor.getHTML();
 const updatedItem = { 
   ...item, 
   content: updatedHTML,
-  startTime: startIso,
-  endTime: endIso,
+  // ❌ 错误: 直接修改派生字段（已废弃）
+  // 应该通过 TimeHub.setEventTime() 更新 timeSpec
 };
 onSave(updatedItem);
 syncToUnifiedTimeline(updatedItem);
@@ -252,11 +252,11 @@ syncToUnifiedTimeline(updatedItem);
 
 ```typescript
 // ✅ 新代码 (UnifiedSlateEditor)
-onTimeApplied={async (startIso, endIso) => {
-  // TimeHub 已更新时间
+onTimeApplied={async (timeSpec: TimeSpec) => {
+  // TimeHub 已更新 timeSpec
   // UnifiedSlateEditor 的 onChange 会自动保存内容
   
-  // 只需同步 EventService
+  // 只需同步 EventService（TimeHub 已处理 timeSpec → startTime/endTime 派生）
   if (item.id) {
     await EventService.updateEvent(item.id, {
       title: item.title,
@@ -287,14 +287,19 @@ function hasAnyTime(item: Event | PlanItem): boolean {
 ```
 
 **检查字段**:
-- `startTime`: 开始时间（ISO 8601 字符串）
-- `endTime`: 结束时间（ISO 8601 字符串）
-- `dueDate`: 截止日期（ISO 8601 字符串）
+- `startTime`: 派生字段（UTC 字符串，仅用于数据库索引/Outlook 同步）
+- `endTime`: 派生字段（UTC 字符串，仅用于数据库索引/Outlook 同步）
+- `dueDate`: 派生字段（UTC 字符串，仅用于数据库索引/Outlook 同步）
+
+**⚠️ 注意**: 这些字段由 TimeHub 从 timeSpec 自动派生，**禁止**在应用逻辑中直接读取或设置
+
+**正确做法**: 检查时间应该优先使用 `event.timeSpec` 而非派生字段
 
 **逻辑说明**:
 - 使用 `!!` 转为布尔值
 - 使用 `||` 短路求值
 - 空字符串、null、undefined 都视为 false
+- 实际时间判断应优先检查 `event.timeSpec` 是否存在
 
 ### 集成 TimeHub 的最佳实践
 
@@ -317,10 +322,14 @@ const EventComponent = ({ eventId }) => {
 
 **设置固定时间**:
 ```typescript
+// ✅ 正确: 使用 Date 对象，让 TimeHub 自动派生 startTime/endTime
 setEventTime('fixed', {
-  start: '2025-11-06T10:00:00',
-  end: '2025-11-06T11:00:00',
+  start: new Date('2025-11-06 10:00:00'),
+  end: new Date('2025-11-06 11:00:00'),
 });
+
+// ❌ 错误: 绝不允许在应用逻辑中出现时间字符串
+// 所有时间必须使用 Date 对象 + TimeSpec 架构
 ```
 
 **设置模糊时间（自然语言）**:

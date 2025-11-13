@@ -2889,8 +2889,12 @@ const serializeContextMarker = (marker: ContextMarkerElement): string => {
     .join(', ');
   
   // 生成 HTML（用于 Outlook）
+  // ⚠️ 注意: data-time 存储完整的 TimeSpec JSON，而非简单时间戳
+  // 这确保往返同步时不丢失 kind/rawText/policy 等元数据
+  const timeSpecJson = JSON.stringify(marker.timeSpec);
+  
   return `
-    <div class="context-marker" data-time="${start.toISOString()}">
+    <div class="context-marker" data-timespec="${escapeHTML(timeSpecJson)}">
       <strong>${timeStr}</strong>
       <p>活动: ${activityStr}</p>
     </div>
@@ -2900,30 +2904,35 @@ const serializeContextMarker = (marker: ContextMarkerElement): string => {
 // 从 Outlook 反序列化时
 const deserializeContextMarker = (html: string): ContextMarkerElement | null => {
   const div = parseHTML(html);
-  const timeAttr = div.getAttribute('data-time');
+  const timeSpecJson = div.getAttribute('data-timespec');
   
-  if (!timeAttr) return null;
+  if (!timeSpecJson) {
+    console.warn('缺失 data-timespec 属性，无法还原 ContextMarker');
+    return null;
+  }
   
-  const date = new Date(timeAttr);
-  
-  // 重建 TimeSpec（而非直接使用 ISO 字符串）
-  const timeSpec: TimeSpec = {
-    kind: 'fixed',
-    source: 'import',
-    rawText: null,
-    policy: TimePolicy.getDefault(),
-    resolved: { start: date, end: date },
-    start: date,
-    end: date,
-    allDay: false,
-  };
-  
-  return {
-    type: 'context-marker',
-    timeSpec,
-    activities: parseActivitiesFromHTML(div),
-    children: [{ text: '' }],
-  };
+  try {
+    // 直接还原完整的 TimeSpec（包括 kind/rawText/policy）
+    const timeSpec: TimeSpec = JSON.parse(timeSpecJson);
+    
+    // 重建 Date 对象（JSON 反序列化后会变成字符串）
+    timeSpec.start = new Date(timeSpec.start);
+    timeSpec.end = new Date(timeSpec.end);
+    if (timeSpec.resolved) {
+      timeSpec.resolved.start = new Date(timeSpec.resolved.start);
+      timeSpec.resolved.end = new Date(timeSpec.resolved.end);
+    }
+    
+    return {
+      type: 'context-marker',
+      timeSpec,
+      activities: parseActivitiesFromHTML(div),
+      children: [{ text: '' }],
+    };
+  } catch (error) {
+    console.error('解析 TimeSpec 失败:', error);
+    return null;
+  }
 };
 ```
 
