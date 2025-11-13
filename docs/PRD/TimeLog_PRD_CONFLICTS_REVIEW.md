@@ -227,7 +227,10 @@ type ContextMarkerElement = {
 
 > 👤 **Zoey 回复:**
 > 
-> 
+> 1. 可以作为2.0实现
+> 2. Windows应该不用，到时候我们再具体看这部分的方案，有个开源的方案叫shion到时候可以借鉴
+> 3. 活动日志不用给Outlook
+
 
 
 ---
@@ -274,7 +277,14 @@ class VersionControlService {
    - 对于 Slate JSON，是否需要更智能的树形 diff？
 
 > 👤 **Zoey 回复:**
-> 
+> 是的，我们的eventservice有CRUD，但是我们应该要构建一个eventhistory的服务
+
+功能	状态	说明
+CRUD 操作	✅ 有	EventService 提供完整的增删改查
+当前状态存储	✅ 有	localStorage 存储所有事件的当前状态
+历史记录	❌ 无	不记录事件的变更历史
+变更溯源	❌ 无	无法查询"谁在什么时候改了什么"
+时间段查询	❌ 无	无法查询"过去7天创建/修改了哪些事件"
 > 
 
 
@@ -324,8 +334,94 @@ timelog: ((updates as any).timelog || '').substring(0, 50)
    - 是否需要在 HTML 注释中嵌入 JSON？（见冲突 #7）
 
 > 👤 **Zoey 回复:**
+> 1. 是的，字段级别冲突会更好。另外我们timelog自动生成的timestamp显示，不支持用户做修改，它就是固定的UI显示，和用户设定的event起始时间是两个东西
+> 2. 像git一样显示diff，并且供用户选择keep/undo
+> 3. 好问题，这是需要设计的，从timelog转化到description，需要一次转化，把json转化到html，尽可能保留原有的信息和格式（e.g. 字体颜色、背景色、加粗、斜体、bulletpoint等），针对表格需要转化成类似markdown样式让用户可以多端阅读到信息，图片、附件等需要提示用户，点击link查看图片，这个link跳转到整个timelog的web页面。我这里罗列了大致的方案，具体的设计实现请你为我在PRD中详细设计
+
+> 🤖 **Resolution (Copilot):**
+> **Status**: ✅ 已解决  
+> **Commit**: 0b5893b  
+> **PRD Sections**: 5.2.1 (字段级冲突检测), 5.4 (智能序列化), 5.5 (Git风格Diff UI)
 > 
+> **实施方案**:
+> 1. **字段级冲突检测** (5.2.1, ~500 lines):
+>    - 三向合并：local/remote/base (使用EventHistory作为base)
+>    - 检测字段：title, tags, timelog.description, timelog.timeSpent, startTime, endTime
+>    - 自动解决：单侧修改 → 自动合并；双侧修改 → 手动解决
+>    - `FieldLevelConflictResult` 接口定义
 > 
+> 2. **智能序列化系统** (5.4, ~300 lines):
+>    - **格式保留**：颜色/背景色/加粗/斜体/下划线/列表/链接 → 标准HTML
+>    - **表格降级**：Slate table → Markdown文本表格 (包装在`<pre>`中)
+>    - **媒体降级**：图片/视频/附件 → `📷 [查看图片: filename.png](link)`
+>    - **Web Viewer URL**: `https://app.remarkable.com/events/{eventId}/timelog#image-{id}`
+>    - 逆向序列化：Outlook HTML → Slate JSON (有损转换)
+> 
+> 3. **Git风格Diff UI** (5.5, ~500 lines):
+>    - **三栏对比**：本地版本/基准版本/远程版本
+>    - **操作按钮**：Keep Local / Keep Remote / Merge...
+>    - **自动合并展示**：显示已自动解决的字段 + 撤销功能
+>    - **手动合并对话框** (针对Description)：
+>      - 并排显示本地/远程Slate内容
+>      - 提供"插入远程段落"功能
+>      - 实时预览合并结果
+>    - 组件：`ConflictResolverDialog`, `FieldConflictPanel`, `VersionCard`, `FieldMergeDialog`
+> 
+> **核心算法示例**:
+> ```typescript
+> // 字段级冲突检测
+> async detectFieldLevelConflicts(local, remote, lastSync) {
+>   const fields = ['title', 'tags', 'timelog.description', ...];
+>   const conflicts: FieldConflict[] = [];
+>   
+>   for (const field of fields) {
+>     const localValue = get(local, field);
+>     const remoteValue = get(remote, field);
+>     const baseValue = get(lastSync, field);
+>     
+>     if (localValue !== baseValue && remoteValue !== baseValue) {
+>       // 双侧修改：需要手动解决
+>       conflicts.push({ field, resolution: 'manual-required', ... });
+>     } else if (localValue !== baseValue) {
+>       // 单侧修改（本地）：自动采用本地
+>       conflicts.push({ field, resolution: 'auto-local', ... });
+>     } else if (remoteValue !== baseValue) {
+>       // 单侧修改（远程）：自动采用远程
+>       conflicts.push({ field, resolution: 'auto-remote', ... });
+>     }
+>   }
+>   
+>   return { hasConflict: conflicts.some(c => c.resolution === 'manual-required'), ... };
+> }
+> 
+> // Markdown表格序列化
+> function serializeTable(tableNode) {
+>   // 1. 提取表头和数据
+>   const headers = tableNode.children[0].children.map(extractCellText);
+>   // 2. 计算列宽
+>   const columnWidths = calculateColumnWidths(tableNode);
+>   // 3. 生成Markdown
+>   return `<pre>\n| ${headers.join(' | ')} |\n|${'---'.repeat(n)}|\n...</pre>`;
+> }
+> 
+> // Web Viewer链接生成
+> function serializeImage(imageNode, eventId) {
+>   const url = `https://app.remarkable.com/events/${eventId}/timelog#image-${imageNode.id}`;
+>   return `<p>📷 <a href="${url}">查看图片: ${imageNode.fileName}</a></p>`;
+> }
+> ```
+> 
+> **章节更新**:
+> - Section 5.2.1: 字段级冲突检测 (新增)
+> - Section 5.2.2: 冲突检测流程图 (新增)
+> - Section 5.2.3: Slate → HTML 序列化 (更新)
+> - Section 5.4: 智能序列化系统 (新增)
+> - Section 5.5: Git风格Diff UI (新增)
+> - Section 5.6 → 5.7: 增量同步优化 (重编号)
+> - Section 6 → 7: EventHistoryService (重编号)
+> - Section 7 → 8: VersionControlService (重编号)
+> - Section 8 → 9: 实现指南 (重编号)
+> - Section 9 → 10: 性能优化 (重编号)
 
 
 ---
