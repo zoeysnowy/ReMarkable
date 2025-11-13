@@ -416,10 +416,21 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
   const generateCalendar = () => {
     const startOfMonth = currentMonth.startOf('month');
     const endOfMonth = currentMonth.endOf('month');
+    
     // 🔧 修复：按周一作为一周开始（符合中国习惯和time.config.ts配置）
-    // dayjs默认周日开始，需要加1天调整到周一
-    const startOfWeek = startOfMonth.startOf('week').add(1, 'day');
-    const endOfWeek = endOfMonth.endOf('week').add(1, 'day');
+    // dayjs的day(): 0=周日, 1=周一, 2=周二, ..., 6=周六
+    const startDay = startOfMonth.day(); // 当月1号是星期几
+    const endDay = endOfMonth.day();     // 当月最后一天是星期几
+    
+    // 计算需要往前推几天到达本周一（或上周一）
+    // 如果1号是周日(0)，往前推6天到上周一；如果是周一(1)，不推；如果是周二(2)，往前推1天
+    const daysToStartMonday = startDay === 0 ? 6 : startDay - 1;
+    const startOfWeek = startOfMonth.subtract(daysToStartMonday, 'day');
+    
+    // 计算需要往后推几天到达本周日（或下周日）
+    // 如果最后一天是周日(0)，不推；如果是周一(1)，往后推6天；如果是周六(6)，往后推1天
+    const daysToEndSunday = endDay === 0 ? 0 : 7 - endDay;
+    const endOfWeek = endOfMonth.add(daysToEndSunday, 'day');
 
     const days = [];
     let current = startOfWeek;

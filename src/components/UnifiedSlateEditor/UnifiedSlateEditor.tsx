@@ -937,6 +937,35 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       return;
     }
     
+    // 🆕 Backspace 键 - 在空的 bullet 段落删除 bullet
+    if (event.key === 'Backspace') {
+      try {
+        const [paragraphNode] = Editor.nodes(editor, {
+          match: n => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+        });
+        
+        if (paragraphNode) {
+          const [node, path] = paragraphNode;
+          const para = node as any;
+          
+          // 如果段落有 bullet 且内容为空（只有一个空文本节点）
+          if (para.bullet && para.children.length === 1) {
+            const textNode = para.children[0];
+            if (textNode.text === '' || (selection?.anchor.offset === 0 && selection?.focus.offset === 0)) {
+              event.preventDefault();
+              // 移除 bullet 属性
+              Transforms.setNodes(editor, { bullet: undefined, bulletLevel: undefined } as any, {
+                at: path,
+              });
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        // 忽略错误，继续默认行为
+      }
+    }
+    
     // Enter 键 - 创建新的 EventLine 或 Description 行
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
@@ -949,13 +978,29 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       
       // 🆕 如果当前是 description 行，继续创建 description 行（同一个 eventId）
       if (eventLine.mode === 'description') {
+        // 🆕 检查当前段落是否有 bullet 属性
+        let paragraphProps: any = {};
+        try {
+          const [paragraphNode] = Editor.nodes(editor, {
+            match: n => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+          });
+          if (paragraphNode) {
+            const para = paragraphNode[0] as any;
+            if (para.bullet) {
+              paragraphProps = { bullet: true, bulletLevel: para.bulletLevel || 0 };
+            }
+          }
+        } catch (e) {
+          // 忽略错误
+        }
+        
         newLine = {
           type: 'event-line',
           eventId: eventLine.eventId, // 🔧 共享同一个 eventId
           lineId: `${eventLine.lineId}-${Date.now()}`, // 生成唯一 lineId
           level: eventLine.level,
           mode: 'description',
-          children: [{ type: 'paragraph', children: [{ text: '' }] }],
+          children: [{ type: 'paragraph', ...paragraphProps, children: [{ text: '' }] }],
           metadata: eventLine.metadata, // 继承 metadata
         };
         
