@@ -311,10 +311,11 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
   useEffect(() => {
     if (!eventTime || eventTime.loading) return;
     
-    // 🔧 修复：直接使用 dayjs 解析日期字符串，避免 parseLocalTimeString 的时区转换
-    // 原因：eventTime.start/end 是 'YYYY-MM-DD HH:mm:ss' 格式，不需要额外转换
-    const start = eventTime.start ? dayjs(eventTime.start) : null;
-    const end = eventTime.end ? dayjs(eventTime.end) : start;
+    // 🔧 修复：使用 parseLocalTimeString 解析已存储的时间字符串，避免 dayjs 直接解析触发时区转换
+    // 原因：eventTime.start/end 是 'YYYY-MM-DD HH:mm:ss' 格式（本地时间，空格分隔）
+    // parseLocalTimeString 会手动构造 Date 对象（new Date(y,m,d,h,min,s)），绕过 ISO 8601 解析器
+    const start = eventTime.start ? dayjs(parseLocalTimeString(eventTime.start)) : null;
+    const end = eventTime.end ? dayjs(parseLocalTimeString(eventTime.end)) : start;
     
     dbg('picker', '🔄 从 TimeHub 快照初始化 Picker', { 
       eventId, 
