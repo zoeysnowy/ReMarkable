@@ -1,14 +1,99 @@
 # Time Picker and Display 时间选择与显示模块 PRD
 
-> **文档版本**: v2.7.4  
+> **文档版本**: v2.8.0  
 > **创建日期**: 2025-01-15  
-> **最后更新**: 2025-11-13  
+> **最后更新**: 2025-11-14  
 > **文档状态**: ✅ 完整版本  
 > **核心组件**: 
 > - `src/components/FloatingToolbar/pickers/UnifiedDateTimePicker.tsx` (时间选择器)
 > - `src/utils/relativeDateFormatter.ts` (时间显示)
 > - `src/components/PlanManager.tsx` (计划时间显示)
 > - `src/utils/naturalLanguageTimeDictionary.ts` (自然语言词典) 🆕
+
+---
+
+## 🚨 极其重要：日期计算禁止使用 dayjs
+
+**【血的教训】修复 "下周二" bug 花费2小时 → 改用纯 Date 5分钟解决**
+
+### ❌ 禁止行为
+
+```typescript
+// ❌ 禁止！dayjs 的各种陷阱会导致日期偏移
+const nextTuesday = dayjs(ref).add(1, 'week').day(2);  // 错误！
+const monthEnd = dayjs(ref).endOf('month');             // 错误！
+const startOfWeek = dayjs().startOf('week');            // 错误！周日/周一混淆
+
+// ❌ 禁止！dayjs(Date) 会触发 UTC 转换
+const d = dayjs(new Date());  // UTC+8 00:00 变成 UTC 16:00 前一天
+
+// ❌ 禁止！.day() 方法行为诡异
+dayjs().add(1, 'week').day(2);  // 可能回退到本周二而非下周二
+```
+
+### ✅ 正确做法：使用纯 Date API
+
+```typescript
+// ✅ 正确！下周X的计算
+function getNextWeekDay(ref: Date, targetDay: number): Date {
+  const current = new Date(ref);
+  const currentDay = current.getDay(); // 0=周日, 1=周一...6=周六
+  const currentDayMonBased = currentDay === 0 ? 7 : currentDay;
+  const daysToAdd = 7 - currentDayMonBased + targetDay;
+  const result = new Date(current);
+  result.setDate(current.getDate() + daysToAdd);
+  result.setHours(0, 0, 0, 0);
+  return result;
+}
+
+// ✅ 正确！月底
+const monthEnd = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
+
+// ✅ 正确！年初
+const yearStart = new Date(ref.getFullYear(), 0, 1);
+
+// ✅ 正确！加N天
+const target = new Date(ref);
+target.setDate(target.getDate() + 3);
+target.setHours(0, 0, 0, 0);
+```
+
+### ⚠️ dayjs 仅用于最终显示格式化
+
+```typescript
+// ✅ 唯一允许：将 Date 转换为 dayjs 用于返回值
+function dateToDayjs(date: Date): Dayjs {
+  return dayjs()
+    .year(date.getFullYear())
+    .month(date.getMonth())
+    .date(date.getDate())
+    .hour(date.getHours())
+    .minute(date.getMinutes())
+    .second(date.getSeconds())
+    .millisecond(date.getMilliseconds());
+}
+
+// 使用示例
+'下周二': (ref = new Date()) => {
+  const targetDate = getNextWeekDay(ref, 2);  // ✅ 纯 Date 计算
+  return {
+    date: dateToDayjs(targetDate),  // ✅ 仅用于返回格式
+    displayHint: '下周二',
+    isFuzzyDate: false
+  };
+}
+```
+
+**为什么 dayjs 危险**:
+1. `.startOf('week')` 默认周日开始，与中国习惯（周一）冲突
+2. `.day(N)` 可能回退而非前进（如周三调用 `.day(2)` 会回到周二）
+3. `dayjs(Date)` 会触发 UTC 转换导致日期偏移
+4. 代码难以理解，debug 成本极高
+
+**案例**：
+- 问题：输入"下周二下午3点"，选中的是周一
+- 原因：`dayjs().startOf('week').add(1,'week').day(2)` 逻辑错误
+- 修复：5分钟用纯 Date 重写，立即解决 ✅
 
 ---
 
@@ -50,6 +135,68 @@ TimeHoverCard({ startTime: startTimeStr })  // ✅ 使用已有的字符串变�
 ---
 
 ## 📝 更新日志
+
+### v2.8.0 (2025-11-14) - 🚨 彻底移除 dayjs 日期计算依赖
+
+**重大重构**:
+
+1. **🔧 移除 dayjs 参与日期计算** (修复2小时bug只需5分钟):
+   - **问题**: "下周二下午3点" 显示周二但选中周一（日期偏移1天）
+   - **根本原因**: 
+     - `dayjs().startOf('week')` 默认周日开始 vs 配置周一开始
+     - `.day(N)` 方法可能回退而非前进
+     - `dayjs(Date)` 触发 UTC 转换
+   - **解决方案**: 
+     ```typescript
+     // ❌ 旧代码（dayjs 陷阱多）
+     const nextTue = dayjs(ref).add(1, 'week').day(2);  // 错误！
+     
+     // ✅ 新代码（纯 Date，简单可靠）
+     function getNextWeekDay(ref: Date, targetDay: number): Date {
+       const current = new Date(ref);
+       const currentDay = current.getDay();
+       const currentDayMonBased = currentDay === 0 ? 7 : currentDay;
+       const daysToAdd = 7 - currentDayMonBased + targetDay;
+       const result = new Date(current);
+       result.setDate(current.getDate() + daysToAdd);
+       result.setHours(0, 0, 0, 0);
+       return result;
+     }
+     ```
+   - **修复词条** (全部改用纯 Date):
+     - 下周一~下周日: `getNextWeekDay(ref, 1-7)`
+     - 大后天/大前天: `setDate(getDate() ± 3)`
+     - 月底/月初: `new Date(year, month+1, 0)`
+     - 年底/年初: `new Date(year, 11/0, 31/1)`
+     - 明年/后年/去年: `getFullYear() ± N`
+   - **dayjs 唯一用途**: `dateToDayjs()` 用于最终返回值转换
+
+2. **📅 修复日历一周起始日不一致**:
+   - **问题**: 
+     - 配置 `weekStart: 1`（周一）
+     - 但表头是 `['日','一','二'...]`
+     - `generateCalendar()` 用 `.startOf('week')`（周日）
+     - 导致 18号是周二但显示在周一列
+   - **修复**:
+     ```typescript
+     // ✅ 表头改为周一开始
+     ['一', '二', '三', '四', '五', '六', '日']
+     
+     // ✅ 手动计算周一/周日边界
+     const startDay = startOfMonth.day();
+     const daysToStartMonday = startDay === 0 ? 6 : startDay - 1;
+     const startOfWeek = startOfMonth.subtract(daysToStartMonday, 'day');
+     ```
+
+**影响范围**:
+- `naturalLanguageTimeDictionary.ts`: 移除所有 `safelyConvertDateToDayjs()` 调用
+- `UnifiedDateTimePicker.tsx`: 修复 `generateCalendar()` 逻辑
+- 所有日期计算改用原生 Date API
+
+**测试验证**:
+- ✅ "下周二下午3点" → 2025-11-18（周二）15:00
+- ✅ 日历 18号 显示在"二"（周二）列
+- ✅ 所有词条计算正确
 
 ### v2.7.4 (2025-11-13) - 截止时间关键词支持 + timeFieldState 优化 ⏰
 
@@ -1251,8 +1398,13 @@ setStartTime  setStartTime(null)
 useEffect(() => {
   if (!eventTime || eventTime.loading) return;
   
-  const start = eventTime.start ? dayjs(eventTime.start.replace(' ', 'T')) : null;
-  const end = eventTime.end ? dayjs(eventTime.end.replace(' ', 'T')) : start;
+  // ✅ 正确：使用 parseLocalTimeString 解析本地时间字符串
+  const start = eventTime.start ? parseLocalTimeString(eventTime.start) : null;
+  const end = eventTime.end ? parseLocalTimeString(eventTime.end) : start;
+  
+  // ❌ 错误（旧代码）：
+  // const start = eventTime.start ? dayjs(eventTime.start.replace(' ', 'T')) : null;
+  // 问题：replace(' ', 'T') 会导致 dayjs 解析为 ISO 格式，可能触发时区问题
   
   dbg('picker', '🔄 从 TimeHub 快照初始化 Picker', { 
     eventId, 
@@ -1298,12 +1450,19 @@ useEffect(() => {
   if (eventTime && (eventTime.start || eventTime.end)) return; // 已有 TimeHub 数据
   if (!initialStart) return; // 无初始值
   
-  const start = dayjs(typeof initialStart === 'string' 
-    ? initialStart.replace(' ', 'T') 
-    : initialStart);
+  // ✅ 正确：处理字符串和 Date 对象
+  const start = typeof initialStart === 'string'
+    ? parseLocalTimeString(initialStart)
+    : dayjs(initialStart);
+    
   const end = initialEnd
-    ? dayjs(typeof initialEnd === 'string' ? initialEnd.replace(' ', 'T') : initialEnd)
+    ? (typeof initialEnd === 'string' ? parseLocalTimeString(initialEnd) : dayjs(initialEnd))
     : start;
+  
+  // ❌ 错误（旧代码）：
+  // const start = dayjs(typeof initialStart === 'string' 
+  //   ? initialStart.replace(' ', 'T') 
+  //   : initialStart);
   
   dbg('picker', '🔄 使用 initialStart/initialEnd 初始化 Picker (无TimeHub快照)', { 
     eventId, 
@@ -1633,34 +1792,64 @@ interface TimePeriod {
 
 ```typescript
 export const DATE_RANGE_DICTIONARY: Record<string, (ref?: Date) => DateRange> = {
+  // ⚠️ 注意：日期范围计算使用纯 Date API，最后才转为 dayjs
+  
   // 周相关
   '周末': (ref = new Date()) => {
-    const now = dayjs(ref);
-    const saturday = now.day(6);  // 计算本周六
+    // ✅ 正确：使用纯 Date 计算
+    const saturday = new Date(ref);
+    const currentDay = saturday.getDay();
+    const daysToSaturday = currentDay === 0 ? 6 : (6 - currentDay);
+    saturday.setDate(saturday.getDate() + daysToSaturday);
+    saturday.setHours(0, 0, 0, 0);
+    
+    const sunday = new Date(saturday);
+    sunday.setDate(sunday.getDate() + 1);
+    sunday.setHours(23, 59, 59, 999);
+    
     return {
-      start: saturday.startOf('day'),
-      end: saturday.add(1, 'day').endOf('day'),
+      start: dateToDayjs(saturday),
+      end: dateToDayjs(sunday),
       displayHint: '周末',
       isFuzzyDate: true
     };
   },
   
   '周中': (ref) => {
-    const tuesday = dayjs(ref).day(2);
-    const thursday = tuesday.add(2, 'day');
+    // ✅ 正确：使用纯 Date 计算周二到周四
+    const tuesday = new Date(ref);
+    const currentDay = tuesday.getDay();
+    const daysToTuesday = currentDay === 0 ? 2 : (2 - currentDay + 7) % 7;
+    tuesday.setDate(tuesday.getDate() + daysToTuesday);
+    tuesday.setHours(0, 0, 0, 0);
+    
+    const thursday = new Date(tuesday);
+    thursday.setDate(thursday.getDate() + 2);
+    thursday.setHours(23, 59, 59, 999);
+    
     return {
-      start: tuesday.startOf('day'),
-      end: thursday.endOf('day'),
+      start: dateToDayjs(tuesday),
+      end: dateToDayjs(thursday),
       displayHint: '周中',
       isFuzzyDate: true
     };
   },
   
   '本周': (ref) => {
-    const now = dayjs(ref);
+    // ✅ 正确：手动计算本周边界（周一到周日）
+    const monday = new Date(ref);
+    const currentDay = monday.getDay();
+    const daysToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+    monday.setDate(monday.getDate() + daysToMonday);
+    monday.setHours(0, 0, 0, 0);
+    
+    const sunday = new Date(monday);
+    sunday.setDate(sunday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+    
     return {
-      start: now.startOf('week'),
-      end: now.endOf('week'),
+      start: dateToDayjs(monday),
+      end: dateToDayjs(sunday),
       displayHint: '本周',
       isFuzzyDate: true
     };
@@ -1723,11 +1912,18 @@ interface DateRange {
 ```typescript
 export const POINT_IN_TIME_DICTIONARY: Record<string, (ref?: Date) => PointInTime> = {
   // 相对天数
-  '大后天': (ref = new Date()) => ({
-    date: dayjs(ref).add(3, 'day').startOf('day'),
-    displayHint: '大后天',
-    isFuzzyDate: false
-  }),
+  '大后天': (ref = new Date()) => {
+    // ✅ 正确：使用纯 Date 计算
+    const target = new Date(ref);
+    target.setDate(target.getDate() + 3);
+    target.setHours(0, 0, 0, 0);
+    
+    return {
+      date: dateToDayjs(target),
+      displayHint: '大后天',
+      isFuzzyDate: false
+    };
+  },
   
   '3 days later': (ref) => {
     const result = POINT_IN_TIME_DICTIONARY['大后天'](ref);
@@ -1735,11 +1931,19 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (ref?: Date) => PointInTim
   },
   
   // 月份相关
-  '月底': (ref) => ({
-    date: dayjs(ref).endOf('month').startOf('day'),
-    displayHint: '月底',
-    isFuzzyDate: false
-  }),
+  '月底': (ref) => {
+    // ✅ 正确：使用纯 Date 计算月底
+    const year = ref.getFullYear();
+    const month = ref.getMonth();
+    const lastDay = new Date(year, month + 1, 0);  // 下个月的第0天 = 本月最后一天
+    lastDay.setHours(0, 0, 0, 0);
+    
+    return {
+      date: dateToDayjs(lastDay),
+      displayHint: '月底',
+      isFuzzyDate: false
+    };
+  },
   
   // 别名系统
   'eom': (ref) => {
@@ -1753,26 +1957,67 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (ref?: Date) => PointInTim
   '月末': (ref) => POINT_IN_TIME_DICTIONARY['月底'](ref),
   
   // 年份相关
-  '年底': (ref) => ({ date: dayjs(ref).endOf('year'), ... }),
+  '年底': (ref) => {
+    // ✅ 正确：使用纯 Date 计算年底
+    const lastDay = new Date(ref.getFullYear(), 11, 31);  // 12月31日
+    lastDay.setHours(0, 0, 0, 0);
+    return { date: dateToDayjs(lastDay), displayHint: '年底', isFuzzyDate: false };
+  },
   'eoy': (ref) => POINT_IN_TIME_DICTIONARY['年底'](ref),
-  '明年': (ref) => ({ date: dayjs(ref).add(1, 'year').startOf('year'), ... }),
+  
+  '明年': (ref) => {
+    // ✅ 正确：使用纯 Date 计算明年第一天
+    const firstDay = new Date(ref.getFullYear() + 1, 0, 1);
+    firstDay.setHours(0, 0, 0, 0);
+    return { date: dateToDayjs(firstDay), displayHint: '明年', isFuzzyDate: false };
+  },
   'next year': (ref) => POINT_IN_TIME_DICTIONARY['明年'](ref),
   
   // 特定日期
-  '周报日': (ref) => ({ date: dayjs(ref).day(5), displayHint: '周报日' }),  // 周五
-  '下周一': (ref) => ({ date: dayjs(ref).add(1, 'week').day(1), ... }),
+  '周报日': (ref) => {
+    // ✅ 正确：使用 getNextWeekDay 获取本周五
+    const friday = new Date(ref);
+    const currentDay = friday.getDay();
+    const daysToFriday = currentDay === 0 ? 5 : (5 - currentDay + 7) % 7;
+    friday.setDate(friday.getDate() + daysToFriday);
+    friday.setHours(0, 0, 0, 0);
+    return { date: dateToDayjs(friday), displayHint: '周报日', isFuzzyDate: false };
+  },
+  
+  '下周一': (ref) => {
+    // ✅ 正确：使用 getNextWeekDay 获取下周一
+    const result = new Date(ref);
+    const currentDay = result.getDay();
+    const daysToAdd = 7 + (1 - currentDay + 7) % 7;
+    result.setDate(result.getDate() + daysToAdd);
+    result.setHours(0, 0, 0, 0);
+    return { date: dateToDayjs(result), displayHint: '下周一', isFuzzyDate: false };
+  },
   'next monday': (ref) => POINT_IN_TIME_DICTIONARY['下周一'](ref),
   
-  // 季度相关
-  '季末': (ref) => ({
-    date: dayjs(ref).quarter(dayjs(ref).quarter()).endOf('quarter'),
-    displayHint: '季末',
-    isFuzzyDate: false
-  }),
+  // 季度相关（注：dayjs 默认没有 quarter 方法，需要手动计算）
+  '季末': (ref) => {
+    // ✅ 正确：手动计算季度最后一天
+    const month = ref.getMonth();
+    const quarter = Math.floor(month / 3);  // 0=Q1, 1=Q2, 2=Q3, 3=Q4
+    const lastMonthOfQuarter = (quarter + 1) * 3 - 1;  // 2, 5, 8, 11
+    const lastDay = new Date(ref.getFullYear(), lastMonthOfQuarter + 1, 0);
+    lastDay.setHours(0, 0, 0, 0);
+    return {
+      date: dateToDayjs(lastDay),
+      displayHint: '季末',
+      isFuzzyDate: false
+    };
+  },
   'eoq': (ref) => POINT_IN_TIME_DICTIONARY['季末'](ref),
   
-  // 截止日期
-  'ddl': (ref) => ({ date: dayjs(ref).endOf('day'), displayHint: 'ddl' }),
+  // 截止日期（今天的最后一刻）
+  'ddl': (ref) => {
+    // ✅ 正确：今天 23:59:59
+    const endOfDay = new Date(ref);
+    endOfDay.setHours(23, 59, 59, 999);
+    return { date: dateToDayjs(endOfDay), displayHint: 'ddl', isFuzzyDate: false };
+  },
   'deadline': (ref) => POINT_IN_TIME_DICTIONARY['ddl'](ref),
   'due': (ref) => POINT_IN_TIME_DICTIONARY['ddl'](ref),
   '死线': (ref) => POINT_IN_TIME_DICTIONARY['ddl'](ref),
@@ -1842,10 +2087,17 @@ export function parseNaturalLanguage(input: string, referenceDate: Date = new Da
   // 3️⃣ 只匹配时间段（应用到今天）
   for (const [timeKey, timePeriod] of Object.entries(TIME_PERIOD_DICTIONARY)) {
     if (trimmedInput.includes(timeKey.toLowerCase())) {
+      // ✅ 正确：使用纯 Date 计算今天的边界
+      const startOfDay = new Date(referenceDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      
+      const endOfDay = new Date(referenceDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      
       return {
         dateRange: {
-          start: dayjs(referenceDate).startOf('day'),
-          end: dayjs(referenceDate).endOf('day'),
+          start: dateToDayjs(startOfDay),
+          end: dateToDayjs(endOfDay),
           displayHint: '',
           isFuzzyDate: false
         },
@@ -1914,10 +2166,18 @@ if (input.includes("周末")) {
 **设计模式**:
 ```typescript
 // 核心词汇
-'月底': (ref) => ({
-  date: dayjs(ref).endOf('month'),
-  displayHint: '月底'
-}),
+'月底': (ref) => {
+  // ✅ 正确：使用纯 Date 计算
+  const year = ref.getFullYear();
+  const month = ref.getMonth();
+  const lastDay = new Date(year, month + 1, 0);
+  lastDay.setHours(0, 0, 0, 0);
+  
+  return {
+    date: dateToDayjs(lastDay),
+    displayHint: '月底'
+  };
+},
 
 // 英文别名（引用核心词汇，覆盖 displayHint）
 'end of month': (ref) => {
@@ -1968,24 +2228,44 @@ if (input.includes("周末")) {
 ```typescript
 // 在 DATE_RANGE_DICTIONARY 添加
 '下下周': (ref = new Date()) => {
-  const now = dayjs(ref);
+  // ✅ 正确：使用纯 Date 计算下下周的边界
+  const monday = new Date(ref);
+  const currentDay = monday.getDay();
+  const daysToMonday = currentDay === 0 ? 1 : (8 - currentDay);
+  monday.setDate(monday.getDate() + daysToMonday + 7);  // 再加一周
+  monday.setHours(0, 0, 0, 0);
+  
+  const sunday = new Date(monday);
+  sunday.setDate(sunday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+  
   return {
-    start: now.add(2, 'week').startOf('week'),
-    end: now.add(2, 'week').endOf('week'),
+    start: dateToDayjs(monday),
+    end: dateToDayjs(sunday),
     displayHint: '下下周',
     isFuzzyDate: true
   };
 },
+
+// ❌ 错误（旧代码）：
+// const now = dayjs(ref);
+// return {
+//   start: now.add(2, 'week').startOf('week'),  // 周日开始！
+//   end: now.add(2, 'week').endOf('week'),
+//   ...
+// };
 ```
 
 **添加新的精确时间点**:
 ```typescript
 // 在 POINT_IN_TIME_DICTIONARY 添加
 '发薪日': (ref = new Date()) => {
-  const now = dayjs(ref);
-  const salaryDay = now.date(25);  // 假设每月25号发薪
+  // ✅ 正确：使用纯 Date 设置月份中的某一天
+  const salaryDay = new Date(ref.getFullYear(), ref.getMonth(), 25);
+  salaryDay.setHours(0, 0, 0, 0);
+  
   return {
-    date: salaryDay,
+    date: dateToDayjs(salaryDay),
     displayHint: '发薪日',
     isFuzzyDate: false
   };
@@ -2572,7 +2852,15 @@ export const ADJUSTED_WORKDAYS_2025 = {
 
 // 判断是否为工作日（考虑调休）
 export function isWorkday(date: Date): boolean {
-  const dateStr = date.toISOString().split('T')[0];
+  // ✅ 正确：使用 formatDate 获取本地日期字符串
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const dateStr = `${year}-${month}-${day}`;
+  
+  // ❌ 错误（旧代码）：
+  // const dateStr = date.toISOString().split('T')[0];
+  // 问题：toISOString() 转换为 UTC，可能导致日期偏移
   
   // 检查是否为调班日
   if (ADJUSTED_WORKDAYS_2025.workdays.includes(dateStr)) {
@@ -2912,24 +3200,46 @@ import { HolidayInfo } from './types';
  * 获取某年的母亲节（5月第二个周日）
  */
 function getMothersDay(year: number): Date {
-  const may = dayjs(`${year}-05-01`);
-  let firstSunday = may.day(0); // 第一个周日
-  if (firstSunday.month() !== 4) {
-    firstSunday = firstSunday.add(7, 'day');
+  // ✅ 正确：使用纯 Date 计算5月第二个周日
+  const may1 = new Date(year, 4, 1);  // 5月第一天
+  const firstDay = may1.getDay();  // 0=周日, 1=周一...
+  
+  // 计算第一个周日
+  let firstSunday;
+  if (firstDay === 0) {
+    firstSunday = 1;  // 5月1日就是周日
+  } else {
+    firstSunday = 7 - firstDay + 1;  // 下一个周日
   }
-  return firstSunday.add(7, 'day').toDate(); // 第二个周日
+  
+  // 第二个周日 = 第一个周日 + 7
+  const mothersDay = new Date(year, 4, firstSunday + 7);
+  return mothersDay;
+  
+  // ❌ 错误（旧代码）：
+  // const may = dayjs(`${year}-05-01`);
+  // let firstSunday = may.day(0);  // .day() 方法可能回退！
 }
 
 /**
  * 获取某年的父亲节（6月第三个周日）
  */
 function getFathersDay(year: number): Date {
-  const june = dayjs(`${year}-06-01`);
-  let firstSunday = june.day(0);
-  if (firstSunday.month() !== 5) {
-    firstSunday = firstSunday.add(7, 'day');
+  // ✅ 正确：使用纯 Date 计算6月第三个周日
+  const june1 = new Date(year, 5, 1);  // 6月第一天
+  const firstDay = june1.getDay();
+  
+  let firstSunday;
+  if (firstDay === 0) {
+    firstSunday = 1;
+  } else {
+    firstSunday = 7 - firstDay + 1;
   }
-  return firstSunday.add(14, 'day').toDate(); // 第三个周日
+  
+  // 第三个周日 = 第一个周日 + 14
+  const fathersDay = new Date(year, 5, firstSunday + 14);
+  return fathersDay;
+}
 }
 
 /**
@@ -3109,9 +3419,10 @@ class HolidayService {
    * 判断某个日期是否为休息日（包括周末和法定假日）
    */
   isRestDay(date: Date): boolean {
+    // ✅ 正确：这里只是读取属性，不做计算，可以使用 dayjs
     const year = dayjs(date).year();
     const yearData = this.getYearData(year);
-    const dayOfWeek = dayjs(date).day();
+    const dayOfWeek = date.getDay();  // 使用原生 Date.getDay() 更好
 
     // 如果是调休工作日，则不是休息日
     if (yearData && isAdjustedWorkday(date, yearData)) {
@@ -4087,6 +4398,8 @@ function UnifiedDateTimePicker() {
     const day = date.getDate();
     const info = visibleMonthHolidays.get(day);
     
+    // 注意：这里的 toISOString() 仅用作 React key，不涉及业务逻辑
+    // 如果需要日期字符串用于比较，应使用格式化函数而非 toISOString()
     return (
       <DayCell 
         key={date.toISOString()}

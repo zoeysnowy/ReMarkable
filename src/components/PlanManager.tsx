@@ -902,6 +902,44 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             }
           }
           break;
+        case 'increaseBulletLevel':
+          // 🆕 增加 bullet 层级 (Tab 键)
+          const [paraIncrease] = Editor.nodes(editor, {
+            match: (n: any) => !Editor.isEditor(n) && Element.isElement(n) && (n as any).type === 'paragraph',
+          });
+          
+          if (paraIncrease) {
+            const [node] = paraIncrease;
+            const para = node as any;
+            
+            if (para.bullet) {
+              const currentLevel = para.bulletLevel || 0;
+              const newLevel = Math.min(currentLevel + 1, 4); // 最多 5 层 (0-4)
+              Transforms.setNodes(editor, { bulletLevel: newLevel } as any);
+            }
+          }
+          break;
+        case 'decreaseBulletLevel':
+          // 🆕 减少 bullet 层级 (Shift+Tab 键)
+          const [paraDecrease] = Editor.nodes(editor, {
+            match: (n: any) => !Editor.isEditor(n) && Element.isElement(n) && (n as any).type === 'paragraph',
+          });
+          
+          if (paraDecrease) {
+            const [node] = paraDecrease;
+            const para = node as any;
+            
+            if (para.bullet) {
+              const currentLevel = para.bulletLevel || 0;
+              if (currentLevel > 0) {
+                Transforms.setNodes(editor, { bulletLevel: currentLevel - 1 } as any);
+              } else {
+                // Level 0 再按 Shift+Tab 就取消 bullet
+                Transforms.setNodes(editor, { bullet: undefined, bulletLevel: undefined } as any);
+              }
+            }
+          }
+          break;
         default:
           break;
       }
@@ -1914,7 +1952,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             
             if (!matchedLine || !matchedLine.data) {
               // 极端情况：渲染默认勾选框（通常不会到这里，因为 immediateStateSync）
-              if (line.mode === 'description') return null;
+              if (line.mode === 'eventlog') return null;
               
               return (
                 <input

@@ -4,7 +4,7 @@
 
 .unified-event-line {
   position: relative;
-  padding: 4px 0;
+  padding: 4px 0; /* Title 模式的默认间距 */
   transition: background-color 0.15s;
 }
 
@@ -17,7 +17,7 @@
   font-size: 0.9em;
   font-style: italic;
   line-height: 1.4; /* 🔧 紧凑行距，仅用于 eventlog */
-  padding: 2px 0; /* 🔧 减少上下间距 */
+  padding: 1px 0; /* 🔧 eventlog 模式的紧凑间距，覆盖默认的 4px */
 }
 
 /* 🆕 eventlog 模式下的段落间距更紧凑 */
