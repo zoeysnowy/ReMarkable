@@ -333,31 +333,38 @@ function App() {
 
   // 🔧 Issue #12: 支持从任何事件启动关联的计时器
   // 全局计时器管理函数
-  const handleTimerStart = (tagIds: string | string[], parentEventId?: string) => {
-    // 支持旧版单个 tagId 参数的兼容性
-    const tagIdArray = Array.isArray(tagIds) ? tagIds : [tagIds];
-    const tag = TagService.getFlatTags().find(t => t.id === tagIdArray[0]);
-    if (!tag) {
-      AppLogger.error('标签未找到', tagIdArray[0]);
-      return;
+  const handleTimerStart = (tagIds?: string | string[], parentEventId?: string) => {
+    // 支持旧版单个 tagId 参数的兼容性，也支持空标签
+    const tagIdArray = tagIds ? (Array.isArray(tagIds) ? tagIds : [tagIds]) : [];
+    
+    // 🆕 支持无标签计时：如果没有标签，使用默认值
+    let tag = null;
+    if (tagIdArray.length > 0) {
+      tag = TagService.getFlatTags().find(t => t.id === tagIdArray[0]);
+      if (!tag) {
+        AppLogger.warn('标签未找到，使用无标签计时', tagIdArray[0]);
+      }
     }
 
-    AppLogger.log('🏷️ [Timer] 开始计时，标签信息:', {
+    AppLogger.log('🏷️ [Timer] 开始计时', tag ? {
       id: tag.id,
       name: tag.name,
       emoji: tag.emoji,
       color: tag.color,
-      parentEventId // 🆕 关联的父事件 ID
+      parentEventId
+    } : {
+      noTag: true,
+      parentEventId
     });
 
       const startTime = Date.now();
       const timerState = {
         isRunning: true,
-        tagId: tagIdArray[0], // 🔧 向后兼容：第一个标签ID
-        tagIds: tagIdArray, // 🆕 完整的标签数组
-        tagName: tag.name,
-        tagEmoji: tag.emoji, // 传递标签emoji
-        tagColor: tag.color, // 传递标签颜色
+        tagId: tagIdArray[0] || '', // 🔧 向后兼容：第一个标签ID，无标签时为空字符串
+        tagIds: tagIdArray, // 🆕 完整的标签数组（可能为空）
+        tagName: tag?.name || '未分类',
+        tagEmoji: tag?.emoji || '⏱️', // 无标签时使用默认emoji
+        tagColor: tag?.color || '#9CA3AF', // 无标签时使用灰色
         startTime: startTime,
         originalStartTime: startTime, // 保存真正的开始时间
         elapsedTime: 0,
@@ -367,7 +374,7 @@ function App() {
       setGlobalTimer(timerState);
       // 💾 持久化到 localStorage，供 Widget 读取
       localStorage.setItem('remarkable-global-timer', JSON.stringify(timerState));
-      AppLogger.log('✅ 开始计时', tag.name, parentEventId ? `(关联事件: ${parentEventId})` : '');
+      AppLogger.log('✅ 开始计时', tag?.name || '未分类', parentEventId ? `(关联事件: ${parentEventId})` : '');
   };
 
   const handleTimerPause = () => {
@@ -526,10 +533,13 @@ function App() {
 
     // 🎯 自动创建日历事件
     try {
-      const tag = TagService.getFlatTags().find(t => t.id === globalTimer.tagIds[0]);
-      if (!tag) {
-        AppLogger.error('标签未找到', globalTimer.tagIds[0]);
-        return;
+      // 🆕 支持无标签计时：如果没有标签，使用默认值
+      let tag = null;
+      if (globalTimer.tagIds && globalTimer.tagIds.length > 0) {
+        tag = TagService.getFlatTags().find(t => t.id === globalTimer.tagIds[0]);
+        if (!tag) {
+          AppLogger.warn('标签未找到，使用默认值创建事件', globalTimer.tagIds[0]);
+        }
       }
 
       // 🔧 使用保存的事件ID（已在 handleTimerStart 或 handleTimerEditSave 中生成）
@@ -541,8 +551,8 @@ function App() {
       const existingEvent = existingEvents.find((e: Event) => e.id === timerEventId);
       
       // 创建或更新事件，使用用户自定义的标题和emoji（如果有）
-      const eventTitle = globalTimer.eventTitle || (tag.emoji ? `${tag.emoji} ${tag.name}` : tag.name);
-      const eventEmoji = globalTimer.eventEmoji || tag.emoji;
+      const eventTitle = globalTimer.eventTitle || (tag?.emoji ? `${tag.emoji} ${tag.name}` : globalTimer.tagName);
+      const eventEmoji = globalTimer.eventEmoji || tag?.emoji || '⏱️';
       
       // 🔧 [BUG FIX] 生成计时签名，但不覆盖用户的 description
       const timerSignature = `[⏱️ 计时 ${Math.floor(totalElapsed / 60000)} 分钟]`;
@@ -565,8 +575,8 @@ function App() {
         title: eventTitle, // 🔧 移除"[专注中]"标记
         startTime: formatTimeForStorage(startTime),
         endTime: formatTimeForStorage(new Date(startTime.getTime() + totalElapsed)),
-        tags: globalTimer.tagIds, // 使用数组格式
-        calendarIds: (tag as any).calendarId ? [(tag as any).calendarId] : [], // 转换为数组格式
+        tags: globalTimer.tagIds || [], // 使用数组格式（可能为空）
+        calendarIds: (tag as any)?.calendarId ? [(tag as any).calendarId] : [], // 转换为数组格式
         location: existingEvent?.location || '', // 🔧 保留location
         description: finalDescription, // 🔧 保留用户内容 + 追加计时签名
         isAllDay: false,
@@ -875,8 +885,11 @@ function App() {
     // 保存 Timer 事件✅localStorage 的函✅
     const saveTimerEvent = async () => {
       try {
-        const tag = TagService.getFlatTags().find(t => t.id === globalTimer.tagIds[0]);
-        if (!tag) return;
+        // 🆕 支持无标签计时
+        let tag = null;
+        if (globalTimer.tagIds && globalTimer.tagIds.length > 0) {
+          tag = TagService.getFlatTags().find(t => t.id === globalTimer.tagIds[0]);
+        }
 
         const now = Date.now();
         const totalElapsed = globalTimer.elapsedTime + (now - globalTimer.startTime);
@@ -886,7 +899,7 @@ function App() {
         // 使用保存的事件ID
         const timerEventId = globalTimer.eventId || `timer-${startTime.getTime()}-${Math.random().toString(36).substr(2, 9)}`;
         
-        const eventTitle = globalTimer.eventTitle || (tag.emoji ? `${tag.emoji} ${tag.name}` : tag.name);
+        const eventTitle = globalTimer.eventTitle || (tag?.emoji ? `${tag.emoji} ${tag.name}` : globalTimer.tagName);
         
         // 🔧 [BUG FIX] 读取现有事件，保留用户的 description
         const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
@@ -901,7 +914,7 @@ function App() {
           location: existingEvent?.location || '', // 🔧 保留location
           description: existingEvent?.description || '计时中的事件', // 🔧 保留用户输入的description
           tags: globalTimer.tagIds, // 使用完整的标签数组，所有标签都能统计到时间
-          calendarIds: (tag as any).calendarId ? [(tag as any).calendarId] : [], // 转换为数组格式
+          calendarIds: tag && (tag as any).calendarId ? [(tag as any).calendarId] : [], // 转换为数组格式，无标签时为空数组
           isAllDay: false,
           createdAt: existingEvent?.createdAt || formatTimeForStorage(startTime),
           updatedAt: formatTimeForStorage(new Date()),
@@ -947,48 +960,51 @@ function App() {
       if (globalTimer && globalTimer.isRunning && !globalTimer.isPaused) {
         // 保存最后一次状态
         try {
-          const tag = TagService.getFlatTags().find(t => t.id === globalTimer.tagIds[0]);
-          if (tag) {
-            const now = Date.now();
-            const totalElapsed = globalTimer.elapsedTime + (now - globalTimer.startTime);
-            const startTime = new Date(globalTimer.originalStartTime || globalTimer.startTime);
-            const endTime = new Date(startTime.getTime() + totalElapsed);
-            const timerEventId = globalTimer.eventId || `timer-${startTime.getTime()}-${Math.random().toString(36).substr(2, 9)}`;
-            
-            const eventTitle = globalTimer.eventTitle || (tag.emoji ? `${tag.emoji} ${tag.name}` : tag.name);
-            
-            // 🔧 [BUG FIX] 读取现有事件，保留用户的 description
-            const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
-            const existingEvents: Event[] = saved ? JSON.parse(saved) : [];
-            const existingEvent = existingEvents.find((e: Event) => e.id === timerEventId);
-            
-            const timerEvent: Event = {
-              id: timerEventId,
-              title: eventTitle, // 保存时移除"[专注中]"标记
-              startTime: formatTimeForStorage(startTime),
-              endTime: formatTimeForStorage(endTime),
-              location: existingEvent?.location || '', // 🔧 保留location
-              description: existingEvent?.description || '计时事件（已自动保存）', // 🔧 保留用户输入的description
-              tags: globalTimer.tagIds, // 使用完整的标签数组
-              calendarIds: (tag as any).calendarId ? [(tag as any).calendarId] : [], // 转换为数组格式
-              isAllDay: false,
-              createdAt: existingEvent?.createdAt || formatTimeForStorage(startTime),
-              updatedAt: formatTimeForStorage(new Date()),
-              syncStatus: 'local-only', // 🔧 [BUG FIX] 页面刷新时仍保持local-only，不同步运行中的Timer
-              remarkableSource: true
-            };
-
-            const eventIndex = existingEvents.findIndex((e: Event) => e.id === timerEventId);
-            
-            if (eventIndex === -1) {
-              existingEvents.push(timerEvent);
-            } else {
-              existingEvents[eventIndex] = timerEvent;
-            }
-            
-            localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
-            AppLogger.log('💾 [Timer] Saved timer event before unload:', timerEventId);
+          // 🆕 支持无标签计时
+          let tag = null;
+          if (globalTimer.tagIds && globalTimer.tagIds.length > 0) {
+            tag = TagService.getFlatTags().find(t => t.id === globalTimer.tagIds[0]);
           }
+
+          const now = Date.now();
+          const totalElapsed = globalTimer.elapsedTime + (now - globalTimer.startTime);
+          const startTime = new Date(globalTimer.originalStartTime || globalTimer.startTime);
+          const endTime = new Date(startTime.getTime() + totalElapsed);
+          const timerEventId = globalTimer.eventId || `timer-${startTime.getTime()}-${Math.random().toString(36).substr(2, 9)}`;
+          
+          const eventTitle = globalTimer.eventTitle || (tag?.emoji ? `${tag.emoji} ${tag.name}` : globalTimer.tagName);
+          
+          // 🔧 [BUG FIX] 读取现有事件，保留用户的 description
+          const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
+          const existingEvents: Event[] = saved ? JSON.parse(saved) : [];
+          const existingEvent = existingEvents.find((e: Event) => e.id === timerEventId);
+          
+          const timerEvent: Event = {
+            id: timerEventId,
+            title: eventTitle, // 保存时移除"[专注中]"标记
+            startTime: formatTimeForStorage(startTime),
+            endTime: formatTimeForStorage(endTime),
+            location: existingEvent?.location || '', // 🔧 保留location
+            description: existingEvent?.description || '计时事件（已自动保存）', // 🔧 保留用户输入的description
+            tags: globalTimer.tagIds, // 使用完整的标签数组
+            calendarIds: tag && (tag as any).calendarId ? [(tag as any).calendarId] : [], // 转换为数组格式，无标签时为空数组
+            isAllDay: false,
+            createdAt: existingEvent?.createdAt || formatTimeForStorage(startTime),
+            updatedAt: formatTimeForStorage(new Date()),
+            syncStatus: 'local-only', // 🔧 [BUG FIX] 页面刷新时仍保持local-only，不同步运行中的Timer
+            remarkableSource: true
+          };
+
+          const eventIndex = existingEvents.findIndex((e: Event) => e.id === timerEventId);
+          
+          if (eventIndex === -1) {
+            existingEvents.push(timerEvent);
+          } else {
+            existingEvents[eventIndex] = timerEvent;
+          }
+          
+          localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
+          AppLogger.log('💾 [Timer] Saved timer event before unload:', timerEventId);
         } catch (error) {
           AppLogger.error('💾 [Timer] Failed to save on unload:', error);
         }

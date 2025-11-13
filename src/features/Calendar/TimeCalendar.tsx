@@ -46,6 +46,10 @@ interface TimeCalendarProps {
     startTime: number;
     originalStartTime: number;
     elapsedTime: number;
+    eventId?: string; // 🆕 事件ID（格式：timer-timestamp-random）
+    eventTitle?: string; // 🆕 事件标题
+    tagName?: string; // 🆕 标签名称（无标签时的默认值）
+    taskTitle?: string; // 🔧 向后兼容
   } | null; // 🆕 添加：当前运行的计时器状态
   className?: string; // 🆕 添加：CSS类名支持
   style?: React.CSSProperties; // 🆕 添加：内联样式支持
@@ -1343,16 +1347,18 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     // 1. 优先使用传入的 globalTimer prop（主应用场景）
     if (globalTimer !== undefined) {
       if (globalTimer && globalTimer.isRunning) {
-        const startTime = globalTimer.originalStartTime || globalTimer.startTime;
-        // 🔧 使用 tagIds 数组（取第一个标签ID，用于生成事件ID）
-        const tagId = globalTimer.tagIds?.[0];
-        if (!tagId) {
-          console.warn('⚠️ [TIMER] globalTimer.tagIds is empty');
-          return null;
+        // 🔧 使用 App.tsx 中保存的 eventId（timestamp + random 格式）
+        const eventId = globalTimer.eventId;
+        if (eventId) {
+          console.log('✅ [TIMER] Using globalTimer.eventId:', eventId);
+          return eventId;
         }
-        const eventId = `timer-${tagId}-${startTime}`;
-        console.log('✅ [TIMER] Using globalTimer prop:', eventId);
-        return eventId;
+        
+        // 降级方案：如果没有 eventId，使用 timestamp 生成（兼容旧数据）
+        const startTime = globalTimer.originalStartTime || globalTimer.startTime;
+        const fallbackId = `timer-${startTime}-${Math.random().toString(36).substr(2, 9)}`;
+        console.warn('⚠️ [TIMER] globalTimer.eventId missing, using fallback:', fallbackId);
+        return fallbackId;
       } else {
         // 主应用中globalTimer存在但不运行，说明timer已停止
         return null;
@@ -1404,14 +1410,14 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     // 1. 优先使用传入的 globalTimer prop（主应用场景）
     if (globalTimer && globalTimer.isRunning) {
       currentTimer = globalTimer;
-      const startTime = globalTimer.originalStartTime || globalTimer.startTime;
-      // 🔧 使用 tagIds 数组（取第一个标签ID，用于生成事件ID）
-      const tagId = globalTimer.tagIds?.[0];
-      if (!tagId) {
-        console.warn('⚠️ [REALTIME TIMER] globalTimer.tagIds is empty');
-        return null;
+      // 🔧 使用 App.tsx 中保存的 eventId（与 saveTimerEvent 一致）
+      timerEventId = globalTimer.eventId;
+      if (!timerEventId) {
+        // 降级方案：使用 timestamp 生成（兼容旧数据）
+        const startTime = globalTimer.originalStartTime || globalTimer.startTime;
+        timerEventId = `timer-${startTime}-${Math.random().toString(36).substr(2, 9)}`;
+        console.warn('⚠️ [REALTIME TIMER] globalTimer.eventId missing, using fallback');
       }
-      timerEventId = `timer-${tagId}-${startTime}`;
     } else {
       // 2. 如果没有 prop，从 localStorage 读取（Widget 场景）
       try {
@@ -1420,14 +1426,13 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           const timer = JSON.parse(saved);
           if (timer && timer.isRunning) {
             currentTimer = timer;
-            const startTime = timer.originalStartTime || timer.startTime;
-            // 🔧 使用 tagIds 数组（取第一个标签ID，用于生成事件ID）
-            const tagId = timer.tagIds?.[0];
-            if (!tagId) {
-              console.warn('⚠️ [REALTIME TIMER] timer.tagIds from localStorage is empty');
-              return null;
+            // 🔧 使用保存的 eventId
+            timerEventId = timer.eventId;
+            if (!timerEventId) {
+              const startTime = timer.originalStartTime || timer.startTime;
+              timerEventId = `timer-${startTime}-${Math.random().toString(36).substr(2, 9)}`;
+              console.warn('⚠️ [REALTIME TIMER] timer.eventId missing, using fallback');
             }
-            timerEventId = `timer-${tagId}-${startTime}`;
           }
         }
       } catch (error) {
@@ -1451,7 +1456,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       endTime: formatTimeForStorage(now), // 当前时间
       location: '',
       description: '实时计时事件',
-      tags: currentTimer.tags || [currentTimer.tagId],
+      tags: currentTimer.tagIds || [], // 🆕 使用 tagIds 数组，支持无标签（空数组）
       isAllDay: false,
       createdAt: formatTimeForStorage(timerStartTime),
       updatedAt: formatTimeForStorage(now),

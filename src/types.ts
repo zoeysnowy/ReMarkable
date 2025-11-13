@@ -133,7 +133,7 @@ export interface Event {
   type?: 'todo' | 'task' | 'event'; // 事件类型（向后兼容）
   
   // 🆕 v1.8: Rich-text description support
-  timelog?: string;      // 富文本日志（HTML 格式，ReMarkable 内部展示用，支持标签、图片等）
+  eventlog?: string;     // 富文本日志（HTML 格式，ReMarkable 内部展示用，支持标签、图片等）
   
   // 🆕 Issue #12: Timer ↔ Plan 集成
   parentEventId?: string;   // 父事件 ID（用于 Timer 子事件关联）

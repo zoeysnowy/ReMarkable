@@ -24,16 +24,16 @@ import {
 export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
   const nodes: EventLineNode[] = [];
   
-  // 🔍 DEBUG: 检查加载时是否包含 timelog
+  // 🔍 DEBUG: 检查加载时是否包含 eventlog
   if (items.length > 0) {
     console.log('[planItemsToSlateNodes] 加载事件:', {
       总数: items.length,
       示例: items.slice(0, 3).map(item => ({
         id: item.id?.substring(0, 30),
         title: item.title?.substring(0, 20),
-        hasTimelog: !!(item.timelog),
+        hasEventlog: !!(item.eventlog),
         hasDescription: !!(item.description),
-        timelogLength: (item.timelog || '').length,
+        eventlogLength: (item.eventlog || '').length,
         descriptionLength: (item.description || '').length,
       }))
     });
@@ -96,8 +96,8 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
     nodes.push(titleNode);
     
     // Description 行（只有存在时才创建）
-    // 🆕 v1.8: 优先使用 timelog (富文本)，回退到 description (纯文本)
-    const descriptionContent = item.timelog || item.description;
+    // 🆕 v1.8: 优先使用 eventlog (富文本)，回退到 description (纯文本)
+    const descriptionContent = item.eventlog || item.description;
     if (descriptionContent) {
       const descNode: EventLineNode = {
         type: 'event-line',
@@ -284,23 +284,23 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
       item.title = fragment ? extractPlainText(fragment) : '';
       item.tags = fragment ? extractTags(fragment) : [];
     } else {
-      // 🆕 v1.8: 描述行保存到 timelog (富文本) 和 description (纯文本)
+      // 🆕 v1.8: 描述行保存到 eventlog (富文本) 和 description (纯文本)
       // 双向同步策略：
-      // 1. 编辑器内容 → timelog (富文本) + description (纯文本)
-      // 2. 如果 timelog 为空但 description 有内容 → 从 description 初始化 timelog
+      // 1. 编辑器内容 → eventlog (富文本) + description (纯文本)
+      // 2. 如果 eventlog 为空但 description 有内容 → 从 description 初始化 eventlog
       // 3. 保持两个字段始终同步（增量更新）
       
-      const newTimelog = html; // 当前编辑器的富文本内容
+      const newEventlog = html; // 当前编辑器的富文本内容
       const newDescription = fragment ? extractPlainText(fragment) : ''; // 当前编辑器的纯文本内容
       
-      item.timelog = newTimelog;
+      item.eventlog = newEventlog;
       item.description = newDescription;
       
       // 🔍 调试日志
       console.log('[slateNodesToPlanItems] Description 保存 (双向同步):', {
         eventId: baseId,
         lineId: node.lineId,
-        timelog: item.timelog,
+        eventlog: item.eventlog,
         description: item.description,
         fragmentLength: fragment?.length || 0
       });
@@ -320,9 +320,9 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
   console.log('[slateNodesToPlanItems] 返回结果:', result.map(item => ({
     id: item.id,
     title: item.title?.substring(0, 20),
-    hasTimelog: !!item.timelog,
+    hasEventlog: !!item.eventlog,
     hasDescription: !!item.description,
-    timelogLength: item.timelog?.length || 0,
+    eventlogLength: item.eventlog?.length || 0,
     descriptionLength: item.description?.length || 0
   })));
   

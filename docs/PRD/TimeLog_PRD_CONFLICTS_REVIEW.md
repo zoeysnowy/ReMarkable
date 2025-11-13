@@ -1,4 +1,4 @@
-# TimeLog PRD 冲突与矛盾审阅文档
+﻿# TimeLog PRD 冲突与矛盾审阅文档
 
 > **说明**: 请在每个问题下方的 `> 👤 Zoey 回复:` 部分添加你的回复/决策
 > 
@@ -21,7 +21,7 @@ type TimeLog = {
   descriptionHtml: string;
   descriptionPlainText: string;
   attachments: Attachment[];
-  versions: TimeLogVersion[];
+  versions: EventLogVersion[];
   syncState: SyncState;
   createdAt: Date;
   updatedAt: Date;
@@ -33,7 +33,7 @@ type TimeLog = {
 interface Event {
   id: string;
   title: string;
-  timelog?: string;  // ❌ 只是简单的 HTML 字符串
+  eventlog?: string;  // ❌ 只是简单的 HTML 字符串
   // ... 其他字段
 }
 ```
@@ -66,14 +66,14 @@ interface Event {
 > 4. 避免事务一致性问题和孤儿记录
 > 
 > **实施方案:**
-> - Event.timelog 字段类型改为对象：`{ content, descriptionHtml, versions, syncState }`
-> - 版本数组存储在 `Event.timelog.versions`（最多保留 50 个）
+> - Event.eventlog 字段类型改为对象：`{ content, descriptionHtml, versions, syncState }`
+> - 版本数组存储在 `Event.eventlog.versions`（最多保留 50 个）
 > - MongoDB 优先（原生支持嵌入文档），SQLite 备选（JSON 序列化）
 > - 旧版本归档策略：50+ 版本时移至单独的 `event_versions` 表
 > 
 > **需修改 PRD 章节:**
-> - Section 1.3: 删除独立 TimeLog 类型，改为 Event.timelog 字段
-> - Section 6: 版本控制基于 Event.timelog.versions
+> - Section 1.3: 删除独立 TimeLog 类型，改为 Event.eventlog 字段
+> - Section 6: 版本控制基于 Event.eventlog.versions
 > - Section 3: 同步逻辑简化为单实体同步
 > - Section 7.2: 数据库设计改为单表 + 可选归档表
 > 
@@ -241,7 +241,7 @@ type ContextMarkerElement = {
 
 **PRD 要求 (Section 6):**
 ```typescript
-type TimeLogVersion = {
+type EventLogVersion = {
   id: string;
   timestamp: Date;  // ⚠️ 见冲突 #6
   content: Descendant[];
@@ -317,7 +317,7 @@ class SyncEngine {
 **当前实现 (src/services/EventService.ts L268):**
 ```typescript
 // 只是简单的字段复制，无冲突检测
-timelog: ((updates as any).timelog || '').substring(0, 50)
+eventlog: ((updates as any).eventlog || '').substring(0, 50)
 ```
 
 **问题:**
@@ -438,7 +438,7 @@ timelog: ((updates as any).timelog || '').substring(0, 50)
  * ⚠️ 注意：timestamp 字段保留为 Date 类型用于内部处理
  * 但在序列化/反序列化时应通过 TimeHub 管理
  */
-type TimeLogVersion = {
+type EventLogVersion = {
   timestamp: Date;  // ❌ 使用 Date 类型
   // ...
 }
@@ -458,7 +458,7 @@ type TimeLogVersion = {
 **问题:**
 1. **版本快照的时间是否也应该用 TimeSpec？**
    ```typescript
-   type TimeLogVersion = {
+   type EventLogVersion = {
      timeSpec: TimeSpec;  // 替代 timestamp: Date
      // ...
    }
@@ -471,7 +471,7 @@ type TimeLogVersion = {
 > 
 > **决策理由:**
 > 1. TimeHub 应该是应用内唯一的"时间真相源"
-> 2. TimeLogVersion 的时间戳是"系统自动记录"，与 Event.timeSpec 的"用户设定"本质不同
+> 2. EventLogVersion 的时间戳是"系统自动记录"，与 Event.timeSpec 的"用户设定"本质不同
 > 3. 避免到处 `new Date()`，方便未来扩展（NTP 校时、时间旅行调试）
 > 
 > **实施方案:**
@@ -526,7 +526,7 @@ type TimeLogVersion = {
 > 
 > **需修改 PRD 章节:**
 > - Section 7.2: 新增 TimeHub 扩展章节（系统时间戳管理）
-> - Section 7.2: TimeLogVersion.timestamp → createdAt（语义更清晰）
+> - Section 7.2: EventLogVersion.timestamp → createdAt（语义更清晰）
 > - Section 7.3: VersionControlService 使用 TimeHub.recordTimestamp()
 > - Section 6.4: EventHistoryService 使用 TimeHub.recordTimestamp()
 > - Section 10.1: 更新时间架构原则（明确两类时间的区别）
@@ -535,7 +535,7 @@ type TimeLogVersion = {
 > 🤖 **Resolution (Copilot):**
 > **Status**: ✅ 已解决  
 > **Commit**: [待提交]  
-> **PRD Sections**: 7.2.1 (TimeHub 扩展), 7.2.2 (TimeLogVersion 修正), 7.3 (VersionControlService), 6.4 (EventHistoryService)
+> **PRD Sections**: 7.2.1 (TimeHub 扩展), 7.2.2 (EventLogVersion 修正), 7.3 (VersionControlService), 6.4 (EventHistoryService)
 
 
 ---
@@ -701,7 +701,7 @@ Description: 需要与 #张三 讨论，参考 #项目B 的风格
 >   description?: string;    // 富文本 HTML（Slate → HTML，用于 Outlook body）
 >   
 >   // ========== TimeLog（需要完整编辑状态） ==========
->   timelog?: string;        // Slate JSON 字符串（完整文档结构，可继续编辑）
+>   eventlog?: string;        // Slate JSON 字符串（完整文档结构，可继续编辑）
 >   
 >   // ========== 标签提取来源 ==========
 >   tags?: string[];         // 从 titleContent 自动提取（不含 timelog mention）
@@ -736,7 +736,7 @@ Description: 需要与 #张三 讨论，参考 #项目B 的风格
 >   description: "<p>需要包含：架构设计、<span class='inline-tag' data-tag-id='api-id'>API 文档</span></p>",
 >   
 >   // TimeLog（Slate JSON，保留完整编辑状态）
->   timelog: JSON.stringify([
+>   eventlog: JSON.stringify([
 >     { type: 'paragraph', children: [
 >       { text: '讨论了功能优先级，' },
 >       { type: 'tag', tagId: 'zhang-san', mentionOnly: true, children: [{ text: '' }] },
@@ -753,7 +753,7 @@ Description: 需要与 #张三 讨论，参考 #项目B 的风格
 > 
 > **规则**：
 > - **Title (content 字段)** 中的 TagElement → 添加到 `Event.tags` 数组
-> - **TimeLog (timelog 字段)** 中的 TagElement → **不添加**到 `Event.tags`（仅作为 mention）
+> - **eventlog (timelog 字段)** 中的 TagElement → **不添加**到 `Event.tags`（仅作为 mention）
 > 
 > **✅ 现有实现复用**：
 > 
@@ -1069,9 +1069,9 @@ Description: 需要与 #张三 讨论，参考 #项目B 的风格
 **缺失内容:**
 1. **迁移脚本示例：**
    ```typescript
-   // 如何从 timelog: string 转换为 content: Descendant[]
+   // 如何从 eventlog: string 转换为 content: Descendant[]
    async migrateTimelogToSlateJSON(event: Event) {
-     const html = event.timelog;
+     const html = event.eventlog;
      const slateContent = htmlToSlate(html);
      // ...
    }
@@ -1102,7 +1102,7 @@ Description: 需要与 #张三 讨论，参考 #项目B 的风格
 > async function migrateTimelogToSlateJSON() {
 >   const events = EventService.getAllEvents();
 >   const needsMigration = events.filter(e => 
->     e.timelog && typeof e.timelog === 'string'
+>     e.eventlog && typeof e.eventlog === 'string'
 >   );
 >   
 >   if (needsMigration.length === 0) return;
@@ -1112,11 +1112,11 @@ Description: 需要与 #张三 讨论，参考 #项目B 的风格
 >   for (const event of needsMigration) {
 >     try {
 >       // HTML → Slate JSON
->       const slateContent = htmlToSlate(event.timelog as string);
+>       const slateContent = htmlToSlate(event.eventlog as string);
 >       
 >       // 更新为新格式
 >       await EventService.updateEvent(event.id, {
->         timelog: JSON.stringify(slateContent)
+>         eventlog: JSON.stringify(slateContent)
 >       });
 >     } catch (error) {
 >       console.error(`❌ 迁移事件 ${event.id} 失败:`, error);
@@ -1142,7 +1142,7 @@ Description: 需要与 #张三 讨论，参考 #项目B 的风格
 > // MongoDB 设计
 > {
 >   _id: "evt_123",
->   timelog: {
+>   eventlog: {
 >     content: [...],           // Slate JSON
 >     descriptionHtml: "...",   // HTML
 >     descriptionPlainText: "", // 纯文本
@@ -1237,7 +1237,7 @@ Description: 需要与 #张三 讨论，参考 #项目B 的风格
 >     timeSpec: { kind: "fixed", ... },
 >     tags: ["design"],
 >     description: "<p>讨论了...</p>",  // 富文本 HTML
->     timelog: "[{\"type\":\"paragraph\",...}]",  // Slate JSON 字符串
+>     eventlog: "[{\"type\":\"paragraph\",...}]",  // Slate JSON 字符串
 >     
 >     // 同步状态（嵌入）
 >     syncState: {
@@ -1353,7 +1353,7 @@ type Attachment = {
 
 ### 需要补充/修正 PRD 的内容
 
-- [ ] **冲突 #6**: 修正 TimeLogVersion.timestamp 的类型定义
+- [ ] **冲突 #6**: 修正 EventLogVersion.timestamp 的类型定义
 - [ ] **冲突 #7**: 明确序列化时如何保留 TimeSpec 完整信息
 - [ ] **冲突 #8**: 补充标签语义的边界场景处理规则
 
@@ -1388,4 +1388,5 @@ type Attachment = {
 > - 使用 SQLite 的 Foreign Key 关联 Event
 > - 添加索引：CREATE INDEX idx_timelog_eventid ON timelogs(eventId)
 ```
+
 

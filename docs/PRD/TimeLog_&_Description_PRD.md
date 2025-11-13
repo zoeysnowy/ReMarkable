@@ -6001,4 +6001,111 @@ const deserializeContextMarker = (html: string): ContextMarkerElement | null => 
 
 ---
 
+## 12. 代码实现状态
+
+### 12.1 核心类型定义
+
+**✅ 已实现** - `src/types.ts` 和 `src/utils/holidays/types.ts`
+
+```typescript
+interface Event {
+  // ... 其他字段
+  
+  // 🆕 v1.8: Rich-text description support
+  eventlog?: string;     // 富文本日志（HTML 格式，ReMarkable 内部展示用，支持标签、图片等）
+  
+  // 🆕 Issue #12: Timer ↔ Plan 集成
+  parentEventId?: string;   // 父事件 ID（用于 Timer 子事件关联）
+  timerLogs?: string[];     // 计时日志（子 Timer 事件 ID 列表）
+}
+```
+
+**说明**：
+- 当前代码使用简化版 `eventlog?: string` 字段（HTML 字符串）
+- PRD 定义的完整版本是对象结构：`eventlog?: { content, descriptionHtml, versions, ... }`
+- 迁移计划：Phase 1 完成后逐步升级到完整对象结构
+
+### 12.2 序列化层实现
+
+**✅ 已实现** - `src/components/UnifiedSlateEditor/serialization.ts`
+
+**功能**：
+- `planItemsToSlateNodes()` - 将 Event 数组转换为 Slate 编辑器节点
+  - 优先使用 `item.eventlog`（富文本），回退到 `item.description`（纯文本）
+  - 支持 Title 行和 Description 行的双行模式
+  
+- `slateNodesToPlanItems()` - 将 Slate 节点转换回 Event 数组
+  - Description 行同时保存到 `eventlog`（HTML）和 `description`（纯文本）
+  - 实现双向同步策略，保持两个字段一致
+
+**代码示例**：
+```typescript
+// 读取时：优先使用 eventlog
+const descriptionContent = item.eventlog || item.description;
+
+// 保存时：同时更新两个字段
+item.eventlog = newEventlog;      // 富文本 HTML
+item.description = newDescription; // 纯文本
+```
+
+### 12.3 架构文档
+
+**✅ 已更新** - `docs/TIMELOG_ARCHITECTURE.md`
+
+记录了当前 `eventlog` 字段的使用场景：
+- 数据流图展示 `eventlog` 的存储和同步策略
+- 代码示例说明如何读写 `eventlog` 字段
+- 与 Outlook `description` 的同步关系
+
+### 12.4 待迁移项
+
+**⏳ 计划中** - 从简化版升级到完整对象结构
+
+```typescript
+// 当前实现（简化版）
+interface Event {
+  eventlog?: string;  // HTML 字符串
+}
+
+// 目标实现（完整版 - PRD Section 4.1）
+interface Event {
+  eventlog?: {
+    content: Descendant[];           // Slate JSON（主存储）
+    descriptionHtml: string;         // 简化 HTML（Outlook 同步）
+    descriptionPlainText: string;    // 纯文本（搜索）
+    attachments?: Attachment[];      // 媒体附件
+    versions?: EventLogVersion[];    // 版本历史
+    syncState?: SyncState;           // 同步状态
+    createdAt?: Date;
+    updatedAt?: Date;
+  };
+}
+```
+
+**迁移步骤**：
+1. ✅ 更新类型定义中的字段名（`timelog` → `eventlog`）
+2. ✅ 更新序列化层代码使用 `eventlog` 字段
+3. ⏳ 实现对象结构的序列化/反序列化
+4. ⏳ 添加版本控制支持
+5. ⏳ 实现 Outlook 同步逻辑
+
+### 12.5 命名规范总结
+
+**✅ 统一规范**（2025-11-13 更新）：
+
+| 层级 | 命名 | 说明 |
+|------|------|------|
+| **页面/功能** | TimeLog | 页面名称、功能模块名称 |
+| **数据字段** | eventlog | Event 接口中的日志记录字段 |
+| **类型定义** | EventLogVersion | 版本历史类型 |
+| **UI 状态** | EventLogVisibility | 可见性状态管理 |
+
+**示例**：
+- `TimeLog 页面` - 用户访问的页面
+- `Event.eventlog` - 数据模型中的字段
+- `EventLogVersion[]` - 版本历史数组
+- `docs/PRD/TimeLog_&_Description_PRD.md` - 文档名称
+
+---
+
 **文档结束**
