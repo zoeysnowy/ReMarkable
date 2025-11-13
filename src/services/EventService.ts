@@ -265,7 +265,7 @@ export class EventService {
         title: updates.title,
         isAllDay: updates.isAllDay,
         description: (updates.description || '').substring(0, 50),
-        timelog: ((updates as any).timelog || '').substring(0, 50), // 🆕 v1.8: 显示 timelog 字段
+        eventlog: ((updates as any).eventlog || '').substring(0, 50), // 🆕 v1.8: 显示 eventlog 字段
         calendarIds: (updates as any).calendarIds, // 🔍 检查 calendarIds
         todoListIds: (updates as any).todoListIds  // 🔍 检查 todoListIds
       });
@@ -290,36 +290,36 @@ export class EventService {
       
       // 检测 description 的增量更新
       if (updates.description !== undefined && updates.description !== originalEvent.description) {
-        // description 有变化 → 同步到 timelog（如果 timelog 未在本次更新中设置）
-        if ((updates as any).timelog === undefined) {
-          (updatesWithSync as any).timelog = updates.description; // 纯文本 → 富文本（简单复制）
-          console.log('[EventService] description 增量更新 → 同步到 timelog:', {
+        // description 有变化 → 同步到 eventlog（如果 eventlog 未在本次更新中设置）
+        if ((updates as any).eventlog === undefined) {
+          (updatesWithSync as any).eventlog = updates.description; // 纯文本 → 富文本（简单复制）
+          console.log('[EventService] description 增量更新 → 同步到 eventlog:', {
             eventId,
             description: updates.description.substring(0, 50),
-            timelog: (updatesWithSync as any).timelog.substring(0, 50)
+            eventlog: (updatesWithSync as any).eventlog.substring(0, 50)
           });
         }
       }
       
-      // 检测 timelog 的增量更新
-      if ((updates as any).timelog !== undefined && (updates as any).timelog !== (originalEvent as any).timelog) {
-        // timelog 有变化 → 提取纯文本同步到 description（如果 description 未在本次更新中设置）
+      // 检测 eventlog 的增量更新
+      if ((updates as any).eventlog !== undefined && (updates as any).eventlog !== (originalEvent as any).eventlog) {
+        // eventlog 有变化 → 提取纯文本同步到 description（如果 description 未在本次更新中设置）
         if (updates.description === undefined) {
           // 简单提取：移除 HTML 标签，保留纯文本
-          const plainText = ((updates as any).timelog as string).replace(/<[^>]*>/g, '');
+          const plainText = ((updates as any).eventlog as string).replace(/<[^>]*>/g, '');
           updatesWithSync.description = plainText;
-          console.log('[EventService] timelog 增量更新 → 同步到 description:', {
+          console.log('[EventService] eventlog 增量更新 → 同步到 description:', {
             eventId,
-            timelog: ((updates as any).timelog as string).substring(0, 50),
+            eventlog: ((updates as any).eventlog as string).substring(0, 50),
             description: plainText.substring(0, 50)
           });
         }
       }
       
-      // 初始化场景：timelog 为空但 description 有内容
-      if (!(originalEvent as any).timelog && originalEvent.description && (updates as any).timelog === undefined) {
-        (updatesWithSync as any).timelog = originalEvent.description;
-        console.log('[EventService] 初始化 timelog 从 description:', {
+      // 初始化场景：eventlog 为空但 description 有内容
+      if (!(originalEvent as any).eventlog && originalEvent.description && (updates as any).eventlog === undefined) {
+        (updatesWithSync as any).eventlog = originalEvent.description;
+        console.log('[EventService] 初始化 eventlog 从 description:', {
           eventId,
           description: originalEvent.description.substring(0, 50)
         });

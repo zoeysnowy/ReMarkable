@@ -606,9 +606,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         id: e.id?.substring(0, 30),
         title: e.title?.substring(0, 20),
         isPlan: e.isPlan,
-        hasTimelog: !!(e as any).timelog,
+        hasEventlog: !!(e as any).eventlog,
         hasDescription: !!e.description,
-        timelogLength: ((e as any).timelog || '').length,
+        eventlogLength: ((e as any).eventlog || '').length,
         descriptionLength: (e.description || '').length,
       }))
     });
@@ -629,9 +629,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       示例: filtered.slice(0, 3).map(e => ({
         id: e.id?.substring(0, 30),
         title: e.title?.substring(0, 20),
-        hasTimelog: !!(e as any).timelog,
+        hasEventlog: !!(e as any).eventlog,
         hasDescription: !!e.description,
-        timelogLength: ((e as any).timelog || '').length,
+        eventlogLength: ((e as any).eventlog || '').length,
         descriptionLength: (e.description || '').length,
       }))
     });
@@ -1073,7 +1073,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         !updatedItem.title?.trim() && 
         !updatedItem.content?.trim() && 
         !updatedItem.description?.trim() &&
-        !updatedItem.timelog?.trim() && // 🆕 v1.8: 检测富文本描述
+        !updatedItem.eventlog?.trim() && // 🆕 v1.8: 检测富文本描述
         !updatedItem.startTime &&
         !updatedItem.endTime &&
         !updatedItem.dueDate
@@ -1093,7 +1093,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         existingItem.title !== updatedItem.title ||
         existingItem.content !== updatedItem.content ||
         existingItem.description !== updatedItem.description ||
-        existingItem.timelog !== updatedItem.timelog || // 🆕 v1.8: 检测 timelog 变化
+        existingItem.eventlog !== updatedItem.eventlog || // 🆕 v1.8: 检测 eventlog 变化
         JSON.stringify(existingItem.tags) !== JSON.stringify(updatedItem.tags);
       
       if (isChanged) {
@@ -1129,7 +1129,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           title: updatedItem.title || '',
           content: updatedItem.content,
           description: updatedItem.description,
-          timelog: updatedItem.timelog ?? existingItem?.timelog, // 🆕 v1.8: 保留富文本描述（使用 ?? 避免覆盖）
+          eventlog: updatedItem.eventlog ?? existingItem?.eventlog, // 🆕 v1.8: 保留富文本描述（使用 ?? 避免覆盖）
           tags: tagIds, // 使用规范化的 tagIds
           calendarIds: calendarIds.length > 0 ? calendarIds : undefined, // 🆕 v1.8: 设置 calendarIds
           level: updatedItem.level || 0,
@@ -1177,14 +1177,14 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       dbg('plan', `💾 执行批量保存: ${actions.save.length} 个`, { 
         titles: actions.save.map(e => e.title) 
       });
-      // 🔍 v1.8: 调试 timelog 字段
+      // 🔍 v1.8: 调试 eventlog 字段
       actions.save.forEach(item => {
         console.log('[PlanManager] 准备保存到 EventService:', {
           id: item.id,
           title: item.title?.substring(0, 20),
-          hasTimelog: !!(item as any).timelog,
+          hasEventlog: !!(item as any).eventlog,
           hasDescription: !!item.description,
-          timelogLength: ((item as any).timelog || '').length,
+          eventlogLength: ((item as any).eventlog || '').length,
           descriptionLength: (item.description || '').length,
           calendarIds: (item as any).calendarIds, // 🆕 v1.8: 显示 calendarIds
           tags: item.tags
@@ -1234,7 +1234,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           title: '',
           content: updatedItem.content || '',
           description: updatedItem.description || '',
-          timelog: updatedItem.timelog, // 🆕 v1.8: 保留富文本描述
+          eventlog: updatedItem.eventlog, // 🆕 v1.8: 保留富文本描述
           tags: updatedItem.tags || [],
           level: updatedItem.level || 0,
           priority: 'medium',
@@ -1821,7 +1821,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
               title: item.title,
               content: line.content,
               description: item.description,
-              timelog: (item as any).timelog,  // 🆕 v1.8: 传递 timelog 字段
+              eventlog: (item as any).eventlog,  // 🆕 v1.8: 传递 eventlog 字段
               tags: item.tags || [],
               calendarIds: (item as any).calendarIds, // 🆕 v1.8: 传递 calendarIds 字段
               // 🆕 v1.5: 透传完整的时间字段和元数据（无字段过滤）

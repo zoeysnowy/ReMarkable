@@ -89,16 +89,14 @@ export interface Event {
   attendees?: Contact[]; // 🔧 修改：使用统一的 Contact 接口
   reminder?: number;
   externalId?: string;
-  calendarId?: string;
-  calendarIds?: string[]; // 🆕 添加：多日历分组支持
+  calendarIds?: string[]; // 🆕 多日历分组支持（已统一使用数组）
   source?: 'local' | 'outlook' | 'google' | 'icloud'; // 🆕 事件来源
   syncStatus?: SyncStatusType; // 🔧 unified: 'pending' 表示所有待同步状态（新建或更新）
   lastSyncTime?: string; // 🔧 修改：使用字符串存储本地时间
   createdAt: string;     // 🔧 修改：使用字符串存储本地时间
   updatedAt: string;     // 🔧 修改：使用字符串存储本地时间
   timerSessionId?: string;
-  tagId?: string;        // 🔧 保留向后兼容，单标签模式
-  tags?: string[];       // 🆕 添加：多标签支持
+  tags?: string[];       // 🆕 多标签支持（已统一使用数组）
   category?: string;
   remarkableSource?: boolean;
   localVersion?: number;

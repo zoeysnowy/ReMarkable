@@ -65,7 +65,6 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
       isTimeCalendar: item.isTimeCalendar,
       
       // 同步字段
-      calendarId: item.calendarId,
       calendarIds: item.calendarIds,
       todoListIds: item.todoListIds, // 🆕 To Do List IDs
       source: item.source,
@@ -258,7 +257,6 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
         isPlan: metadata.isPlan ?? true,
         isTimeCalendar: metadata.isTimeCalendar ?? false,
         
-        calendarId: metadata.calendarId,
         calendarIds: metadata.calendarIds || [],
         todoListIds: metadata.todoListIds || [], // 🆕 To Do List IDs
         source: metadata.source || 'local',
