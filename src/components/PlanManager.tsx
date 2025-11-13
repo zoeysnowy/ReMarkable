@@ -4,7 +4,6 @@ import data from '@emoji-mart/data';
 import Tippy from '@tippyjs/react';
 import 'tippy.js/dist/tippy.css';
 import type { Event } from '../types';
-import { FreeFormLine } from './MultiLineEditor/FreeFormEditor';
 import { UnifiedSlateEditor } from './UnifiedSlateEditor/UnifiedSlateEditor';
 import { insertTag, insertEmoji, insertDateMention } from './UnifiedSlateEditor/helpers';
 import { useFloatingToolbar } from './FloatingToolbar/useFloatingToolbar';
@@ -46,6 +45,14 @@ if (typeof window !== 'undefined') {
 
 // �🔧 常量定义
 const DESCRIPTION_INDENT_OFFSET = 1; // Description 行相对于 Title 行的缩进增量
+
+// 🔧 类型定义：编辑器行数据结构
+interface FreeFormLine<T = any> {
+  id: string;
+  content: string;
+  level: number;
+  data?: T;
+}
 
 // 时间显示组件，订阅 TimeHub 更新
 // 🔧 性能优化：使用 React.memo 避免不必要的重新渲染
