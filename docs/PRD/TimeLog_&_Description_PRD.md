@@ -4794,76 +4794,324 @@ export class SyncEngine {
 - ✅ 性能优化
 - ✅ 端到端测试
 
-### 7.2 关键决策
+### 7.2 数据存储架构
 
-**🆕 数据架构（2025-11-13）:**
+**🆕 架构决策（2025-11-13）:**
 
 - **TimeLog 设计**: 嵌入式（Event.timelog 字段），不创建独立表
 - **版本存储**: Event.timelog.versions 数组（最多保留 50 个）
-- **归档策略**: 50+ 版本时可选迁移到 event_versions 表
+- **归档策略**: 50+ 版本时可选迁移到单独的 localStorage key
 
-**数据库选择:**
+#### 7.2.1 当前实现：localStorage + JSON 数组
 
-- **推荐**: MongoDB（原生支持嵌入文档和 JSON，查询性能优）
-- **备选**: SQLite（需要序列化 timelog 为 JSON 字符串）
+**存储引擎**: localStorage（浏览器原生 API）
 
-**MongoDB 设计示例:**
-```javascript
-// events 集合
-{
-  _id: "evt_123",
-  title: "完成设计稿",
-  startTime: "2025-11-13T10:00:00Z",
-  timeSpec: { kind: "fixed", ... },
-  tags: ["工作", "设计"],
-  
-  timelog: {
-    content: [...],  // Slate JSON
-    descriptionHtml: "<p>讨论了...</p>",
-    descriptionPlainText: "讨论了...",
-    versions: [
-      { id: "v1", createdAt: new Date(), content: [...] }
-    ],
-    syncState: { lastSyncedAt: ..., contentHash: "..." }
+**理由**：
+1. ✅ 简单、无依赖、跨平台兼容
+2. ✅ 当前数据量小（<1000 events），性能足够
+3. ✅ 已有 PersistentStorage 工具类封装（TagService 使用）
+4. ✅ 符合 Electron 小型应用最佳实践
+
+**限制**：
+- ⚠️ localStorage 限制 5-10MB（约 5000 events）
+- ⚠️ 需手动实现跨标签页同步（BroadcastChannel）
+- ⚠️ 无事务保证（需自行实现乐观锁）
+- ⚠️ 查询性能受限（内存遍历 Array.filter()）
+
+**数据结构设计:**
+```typescript
+// STORAGE_KEYS.EVENTS 存储格式
+// localStorage.getItem('remarkable-events') → JSON Array
+[
+  {
+    id: "evt_123",
+    title: "完成设计稿",                          // 纯文本（Outlook subject）
+    titleContent: "<p>完成 <span>...</span></p>",  // 富文本 HTML（本地编辑）
+    startTime: "2025-11-13T10:00:00Z",             // UTC ISO 8601（派生字段）
+    endTime: "2025-11-13T11:00:00Z",               // UTC ISO 8601（派生字段）
+    timeSpec: {                                     // 权威时间来源
+      kind: "fixed",
+      source: "user",
+      start: "2025-11-13T10:00:00Z",               // Date → UTC string
+      end: "2025-11-13T11:00:00Z",
+      allDay: false
+    },
+    tags: ["design", "work"],                      // 从 titleContent 提取
+    description: "<p>讨论了...</p>",               // 富文本 HTML（Outlook body）
+    timelog: "[{\"type\":\"paragraph\",...}]",     // Slate JSON 字符串
+    
+    // 同步状态（嵌入）
+    syncState: {
+      lastSyncedAt: "2025-11-13T10:00:00Z",
+      contentHash: "abc123",
+      status: "synced",
+      outlookId: "AAMkAGI..."
+    }
   }
-}
-
-// 索引策略
-db.events.createIndex({ "timelog.syncState.contentHash": 1 });
-db.events.createIndex({ "timelog.descriptionPlainText": "text" });
-
-// 查询优化（投影排除大字段）
-db.events.find({}, { projection: { "timelog": 0 } });  // 列表页
-db.events.findOne({ _id: "evt_123" });  // 详情页（包含 timelog）
+]
 ```
 
-**SQLite 设计示例:**
+**版本历史存储（可选，单独 key）**:
+```typescript
+// STORAGE_KEYS.EVENT_VERSIONS
+// localStorage.getItem('remarkable-event-versions') → JSON Object
+{
+  "evt_123": [
+    { 
+      id: "v1", 
+      createdAt: "2025-11-13T10:00:00Z",      // TimeHub.formatTimestamp()
+      content: [{...}],                        // Slate JSON（完整快照）
+      changesSummary: "初始版本"
+    },
+    { 
+      id: "v2", 
+      createdAt: "2025-11-13T10:05:00Z",
+      diff: { added: [...], removed: [...] }, // Delta（差异）
+      changesSummary: "添加表格"
+    }
+  ],
+  "evt_456": [...]
+}
+```
+
+**其他 localStorage 存储**:
+```typescript
+// 标签数据（已实现）
+STORAGE_KEYS.HIERARCHICAL_TAGS: HierarchicalTag[]
+
+// 日历缓存（已实现）
+STORAGE_KEYS.CALENDAR_GROUPS_CACHE: CalendarGroup[]
+STORAGE_KEYS.CALENDARS_CACHE: Calendar[]
+STORAGE_KEYS.TODO_LISTS_CACHE: TodoList[]
+
+// 联系人数据（已实现）
+STORAGE_KEYS.CONTACTS: Contact[]
+
+// 同步队列（待实现）
+STORAGE_KEYS.SYNC_QUEUE: { eventId: string, operation: string, timestamp: string }[]
+```
+
+**跨标签页同步**:
+```typescript
+// EventService 已实现 BroadcastChannel
+const broadcastChannel = new BroadcastChannel('remarkable-events');
+
+// 发送更新通知
+broadcastChannel.postMessage({ type: 'events-updated', eventIds: [...] });
+
+// 监听其他标签页的更新
+broadcastChannel.onmessage = (event) => {
+  if (event.data.type === 'events-updated') {
+    // 重新加载 events
+    this.notifyListeners();
+  }
+};
+```
+
+#### 7.2.2 未来迁移路径（Phase 2/3）
+
+**Phase 2: 引入 SQLite（可选）**
+
+**场景**: 数据量增长（>1000 events）或需要复杂查询
+
+**技术栈**:
+- `better-sqlite3`: Node.js SQLite 绑定（性能最优）
+- `electron-store`: Electron 配置管理（可选）
+
+**SQLite 设计示例**:
 ```sql
 -- 主表（内联基础字段）
 CREATE TABLE events (
   id TEXT PRIMARY KEY,
-  title TEXT,
-  start_time TEXT,
-  timespec TEXT,  -- JSON
+  title TEXT NOT NULL,
+  title_content TEXT,        -- 富文本 HTML
+  start_time TEXT NOT NULL,  -- UTC ISO 8601
+  end_time TEXT NOT NULL,
+  timespec TEXT NOT NULL,    -- TimeSpec JSON
+  tags TEXT,                 -- JSON array: ["tag1", "tag2"]
+  description TEXT,          -- 富文本 HTML
+  timelog TEXT,              -- Slate JSON 字符串
   
-  -- TimeLog 基础字段（避免 JOIN）
-  timelog_content TEXT,      -- Slate JSON
-  timelog_html TEXT,         -- HTML
-  timelog_plaintext TEXT,    -- 纯文本
+  -- 同步状态
+  sync_status TEXT DEFAULT 'pending',
   sync_hash TEXT,
-  synced_at TEXT
+  synced_at TEXT,
+  outlook_id TEXT UNIQUE,
+  
+  -- 元数据
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );
 
--- 辅助表（可选，用于归档旧版本）
+-- 索引策略
+CREATE INDEX idx_events_start_time ON events(start_time);
+CREATE INDEX idx_events_sync_status ON events(sync_status);
+CREATE INDEX idx_events_outlook_id ON events(outlook_id);
+CREATE INDEX idx_events_tags ON events(tags);  -- JSON 索引（SQLite 3.38+）
+
+-- 全文搜索索引
+CREATE VIRTUAL TABLE events_fts USING fts5(
+  title, description, timelog, 
+  content='events', content_rowid='rowid'
+);
+
+-- 辅助表（版本历史归档）
 CREATE TABLE event_versions (
   id TEXT PRIMARY KEY,
-  event_id TEXT REFERENCES events(id),
-  version_number INTEGER,
-  created_at TEXT,
-  content TEXT,  -- Slate JSON
-  changes_summary TEXT
+  event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  version_number INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  content TEXT NOT NULL,       -- Slate JSON 完整快照
+  diff TEXT,                   -- Delta JSON（可选）
+  changes_summary TEXT,
+  
+  UNIQUE(event_id, version_number)
 );
+
+CREATE INDEX idx_versions_event_id ON event_versions(event_id);
 ```
+
+**迁移脚本**:
+```typescript
+// 从 localStorage 迁移到 SQLite
+async function migrateToSQLite() {
+  const db = new Database('remarkable.db');
+  const events = JSON.parse(localStorage.getItem('remarkable-events') || '[]');
+  
+  const insert = db.prepare(`
+    INSERT INTO events (id, title, title_content, start_time, ...)
+    VALUES (?, ?, ?, ?, ...)
+  `);
+  
+  const insertMany = db.transaction((events) => {
+    for (const event of events) {
+      insert.run(
+        event.id,
+        event.title,
+        event.titleContent,
+        event.startTime,
+        // ...
+        JSON.stringify(event.timeSpec),
+        JSON.stringify(event.tags)
+      );
+    }
+  });
+  
+  insertMany(events);
+  console.log(`✅ 迁移完成：${events.length} 个事件`);
+}
+```
+
+**Phase 3: 支持 MongoDB（云端备份）**
+
+**场景**: 多设备同步、协作编辑、云端备份
+
+**技术栈**:
+- MongoDB Atlas（云服务）
+- MongoDB Realm（移动端同步）
+
+**MongoDB 设计示例**:
+```javascript
+// events 集合
+{
+  _id: ObjectId("..."),
+  id: "evt_123",               // ReMarkable UUID
+  title: "完成设计稿",
+  titleContent: "<p>...</p>",
+  startTime: ISODate("2025-11-13T10:00:00Z"),
+  endTime: ISODate("2025-11-13T11:00:00Z"),
+  timeSpec: {
+    kind: "fixed",
+    start: ISODate("..."),
+    end: ISODate("..."),
+    // ...
+  },
+  tags: ["design", "work"],
+  description: "<p>...</p>",
+  timelog: [{                  // Slate JSON（嵌入文档）
+    type: "paragraph",
+    children: [...]
+  }],
+  syncState: {
+    lastSyncedAt: ISODate("..."),
+    contentHash: "abc123",
+    outlookId: "AAMkAGI..."
+  },
+  createdAt: ISODate("..."),
+  updatedAt: ISODate("...")
+}
+
+// 索引策略
+db.events.createIndex({ id: 1 }, { unique: true });
+db.events.createIndex({ startTime: 1 });
+db.events.createIndex({ tags: 1 });
+db.events.createIndex({ "syncState.outlookId": 1 });
+db.events.createIndex({ "$**": "text" });  // 全文搜索
+
+// 版本历史集合（单独存储）
+db.event_versions.createIndex({ eventId: 1, versionNumber: -1 });
+```
+
+#### 7.2.3 性能优化建议
+
+**当前架构（localStorage）优化**:
+
+1. **分离冷热数据**:
+   ```typescript
+   // 活跃事件（最近 30 天）
+   STORAGE_KEYS.EVENTS: Event[]  // ~500 events, ~2MB
+   
+   // 归档事件（30+ 天前）
+   STORAGE_KEYS.ARCHIVED_EVENTS: Event[]  // ~4500 events, ~18MB
+   ```
+
+2. **延迟加载版本历史**:
+   ```typescript
+   // 主数据不包含 versions
+   // 需要时才从 EVENT_VERSIONS 加载
+   async loadVersions(eventId: string) {
+     const allVersions = JSON.parse(
+       localStorage.getItem('remarkable-event-versions') || '{}'
+     );
+     return allVersions[eventId] || [];
+   }
+   ```
+
+3. **定期清理归档数据**:
+   ```typescript
+   // 保留最近 1 年，删除更早的数据
+   function cleanupOldEvents() {
+     const oneYearAgo = new Date();
+     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+     
+     const events = EventService.getAllEvents();
+     const recentEvents = events.filter(e => 
+       new Date(e.startTime) > oneYearAgo
+     );
+     
+     localStorage.setItem('remarkable-events', JSON.stringify(recentEvents));
+   }
+   ```
+
+4. **监控存储使用量**:
+   ```typescript
+   function getStorageUsage(): { used: number, quota: number } {
+     if (navigator.storage && navigator.storage.estimate) {
+       return await navigator.storage.estimate();
+     }
+     // Fallback: 估算 localStorage 大小
+     let total = 0;
+     for (let key in localStorage) {
+       total += localStorage[key].length + key.length;
+     }
+     return { used: total, quota: 10 * 1024 * 1024 };  // 假设 10MB 限制
+   }
+   
+   // 超过 5MB 时提示用户
+   if (usage.used > 5 * 1024 * 1024) {
+     console.warn('⚠️ 存储空间接近限制，建议清理归档数据');
+   }
+   ```
 
 **附件存储:**
 
