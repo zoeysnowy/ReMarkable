@@ -208,6 +208,66 @@ class VersionControlService {
 - Section 7.2: 数据库设计新增 event_history 集合
 - EventService: 集成 EventHistoryService 调用
 
+### 决策：字段级冲突检测 + Git 风格 Diff UI
+
+**决策内容：**
+- **字段级冲突检测** - 检测 Event 每个字段的独立冲突（title/tags/timelog/startTime 等）
+- **Git 风格 Diff UI** - 显示本地 vs 远程的并排对比，用户选择 Keep/Undo
+- **智能序列化系统** - Slate JSON → HTML 转换，保留格式和元数据
+
+**核心要点：**
+
+1. **TimeLog Timestamp 的特殊性**
+   - TimeLog 中的 timestamp 显示是**只读 UI 元素**（不可编辑）
+   - 与 Event.startTime/endTime 完全独立（两个不同概念）
+   - Event.startTime = 用户设定的事件时间
+   - TimeLog timestamp = 内容编辑时的自动记录时间
+
+2. **字段级冲突检测策略**
+   ```typescript
+   interface ConflictResult {
+     hasConflict: boolean;
+     conflictedFields: FieldConflict[];  // 具体哪些字段冲突
+     resolution: ConflictResolution;
+   }
+   
+   type FieldConflict = {
+     field: string;                   // 'title' | 'tags' | 'timelog' | 'startTime'
+     localValue: any;
+     remoteValue: any;
+     localHash: string;
+     remoteHash: string;
+     lastSyncValue?: any;             // 三方合并基准
+   };
+   ```
+
+3. **Slate JSON → HTML 序列化规范**
+   
+   **保留的格式：**
+   - 字体颜色、背景色
+   - 加粗、斜体、下划线
+   - 列表（bullet points、numbered）
+   - 链接
+   
+   **特殊处理：**
+   - **表格** → Markdown 风格文本表格（多端可读）
+   - **图片** → `[查看图片: filename.png](link to web viewer)`
+   - **附件** → `[附件: document.pdf](link to web viewer)`
+   - **ContextMarker（v2.0）** → 隐藏在 Outlook（仅保留 data-* 属性）
+   
+   **Web Viewer 链接：**
+   - 格式：`https://app.remarkable.com/events/{eventId}/timelog`
+   - 用户点击后打开完整的 TimeLog 页面（支持富文本渲染）
+
+**实施阶段：**
+- **Phase 2** - 字段级冲突检测 + 序列化系统
+- **Phase 3** - Diff UI 组件 + Web Viewer
+
+**影响范围：**
+- Section 5: 同步引擎设计（新增字段级冲突检测）
+- Section 5.4: Slate JSON → HTML 序列化层
+- Section 5.5: 冲突解决 UI 组件
+
 ---
 
 ## ⚠️ 重要：时间处理规范
@@ -1310,45 +1370,301 @@ type SyncState = {
 - **格式冲突**: Slate JSON ≠ Outlook HTML
 - **冲突检测**: 如何判断是哪一端发生了变更？
 
-### 5.2 解决方案：三层转换 + 哈希校验
+### 5.2 解决方案：字段级冲突检测 + 智能序列化
 
-#### 5.2.1 冲突检测
+> **设计决策**: 详见顶部"架构决策记录 → 字段级冲突检测 + Git 风格 Diff UI"
+
+#### 5.2.1 字段级冲突检测
+
+**传统方案的问题：**
+- 只检测整个 Event 是否冲突
+- 即使只有 title 改变，也会导致整个 timelog 被覆盖
+- 用户体验差，数据丢失风险高
+
+**改进方案：字段级检测**
 
 ```typescript
-// sync/conflictDetection.ts
+// sync/fieldLevelConflictDetection.ts
 import crypto from 'crypto';
 
-type ConflictType = 'no-change' | 'local-changed' | 'remote-changed' | 'both-changed';
+/**
+ * 字段级冲突结果
+ */
+interface FieldLevelConflictResult {
+  hasConflict: boolean;
+  conflictedFields: FieldConflict[];    // 具体哪些字段冲突
+  cleanFields: string[];                // 无冲突的字段
+  resolution: ConflictResolution;
+}
 
-// 计算内容哈希
-export const hashContent = (content: any): string => {
-  const str = typeof content === 'string' 
-    ? content 
-    : JSON.stringify(content);
+type FieldConflict = {
+  field: EventField;
+  localValue: any;
+  remoteValue: any;
+  localHash: string;
+  remoteHash: string;
+  lastSyncValue?: any;                  // 三方合并基准（来自 EventHistory）
+  autoResolvable: boolean;              // 是否可自动解决
+  suggestedResolution?: 'keep-local' | 'keep-remote' | 'merge';
+};
+
+type EventField = 
+  | 'title'
+  | 'tags'
+  | 'timelog'
+  | 'startTime'
+  | 'endTime'
+  | 'location'
+  | 'isAllDay';
+
+type ConflictResolution =
+  | 'auto-resolved'          // 自动解决（无冲突或可自动合并）
+  | 'manual-required'        // 需要用户手动选择
+  | 'last-write-wins';       // 使用 LWW 策略
+
+/**
+ * 检测字段级冲突
+ * 
+ * @param localEvent - 本地 Event
+ * @param remoteEvent - Outlook Event
+ * @param lastSyncState - 上次同步的状态（来自 EventHistory）
+ */
+export async function detectFieldLevelConflicts(
+  localEvent: Event,
+  remoteEvent: OutlookEvent,
+  lastSyncState?: EventHistoryEntry
+): Promise<FieldLevelConflictResult> {
+  
+  const conflictedFields: FieldConflict[] = [];
+  const cleanFields: string[] = [];
+  
+  // 检测每个字段
+  const fieldsToCheck: EventField[] = [
+    'title',
+    'tags',
+    'timelog',
+    'startTime',
+    'endTime',
+    'location',
+    'isAllDay',
+  ];
+  
+  for (const field of fieldsToCheck) {
+    const conflict = await checkFieldConflict(
+      field,
+      localEvent,
+      remoteEvent,
+      lastSyncState
+    );
+    
+    if (conflict) {
+      conflictedFields.push(conflict);
+    } else {
+      cleanFields.push(field);
+    }
+  }
+  
+  // 判断解决策略
+  const resolution = determineResolution(conflictedFields);
+  
+  return {
+    hasConflict: conflictedFields.length > 0,
+    conflictedFields,
+    cleanFields,
+    resolution,
+  };
+}
+
+/**
+ * 检测单个字段的冲突
+ */
+async function checkFieldConflict(
+  field: EventField,
+  local: Event,
+  remote: OutlookEvent,
+  lastSync?: EventHistoryEntry
+): Promise<FieldConflict | null> {
+  
+  // 1. 提取字段值
+  const localValue = extractFieldValue(field, local);
+  const remoteValue = extractFieldValue(field, remote);
+  const lastSyncValue = lastSync 
+    ? extractFieldValue(field, lastSync.snapshot)
+    : undefined;
+  
+  // 2. 计算哈希
+  const localHash = hashValue(localValue);
+  const remoteHash = hashValue(remoteValue);
+  const lastSyncHash = lastSyncValue ? hashValue(lastSyncValue) : null;
+  
+  // 3. 检测变更
+  const localChanged = lastSyncHash && localHash !== lastSyncHash;
+  const remoteChanged = lastSyncHash && remoteHash !== lastSyncHash;
+  
+  // 4. 无冲突情况
+  if (!localChanged && !remoteChanged) return null;  // 都没变
+  if (localHash === remoteHash) return null;         // 值相同
+  
+  // 5. 单边变更（可自动解决）
+  if (localChanged && !remoteChanged) {
+    return {
+      field,
+      localValue,
+      remoteValue,
+      localHash,
+      remoteHash,
+      lastSyncValue,
+      autoResolvable: true,
+      suggestedResolution: 'keep-local',
+    };
+  }
+  
+  if (!localChanged && remoteChanged) {
+    return {
+      field,
+      localValue,
+      remoteValue,
+      localHash,
+      remoteHash,
+      lastSyncValue,
+      autoResolvable: true,
+      suggestedResolution: 'keep-remote',
+    };
+  }
+  
+  // 6. 双边变更（需要用户决定）
+  return {
+    field,
+    localValue,
+    remoteValue,
+    localHash,
+    remoteHash,
+    lastSyncValue,
+    autoResolvable: false,
+    suggestedResolution: undefined,
+  };
+}
+
+/**
+ * 提取字段值（处理 Event 和 OutlookEvent 的差异）
+ */
+function extractFieldValue(field: EventField, event: Event | OutlookEvent): any {
+  const mapping: Record<EventField, (e: any) => any> = {
+    title: (e) => e.subject || e.title,
+    tags: (e) => e.categories || e.tags,
+    timelog: (e) => e.body?.content || e.timelog?.content,
+    startTime: (e) => e.start?.dateTime || e.startTime,
+    endTime: (e) => e.end?.dateTime || e.endTime,
+    location: (e) => e.location?.displayName || e.location,
+    isAllDay: (e) => e.isAllDay,
+  };
+  
+  return mapping[field]?.(event);
+}
+
+/**
+ * 计算字段值的哈希
+ */
+function hashValue(value: any): string {
+  const str = typeof value === 'string' 
+    ? value 
+    : JSON.stringify(value);
   
   return crypto.createHash('sha256').update(str).digest('hex');
-};
+}
 
-// 检测冲突
-export const detectConflict = (
-  currentTimelog: Descendant[],
-  currentOutlookHtml: string,
-  syncState: SyncState
-): ConflictType => {
-  const currentLocalHash = hashContent(currentTimelog);
-  const currentRemoteHash = hashContent(currentOutlookHtml);
+/**
+ * 决定解决策略
+ */
+function determineResolution(conflicts: FieldConflict[]): ConflictResolution {
+  if (conflicts.length === 0) {
+    return 'auto-resolved';
+  }
   
-  const localChanged = currentLocalHash !== syncState.localHash;
-  const remoteChanged = currentRemoteHash !== syncState.remoteHash;
+  // 如果所有冲突都可自动解决
+  if (conflicts.every(c => c.autoResolvable)) {
+    return 'auto-resolved';
+  }
   
-  if (!localChanged && !remoteChanged) return 'no-change';
-  if (localChanged && !remoteChanged) return 'local-changed';
-  if (!localChanged && remoteChanged) return 'remote-changed';
-  return 'both-changed';
-};
+  // 否则需要用户手动选择
+  return 'manual-required';
+}
 ```
 
-#### 5.2.2 Slate JSON → Outlook HTML 转换器
+**字段冲突示例：**
+
+```typescript
+// 场景 1: title 在本地改了，timelog 在 Outlook 改了
+{
+  conflictedFields: [
+    {
+      field: 'title',
+      localValue: '完成项目 A',
+      remoteValue: '完成项目 B',
+      autoResolvable: false,  // 双边都改了
+    },
+    {
+      field: 'timelog',
+      localValue: '<slate json>',
+      remoteValue: '<html>',
+      autoResolvable: false,
+    }
+  ],
+  resolution: 'manual-required'
+}
+
+// 场景 2: 只有 tags 在本地改了
+{
+  conflictedFields: [
+    {
+      field: 'tags',
+      localValue: ['work', 'urgent'],
+      remoteValue: ['work'],
+      autoResolvable: true,
+      suggestedResolution: 'keep-local',  // 本地更新，自动推送
+    }
+  ],
+  resolution: 'auto-resolved'
+}
+```
+
+#### 5.2.2 冲突检测流程图
+
+```
+┌─────────────────────────────────────┐
+│   1. 获取本地和远程 Event           │
+└──────────────┬──────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────┐
+│   2. 从 EventHistory 获取           │
+│      lastSyncState（三方合并基准）   │
+└──────────────┬──────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────┐
+│   3. 逐字段比较                     │
+│      - 计算每个字段的 hash          │
+│      - 对比 local/remote/lastSync   │
+└──────────────┬──────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────┐
+│   4. 分类冲突                       │
+│      - 无冲突字段 → 跳过            │
+│      - 单边变更 → 自动解决          │
+│      - 双边变更 → 需要用户决定      │
+└──────────────┬──────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────┐
+│   5. 决定策略                       │
+│      - auto-resolved → 自动同步     │
+│      - manual-required → 显示 UI    │
+└───────────────────────────────────── ┘
+```
+
+#### 5.2.3 Slate JSON → Outlook HTML 智能序列化
 
 ```typescript
 // serializers/slateToHtml.ts
@@ -1838,7 +2154,883 @@ export class SyncEngine {
 }
 ```
 
-### 5.4 增量同步优化
+### 5.4 智能序列化系统：保留格式 + 降级策略
+
+> **设计目标**: 将 Slate JSON 转换为 Outlook HTML 时，最大化保留格式信息，同时为不支持的元素提供优雅降级
+
+#### 5.4.1 格式保留映射表
+
+| Slate 元素 | Outlook HTML | 保留程度 | 备注 |
+|-----------|--------------|---------|------|
+| **文本样式** | | | |
+| `bold` | `<strong>` | ✅ 100% | 完全支持 |
+| `italic` | `<em>` | ✅ 100% | 完全支持 |
+| `underline` | `<u>` | ✅ 100% | 完全支持 |
+| `color` | `<span style="color">` | ✅ 100% | 保留颜色值 |
+| `backgroundColor` | `<span style="background-color">` | ✅ 100% | 保留颜色值 |
+| **结构元素** | | | |
+| `paragraph` | `<p>` | ✅ 100% | 完全支持 |
+| `heading-1/2/3` | `<h1/2/3>` | ✅ 100% | 完全支持 |
+| `bulleted-list` | `<ul><li>` | ✅ 100% | 完全支持 |
+| `numbered-list` | `<ol><li>` | ✅ 100% | 完全支持 |
+| `link` | `<a href>` | ✅ 100% | 完全支持 |
+| **特殊元素** | | | |
+| `table` | Markdown 表格 | ⚠️ 70% | 转为文本表格 |
+| `image` | Web Viewer 链接 | ⚠️ 50% | 提供预览链接 |
+| `video` | Web Viewer 链接 | ⚠️ 50% | 提供播放链接 |
+| `attachment` | Web Viewer 链接 | ⚠️ 50% | 提供下载链接 |
+| `tag` (mention-only) | `#emoji name` | ⚠️ 80% | 纯文本形式 |
+| `ContextMarker` (v2.0) | `<!-- hidden -->` | ⚠️ 0% | 隐藏元数据 |
+
+#### 5.4.2 表格 Markdown 化实现
+
+```typescript
+// serializers/tableToMarkdown.ts
+
+/**
+ * 将 Slate 表格转换为 Markdown 风格的文本表格
+ * 
+ * 输入 (Slate JSON):
+ * {
+ *   type: 'table',
+ *   children: [
+ *     { type: 'table-row', children: [
+ *       { type: 'table-cell', children: [{ text: '姓名' }] },
+ *       { type: 'table-cell', children: [{ text: '年龄' }] }
+ *     ]},
+ *     { type: 'table-row', children: [
+ *       { type: 'table-cell', children: [{ text: '张三' }] },
+ *       { type: 'table-cell', children: [{ text: '25' }] }
+ *     ]}
+ *   ]
+ * }
+ * 
+ * 输出 (Markdown):
+ * | 姓名 | 年龄 |
+ * |------|------|
+ * | 张三 | 25   |
+ */
+function serializeTable(tableNode: TableElement): string {
+  const rows = tableNode.children as TableRowElement[];
+  
+  if (rows.length === 0) {
+    return '<p>[空表格]</p>';
+  }
+  
+  // 1. 提取表头（第一行）
+  const headerRow = rows[0];
+  const headers = headerRow.children.map(cell => 
+    extractCellText(cell as TableCellElement)
+  );
+  
+  // 2. 计算列宽（用于对齐）
+  const columnWidths = headers.map((h, i) => {
+    const maxWidth = Math.max(
+      h.length,
+      ...rows.slice(1).map(row => {
+        const cell = row.children[i] as TableCellElement;
+        return extractCellText(cell).length;
+      })
+    );
+    return Math.max(maxWidth, 4); // 最小宽度 4
+  });
+  
+  // 3. 生成 Markdown 表格
+  const lines: string[] = [];
+  
+  // 表头
+  lines.push('| ' + headers.map((h, i) => 
+    h.padEnd(columnWidths[i])
+  ).join(' | ') + ' |');
+  
+  // 分隔线
+  lines.push('|' + columnWidths.map(w => 
+    '-'.repeat(w + 2)
+  ).join('|') + '|');
+  
+  // 数据行
+  rows.slice(1).forEach(row => {
+    const cells = row.children.map((cell, i) => 
+      extractCellText(cell as TableCellElement).padEnd(columnWidths[i])
+    );
+    lines.push('| ' + cells.join(' | ') + ' |');
+  });
+  
+  // 4. 包装为 HTML（保留 Markdown 格式）
+  return `<pre style="font-family: 'Courier New', monospace; background: #f5f5f5; padding: 10px; border-radius: 4px;">\n${lines.join('\n')}\n</pre>`;
+}
+
+function extractCellText(cell: TableCellElement): string {
+  return cell.children
+    .map(child => Text.isText(child) ? child.text : '')
+    .join('');
+}
+```
+
+**Markdown 表格示例输出：**
+
+```
+┌────────────────────────────────────┐
+│ 表格: 项目进度统计                 │
+├────────────────────────────────────┤
+│ | 项目名称   | 状态   | 负责人 |  │
+│ |------------|--------|--------|  │
+│ | 设计系统   | 进行中 | 张三   |  │
+│ | API 开发   | 已完成 | 李四   |  │
+│ | 测试部署   | 未开始 | 王五   |  │
+└────────────────────────────────────┘
+```
+
+#### 5.4.3 媒体元素的 Web Viewer 链接
+
+```typescript
+// serializers/mediaToLink.ts
+
+/**
+ * 图片元素 → Web Viewer 链接
+ */
+function serializeImage(imageNode: ImageElement, eventId: string): string {
+  const viewerUrl = `https://app.remarkable.com/events/${eventId}/timelog#image-${imageNode.id}`;
+  
+  // 方案 A: 内嵌缩略图 (如果 Outlook 支持)
+  if (imageNode.thumbnailUrl) {
+    return `
+      <p style="border: 1px solid #ddd; padding: 10px; border-radius: 4px;">
+        <a href="${escapeHtml(viewerUrl)}">
+          <img src="${escapeHtml(imageNode.thumbnailUrl)}" 
+               alt="${escapeHtml(imageNode.fileName)}" 
+               style="max-width: 200px; display: block;" />
+          <span style="font-size: 12px; color: #666;">📷 ${escapeHtml(imageNode.fileName)} - 点击查看原图</span>
+        </a>
+      </p>
+    `;
+  }
+  
+  // 方案 B: 纯文本链接 (降级)
+  return `<p>📷 <a href="${escapeHtml(viewerUrl)}">查看图片: ${escapeHtml(imageNode.fileName)}</a></p>`;
+}
+
+/**
+ * 视频元素 → Web Viewer 链接
+ */
+function serializeVideo(videoNode: VideoElement, eventId: string): string {
+  const viewerUrl = `https://app.remarkable.com/events/${eventId}/timelog#video-${videoNode.id}`;
+  const duration = videoNode.duration ? ` (${formatDuration(videoNode.duration)})` : '';
+  
+  return `<p>📹 <a href="${escapeHtml(viewerUrl)}">观看视频: ${escapeHtml(videoNode.fileName)}${duration}</a></p>`;
+}
+
+/**
+ * 附件元素 → Web Viewer 链接
+ */
+function serializeAttachment(attachmentNode: AttachmentElement, eventId: string): string {
+  const viewerUrl = `https://app.remarkable.com/events/${eventId}/timelog#attachment-${attachmentNode.id}`;
+  const size = formatFileSize(attachmentNode.size);
+  
+  return `<p>📎 <a href="${escapeHtml(viewerUrl)}">下载附件: ${escapeHtml(attachmentNode.fileName)} (${size})</a></p>`;
+}
+
+/**
+ * 格式化时长
+ */
+function formatDuration(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+/**
+ * 格式化文件大小
+ */
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+```
+
+#### 5.4.4 完整序列化流程
+
+```typescript
+// serializers/slateToOutlookHtml.ts
+
+/**
+ * 智能序列化：Slate JSON → Outlook HTML
+ * 
+ * @param content - Slate JSON 内容
+ * @param eventId - Event ID（用于生成 Web Viewer 链接）
+ * @returns Outlook 兼容的 HTML
+ */
+export function slateToOutlookHtml(content: Descendant[], eventId: string): string {
+  const htmlParts: string[] = [];
+  
+  for (const node of content) {
+    htmlParts.push(serializeNodeSmart(node, eventId));
+  }
+  
+  // 添加底部提示
+  const footer = `
+    <hr style="margin-top: 20px; border: none; border-top: 1px solid #ddd;" />
+    <p style="font-size: 12px; color: #999;">
+      💡 此内容由 <a href="https://app.remarkable.com">ReMarkable</a> 生成。
+      某些富媒体元素（表格、图片、视频等）可能在移动端显示受限，
+      <a href="https://app.remarkable.com/events/${eventId}/timelog">点击查看完整版</a>。
+    </p>
+  `;
+  
+  return htmlParts.join('\n') + footer;
+}
+
+function serializeNodeSmart(node: Descendant, eventId: string): string {
+  if (Text.isText(node)) {
+    return serializeText(node);  // 已有实现
+  }
+  
+  switch (node.type) {
+    case 'table':
+      return serializeTable(node);  // Markdown 表格
+    
+    case 'image':
+      return serializeImage(node, eventId);  // Web Viewer 链接
+    
+    case 'video':
+      return serializeVideo(node, eventId);
+    
+    case 'audio':
+      return serializeAudio(node, eventId);
+    
+    case 'attachment':
+      return serializeAttachment(node, eventId);
+    
+    case 'tag':
+      // mention-only 标签转为纯文本
+      if (node.mentionOnly) {
+        return `#${node.tagEmoji} ${node.tagName}`;
+      }
+      return serializeTag(node);  // 正式标签保留样式
+    
+    case 'context-marker':
+      // v2.0 功能：隐藏在 Outlook，保留元数据
+      return `<!-- ContextMarker: ${JSON.stringify(node.timeSpec)} -->`;
+    
+    default:
+      return serializeStandardNode(node);  // 标准 HTML 元素
+  }
+}
+```
+
+#### 5.4.5 逆向序列化：Outlook HTML → Slate JSON
+
+```typescript
+// serializers/outlookHtmlToSlate.ts
+
+/**
+ * 从 Outlook HTML 恢复 Slate JSON
+ * 
+ * 注意：这是有损转换，无法完全恢复原始 Slate 结构
+ * - Markdown 表格 → 识别并转回 table 节点
+ * - Web Viewer 链接 → 还原为 image/video/attachment 占位符
+ * - 隐藏的 ContextMarker → 从 HTML 注释中恢复
+ */
+export function outlookHtmlToSlate(html: string): Descendant[] {
+  const doc = parseHTML(html);
+  
+  // 1. 移除底部提示
+  removeFooter(doc);
+  
+  // 2. 解析节点
+  return Array.from(doc.body.childNodes).map(node => 
+    deserializeNode(node)
+  ).filter(Boolean) as Descendant[];
+}
+
+function deserializeNode(domNode: Node): Descendant | null {
+  // 文本节点
+  if (domNode.nodeType === Node.TEXT_NODE) {
+    return { text: domNode.textContent || '' };
+  }
+  
+  // 元素节点
+  if (domNode.nodeType === Node.ELEMENT_NODE) {
+    const element = domNode as HTMLElement;
+    
+    // Markdown 表格识别
+    if (element.tagName === 'PRE' && element.textContent?.includes('|')) {
+      return parseMarkdownTable(element.textContent);
+    }
+    
+    // Web Viewer 链接识别
+    if (element.tagName === 'A' && element.href.includes('/timelog#')) {
+      const hash = new URL(element.href).hash;
+      if (hash.startsWith('#image-')) {
+        return createImagePlaceholder(element.textContent || '');
+      }
+      if (hash.startsWith('#video-')) {
+        return createVideoPlaceholder(element.textContent || '');
+      }
+    }
+    
+    // HTML 注释中的 ContextMarker
+    if (domNode.nodeType === Node.COMMENT_NODE) {
+      const match = domNode.textContent?.match(/ContextMarker: ({.*})/);
+      if (match) {
+        return restoreContextMarker(JSON.parse(match[1]));
+      }
+    }
+    
+    // 标准 HTML 元素
+    return deserializeStandardElement(element);
+  }
+  
+  return null;
+}
+```
+
+---
+
+### 5.5 Git 风格 Diff UI：字段级冲突解决界面
+
+> **设计目标**: 提供类似 Git 的 three-way merge UI，让用户直观理解冲突并快速选择保留版本
+
+#### 5.5.1 冲突解决组件设计
+
+```typescript
+// components/ConflictResolverDialog.tsx
+
+interface ConflictResolverDialogProps {
+  event: Event;
+  conflictResult: FieldLevelConflictResult;
+  onResolve: (resolution: ConflictResolution) => Promise<void>;
+  onCancel: () => void;
+}
+
+/**
+ * 冲突解决对话框
+ * 
+ * 布局：
+ * ┌───────────────────────────────────────────┐
+ * │ 🔀 解决冲突: 会议记录                      │
+ * ├───────────────────────────────────────────┤
+ * │ 共 3 个字段发生冲突，2 个字段已自动合并    │
+ * ├───────────────────────────────────────────┤
+ * │ ⚠️ title (标题)                            │
+ * │ ┌─────────────┬─────────────┬──────────┐ │
+ * │ │ 本地版本    │ 基准版本    │ 远程版本 │ │
+ * │ ├─────────────┼─────────────┼──────────┤ │
+ * │ │ ✓ 会议记录A │ 会议记录    │ 会议记录B│ │
+ * │ └─────────────┴─────────────┴──────────┘ │
+ * │ [ Keep Local ] [ Keep Remote ] [ Edit... ]│
+ * ├───────────────────────────────────────────┤
+ * │ ⚠️ timelog.description (日志内容)          │
+ * │ ┌─────────────┬─────────────┬──────────┐ │
+ * │ │ ✓ 本地修改  │ 原始内容    │ 远程修改 │ │
+ * │ │ 添加了图片  │ 空白        │ 添加了表格│ │
+ * │ └─────────────┴─────────────┴──────────┘ │
+ * │ [ Keep Local ] [ Keep Remote ] [ Merge...]│
+ * ├───────────────────────────────────────────┤
+ * │ ✅ 自动合并的字段（2个）                   │
+ * │ • tags: 新增 #项目A (远程)                 │
+ * │ • timelog.timeSpent: 2h → 3h (本地)       │
+ * │ [ 撤销自动合并 ]                           │
+ * └───────────────────────────────────────────┘
+ * │ [ 取消 ] [ 应用解决方案 ]                  │
+ * └───────────────────────────────────────────┘
+ */
+export function ConflictResolverDialog({
+  event,
+  conflictResult,
+  onResolve,
+  onCancel
+}: ConflictResolverDialogProps) {
+  const [resolutions, setResolutions] = useState<Map<string, FieldResolution>>(
+    new Map()
+  );
+  
+  // 初始化：自动解决的字段默认使用自动方案
+  useEffect(() => {
+    const autoResolved = new Map<string, FieldResolution>();
+    conflictResult.conflictedFields
+      .filter(c => c.resolution === 'auto-local' || c.resolution === 'auto-remote')
+      .forEach(conflict => {
+        autoResolved.set(conflict.field, {
+          strategy: conflict.resolution === 'auto-local' ? 'keep-local' : 'keep-remote',
+          value: conflict.resolution === 'auto-local' ? conflict.localValue : conflict.remoteValue
+        });
+      });
+    setResolutions(autoResolved);
+  }, [conflictResult]);
+  
+  return (
+    <Dialog open onClose={onCancel} maxWidth="lg" fullWidth>
+      <DialogTitle>
+        <Box display="flex" alignItems="center" gap={1}>
+          <MergeIcon color="warning" />
+          <span>解决冲突: {event.title}</span>
+        </Box>
+      </DialogTitle>
+      
+      <DialogContent>
+        {/* 冲突摘要 */}
+        <Alert severity="info" sx={{ mb: 2 }}>
+          共 {conflictResult.conflictedFields.length} 个字段发生冲突，
+          {conflictResult.conflictedFields.filter(c => c.resolution.startsWith('auto')).length} 个字段已自动合并
+        </Alert>
+        
+        {/* 手动解决的冲突 */}
+        {conflictResult.conflictedFields
+          .filter(c => c.resolution === 'manual-required')
+          .map(conflict => (
+            <FieldConflictPanel
+              key={conflict.field}
+              conflict={conflict}
+              resolution={resolutions.get(conflict.field)}
+              onResolutionChange={(resolution) => {
+                setResolutions(new Map(resolutions).set(conflict.field, resolution));
+              }}
+            />
+          ))}
+        
+        {/* 自动合并的字段 */}
+        <AutoMergedFieldsPanel
+          conflicts={conflictResult.conflictedFields.filter(c => 
+            c.resolution.startsWith('auto')
+          )}
+          resolutions={resolutions}
+          onUndoAutoMerge={(field) => {
+            const newResolutions = new Map(resolutions);
+            newResolutions.delete(field);
+            setResolutions(newResolutions);
+          }}
+        />
+      </DialogContent>
+      
+      <DialogActions>
+        <Button onClick={onCancel}>取消</Button>
+        <Button
+          variant="contained"
+          onClick={() => onResolve(resolutions)}
+          disabled={!allConflictsResolved(conflictResult, resolutions)}
+        >
+          应用解决方案
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+```
+
+#### 5.5.2 字段冲突面板：三栏对比
+
+```typescript
+// components/FieldConflictPanel.tsx
+
+interface FieldConflictPanelProps {
+  conflict: FieldConflict;
+  resolution?: FieldResolution;
+  onResolutionChange: (resolution: FieldResolution) => void;
+}
+
+/**
+ * 单个字段的冲突解决面板
+ * 
+ * 样式：
+ * ┌──────────────────────────────────────────┐
+ * │ ⚠️ title (标题)                           │
+ * ├──────────────────────────────────────────┤
+ * │ ┌──────────┬──────────┬──────────┐       │
+ * │ │ 本地版本 │ 基准版本 │ 远程版本 │       │
+ * │ ├──────────┼──────────┼──────────┤       │
+ * │ │ ✓ 新标题 │ 旧标题   │ 另一标题 │       │
+ * │ │ (本地)   │ (上次同步)│ (远程)   │       │
+ * │ └──────────┴──────────┴──────────┘       │
+ * │ [ Keep Local ] [ Keep Remote ] [ Edit... ]│
+ * └──────────────────────────────────────────┘
+ */
+export function FieldConflictPanel({
+  conflict,
+  resolution,
+  onResolutionChange
+}: FieldConflictPanelProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [customValue, setCustomValue] = useState<any>(null);
+  
+  return (
+    <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+      {/* 字段标题 */}
+      <Box display="flex" alignItems="center" gap={1} mb={1}>
+        <WarningIcon color="warning" fontSize="small" />
+        <Typography variant="subtitle2">
+          {conflict.field} ({getFieldLabel(conflict.field)})
+        </Typography>
+      </Box>
+      
+      {/* 三栏对比 */}
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        {/* 本地版本 */}
+        <Grid item xs={4}>
+          <VersionCard
+            label="本地版本"
+            value={conflict.localValue}
+            timestamp={conflict.localTimestamp}
+            isSelected={resolution?.strategy === 'keep-local'}
+            fieldType={conflict.field}
+          />
+        </Grid>
+        
+        {/* 基准版本 (上次同步) */}
+        <Grid item xs={4}>
+          <VersionCard
+            label="基准版本"
+            value={conflict.baseValue}
+            timestamp={conflict.baseTimestamp}
+            isBaseline
+            fieldType={conflict.field}
+          />
+        </Grid>
+        
+        {/* 远程版本 */}
+        <Grid item xs={4}>
+          <VersionCard
+            label="远程版本"
+            value={conflict.remoteValue}
+            timestamp={conflict.remoteTimestamp}
+            isSelected={resolution?.strategy === 'keep-remote'}
+            fieldType={conflict.field}
+          />
+        </Grid>
+      </Grid>
+      
+      {/* 操作按钮 */}
+      <Box display="flex" gap={1}>
+        <Button
+          variant={resolution?.strategy === 'keep-local' ? 'contained' : 'outlined'}
+          startIcon={<CheckIcon />}
+          onClick={() => onResolutionChange({
+            strategy: 'keep-local',
+            value: conflict.localValue
+          })}
+        >
+          保留本地
+        </Button>
+        
+        <Button
+          variant={resolution?.strategy === 'keep-remote' ? 'contained' : 'outlined'}
+          startIcon={<CheckIcon />}
+          onClick={() => onResolutionChange({
+            strategy: 'keep-remote',
+            value: conflict.remoteValue
+          })}
+        >
+          保留远程
+        </Button>
+        
+        {/* 特殊字段：提供合并选项 */}
+        {canMergeField(conflict.field) && (
+          <Button
+            variant={resolution?.strategy === 'merge' ? 'contained' : 'outlined'}
+            startIcon={<MergeIcon />}
+            onClick={() => setIsEditing(true)}
+          >
+            手动合并...
+          </Button>
+        )}
+      </Box>
+      
+      {/* 手动编辑对话框 */}
+      {isEditing && (
+        <FieldMergeDialog
+          conflict={conflict}
+          onMerge={(mergedValue) => {
+            onResolutionChange({
+              strategy: 'merge',
+              value: mergedValue
+            });
+            setIsEditing(false);
+          }}
+          onCancel={() => setIsEditing(false)}
+        />
+      )}
+    </Paper>
+  );
+}
+```
+
+#### 5.5.3 版本卡片：Diff 高亮
+
+```typescript
+// components/VersionCard.tsx
+
+interface VersionCardProps {
+  label: string;
+  value: any;
+  timestamp?: string;
+  isSelected?: boolean;
+  isBaseline?: boolean;
+  fieldType: string;
+}
+
+/**
+ * 单个版本的展示卡片
+ * 
+ * 样式：
+ * ┌─────────────────┐
+ * │ ✓ 本地版本      │
+ * ├─────────────────┤
+ * │ 会议记录 v2     │ ← Diff 高亮
+ * │ +添加的内容     │ ← 绿色
+ * │ -删除的内容     │ ← 红色
+ * ├─────────────────┤
+ * │ 2h ago          │
+ * └─────────────────┘
+ */
+export function VersionCard({
+  label,
+  value,
+  timestamp,
+  isSelected,
+  isBaseline,
+  fieldType
+}: VersionCardProps) {
+  const displayValue = formatFieldValue(value, fieldType);
+  
+  return (
+    <Card
+      variant="outlined"
+      sx={{
+        borderColor: isSelected ? 'primary.main' : isBaseline ? 'grey.400' : 'grey.300',
+        borderWidth: isSelected ? 2 : 1,
+        bgcolor: isSelected ? 'primary.50' : isBaseline ? 'grey.50' : 'background.paper'
+      }}
+    >
+      <CardContent>
+        {/* 标签 */}
+        <Box display="flex" alignItems="center" gap={0.5} mb={1}>
+          {isSelected && <CheckIcon fontSize="small" color="primary" />}
+          <Typography variant="caption" color="text.secondary">
+            {label}
+          </Typography>
+        </Box>
+        
+        {/* 值 (带 Diff 高亮) */}
+        <Box sx={{ mb: 1 }}>
+          {renderFieldValueWithDiff(displayValue, fieldType)}
+        </Box>
+        
+        {/* 时间戳 */}
+        {timestamp && (
+          <Typography variant="caption" color="text.secondary">
+            {formatRelativeTime(timestamp)}
+          </Typography>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Diff 高亮渲染
+ */
+function renderFieldValueWithDiff(value: string, fieldType: string) {
+  if (fieldType === 'timelog.description') {
+    // Slate 内容：渲染为 HTML 预览
+    return <SlatePreview content={value} maxHeight={200} />;
+  }
+  
+  if (fieldType === 'tags') {
+    // 标签数组：显示标签列表
+    const tags = JSON.parse(value) as Tag[];
+    return (
+      <Box display="flex" gap={0.5} flexWrap="wrap">
+        {tags.map(tag => (
+          <Chip
+            key={tag.id}
+            label={`${tag.emoji} ${tag.name}`}
+            size="small"
+          />
+        ))}
+      </Box>
+    );
+  }
+  
+  // 默认：纯文本
+  return (
+    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+      {value}
+    </Typography>
+  );
+}
+```
+
+#### 5.5.4 自动合并字段面板
+
+```typescript
+// components/AutoMergedFieldsPanel.tsx
+
+/**
+ * 显示已自动合并的字段
+ * 
+ * 样式：
+ * ┌─────────────────────────────────────┐
+ * │ ✅ 自动合并的字段（2个）             │
+ * ├─────────────────────────────────────┤
+ * │ • tags: 新增 #项目A (远程)           │
+ * │   [ 撤销 ]                           │
+ * ├─────────────────────────────────────┤
+ * │ • timelog.timeSpent: 2h → 3h (本地) │
+ * │   [ 撤销 ]                           │
+ * └─────────────────────────────────────┘
+ */
+export function AutoMergedFieldsPanel({
+  conflicts,
+  resolutions,
+  onUndoAutoMerge
+}: {
+  conflicts: FieldConflict[];
+  resolutions: Map<string, FieldResolution>;
+  onUndoAutoMerge: (field: string) => void;
+}) {
+  if (conflicts.length === 0) return null;
+  
+  return (
+    <Paper variant="outlined" sx={{ p: 2, bgcolor: 'success.50' }}>
+      <Box display="flex" alignItems="center" gap={1} mb={1}>
+        <CheckCircleIcon color="success" fontSize="small" />
+        <Typography variant="subtitle2">
+          自动合并的字段（{conflicts.length}个）
+        </Typography>
+      </Box>
+      
+      <List dense>
+        {conflicts.map(conflict => {
+          const resolution = resolutions.get(conflict.field);
+          const changeDesc = getAutoMergeDescription(conflict);
+          
+          return (
+            <ListItem key={conflict.field}>
+              <ListItemText
+                primary={`${conflict.field}: ${changeDesc}`}
+                secondary={
+                  resolution?.strategy === 'keep-local' ? '(保留本地)' : '(保留远程)'
+                }
+              />
+              <ListItemSecondaryAction>
+                <Button
+                  size="small"
+                  onClick={() => onUndoAutoMerge(conflict.field)}
+                >
+                  撤销
+                </Button>
+              </ListItemSecondaryAction>
+            </ListItem>
+          );
+        })}
+      </List>
+    </Paper>
+  );
+}
+
+function getAutoMergeDescription(conflict: FieldConflict): string {
+  const { field, localValue, remoteValue, baseValue } = conflict;
+  
+  if (field === 'tags') {
+    const added = JSON.parse(localValue || remoteValue).filter(
+      (tag: Tag) => !JSON.parse(baseValue).some((t: Tag) => t.id === tag.id)
+    );
+    return `新增 ${added.map((t: Tag) => `#${t.emoji} ${t.name}`).join(', ')}`;
+  }
+  
+  if (field === 'timelog.timeSpent') {
+    return `${baseValue} → ${localValue || remoteValue}`;
+  }
+  
+  return `${baseValue} → ${localValue || remoteValue}`;
+}
+```
+
+#### 5.5.5 手动合并对话框：针对 Description
+
+```typescript
+// components/FieldMergeDialog.tsx
+
+/**
+ * Description 字段的手动合并对话框
+ * 
+ * 功能：
+ * 1. 并排显示本地和远程的 Slate 内容
+ * 2. 提供"插入远程段落"按钮
+ * 3. 实时预览合并结果
+ */
+export function FieldMergeDialog({
+  conflict,
+  onMerge,
+  onCancel
+}: {
+  conflict: FieldConflict;
+  onMerge: (mergedValue: any) => void;
+  onCancel: () => void;
+}) {
+  const [mergedContent, setMergedContent] = useState<Descendant[]>(
+    JSON.parse(conflict.localValue)
+  );
+  
+  const localContent = JSON.parse(conflict.localValue) as Descendant[];
+  const remoteContent = JSON.parse(conflict.remoteValue) as Descendant[];
+  
+  return (
+    <Dialog open onClose={onCancel} maxWidth="xl" fullWidth>
+      <DialogTitle>手动合并: {conflict.field}</DialogTitle>
+      
+      <DialogContent>
+        <Grid container spacing={2}>
+          {/* 本地版本 */}
+          <Grid item xs={4}>
+            <Typography variant="subtitle2" gutterBottom>本地版本</Typography>
+            <SlateEditor value={localContent} readOnly />
+          </Grid>
+          
+          {/* 远程版本 */}
+          <Grid item xs={4}>
+            <Typography variant="subtitle2" gutterBottom>远程版本</Typography>
+            <SlateEditor value={remoteContent} readOnly />
+            <Button
+              size="small"
+              onClick={() => {
+                // 插入远程段落到合并结果
+                setMergedContent([...mergedContent, ...remoteContent]);
+              }}
+            >
+              插入全部段落 →
+            </Button>
+          </Grid>
+          
+          {/* 合并结果 */}
+          <Grid item xs={4}>
+            <Typography variant="subtitle2" gutterBottom>合并结果</Typography>
+            <SlateEditor
+              value={mergedContent}
+              onChange={setMergedContent}
+            />
+          </Grid>
+        </Grid>
+      </DialogContent>
+      
+      <DialogActions>
+        <Button onClick={onCancel}>取消</Button>
+        <Button
+          variant="contained"
+          onClick={() => onMerge(JSON.stringify(mergedContent))}
+        >
+          使用此合并结果
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+```
+
+---
+
+### 5.6 增量同步优化
 
 ```typescript
 // sync/incrementalSync.ts
@@ -2000,9 +3192,9 @@ export class OfflineQueue {
 
 ---
 
-## 6. 第一层：EventHistoryService
+## 7. 第一层：EventHistoryService
 
-### 6.1 核心概念
+### 7.1 核心概念
 
 EventHistoryService 记录 Event 的所有变更，提供完整的审计追踪能力。
 
@@ -2014,7 +3206,7 @@ EventHistoryService 记录 Event 的所有变更，提供完整的审计追踪�
 - ✅ 数据恢复（恢复到历史版本）
 - ✅ 冲突检测基础（为 Outlook 同步提供 hash 对比）
 
-### 6.2 数据结构
+### 7.2 数据结构
 
 ```typescript
 // types/eventHistory.ts
