@@ -288,7 +288,13 @@ export class EventService {
         title: updates.title,
         isAllDay: updates.isAllDay,
         description: (updates.description || '').substring(0, 50),
-        eventlog: ((updates as any).eventlog || '').substring(0, 50), // 🆕 v1.8: 显示 eventlog 字段
+        eventlog: (() => {
+          const log = (updates as any).eventlog;
+          if (!log) return '';
+          if (typeof log === 'string') return log.substring(0, 50);
+          if (typeof log === 'object') return `[EventLog对象: ${log.descriptionPlainText?.substring(0, 30) || '无内容'}]`;
+          return '[未知格式]';
+        })(), // 🆕 v1.8: 兼容新旧格式
         calendarIds: (updates as any).calendarIds, // 🔍 检查 calendarIds
         todoListIds: (updates as any).todoListIds  // 🔍 检查 todoListIds
       });
