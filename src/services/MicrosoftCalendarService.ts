@@ -454,7 +454,8 @@ export class MicrosoftCalendarService {
       if (meta) {
         this.setSyncMeta({
           ...meta,
-          lastCalendarListSyncTime: now.toISOString()
+          // 🔧 修复：使用 formatTimeForStorage 保持一致性
+          lastCalendarListSyncTime: formatTimeForStorage(now)
         });
       }
       
@@ -494,7 +495,8 @@ export class MicrosoftCalendarService {
       this.setCachedCalendars(calendars);
 
       // 更新同步元数据
-      const now = new Date().toISOString();
+      // 🔧 修复：使用 formatTimeForStorage 保持一致性
+      const now = formatTimeForStorage(new Date());
       this.setSyncMeta({
         lastSyncTime: now,
         calendarGroupsCount: groups.length,

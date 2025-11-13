@@ -1,6 +1,7 @@
 import * as Y from 'yjs';
 import { encodeStateAsUpdate, applyUpdate, encodeStateVector } from 'yjs';
 import type { Event } from '../types';
+import dayjs from 'dayjs';
 
 // ==================== 类型定义 ====================
 
@@ -346,18 +347,17 @@ class SnapshotService {
    * 获取前一天的日期
    */
   private getPreviousDate(date: string): string | null {
-    const d = new Date(date);
-    d.setDate(d.getDate() - 1);
-    return d.toISOString().split('T')[0];
+    // 🔧 修复：使用 dayjs 避免时区问题
+    const d = dayjs(date);
+    return d.subtract(1, 'day').format('YYYY-MM-DD');
   }
 
   /**
    * 清理旧快照（保留最近 N 天）
    */
   cleanupOldSnapshots(daysToKeep: number = 30): void {
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
-    const cutoffStr = cutoffDate.toISOString().split('T')[0];
+    // 🔧 修复：使用 dayjs 避免时区问题
+    const cutoffStr = dayjs().subtract(daysToKeep, 'day').format('YYYY-MM-DD');
 
     // 清理基准快照
     const snapshots = this.getBaseSnapshots();

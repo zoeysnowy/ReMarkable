@@ -10,6 +10,7 @@
 import { Event, Contact } from '../types';
 import { EventService } from './EventService';
 import { parseLocalTimeString } from '../utils/timeUtils';
+import dayjs from 'dayjs';
 
 export interface ConflictInfo {
   /** 冲突的事件 */
@@ -253,10 +254,11 @@ export class ConflictDetectionService {
         if (end.getHours() >= workHoursEnd) continue;
 
         // 检查冲突
+        // 🔧 修复：使用 dayjs 格式化避免 UTC 转换
         const conflicts = await this.detectAttendeeConflicts(
           attendees,
-          start.toISOString(),
-          end.toISOString()
+          dayjs(start).format('YYYY-MM-DD HH:mm:ss'),
+          dayjs(end).format('YYYY-MM-DD HH:mm:ss')
         );
 
         if (conflicts.size === 0) {

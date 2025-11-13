@@ -10,7 +10,9 @@
 
 import type { EventObject } from '@toast-ui/calendar';
 import { Event } from '../types';
+import { EventHub } from '../services/EventHub';
 import { parseLocalTimeString, formatTimeForStorage } from './timeUtils';
+import dayjs from 'dayjs';
 
 /**
  * 生成唯一ID
@@ -417,8 +419,9 @@ export function convertFromCalendarEvent(
     id: calendarEvent.id || generateEventId(),
     title: calendarEvent.title || '(无标题)',
     description: calendarEvent.body || '',
-    startTime: formatTimeForStorage(calendarEvent.start),
-    endTime: formatTimeForStorage(calendarEvent.end),
+    // 🔧 修复时区问题：使用 dayjs 格式化避免 UTC 转换
+    startTime: dayjs(calendarEvent.start).format('YYYY-MM-DD HH:mm:ss'),
+    endTime: dayjs(calendarEvent.end).format('YYYY-MM-DD HH:mm:ss'),
     isAllDay: calendarEvent.isAllday || false,
     location: calendarEvent.location || '',
     tags: calendarEvent.calendarId !== 'default' ? [calendarEvent.calendarId] : [],

@@ -92,7 +92,8 @@ class EventHubClass {
     const updatedEvent: Event = {
       ...currentSnapshot,
       ...updates,
-      updatedAt: new Date().toISOString()
+      // 🔧 修复：使用 formatTimeForStorage 而不是 toISOString()
+      updatedAt: formatTimeForStorage(new Date())
     };
 
     // 3. 记录变化（用于调试）

@@ -41,7 +41,8 @@ interface TimeCalendarProps {
   availableTags?: any[]; // 🆕 添加：可用标签列表
   globalTimer?: {
     isRunning: boolean;
-    tagId: string;
+    tagId: string; // 🔧 向后兼容：第一个标签ID
+    tagIds: string[]; // 🆕 完整的标签数组，支持多标签统计
     startTime: number;
     originalStartTime: number;
     elapsedTime: number;
@@ -1343,7 +1344,13 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     if (globalTimer !== undefined) {
       if (globalTimer && globalTimer.isRunning) {
         const startTime = globalTimer.originalStartTime || globalTimer.startTime;
-        const eventId = `timer-${globalTimer.tagId}-${startTime}`;
+        // 🔧 使用 tagIds 数组（取第一个标签ID，用于生成事件ID）
+        const tagId = globalTimer.tagIds?.[0];
+        if (!tagId) {
+          console.warn('⚠️ [TIMER] globalTimer.tagIds is empty');
+          return null;
+        }
+        const eventId = `timer-${tagId}-${startTime}`;
         console.log('✅ [TIMER] Using globalTimer prop:', eventId);
         return eventId;
       } else {
@@ -1398,7 +1405,13 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     if (globalTimer && globalTimer.isRunning) {
       currentTimer = globalTimer;
       const startTime = globalTimer.originalStartTime || globalTimer.startTime;
-      timerEventId = `timer-${globalTimer.tagId}-${startTime}`;
+      // 🔧 使用 tagIds 数组（取第一个标签ID，用于生成事件ID）
+      const tagId = globalTimer.tagIds?.[0];
+      if (!tagId) {
+        console.warn('⚠️ [REALTIME TIMER] globalTimer.tagIds is empty');
+        return null;
+      }
+      timerEventId = `timer-${tagId}-${startTime}`;
     } else {
       // 2. 如果没有 prop，从 localStorage 读取（Widget 场景）
       try {
@@ -1408,7 +1421,13 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           if (timer && timer.isRunning) {
             currentTimer = timer;
             const startTime = timer.originalStartTime || timer.startTime;
-            timerEventId = `timer-${timer.tagId}-${startTime}`;
+            // 🔧 使用 tagIds 数组（取第一个标签ID，用于生成事件ID）
+            const tagId = timer.tagIds?.[0];
+            if (!tagId) {
+              console.warn('⚠️ [REALTIME TIMER] timer.tagIds from localStorage is empty');
+              return null;
+            }
+            timerEventId = `timer-${tagId}-${startTime}`;
           }
         }
       } catch (error) {

@@ -1,6 +1,7 @@
 import { STORAGE_KEYS } from '../constants/storage';
 import type { Event } from '../types';
 import { TagService } from './TagService';
+import { formatTimeForStorage } from '../utils/timeUtils';
 
 export const RecoveryService = {
   recoverPlanItemsFromEvents(): Event[] {
@@ -8,7 +9,8 @@ export const RecoveryService = {
       const raw = localStorage.getItem(STORAGE_KEYS.EVENTS);
       if (!raw) return [];
       const events = JSON.parse(raw) as any[];
-      const now = new Date().toISOString();
+      // 🔧 修复：使用 formatTimeForStorage 保持一致性
+      const now = formatTimeForStorage(new Date());
       const items: Event[] = events.map((ev) => ({
         id: ev.id || `plan-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
         title: ev.title || ev.eventTitle || '未命名',
