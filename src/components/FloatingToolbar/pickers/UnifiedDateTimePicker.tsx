@@ -433,30 +433,40 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
   const handleDateClick = (date: Dayjs) => {
     setSelectedQuickBtn(null); // 清除快捷按钮选中状态
     setDisplayHint(null); // 🆕 v1.1: 手动选择日期时清除 displayHint
+    
+    // 🔧 修复：确保 dayjs 对象使用本地时间，避免 UTC 转换
+    // 通过重新创建 dayjs 对象（只保留日期部分），确保时区正确
+    const localDate = dayjs(date.format('YYYY-MM-DD'));
+    dbg('picker', '👆 用户点击日历日期', { 
+      原始date: date.format('YYYY-MM-DD HH:mm:ss'),
+      本地化date: localDate.format('YYYY-MM-DD HH:mm:ss'),
+      是否相同: date.isSame(localDate, 'day')
+    });
+    
     if (!selectedDates.start || (selectedDates.start && selectedDates.end)) {
       // 开始新的选择
-      dbg('picker', '👆 用户点击日历: 开始选择', { 选择日期: date.format('YYYY-MM-DD') });
-      setSelectedDates({ start: date, end: null });
+      dbg('picker', '👆 用户点击日历: 开始选择', { 选择日期: localDate.format('YYYY-MM-DD') });
+      setSelectedDates({ start: localDate, end: null });
       setIsSelecting('end');
     } else if (selectedDates.start && !selectedDates.end) {
       // 选择结束日期
-      if (date.isBefore(selectedDates.start)) {
+      if (localDate.isBefore(selectedDates.start)) {
         dbg('picker', '👆 用户点击日历: 完成选择（反向范围）', { 
-          开始日期: date.format('YYYY-MM-DD'), 
+          开始日期: localDate.format('YYYY-MM-DD'), 
           结束日期: selectedDates.start.format('YYYY-MM-DD') 
         });
-        setSelectedDates({ start: date, end: selectedDates.start });
+        setSelectedDates({ start: localDate, end: selectedDates.start });
       } else {
         dbg('picker', '👆 用户点击日历: 完成选择', { 
           开始日期: selectedDates.start.format('YYYY-MM-DD'), 
-          结束日期: date.format('YYYY-MM-DD') 
+          结束日期: localDate.format('YYYY-MM-DD') 
         });
-        setSelectedDates({ start: selectedDates.start, end: date });
+        setSelectedDates({ start: selectedDates.start, end: localDate });
       }
       setIsSelecting(null);
       
       // 🆕 v1.2: 如果选择的是具体某一天且没有设置时间，自动勾选全天
-      const isSingleDay = selectedDates.start.isSame(date, 'day');
+      const isSingleDay = selectedDates.start.isSame(localDate, 'day');
       const hasNoTime = !startTime && !endTime;
       if (isSingleDay && hasNoTime) {
         dbg('picker', '✅ 自动勾选全天: 具体某一天 + 无时间');
