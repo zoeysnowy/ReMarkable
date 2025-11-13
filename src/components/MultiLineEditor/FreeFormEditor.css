@@ -13,7 +13,7 @@
   margin-bottom: 4px;
   height: 32px;
   font-size: 16px;
-  font-family: 'Microsoft YaHei', Arial, sans-serif;
+  font-family: 'Microsoft YaHei', Arial;
   border-bottom: 1px solid transparent;
   transition: border-bottom-color 0.2s ease;
 }

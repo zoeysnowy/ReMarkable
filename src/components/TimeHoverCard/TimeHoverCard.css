@@ -67,7 +67,7 @@
 
 /* 倒计时/已过期状态（左对齐） */
 .time-hover-card__countdown {
-  font-family: 'Inter', 'Noto Sans JP', 'Noto Sans SC', sans-serif;
+  font-family: 'Microsoft YaHei', Arial;
   font-size: 13.8px;
   font-weight: 500;
   line-height: 22.4px;

@@ -35,7 +35,7 @@
    ============================================ */
 .toastui-calendar,
 .toastui-calendar * {
-  font-family: "Microsoft YaHei", Arial, sans-serif !important;
+  font-family: "Microsoft YaHei", Arial !important;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
