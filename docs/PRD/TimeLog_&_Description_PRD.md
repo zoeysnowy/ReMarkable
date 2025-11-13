@@ -1,10 +1,51 @@
 # ReMarkable TimeLog 系统设计文档
 
-> **文档版本**: v2.0  
+> **文档版本**: v2.1  
 > **创建日期**: 2024-01-XX  
-> **最后更新**: 2025-11-12  
+> **最后更新**: 2025-11-13  
 > **作者**: AI Assistant  
 > **目标**: 为 ReMarkable 时间追踪应用设计富文本 TimeLog 系统，支持情境感知时间轴、与 Outlook 双向同步和版本控制
+
+---
+
+## 📢 架构决策记录（2025-11-13）
+
+### 核心决策：TimeLog 采用嵌入式设计
+
+**决策内容：**
+- TimeLog **不是独立实体**，而是 Event 接口的 `timelog` 字段
+- **不创建**单独的 `timelogs` 数据表/集合
+- 版本历史存储在 `Event.timelog.versions` 数组中（最多保留 50 个版本）
+
+**理由：**
+1. **业务语义自然** - TimeLog 本质是"事件的详细描述"，是 1:1 关系
+2. **简化数据操作** - 一次查询即可获取完整事件，无需 JOIN
+3. **同步逻辑直观** - Outlook Event.body 直接映射到 Event.timelog
+4. **避免事务问题** - 单实体更新，无孤儿记录风险
+
+**数据结构示意：**
+```typescript
+interface Event {
+  id: string;
+  title: string;
+  startTime: string;     // 保留用于快速查询
+  timeSpec?: TimeSpec;   // 完整时间对象
+  
+  timelog?: {            // 🆕 嵌入式 TimeLog
+    content: Descendant[];        // Slate JSON
+    descriptionHtml: string;      // 用于 Outlook 同步
+    descriptionPlainText: string; // 用于搜索
+    attachments?: Attachment[];
+    versions?: TimeLogVersion[];  // 版本历史
+    syncState?: SyncState;
+  };
+}
+```
+
+**影响范围：**
+- Section 1.3: 数据结构定义
+- Section 6: 版本控制实现（使用 eventId）
+- Section 7.2: 数据库设计（单表 + 可选归档表）
 
 ---
 
@@ -859,38 +900,57 @@ Microsoft Outlook:
 // types/timelog.ts  
 
 /**
- * TimeLog 主数据结构
+ * Event 接口（含嵌入式 TimeLog）
  * 
- * ⚠️ 注意：不再使用 ISO 字符串存储时间
- * 所有时间字段都通过 TimeHub 管理，使用 TimeSpec 结构
+ * 🆕 架构决策（2025-11-13）：
+ * - TimeLog 不是独立实体，而是 Event 的 timelog 字段
+ * - 版本历史存储在 Event.timelog.versions 数组中
+ * - 所有时间字段遵循 TimeHub/TimeSpec 架构
  */
-type TimeLog = {  
-  id: string;  
-  eventId: string;  
+interface Event {
+  id: string;
+  title: string;
   
-  // 主存储：结构化 JSON (Slate format)  
-  content: Descendant[]; // Slate 的原生格式，可包含 ContextMarkerElement
+  // 时间字段（保留字符串用于快速查询和向后兼容）
+  startTime: string;     // ISO 字符串，用于数据库索引和 UI 显示
+  endTime: string;
   
-  // 辅助存储：简化 HTML (用于 Outlook 同步)  
-  descriptionHtml: string;  
+  // 完整时间对象（TimeSpec 架构）
+  timeSpec?: TimeSpec;   // 包含 kind, source, policy, resolved
   
-  // 纯文本备份 (用于搜索和降级)  
-  descriptionPlainText: string;  
+  tags?: string[];       // 标签数组（仅来自 Title）
   
-  // 媒体附件元数据  
-  attachments: Attachment[];  
+  // 🆕 嵌入式 TimeLog 字段
+  timelog?: {
+    // 主存储：结构化 JSON (Slate format)  
+    content: Descendant[]; // Slate 的原生格式，可包含 ContextMarkerElement
+    
+    // 辅助存储：简化 HTML (用于 Outlook 同步)  
+    descriptionHtml: string;  
+    
+    // 纯文本备份 (用于搜索和降级)  
+    descriptionPlainText: string;  
+    
+    // 媒体附件元数据  
+    attachments?: Attachment[];  
+    
+    // 版本控制（保留最近 50 个版本）
+    versions?: TimeLogVersion[];  
+    
+    // 同步元数据  
+    syncState?: SyncState;  
+    
+    // 时间戳
+    createdAt?: Date;  
+    updatedAt?: Date;  
+  };
   
-  // 版本控制  
-  versions: TimeLogVersion[];  
-  
-  // 同步元数据  
-  syncState: SyncState;  
-  
-  // 时间字段（通过 TimeHub 管理）
-  // 注意：这些字段由 Event 的 TimeSpec 派生，不直接修改
-  createdAt: Date;  
-  updatedAt: Date;  
-};  
+  // 其他现有字段
+  isTimer?: boolean;
+  isDeadline?: boolean;
+  isPlan?: boolean;
+  // ...
+}
 
 /**
  * Slate 文档节点类型
@@ -2508,10 +2568,74 @@ export class SyncEngine {
 
 ### 7.2 关键决策
 
-**数据存储:**
+**🆕 数据架构（2025-11-13）:**
 
-- 开发阶段：使用 SQLite（简单、文件存储）
-- 生产环境：使用 MongoDB（更好的 JSON 支持）
+- **TimeLog 设计**: 嵌入式（Event.timelog 字段），不创建独立表
+- **版本存储**: Event.timelog.versions 数组（最多保留 50 个）
+- **归档策略**: 50+ 版本时可选迁移到 event_versions 表
+
+**数据库选择:**
+
+- **推荐**: MongoDB（原生支持嵌入文档和 JSON，查询性能优）
+- **备选**: SQLite（需要序列化 timelog 为 JSON 字符串）
+
+**MongoDB 设计示例:**
+```javascript
+// events 集合
+{
+  _id: "evt_123",
+  title: "完成设计稿",
+  startTime: "2025-11-13T10:00:00Z",
+  timeSpec: { kind: "fixed", ... },
+  tags: ["工作", "设计"],
+  
+  timelog: {
+    content: [...],  // Slate JSON
+    descriptionHtml: "<p>讨论了...</p>",
+    descriptionPlainText: "讨论了...",
+    versions: [
+      { id: "v1", createdAt: new Date(), content: [...] }
+    ],
+    syncState: { lastSyncedAt: ..., contentHash: "..." }
+  }
+}
+
+// 索引策略
+db.events.createIndex({ "timelog.syncState.contentHash": 1 });
+db.events.createIndex({ "timelog.descriptionPlainText": "text" });
+
+// 查询优化（投影排除大字段）
+db.events.find({}, { projection: { "timelog": 0 } });  // 列表页
+db.events.findOne({ _id: "evt_123" });  // 详情页（包含 timelog）
+```
+
+**SQLite 设计示例:**
+```sql
+-- 主表（内联基础字段）
+CREATE TABLE events (
+  id TEXT PRIMARY KEY,
+  title TEXT,
+  start_time TEXT,
+  timespec TEXT,  -- JSON
+  
+  -- TimeLog 基础字段（避免 JOIN）
+  timelog_content TEXT,      -- Slate JSON
+  timelog_html TEXT,         -- HTML
+  timelog_plaintext TEXT,    -- 纯文本
+  sync_hash TEXT,
+  synced_at TEXT
+);
+
+-- 辅助表（可选，用于归档旧版本）
+CREATE TABLE event_versions (
+  id TEXT PRIMARY KEY,
+  event_id TEXT REFERENCES events(id),
+  version_number INTEGER,
+  created_at TEXT,
+  content TEXT,  -- Slate JSON
+  changes_summary TEXT
+);
+```
 
 **附件存储:**
 
@@ -2572,15 +2696,19 @@ export const handleSyncError = (error: any): SyncError => {
 
 ```typescript
 // 版本历史不要一次性全部加载
-async loadVersions(limit: number = 20, offset: number = 0) {
-  const timelog = await db.timelogs.findById(timelogId);
-  const total = timelog.versions.length;
-  const versions = timelog.versions
+async loadVersions(eventId: string, limit: number = 20, offset: number = 0) {
+  const event = await EventService.getEventById(eventId);
+  if (!event?.timelog?.versions) {
+    return { versions: [], total: 0, hasMore: false };
+  }
+  const versions = event.timelog.versions;
+  const total = versions.length;
+  const sliced = versions
     .slice(Math.max(0, total - offset - limit), total - offset)
     .reverse();
   
   return {
-    versions,
+    versions: sliced,
     total,
     hasMore: offset + limit < total,
   };
