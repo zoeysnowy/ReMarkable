@@ -56,12 +56,13 @@
 
 1. [系统概述](#1-系统概述)
 2. [情境感知时间轴编辑器](#2-情境感知时间轴编辑器)
-3. [数据格式选型](#3-数据格式选型)
-4. [双向同步架构](#4-双向同步架构)
-5. [版本控制系统](#5-版本控制系统)
-6. [实现指南](#6-实现指南)
-7. [性能优化](#7-性能优化)
-8. [技术栈](#8-技术栈)
+3. [Description 标签提及功能](#3-description-标签提及功能)
+4. [数据格式选型](#4-数据格式选型)
+5. [双向同步架构](#5-双向同步架构)
+6. [版本控制系统](#6-版本控制系统)
+7. [实现指南](#7-实现指南)
+8. [性能优化](#8-性能优化)
+9. [技术栈](#9-技术栈)
 
 ---
 
@@ -520,11 +521,337 @@ const createContextMarker = async (activities: ActivitySpan[]) => {
 
 ---
 
-## 3. 数据格式选型
+## 3. Description 标签提及功能
+
+### 3.1 功能概述
+
+**版本**: v1.9.6  
+**日期**: 2025-11-12  
+**状态**: ✅ 已实现
+
+在 **Description** 字段中支持插入标签，但这些标签仅作为**提及（Mention）**，不会成为 Event 的正式 tags。
+
+在同步到远程日历（Microsoft Outlook/Google Calendar）时，这些标签会被转换为纯文本格式：`#emoji tagName`。
+
+### 3.2 核心区别
+
+| 位置 | 插入标签 | mentionOnly | 添加到 Event.tags | 同步到远程 |
+|------|---------|-------------|------------------|-----------|
+| **Title** | ✅ | `false` | ✅ 是 | HTML 标签 |
+| **Description** | ✅ | `true` | ❌ 否 | `#emoji text` |
+
+### 3.3 标签类型定义
+
+```typescript
+// Title 模式插入的标签（正式标签）
+{
+  type: 'tag',
+  tagId: 'tag-123',
+  tagName: '工作',
+  tagEmoji: '💼',
+  mentionOnly: false,  // ❌ 会添加到 Event.tags
+  children: [{ text: '' }]
+}
+
+// Description 模式插入的标签（仅提及）
+{
+  type: 'tag',
+  tagId: 'tag-123',
+  tagName: '工作',
+  tagEmoji: '💼',
+  mentionOnly: true,   // ✅ 不会添加到 Event.tags
+  children: [{ text: '' }]
+}
+```
+
+### 3.4 使用方法
+
+#### 在 Description 中插入标签
+
+1. 点击 Description 编辑器
+2. 打开 FloatingToolbar（点击 # 按钮）
+3. 选择标签
+4. 标签会自动以 `mentionOnly: true` 插入
+
+#### 查看效果
+
+**本地显示**：
+- Description 中的标签显示为**胶囊样式**
+- 但不会添加到 Event 的 tags 数组
+
+**同步到远程后**：
+- 标签转换为纯文本：`#💼 工作`
+- 在 Outlook/Google Calendar 中可读
+
+### 3.5 示例
+
+#### 创建事件
+
+```typescript
+// Title: "完成项目方案"
+// Title 标签: #工作
+// Description: "这是关于 #学习 的任务"
+
+// 保存后的数据：
+{
+  "title": "完成项目方案",
+  "tags": ["tag-work"],          // ✅ 只有 Title 的标签
+  "description": "<span data-mention-only=\"true\" data-tag-emoji=\"📚\" data-tag-name=\"学习\">📚 学习</span>"
+}
+```
+
+#### 同步到 Outlook
+
+```
+Outlook 中显示:
+━━━━━━━━━━━━━━━━━━━━━
+📧 完成项目方案
+
+这是关于 #📚 学习 的任务
+━━━━━━━━━━━━━━━━━━━━━
+```
+
+### 3.6 技术实现
+
+#### 3.6.1 插入标签时自动设置 mentionOnly
+
+**位置**: `src/components/PlanManager.tsx` L1883-1891
+
+```typescript
+const isDescriptionMode = currentFocusedMode === 'description';
+
+const success = insertTag(
+  editor,
+  insertId,
+  tag.name,
+  tag.color || '#666',
+  tag.emoji || '',
+  isDescriptionMode  // 🔥 Description 模式下自动设置为 true
+);
+```
+
+#### 3.6.2 提取标签时过滤 mentionOnly
+
+**位置**: `src/components/UnifiedSlateEditor/serialization.ts` L358
+
+```typescript
+function extractTags(fragment: (TextNode | TagNode | DateMentionNode)[]): string[] {
+  if (!fragment || !Array.isArray(fragment)) {
+    console.warn('[extractTags] fragment 不是数组', { fragment });
+    return [];
+  }
+  
+  return fragment
+    .filter((node): node is TagNode => 
+      'type' in node && 
+      node.type === 'tag' && 
+      !node.mentionOnly  // 🔥 过滤掉 mention-only 标签
+    )
+    .map(node => node.tagName);
+}
+```
+
+#### 3.6.3 同步时转换为纯文本
+
+**位置**: `src/services/ActionBasedSyncManager.ts` L930-962
+
+```typescript
+// 🆕 将 HTML 中的 mention-only 标签转换为纯文本格式（#emojitext）
+private convertMentionTagsToPlainText(html: string): string {
+  if (!html) return '';
+  
+  // 匹配 <span data-mention-only="true" ...>content</span> 格式的标签
+  const mentionTagPattern = /<span[^>]*data-mention-only="true"[^>]*data-tag-emoji="([^"]*)"[^>]*data-tag-name="([^"]*)"[^>]*>.*?<\/span>/g;
+  
+  let result = html.replace(mentionTagPattern, (match, emoji, tagName) => {
+    // 转换为 #emojitext 格式
+    const emojiPart = emoji ? emoji + ' ' : '';
+    return `#${emojiPart}${tagName}`;
+  });
+  
+  // 也处理另一种可能的属性顺序
+  const mentionTagPattern2 = /<span[^>]*data-tag-name="([^"]*)"[^>]*data-tag-emoji="([^"]*)"[^>]*data-mention-only="true"[^>]*>.*?<\/span>/g;
+  
+  result = result.replace(mentionTagPattern2, (match, tagName, emoji) => {
+    const emojiPart = emoji ? emoji + ' ' : '';
+    return `#${emojiPart}${tagName}`;
+  });
+  
+  // 处理只有 data-mention-only 和 data-tag-name 的情况（没有 emoji）
+  const mentionTagPattern3 = /<span[^>]*data-mention-only="true"[^>]*data-tag-name="([^"]*)"[^>]*>.*?<\/span>/g;
+  
+  result = result.replace(mentionTagPattern3, (match, tagName) => {
+    return `#${tagName}`;
+  });
+  
+  return result;
+}
+```
+
+**调用位置**: `processEventDescription` 函数在清理 HTML 之前
+
+```typescript
+private processEventDescription(htmlContent: string, ...): string {
+  // 🆕 0. 在清理 HTML 之前，先将 mention-only 标签转换为纯文本格式
+  let preprocessedHtml = this.convertMentionTagsToPlainText(htmlContent);
+  
+  // 1. 清理HTML内容，得到纯文本
+  let cleanText = this.cleanHtmlContent(preprocessedHtml);
+  
+  // ...
+}
+```
+
+### 3.7 数据流
+
+#### 本地编辑流程
+
+```
+用户在 Description 中插入标签
+         ↓
+PlanManager 检测到 isDescriptionMode = true
+         ↓
+调用 insertTag(..., mentionOnly: true)
+         ↓
+Slate 编辑器插入 TagNode { mentionOnly: true }
+         ↓
+序列化时：extractTags 过滤掉 mentionOnly 标签
+         ↓
+Event.tags 数组不包含这个标签 ✅
+```
+
+#### 同步到远程流程
+
+```
+本地 Event 保存
+         ↓
+ActionBasedSyncManager 检测到变化
+         ↓
+调用 processEventDescription(event.description)
+         ↓
+convertMentionTagsToPlainText 转换标签为 #emojitext
+         ↓
+cleanHtmlContent 清理其他 HTML 标签
+         ↓
+同步到 Microsoft Outlook/Google Calendar
+         ↓
+远程日历显示：Description 中有 #💼 工作 ✅
+```
+
+#### 从远程同步回来
+
+```
+Microsoft Outlook 事件
+         ↓
+body.content: "这是描述 #💼 工作"
+         ↓
+getEventDescription 提取纯文本
+         ↓
+保存到本地 Event.description
+         ↓
+UI 显示：纯文本 "#💼 工作" ✅
+```
+
+### 3.8 UI 表现
+
+#### Title 模式（正式标签）
+
+```
+┌─────────────────────────────────┐
+│ [📝] 完成项目方案 💼 工作      │  ← Tag 是胶囊样式，可点击
+└─────────────────────────────────┘
+    ↑
+    Event.tags = ['tag-work']
+```
+
+#### Description 模式（仅提及）
+
+```
+┌─────────────────────────────────┐
+│ [📝] 完成项目方案               │
+│                                 │
+│ 📄 这是关于 💼 工作 的任务...  │  ← Tag 是胶囊样式，但不可编辑
+└─────────────────────────────────┘
+    ↑
+    Event.tags = [] (空数组)
+    Event.description 包含 HTML tag
+```
+
+#### 同步到远程后
+
+```
+Microsoft Outlook:
+┌─────────────────────────────────┐
+│ 📧 完成项目方案                 │
+│                                 │
+│ 这是关于 #💼 工作 的任务...    │  ← 纯文本形式
+└─────────────────────────────────┘
+```
+
+### 3.9 测试场景
+
+#### 测试 1: Description 插入标签不影响 Event.tags
+
+**步骤**:
+1. 创建新 Event
+2. 在 Title 中插入 `#工作`
+3. 在 Description 中插入 `#学习`
+4. 保存并查看 Event 数据
+
+**预期**:
+```json
+{
+  "title": "完成任务",
+  "tags": ["tag-work"],  // ✅ 只有 Title 中的标签
+  "description": "<span data-mention-only=\"true\">💼 工作</span>"
+}
+```
+
+#### 测试 2: 同步到远程转换为纯文本
+
+**步骤**:
+1. 创建包含 Description 标签的 Event
+2. 同步到 Microsoft Outlook
+3. 在 Outlook 中查看事件
+
+**预期**:
+- Description 显示：`这是关于 #💼 工作 的任务`（纯文本）
+
+#### 测试 3: 从远程同步回来保持纯文本
+
+**步骤**:
+1. 在 Outlook 中手动编辑事件 Description：`测试 #💼 工作`
+2. 同步回 ReMarkable
+3. 查看本地 Description
+
+**预期**:
+- Description 显示：`测试 #💼 工作`（保持纯文本）
+
+### 3.10 优势总结
+
+1. **语义清晰**：
+   - Title 的标签 = 正式分类
+   - Description 的标签 = 内容提及
+
+2. **远程兼容**：
+   - 远程日历不支持富文本标签
+   - 转换为纯文本保持可读性
+
+3. **数据准确**：
+   - Event.tags 只包含真正的分类标签
+   - 不会因为 Description 的提及而污染标签数据
+
+4. **用户友好**：
+   - 在 Description 中也能快速插入标签引用
+   - 不需要手动输入 `#emoji name`
+
+---
+
+## 4. 数据格式选型
 
 ## 2. 数据格式选型
 
-### 2.1 最佳方案：JSON + HTML 双存储
+### 4.1 最佳方案：JSON + HTML 双存储
 
 采用 **Slate JSON** 作为主存储，配合预渲染的 HTML 和纯文本备份。
 
@@ -627,7 +954,7 @@ type SyncState = {
 };
 ```
 
-### 2.2 为什么选择 Slate JSON？
+### 4.2 为什么选择 Slate JSON？
 
 **优势:**
 
@@ -750,17 +1077,17 @@ type SyncState = {
 ]
 ```
 
-## 3. 双向同步架构
+## 5. 双向同步架构
 
-### 3.1 核心挑战
+### 5.1 核心挑战
 
 - **信息不对称**: timelog 能存储视频/音频，但 Outlook description 不能
 - **格式冲突**: Slate JSON ≠ Outlook HTML
 - **冲突检测**: 如何判断是哪一端发生了变更？
 
-### 3.2 解决方案：三层转换 + 哈希校验
+### 5.2 解决方案：三层转换 + 哈希校验
 
-#### 3.2.1 冲突检测
+#### 5.2.1 冲突检测
 
 ```typescript
 // sync/conflictDetection.ts
@@ -796,7 +1123,7 @@ export const detectConflict = (
 };
 ```
 
-#### 3.2.2 Slate JSON → Outlook HTML 转换器
+#### 5.2.2 Slate JSON → Outlook HTML 转换器
 
 ```typescript
 // serializers/slateToHtml.ts
@@ -887,7 +1214,7 @@ const serializeNode = (node: Descendant): string => {
 };
 ```
 
-#### 3.2.3 Slate JSON → Plain Text 转换器
+#### 5.2.3 Slate JSON → Plain Text 转换器
 
 ```typescript
 // serializers/slateToPlainText.ts
@@ -943,7 +1270,7 @@ const serialize = (node: Descendant): string => {
 };
 ```
 
-#### 3.2.4 Outlook HTML → Slate JSON 转换器（逆向）
+#### 5.2.4 Outlook HTML → Slate JSON 转换器（逆向）
 
 ```typescript
 // serializers/htmlToSlate.ts
@@ -1081,7 +1408,7 @@ const deserialize = (el: Element | ChildNode): Descendant | Descendant[] | null 
 };
 ```
 
-### 3.3 同步引擎
+### 5.3 同步引擎
 
 ```typescript
 // sync/syncEngine.ts
@@ -1286,7 +1613,7 @@ export class SyncEngine {
 }
 ```
 
-### 3.4 增量同步优化
+### 5.4 增量同步优化
 
 ```typescript
 // sync/incrementalSync.ts
@@ -1436,7 +1763,7 @@ export class OfflineQueue {
 - ✅ 协作冲突解决（为未来多用户功能做准备）
 - ✅ 用户行为分析
 
-### 4.2 数据结构
+### 6.2 数据结构
 
 ```typescript
 // types/version.ts
@@ -1504,7 +1831,7 @@ type DeltaChange = {
 };
 ```
 
-### 4.3 版本控制服务
+### 6.3 版本控制服务
 
 ```typescript
 // services/versionControl.ts
@@ -1721,7 +2048,7 @@ export class VersionControlService {
 }
 ```
 
-### 4.4 集成到 Slate Editor
+### 6.4 集成到 Slate Editor
 
 ```typescript
 // components/TimeLogEditor.tsx
@@ -1813,7 +2140,7 @@ export const TimeLogEditor: React.FC<TimeLogEditorProps> = ({
 };
 ```
 
-### 4.5 版本历史 UI
+### 6.5 版本历史 UI
 
 ```typescript
 // components/VersionHistoryPanel.tsx
@@ -1969,7 +2296,7 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
 };
 ```
 
-### 4.6 存储优化
+### 6.6 存储优化
 
 ```typescript
 // services/versionStorage.ts
@@ -2091,7 +2418,7 @@ export class VersionStorageOptimizer {
 }
 ```
 
-### 4.7 与同步集成
+### 6.7 与同步集成
 
 ```typescript
 // sync/syncEngine.ts (扩展版本)
@@ -2147,9 +2474,9 @@ export class SyncEngine {
 }
 ```
 
-## 5. 实现指南
+## 7. 实现指南
 
-### 5.1 开发顺序
+### 7.1 开发顺序
 
 **Phase 1: 基础功能（Week 1-2）**
 
@@ -2179,7 +2506,7 @@ export class SyncEngine {
 - ✅ 性能优化
 - ✅ 端到端测试
 
-### 5.2 关键决策
+### 7.2 关键决策
 
 **数据存储:**
 
@@ -2197,7 +2524,7 @@ export class SyncEngine {
 - 自动同步：每 15 分钟检查一次
 - 实时同步：使用 Microsoft Graph Webhooks（未来功能）
 
-### 5.3 错误处理
+### 7.3 错误处理
 
 ```typescript
 // utils/errorHandler.ts
@@ -2239,9 +2566,9 @@ export const handleSyncError = (error: any): SyncError => {
 };
 ```
 
-## 6. 性能优化
+## 8. 性能优化
 
-### 6.1 延迟加载
+### 8.1 延迟加载
 
 ```typescript
 // 版本历史不要一次性全部加载
@@ -2260,7 +2587,7 @@ async loadVersions(limit: number = 20, offset: number = 0) {
 }
 ```
 
-### 6.2 缓存策略
+### 8.2 缓存策略
 
 ```typescript
 // 使用 IndexedDB 缓存版本  
@@ -2275,7 +2602,7 @@ const versionCache = await openDB('remarkable-versions', 1, {
 
 ---
 
-## 8. 技术栈
+## 9. 技术栈
 
 - **编辑器**: Slate.js
 - **UI 框架**: React + TypeScript
@@ -2292,9 +2619,9 @@ const versionCache = await openDB('remarkable-versions', 1, {
 
 ---
 
-## 9. 时间架构集成总结
+## 10. 时间架构集成总结
 
-### 9.1 核心原则重申
+### 10.1 核心原则重申
 
 **🚫 绝对禁止的做法：**
 
@@ -2342,7 +2669,7 @@ TimeHub.setFuzzy(eventId, '下周一 10:00', {
 const { timeSpec, start, end, allDay } = useEventTime(eventId);
 ```
 
-### 9.2 情境标记（ContextMarker）的时间处理
+### 10.2 情境标记（ContextMarker）的时间处理
 
 ```typescript
 // 创建情境标记时的正确做法
@@ -2388,7 +2715,7 @@ const TimeDisplay: React.FC<{ timeSpec: TimeSpec }> = ({ timeSpec }) => {
 };
 ```
 
-### 9.3 版本控制的时间处理
+### 10.3 版本控制的时间处理
 
 ```typescript
 // 版本快照创建时的时间处理
@@ -2413,7 +2740,7 @@ class VersionControlService {
 }
 ```
 
-### 9.4 同步时的时间处理
+### 10.4 同步时的时间处理
 
 ```typescript
 // 同步到 Outlook 时的序列化
@@ -2472,7 +2799,7 @@ const deserializeContextMarker = (html: string): ContextMarkerElement | null => 
 };
 ```
 
-### 9.5 迁移清单
+### 10.5 迁移清单
 
 如果在代码中发现以下模式，需要立即修正：
 
@@ -2483,7 +2810,7 @@ const deserializeContextMarker = (html: string): ContextMarkerElement | null => 
 - [ ] 手动计算时间窗口 → 使用 `TimeSpec.window` 和 `policy`
 - [ ] 直接读取 `event.startTime` → 使用 `useEventTime(eventId)` Hook
 
-### 9.6 相关文档
+### 10.6 相关文档
 
 - **[TIME_ARCHITECTURE.md](../TIME_ARCHITECTURE.md)** - 统一时间架构完整说明
 - **[技术规格文档：情境感知时间轴编辑器](./_archive/legacy-docs/features/技术规格文档：情境感知时间轴编辑器.md)** - 原始设计文档（已整合）
@@ -2494,7 +2821,7 @@ const deserializeContextMarker = (html: string): ContextMarkerElement | null => 
 
 ---
 
-## 10. 开发路线图
+## 11. 开发路线图
 
 ### Phase 1: 基础 TimeLog 系统（2 周）
 - ✅ Slate 编辑器基础配置
