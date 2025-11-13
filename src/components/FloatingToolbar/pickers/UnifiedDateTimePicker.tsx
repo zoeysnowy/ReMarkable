@@ -951,8 +951,8 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
           if (customParsed.dateRange.displayHint) {
             let finalDisplayHint = customParsed.dateRange.displayHint;
             
-            // 如果有时间段，组合显示
-            if (customParsed.timePeriod && customParsed.timePeriod.isFuzzyTime) {
+            // 🔧 修复：如果有时间段，总是组合显示（不管是精确时间还是模糊时间）
+            if (customParsed.timePeriod && customParsed.timePeriod.name) {
               finalDisplayHint = `${finalDisplayHint}${customParsed.timePeriod.name}`;
             }
             

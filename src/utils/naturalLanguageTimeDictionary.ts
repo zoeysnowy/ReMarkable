@@ -629,6 +629,249 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
     return { ...result, displayHint: 'next mon' };
   },
   
+  // 🆕 下周二到下周日
+  '下周二': (ref = new Date()) => {
+    const target = dayjs(ref).add(1, 'week').day(2).startOf('day');
+    return {
+      date: target,
+      displayHint: '下周二',
+      isFuzzyDate: false
+    };
+  },
+  
+  'next tuesday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['下周二'](ref);
+    return { ...result, displayHint: 'next tuesday' };
+  },
+  
+  'next tue': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['下周二'](ref);
+    return { ...result, displayHint: 'next tue' };
+  },
+  
+  '下周三': (ref = new Date()) => {
+    const target = dayjs(ref).add(1, 'week').day(3).startOf('day');
+    return {
+      date: target,
+      displayHint: '下周三',
+      isFuzzyDate: false
+    };
+  },
+  
+  'next wednesday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['下周三'](ref);
+    return { ...result, displayHint: 'next wednesday' };
+  },
+  
+  'next wed': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['下周三'](ref);
+    return { ...result, displayHint: 'next wed' };
+  },
+  
+  '下周四': (ref = new Date()) => {
+    const target = dayjs(ref).add(1, 'week').day(4).startOf('day');
+    return {
+      date: target,
+      displayHint: '下周四',
+      isFuzzyDate: false
+    };
+  },
+  
+  'next thursday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['下周四'](ref);
+    return { ...result, displayHint: 'next thursday' };
+  },
+  
+  'next thu': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['下周四'](ref);
+    return { ...result, displayHint: 'next thu' };
+  },
+  
+  '下周五': (ref = new Date()) => {
+    const target = dayjs(ref).add(1, 'week').day(5).startOf('day');
+    return {
+      date: target,
+      displayHint: '下周五',
+      isFuzzyDate: false
+    };
+  },
+  
+  'next friday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['下周五'](ref);
+    return { ...result, displayHint: 'next friday' };
+  },
+  
+  'next fri': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['下周五'](ref);
+    return { ...result, displayHint: 'next fri' };
+  },
+  
+  '下周六': (ref = new Date()) => {
+    const target = dayjs(ref).add(1, 'week').day(6).startOf('day');
+    return {
+      date: target,
+      displayHint: '下周六',
+      isFuzzyDate: false
+    };
+  },
+  
+  'next saturday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['下周六'](ref);
+    return { ...result, displayHint: 'next saturday' };
+  },
+  
+  'next sat': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['下周六'](ref);
+    return { ...result, displayHint: 'next sat' };
+  },
+  
+  '下周日': (ref = new Date()) => {
+    const target = dayjs(ref).add(1, 'week').day(0).startOf('day');
+    return {
+      date: target,
+      displayHint: '下周日',
+      isFuzzyDate: false
+    };
+  },
+  
+  'next sunday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['下周日'](ref);
+    return { ...result, displayHint: 'next sunday' };
+  },
+  
+  'next sun': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['下周日'](ref);
+    return { ...result, displayHint: 'next sun' };
+  },
+  
+  // 🆕 本周系列（本周一到本周日）
+  '本周一': (ref = new Date()) => {
+    const target = dayjs(ref).day(1).startOf('day');
+    return {
+      date: target,
+      displayHint: '本周一',
+      isFuzzyDate: false
+    };
+  },
+  
+  '本周二': (ref = new Date()) => {
+    const target = dayjs(ref).day(2).startOf('day');
+    return {
+      date: target,
+      displayHint: '本周二',
+      isFuzzyDate: false
+    };
+  },
+  
+  '本周三': (ref = new Date()) => {
+    const target = dayjs(ref).day(3).startOf('day');
+    return {
+      date: target,
+      displayHint: '本周三',
+      isFuzzyDate: false
+    };
+  },
+  
+  '本周四': (ref = new Date()) => {
+    const target = dayjs(ref).day(4).startOf('day');
+    return {
+      date: target,
+      displayHint: '本周四',
+      isFuzzyDate: false
+    };
+  },
+  
+  '本周五': (ref = new Date()) => {
+    const target = dayjs(ref).day(5).startOf('day');
+    return {
+      date: target,
+      displayHint: '本周五',
+      isFuzzyDate: false
+    };
+  },
+  
+  '本周六': (ref = new Date()) => {
+    const target = dayjs(ref).day(6).startOf('day');
+    return {
+      date: target,
+      displayHint: '本周六',
+      isFuzzyDate: false
+    };
+  },
+  
+  '本周日': (ref = new Date()) => {
+    const target = dayjs(ref).day(0).startOf('day');
+    return {
+      date: target,
+      displayHint: '本周日',
+      isFuzzyDate: false
+    };
+  },
+  
+  // 🆕 上周系列（上周一到上周日）
+  '上周一': (ref = new Date()) => {
+    const target = dayjs(ref).subtract(1, 'week').day(1).startOf('day');
+    return {
+      date: target,
+      displayHint: '上周一',
+      isFuzzyDate: false
+    };
+  },
+  
+  '上周二': (ref = new Date()) => {
+    const target = dayjs(ref).subtract(1, 'week').day(2).startOf('day');
+    return {
+      date: target,
+      displayHint: '上周二',
+      isFuzzyDate: false
+    };
+  },
+  
+  '上周三': (ref = new Date()) => {
+    const target = dayjs(ref).subtract(1, 'week').day(3).startOf('day');
+    return {
+      date: target,
+      displayHint: '上周三',
+      isFuzzyDate: false
+    };
+  },
+  
+  '上周四': (ref = new Date()) => {
+    const target = dayjs(ref).subtract(1, 'week').day(4).startOf('day');
+    return {
+      date: target,
+      displayHint: '上周四',
+      isFuzzyDate: false
+    };
+  },
+  
+  '上周五': (ref = new Date()) => {
+    const target = dayjs(ref).subtract(1, 'week').day(5).startOf('day');
+    return {
+      date: target,
+      displayHint: '上周五',
+      isFuzzyDate: false
+    };
+  },
+  
+  '上周六': (ref = new Date()) => {
+    const target = dayjs(ref).subtract(1, 'week').day(6).startOf('day');
+    return {
+      date: target,
+      displayHint: '上周六',
+      isFuzzyDate: false
+    };
+  },
+  
+  '上周日': (ref = new Date()) => {
+    const target = dayjs(ref).subtract(1, 'week').day(0).startOf('day');
+    return {
+      date: target,
+      displayHint: '上周日',
+      isFuzzyDate: false
+    };
+  },
+  
   // 季度相关
   '季末': (ref = new Date()) => {
     const now = dayjs(ref);
