@@ -311,9 +311,10 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
   useEffect(() => {
     if (!eventTime || eventTime.loading) return;
     
-    // 🆕 v2.7.4: 使用统一的时间解析函数（符合 Time Architecture 约定）
-    const start = eventTime.start ? dayjs(parseLocalTimeString(eventTime.start)) : null;
-    const end = eventTime.end ? dayjs(parseLocalTimeString(eventTime.end)) : start;
+    // 🔧 修复：直接使用 dayjs 解析日期字符串，避免 parseLocalTimeString 的时区转换
+    // 原因：eventTime.start/end 是 'YYYY-MM-DD HH:mm:ss' 格式，不需要额外转换
+    const start = eventTime.start ? dayjs(eventTime.start) : null;
+    const end = eventTime.end ? dayjs(eventTime.end) : start;
     
     dbg('picker', '🔄 从 TimeHub 快照初始化 Picker', { 
       eventId, 
@@ -555,15 +556,24 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
         ? selectedDates.start.hour(startTime.hour).minute(startTime.minute).second(0).millisecond(0)
         : selectedDates.start.startOf('day');
         
-      // 🆕 v2.7.4: 修复结束时间逻辑（支持精确开始时间和截止时间）
-      // - 如果用户设置了 endTime，使用 endTime（截止时间 或 时间段结束）
-      // - 如果用户只设置了 startTime（精确开始时间），endDateTime = startDateTime
-      // - 如果都没设置，使用 00:00:00（全天事件）
-      const endDateTime = selectedDates.end
-        ? (endTime 
-          ? selectedDates.end.hour(endTime.hour).minute(endTime.minute).second(0).millisecond(0)
-          : startDateTime)  // 🔧 v2.7.4: 单一开始时间，end=start（不再复制到end字段）
-        : startDateTime;  // 单日期，end = start
+      // 🔧 修复：只有用户明确设置 endTime 时才计算 endDateTime
+      // - 如果有 endTime：使用 selectedDates.end + endTime
+      // - 如果没有 endTime：endDateTime = null（不是 startDateTime）
+      // - 全天事件：endDateTime = startDateTime
+      let endDateTime: Dayjs | null = null;
+      
+      if (endTime) {
+        // 用户明确设置了结束时间
+        endDateTime = (selectedDates.end || selectedDates.start)
+          .hour(endTime.hour).minute(endTime.minute).second(0).millisecond(0);
+      } else if (allDay) {
+        // 全天事件，end = start
+        endDateTime = startDateTime;
+      } else if (selectedDates.end && !selectedDates.start.isSame(selectedDates.end, 'day')) {
+        // 多日范围且无结束时间，使用 end 日期的开始
+        endDateTime = selectedDates.end.startOf('day');
+      }
+      // 否则 endDateTime 保持 null（精确开始时间）
       
       dbg('picker', '🎯 UnifiedDateTimePicker 点击确定', {
         选择的日期: { 
@@ -574,17 +584,17 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
         快捷按钮: selectedQuickBtn,
         计算后的DateTime: {
           start: startDateTime.format('YYYY-MM-DD HH:mm:ss'),
-          end: endDateTime.format('YYYY-MM-DD HH:mm:ss')
+          end: endDateTime ? endDateTime.format('YYYY-MM-DD HH:mm:ss') : 'null (精确开始时间)',
         },
         转换为Date对象: {
           start: startDateTime.toDate(),
-          end: endDateTime.toDate(),
+          end: endDateTime ? endDateTime.toDate() : null,
         },
         Date对象的时间: {
           startHours: startDateTime.toDate().getHours(),
           startMinutes: startDateTime.toDate().getMinutes(),
-          endHours: endDateTime.toDate().getHours(),
-          endMinutes: endDateTime.toDate().getMinutes(),
+          endHours: endDateTime ? endDateTime.toDate().getHours() : null,
+          endMinutes: endDateTime ? endDateTime.toDate().getMinutes() : null,
         }
       });
       
@@ -593,17 +603,19 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
         // 🔧 修复时区问题：直接使用 dayjs.format() 而不是 .toDate()
         // 原因：.toDate() 会触发 UTC 转换，导致日期错位（如"下周五"变成周四）
         const startIso = startDateTime.format('YYYY-MM-DD HH:mm:ss');
-        const endIso = endDateTime.format('YYYY-MM-DD HH:mm:ss');
+        // 🔧 修复：只有 endDateTime 存在时才设置 end，否则使用 start
+        const endIso = endDateTime ? endDateTime.format('YYYY-MM-DD HH:mm:ss') : startIso;
         // 🔧 使用组件的 allDay 状态，而不是自动推断
         const allDaySelected = allDay;
         // 🆕 v1.1: 如果有 displayHint 且用户勾选了全天，添加"全天"后缀
         const finalDisplayHint = displayHint && allDaySelected ? `${displayHint} 全天` : displayHint;
         
         // 🆕 v2.7.4: timeFieldState 存储实际的时间值 [startHour, startMinute, endHour, endMinute]
+        // 🔧 修复：只有用户明确设置 endTime 时才保存，否则为 null
         const timeFieldState: [number | null, number | null, number | null, number | null] = [
           startTime?.hour ?? null,
           startTime?.minute ?? null,
-          endTime?.hour ?? null,
+          endTime?.hour ?? null,  // 只有用户设置了 endTime 才不为 null
           endTime?.minute ?? null
         ];
         
@@ -645,7 +657,7 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
         // TimeHub 模式但没有 eventId：先回调 onApplied，让外层创建 Event 并写入 TimeHub
         // 🔧 修复时区问题：直接使用 dayjs.format()
         const startIso = startDateTime.format('YYYY-MM-DD HH:mm:ss');
-        const endIso = endDateTime.format('YYYY-MM-DD HH:mm:ss');
+        const endIso = endDateTime ? endDateTime.format('YYYY-MM-DD HH:mm:ss') : startIso;
         // 🔧 使用组件的 allDay 状态
         const allDaySelected = allDay;
         dbg('picker', '🆕 TimeHub 模式但没有 eventId，先调用 onApplied', { startIso, endIso, allDaySelected });
@@ -653,7 +665,7 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
       } else {
         // 保持向后兼容的回调
         const startStr = startDateTime.format('YYYY-MM-DD HH:mm');
-        const endStr = endDateTime.format('YYYY-MM-DD HH:mm');
+        const endStr = endDateTime ? endDateTime.format('YYYY-MM-DD HH:mm') : startStr;
         dbg('picker', '📝 使用旧回调 onSelect (非TimeHub模式)', { startStr, endStr, useTimeHub, eventId });
         onSelect?.(startStr, endStr);
       }
