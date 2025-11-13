@@ -535,7 +535,7 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '年初': (ref = new Date()) => {
-    const target = dayjs(ref).startOf('year');
+    const target = safelyConvertDateToDayjs(ref).startOf('year');
     return {
       date: target,
       displayHint: '年初',
@@ -554,7 +554,7 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '明年': (ref = new Date()) => {
-    const target = dayjs(ref).add(1, 'year').startOf('year');
+    const target = safelyConvertDateToDayjs(ref).add(1, 'year').startOf('year');
     return {
       date: target,
       displayHint: '明年',
@@ -573,7 +573,7 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '后年': (ref = new Date()) => {
-    const target = dayjs(ref).add(2, 'year').startOf('year');
+    const target = safelyConvertDateToDayjs(ref).add(2, 'year').startOf('year');
     return {
       date: target,
       displayHint: '后年',
@@ -587,7 +587,7 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '去年': (ref = new Date()) => {
-    const target = dayjs(ref).subtract(1, 'year').startOf('year');
+    const target = safelyConvertDateToDayjs(ref).subtract(1, 'year').startOf('year');
     return {
       date: target,
       displayHint: '去年',
