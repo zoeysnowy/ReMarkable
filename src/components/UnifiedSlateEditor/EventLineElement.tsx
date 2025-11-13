@@ -26,10 +26,10 @@ export const EventLineElement: React.FC<EventLineElementProps> = ({
   renderSuffix,
   onPlaceholderClick,
 }) => {
-  const isDescriptionMode = element.mode === 'description';
+  const isEventlogMode = element.mode === 'eventlog';
   const isPlaceholder = (element.metadata as any)?.isPlaceholder || element.eventId === '__placeholder__';
   
-  const paddingLeft = isDescriptionMode
+  const paddingLeft = isEventlogMode
     ? `${(element.level + 1) * 24}px`
     : `${element.level * 24}px`;
   
@@ -45,7 +45,7 @@ export const EventLineElement: React.FC<EventLineElementProps> = ({
   return (
     <div
       {...attributes}
-      className={`unified-event-line${isDescriptionMode ? ' description-mode' : ''}${isPlaceholder ? ' placeholder-line' : ''}`}
+      className={`unified-event-line ${isEventlogMode ? 'eventlog-mode' : ''}${isPlaceholder ? ' placeholder-line' : ''}`}
       data-line-id={element.lineId}
       data-event-id={element.eventId || ''}
       data-level={element.level}
@@ -54,13 +54,13 @@ export const EventLineElement: React.FC<EventLineElementProps> = ({
       style={{
         paddingLeft,
         display: 'flex',
-        alignItems: isDescriptionMode ? 'flex-start' : 'center',
+        alignItems: isEventlogMode ? 'flex-start' : 'center',
         gap: '8px',
         minHeight: '32px',
       }}
     >
-      {/* 前缀装饰 (Checkbox、Emoji 等) - Description 模式不显示 */}
-      {renderPrefix && !isDescriptionMode && (
+      {/* 前缀装饰 (Checkbox、Emoji 等) - Eventlog 模式不显示 */}
+      {renderPrefix && !isEventlogMode && (
         <div className="event-line-prefix" contentEditable={false}>
           {renderPrefix(element)}
         </div>
@@ -78,8 +78,8 @@ export const EventLineElement: React.FC<EventLineElementProps> = ({
         {children}
       </div>
       
-      {/* 后缀装饰 (标签、时间等) - Description 模式不显示 */}
-      {renderSuffix && !isDescriptionMode && (
+      {/* 后缀装饰 (标签、时间等) - Eventlog 模式不显示 */}
+      {renderSuffix && !isEventlogMode && (
         <div className="event-line-suffix" contentEditable={false}>
           {renderSuffix(element)}
         </div>

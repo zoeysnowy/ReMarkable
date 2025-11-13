@@ -13,15 +13,35 @@ import { dbg } from './debugLogger';
 dayjs.extend(quarterOfYear);
 
 /**
- * 🔧 安全地将 Date 对象转换为 dayjs，避免 UTC 时区转换
- * 
- * 问题：dayjs(new Date()) 会触发 UTC 转换，导致日期偏移
- * 解决：从 Date 对象提取组件值，手动构造 dayjs
+ * 🔧 获取下周指定星期几的日期（周一作为一周开始）
+ * @param ref 参考日期
+ * @param targetDay 目标星期几 (1=周一, 2=周二, ..., 7=周日)
+ * @returns 下周目标日期的 Date 对象
  */
-function safelyConvertDateToDayjs(date: Date): Dayjs {
+function getNextWeekDay(ref: Date, targetDay: number): Date {
+  const current = new Date(ref);
+  const currentDay = current.getDay(); // 0=周日, 1=周一, ..., 6=周六
+  
+  // 转换为周一起始 (1=周一, 7=周日)
+  const currentDayMonBased = currentDay === 0 ? 7 : currentDay;
+  
+  // 计算到下周目标日的天数
+  const daysToAdd = 7 - currentDayMonBased + targetDay;
+  
+  const result = new Date(current);
+  result.setDate(current.getDate() + daysToAdd);
+  result.setHours(0, 0, 0, 0);
+  
+  return result;
+}
+
+/**
+ * 将 Date 转换为 dayjs（仅用于最终返回，不参与计算）
+ */
+function dateToDayjs(date: Date): Dayjs {
   return dayjs()
     .year(date.getFullYear())
-    .month(date.getMonth())  // 0-11
+    .month(date.getMonth())
     .date(date.getDate())
     .hour(date.getHours())
     .minute(date.getMinutes())
@@ -628,12 +648,9 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   '周报': (ref = new Date()) => POINT_IN_TIME_DICTIONARY['周报日'](ref),
   
   '下周一': (ref = new Date()) => {
-    const safeDayjs = safelyConvertDateToDayjs(ref);
-    const currentDay = safeDayjs.day();
-    const daysToMonday = currentDay === 0 ? 6 : currentDay - 1;
-    const target = safeDayjs.subtract(daysToMonday, 'day').add(7, 'day').startOf('day');
+    const targetDate = getNextWeekDay(ref, 1); // 1=周一
     return {
-      date: target,
+      date: dateToDayjs(targetDate),
       displayHint: '下周一',
       isFuzzyDate: false
     };
@@ -651,28 +668,9 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   
   // 🆕 下周二到下周日
   '下周二': (ref = new Date()) => {
-    const safeDayjs = safelyConvertDateToDayjs(ref);
-    
-    // 🔧 修复：按周一作为一周开始（符合time.config.ts配置）
-    // dayjs的day(): 0=周日, 1=周一, 2=周二, ..., 6=周六
-    const currentDay = safeDayjs.day();
-    
-    // 计算到本周一的天数偏移（周日算上周，需要回退6天到上周一）
-    const daysToMonday = currentDay === 0 ? 6 : currentDay - 1;
-    
-    // 本周一 → +7天到下周一 → +1天到下周二
-    const target = safeDayjs.subtract(daysToMonday, 'day').add(7, 'day').add(1, 'day').startOf('day');
-    
-    dbg('dict', '🎯 解析"下周二"', {
-      今天: safeDayjs.format('YYYY-MM-DD (ddd)'),
-      今天星期: currentDay,
-      回退天数到本周一: daysToMonday,
-      结果: target.format('YYYY-MM-DD (ddd)'),
-      星期几: target.day()
-    });
-    
+    const targetDate = getNextWeekDay(ref, 2); // 2=周二
     return {
-      date: target,
+      date: dateToDayjs(targetDate),
       displayHint: '下周二',
       isFuzzyDate: false
     };
@@ -689,12 +687,9 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '下周三': (ref = new Date()) => {
-    const safeDayjs = safelyConvertDateToDayjs(ref);
-    const currentDay = safeDayjs.day();
-    const daysToMonday = currentDay === 0 ? 6 : currentDay - 1;
-    const target = safeDayjs.subtract(daysToMonday, 'day').add(7, 'day').add(2, 'day').startOf('day');
+    const targetDate = getNextWeekDay(ref, 3); // 3=周三
     return {
-      date: target,
+      date: dateToDayjs(targetDate),
       displayHint: '下周三',
       isFuzzyDate: false
     };
@@ -711,12 +706,9 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '下周四': (ref = new Date()) => {
-    const safeDayjs = safelyConvertDateToDayjs(ref);
-    const currentDay = safeDayjs.day();
-    const daysToMonday = currentDay === 0 ? 6 : currentDay - 1;
-    const target = safeDayjs.subtract(daysToMonday, 'day').add(7, 'day').add(3, 'day').startOf('day');
+    const targetDate = getNextWeekDay(ref, 4); // 4=周四
     return {
-      date: target,
+      date: dateToDayjs(targetDate),
       displayHint: '下周四',
       isFuzzyDate: false
     };
@@ -733,12 +725,9 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '下周五': (ref = new Date()) => {
-    const safeDayjs = safelyConvertDateToDayjs(ref);
-    const currentDay = safeDayjs.day();
-    const daysToMonday = currentDay === 0 ? 6 : currentDay - 1;
-    const target = safeDayjs.subtract(daysToMonday, 'day').add(7, 'day').add(4, 'day').startOf('day');
+    const targetDate = getNextWeekDay(ref, 5); // 5=周五
     return {
-      date: target,
+      date: dateToDayjs(targetDate),
       displayHint: '下周五',
       isFuzzyDate: false
     };
@@ -755,12 +744,9 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '下周六': (ref = new Date()) => {
-    const safeDayjs = safelyConvertDateToDayjs(ref);
-    const currentDay = safeDayjs.day();
-    const daysToMonday = currentDay === 0 ? 6 : currentDay - 1;
-    const target = safeDayjs.subtract(daysToMonday, 'day').add(7, 'day').add(5, 'day').startOf('day');
+    const targetDate = getNextWeekDay(ref, 6); // 6=周六
     return {
-      date: target,
+      date: dateToDayjs(targetDate),
       displayHint: '下周六',
       isFuzzyDate: false
     };
@@ -777,12 +763,9 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   },
   
   '下周日': (ref = new Date()) => {
-    const safeDayjs = safelyConvertDateToDayjs(ref);
-    const currentDay = safeDayjs.day();
-    const daysToMonday = currentDay === 0 ? 6 : currentDay - 1;
-    const target = safeDayjs.subtract(daysToMonday, 'day').add(7, 'day').add(6, 'day').startOf('day');
+    const targetDate = getNextWeekDay(ref, 7); // 7=周日
     return {
-      date: target,
+      date: dateToDayjs(targetDate),
       displayHint: '下周日',
       isFuzzyDate: false
     };

@@ -23,7 +23,7 @@ export interface EventLineNode {
   eventId?: string;        // 关联的 Event ID（新建时为空）
   lineId: string;          // 行唯一ID（用于编辑器内部定位）
   level: number;           // 缩进层级 (0, 1, 2, ...)
-  mode: 'title' | 'description';  // 行模式
+  mode: 'title' | 'eventlog';  // 行模式（title=标题行, eventlog=日志内容区）
   children: ParagraphNode[];
   
   // 🆕 v1.5: 元数据透传（保留业务字段，避免字段丢失）
@@ -136,7 +136,7 @@ export interface EventLineData {
   lineId: string;
   eventId?: string;
   level: number;
-  mode: 'title' | 'description';
+  mode: 'title' | 'eventlog';
   content: string;  // HTML 格式
 }
 

@@ -140,6 +140,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
             <TimerButtonSection
               globalTimer={globalTimer}
               event={event}
+              onTimerAction={onTimerAction}
             />
           </section>
 

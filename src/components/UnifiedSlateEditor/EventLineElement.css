@@ -12,7 +12,7 @@
   background-color: rgba(0, 0, 0, 0.02);
 }
 
-.unified-event-line.description-mode {
+.unified-event-line.eventlog-mode {
   color: #666;
   font-size: 0.9em;
   font-style: italic;
@@ -20,8 +20,8 @@
   padding: 2px 0; /* 🔧 减少上下间距 */
 }
 
-/* 🆕 description 模式下的段落间距更紧凑 */
-.unified-event-line.description-mode .event-line-content > div {
+/* 🆕 eventlog 模式下的段落间距更紧凑 */
+.unified-event-line.eventlog-mode .event-line-content > div {
   margin: 2px 0; /* 段落间距紧凑 */
 }
 

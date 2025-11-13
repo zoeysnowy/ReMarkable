@@ -755,12 +755,12 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
         
         const planItems = slateNodesToPlanItems(filteredNodes);
         
-        // 检测 description 行删除
+        // 检测 eventlog 行删除
         planItems.forEach(item => {
           const hasDescriptionNode = filteredNodes.some(node => {
             const eventLine = node as EventLineNode;
             return (eventLine.eventId === item.eventId || eventLine.lineId.startsWith(item.id)) 
-                   && eventLine.mode === 'description';
+                   && eventLine.mode === 'eventlog';
           });
           
           if (!hasDescriptionNode && item.description) {
@@ -966,7 +966,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       }
     }
     
-    // Enter 键 - 创建新的 EventLine 或 Description 行
+    // Enter 键 - 创建新的 EventLine 或 Eventlog 行
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       
@@ -976,8 +976,8 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       let insertIndex = currentPath[0] + 1;
       let newLine: EventLineNode;
       
-      // 🆕 如果当前是 description 行，继续创建 description 行（同一个 eventId）
-      if (eventLine.mode === 'description') {
+      // 🆕 如果当前是 eventlog 行，继续创建 eventlog 行（同一个 eventId）
+      if (eventLine.mode === 'eventlog') {
         // 🆕 检查当前段落是否有 bullet 属性
         let paragraphProps: any = {};
         try {
@@ -999,27 +999,27 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
           eventId: eventLine.eventId, // 🔧 共享同一个 eventId
           lineId: `${eventLine.lineId}-${Date.now()}`, // 生成唯一 lineId
           level: eventLine.level,
-          mode: 'description',
+          mode: 'eventlog',
           children: [{ type: 'paragraph', ...paragraphProps, children: [{ text: '' }] }],
           metadata: eventLine.metadata, // 继承 metadata
         };
         
-        logOperation('Enter (description) - 创建新 description 行', {
+        logOperation('Enter (eventlog) - 创建新 eventlog 行', {
           currentLine: currentPath[0],
           eventId: eventLine.eventId,
           newLineId: newLine.lineId.slice(-10) + '...',
         }, 'background: #9C27B0; color: white; padding: 2px 8px; border-radius: 3px; font-weight: bold;');
       } else {
-        // Title 行：检查是否有 description 行，如果有则在其后插入
+        // Title 行：检查是否有 eventlog 行，如果有则在其后插入
         const baseLineId = eventLine.lineId.replace('-desc', '');
         const descLineId = `${baseLineId}-desc`;
         
-        // 查找 description 行
+        // 查找 eventlog 行
         try {
           for (let i = currentPath[0] + 1; i < value.length; i++) {
             const nextNode = value[i];
             if (nextNode.type === 'event-line' && nextNode.lineId === descLineId) {
-              // 找到 description 行，新行应该插入在 description 行之后
+              // 找到 eventlog 行，新行应该插入在 eventlog 行之后
               insertIndex = i + 1;
               break;
             }
@@ -1080,18 +1080,18 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       return;
     }
     
-    // Shift+Enter - 切换 Description 模式
+    // Shift+Enter - 切换 Eventlog 模式
     if (event.key === 'Enter' && event.shiftKey) {
       event.preventDefault();
       
       if (eventLine.mode === 'title') {
-        // 创建 Description 行
+        // 创建 Eventlog 行
         const descLine: EventLineNode = {
           type: 'event-line',
           eventId: eventLine.eventId,
           lineId: `${eventLine.lineId}-desc`,
           level: eventLine.level,
-          mode: 'description',
+          mode: 'eventlog',
           children: [{ type: 'paragraph', children: [{ text: '' }] }],
         };
         
@@ -1099,7 +1099,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
           at: [currentPath[0] + 1],
         });
         
-        // 聚焦新创建的 Description 行（使用安全方法）
+        // 聚焦新创建的 Eventlog 行（使用安全方法）
         safeFocusEditor(editor, [currentPath[0] + 1, 0, 0]);
       } else {
         // Description -> Title: 转换当前行
@@ -1142,12 +1142,12 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       return;
     }
     
-    // Shift+Tab - 减少缩进 / 退出 Description 模式
+    // Shift+Tab - 减少缩进 / 退出 Eventlog 模式
     if (event.key === 'Tab' && event.shiftKey) {
       event.preventDefault();
       
-      // 🆕 如果是 description 行，Shift+Tab 转换为 title 行
-      if (eventLine.mode === 'description') {
+      // 🆕 如果是 eventlog 行，Shift+Tab 转换为 title 行
+      if (eventLine.mode === 'eventlog') {
         const newLineId = eventLine.lineId.replace('-desc', ''); // 移除 -desc 后缀
         
         Transforms.setNodes(
