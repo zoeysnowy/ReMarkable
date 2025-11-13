@@ -1284,71 +1284,6 @@ const handleTimerEditSave = async (updatedEvent: Event) => {
 
 ---
 
-#### **场景 4: TaskManager（任务管理）**
-
-**触发时机**：用户编辑任务
-
-**数据流**：
-```
-Task → convertToEvent() → EventEditModal
-                               ↓ onSave
-          saveTaskFromModal → convertToTask()
-                               ↓
-                      updateTask()
-                               ↓
-                          localStorage
-```
-
-**关键代码**：
-```typescript
-// 1. 转换 Task → Event
-const taskAsEvent: Event = {
-  id: task.id,
-  title: task.title,
-  description: task.description,
-  tags: task.tags || [],
-  endTime: task.dueDate || '',
-  // ⚠️ 当前未设置 calendarIds 和 todoListIds
-};
-
-// 2. 打开 Modal
-<EventEditModal
-  event={editingTaskAsEvent}
-  onSave={saveTaskFromModal}
-  hierarchicalTags={[]}
-/>
-
-// 3. onSave - 转换回 Task
-const saveTaskFromModal = (updatedEvent: Event) => {
-  updateTask(updatedEvent.id, {
-    title: updatedEvent.title,
-    description: updatedEvent.description,
-    tags: updatedEvent.tags || [],
-    dueDate: updatedEvent.endTime,
-    // ⚠️ 丢失了 calendarIds 和 todoListIds
-  });
-};
-```
-
-**问题与建议**：
-- ❌ **数据丢失**：`saveTaskFromModal` 未保留 `calendarIds` 和 `todoListIds`
-- ⚠️ **Task 类型定义不完整**：Task 类型可能缺少这两个字段
-- 💡 **建议修复**：
-  ```typescript
-  const saveTaskFromModal = (updatedEvent: Event) => {
-    updateTask(updatedEvent.id, {
-      title: updatedEvent.title,
-      description: updatedEvent.description,
-      tags: updatedEvent.tags || [],
-      dueDate: updatedEvent.endTime,
-      calendarIds: updatedEvent.calendarIds,     // ✅ 添加
-      todoListIds: updatedEvent.todoListIds,     // ✅ 添加
-    });
-  };
-  ```
-
----
-
 ### 12.9 数据链路对比总结
 
 | 场景 | 保存次数 | calendarIds 保留 | todoListIds 保留 | 同步触发 |
@@ -1356,13 +1291,13 @@ const saveTaskFromModal = (updatedEvent: Event) => {
 | **PlanManager** | 2次（handleSavePlanItem + syncToUnifiedTimeline） | ✅ 两处都保留 | ✅ 两处都保留 | ✅ ActionBasedSyncManager |
 | **TimeCalendar** | 1次（EventHub.updateFields） | ✅ 自动保留 | ✅ 自动保留 | ✅ EventService 触发 |
 | **App.tsx (Timer)** | 1次（EventService.createEvent） | ✅ 手动保留 | ✅ 手动保留 | ⚠️ skipSync=true（停止时同步） |
-| **TaskManager** | 1次（updateTask） | ❌ **丢失** | ❌ **丢失** | ❌ 未实现 |
 
 **修复优先级**：
 1. ✅ **PlanManager** - 已修复（v1.8）
 2. ✅ **TimeCalendar** - 无需修改（EventHub 自动处理）
 3. ✅ **Timer** - 无需修改（已正确保留）
-4. ❌ **TaskManager** - 需要修复（建议添加字段保留）
+
+**注**: TaskManager.tsx 已归档至 `_archive/legacy-components/`（死代码，功能已被 PlanManager 取代）
 
 ---
 
