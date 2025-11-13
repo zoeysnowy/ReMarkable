@@ -683,66 +683,67 @@ Description: 需要与 #张三 讨论，参考 #项目B 的风格
 > 4. tag的字段、颜色、emoji都是global全局更新的，你可以看看tagservice和eventservice是不是这样的逻辑
 
 > 🤖 **Resolution (Copilot):**
-> **Status**: ✅ 架构统一，需补充字段规范  
+> **Status**: ✅ 架构明确，字段精简  
 > **需要明确的设计**:
 > 
-> ### 架构决策：统一的双层内容存储
+> ### 架构决策：内容存储规范
 > 
-> **核心原则**：所有富文本内容都采用"纯文本 + 富文本"双层存储
+> **核心原则**：按需存储，避免冗余字段
 > 
-> **Event 数据结构完善**：
+> **Event 数据结构（精简版）**：
 > ```typescript
 > interface Event {
->   // ========== Title 双层存储 ==========
->   title: string;           // 纯文本（用于 Outlook 同步、搜索、简单显示）
->   titleContent?: string;   // 富文本 HTML（Slate 输出，支持加粗、高亮、标签等）
+>   // ========== Title（需要纯文本版本） ==========
+>   title: string;           // 纯文本（用于 Outlook subject、搜索、列表显示）
+>   titleContent?: string;   // 🆕 富文本 HTML（Slate 输出，本地编辑用）
 >   
->   // ========== Description 双层存储 ==========
->   description?: string;           // 纯文本（已存在，用于 Outlook body）
->   descriptionContent?: string;    // 富文本 HTML（待补充）
+>   // ========== Description（Outlook 支持 HTML） ==========
+>   description?: string;    // 富文本 HTML（Slate → HTML，用于 Outlook body）
 >   
->   // ========== TimeLog 双层存储 ==========
->   timelogPlainText?: string;      // 纯文本（用于预览、搜索）
->   timelog?: string;                // 富文本 HTML（Slate 输出，完整日志）
+>   // ========== TimeLog（需要完整编辑状态） ==========
+>   timelog?: string;        // Slate JSON 字符串（完整文档结构，可继续编辑）
 >   
 >   // ========== 标签提取来源 ==========
->   tags?: string[];         // 从 titleContent 自动提取（不包含 timelog 的 mention）
+>   tags?: string[];         // 从 titleContent 自动提取（不含 timelog mention）
 > }
 > ```
 > 
 > **字段职责说明**：
 > 
-> | 字段 | 类型 | 用途 | 来源 |
-> |------|------|------|------|
-> | `title` | 纯文本 | Outlook 同步、列表显示、搜索 | 从 `titleContent` 提取 |
-> | `titleContent` | 富文本 | 本地富文本编辑、完整格式保留 | Slate 编辑器输出 |
-> | `description` | 纯文本 | Outlook body 字段 | 从 `descriptionContent` 提取 |
-> | `descriptionContent` | 富文本 | Plan 页面 description 行 | Slate 编辑器输出 |
-> | `timelogPlainText` | 纯文本 | 快速预览、搜索索引 | 从 `timelog` 提取 |
-> | `timelog` | 富文本 | TimeLog 完整日志 | Slate 编辑器输出 |
-> | `tags` | ID 数组 | 标签索引、过滤、分类 | 从 `titleContent` 提取 |
+> | 字段 | 存储格式 | 用途 | 为什么这样设计 |
+> |------|---------|------|---------------|
+> | `title` | 纯文本 | Outlook subject、搜索、列表 | Outlook API 的 subject 字段只支持纯文本 |
+> | `titleContent` | HTML | PlanManager 标题行编辑 | 支持加粗、高亮、标签等富文本功能 |
+> | `description` | HTML | Outlook body、PlanManager description 行 | Outlook body 支持 HTML，无需纯文本 |
+> | `timelog` | JSON | TimeLog 完整日志 | 需要保留 Slate 编辑状态（光标、选区等） |
+> | `tags` | ID[] | 标签索引、过滤 | 从 titleContent 的 TagElement 提取 |
 > 
-> **设计理由**：
-> 1. **同步兼容性**：Outlook/Google Calendar 只支持纯文本，需要 `title` 和 `description` 纯文本字段
-> 2. **本地体验**：用户需要富文本编辑能力（加粗、高亮、标签、图片等）
-> 3. **性能优化**：纯文本字段用于搜索索引，避免解析 HTML
-> 4. **模块灵活性**：不同模块可根据需要选择显示纯文本或富文本
+> **不需要的字段**：
+> - ❌ `descriptionContent` - description 本身就是 HTML，无需额外字段
+> - ❌ `timelogPlainText` - 需要时从 timelog JSON 动态提取即可
+> - ❌ `titlePlainText` - 已有 title 字段
 > 
 > **示例**：
 > ```typescript
-> // 用户在 PlanManager 编辑标题
-> const slateOutput = "<p>今天下午要提交 <strong>ReMarkable 1.0</strong> 版本的 <span class='inline-tag' data-tag-id='prd-id'>PRD</span> 文档</p>";
-> 
-> // 保存到 Event
+> // 用户在 PlanManager 编辑
 > {
->   title: "今天下午要提交 ReMarkable 1.0 版本的 PRD 文档",  // 纯文本（用于 Outlook）
->   titleContent: slateOutput,  // 富文本（本地显示）
+>   // Title 行
+>   title: "今天下午要提交 ReMarkable 1.0 版本的 PRD 文档",  
+>   titleContent: "<p>今天下午要提交 <strong>ReMarkable 1.0</strong> 版本的 <span class='inline-tag' data-tag-id='prd-id'>PRD</span> 文档</p>",
 >   tags: ['prd-id'],  // 从 titleContent 提取
 >   
->   // TimeLog 同理
->   timelogPlainText: "讨论了功能优先级，@张三 提出了性能优化建议...",
->   timelog: "<p>讨论了功能优先级，<span class='inline-tag' data-mention-only='true'>@张三</span> 提出了...</p>",
->   // 注意：timelog 中的 @张三 不会加入 tags（因为 mention-only=true）
+>   // Description 行（Outlook 支持 HTML）
+>   description: "<p>需要包含：架构设计、<span class='inline-tag' data-tag-id='api-id'>API 文档</span></p>",
+>   
+>   // TimeLog（Slate JSON，保留完整编辑状态）
+>   timelog: JSON.stringify([
+>     { type: 'paragraph', children: [
+>       { text: '讨论了功能优先级，' },
+>       { type: 'tag', tagId: 'zhang-san', mentionOnly: true, children: [{ text: '' }] },
+>       { text: ' 提出了性能优化建议' }
+>     ]}
+>   ])
+>   // 注意：timelog 中的 @张三 不加入 tags（mentionOnly=true）
 > }
 > ```
 > 
