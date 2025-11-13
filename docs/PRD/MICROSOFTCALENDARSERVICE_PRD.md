@@ -1660,4 +1660,94 @@ POST /me/events/subscriptions
 
 ---
 
+### v1.2 (2025-11-11)
+
+**🔧 日历缓存内存同步修复**
+
+**问题**: `this.calendars` 内存数组与 localStorage 不同步，导致日历验证失败
+
+**根本原因**:
+- `this.calendars` 在构造函数中初始化为空数组
+- `setCachedCalendars()` 只保存到 localStorage，从不更新内存
+- `getCachedCalendars()` 只读取 localStorage，从不更新内存
+- `validateCalendarExists()` 检查内存数组，始终为空
+
+**修复方案**:
+```typescript
+// ✅ setCachedCalendars 同步更新内存
+private setCachedCalendars(calendars: Calendar[]): void {
+  this.calendars = calendars;  // 🔧 同步到内存
+  localStorage.setItem(STORAGE_KEYS.CALENDARS_CACHE, JSON.stringify(calendars));
+}
+
+// ✅ getCachedCalendars 同步更新内存
+public getCachedCalendars(): Calendar[] {
+  const calendars = JSON.parse(cached);
+  this.calendars = calendars;  // 🔧 同步到内存
+  return calendars;
+}
+
+// ✅ ensureCalendarCacheLoaded 加载到内存
+private async ensureCalendarCacheLoaded(): Promise<void> {
+  if (cached && cached.length > 0) {
+    this.getCachedCalendars();  // 🔧 加载到内存
+  }
+}
+```
+
+**性能优化**:
+- 🚀 `validateCalendarExists` 内存查找（<0.1ms）vs 之前 API 请求（100-500ms）
+- 📉 减少不必要的 Graph API 调用
+- 🔕 避免启动时显示"日历不存在"的错误通知
+
+**影响范围**:
+- `setCachedCalendars()` L295-303
+- `getCachedCalendars()` L265-283
+- `ensureCalendarCacheLoaded()` L339-372
+
+---
+
+**🔔 StatusBar 实时同步修复**
+
+**问题**: token 重新加载成功后，StatusBar 不更新状态（延迟显示）
+
+**根本原因**:
+- `reloadToken()` 成功加载 token 后设置 `this.isAuthenticated = true`
+- 但没有触发 `auth-state-changed` 事件
+- StatusBar 只监听该事件来更新 UI
+- 导致 StatusBar 显示延迟或不更新
+
+**场景复现**:
+1. Electron 启动时，token 已过期（日志：`⚠️ [Electron] 访问令牌已过期`）
+2. 用户点击进入 CalendarSync 页面
+3. `reloadToken()` 成功加载 token（日志：`✅ [ReloadToken] 成功加载有效的访问令牌`）
+4. **但 StatusBar 仍显示红灯** ❌
+
+**修复方案**:
+```typescript
+async reloadToken(): Promise<boolean> {
+  this.accessToken = token;
+  this.isAuthenticated = true;
+  
+  // 🔧 [FIX v1.7.4] 触发认证状态更新事件
+  window.dispatchEvent(new CustomEvent('auth-state-changed', { 
+    detail: { isAuthenticated: true } 
+  }));
+  MSCalendarLogger.log('🔔 [ReloadToken] 触发了 auth-state-changed 事件');
+  
+  return true;
+}
+```
+
+**修复效果**:
+- ✅ token 重新加载后 StatusBar 立即显示绿灯
+- ✅ 与其他认证成功路径行为一致（`initializeGraph`, `acquireToken` 等）
+- ⚡ 实时响应，无延迟
+
+**影响范围**:
+- `reloadToken()` L1791-1829
+
+---
+
 **文档结束**
+

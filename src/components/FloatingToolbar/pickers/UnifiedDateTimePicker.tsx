@@ -590,8 +590,10 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
       
       // 如果启用 TimeHub，则写入统一时间服务
       if (useTimeHub && eventId) {
-        const startIso = formatTimeForStorage(startDateTime.toDate());
-        const endIso = formatTimeForStorage(endDateTime.toDate());
+        // 🔧 修复时区问题：直接使用 dayjs.format() 而不是 .toDate()
+        // 原因：.toDate() 会触发 UTC 转换，导致日期错位（如"下周五"变成周四）
+        const startIso = startDateTime.format('YYYY-MM-DD HH:mm:ss');
+        const endIso = endDateTime.format('YYYY-MM-DD HH:mm:ss');
         // 🔧 使用组件的 allDay 状态，而不是自动推断
         const allDaySelected = allDay;
         // 🆕 v1.1: 如果有 displayHint 且用户勾选了全天，添加"全天"后缀
@@ -641,8 +643,9 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
         }
       } else if (useTimeHub && !eventId) {
         // TimeHub 模式但没有 eventId：先回调 onApplied，让外层创建 Event 并写入 TimeHub
-        const startIso = formatTimeForStorage(startDateTime.toDate());
-        const endIso = formatTimeForStorage(endDateTime.toDate());
+        // 🔧 修复时区问题：直接使用 dayjs.format()
+        const startIso = startDateTime.format('YYYY-MM-DD HH:mm:ss');
+        const endIso = endDateTime.format('YYYY-MM-DD HH:mm:ss');
         // 🔧 使用组件的 allDay 状态
         const allDaySelected = allDay;
         dbg('picker', '🆕 TimeHub 模式但没有 eventId，先调用 onApplied', { startIso, endIso, allDaySelected });
