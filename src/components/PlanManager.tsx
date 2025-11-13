@@ -28,6 +28,8 @@ import './PlanManager.css';
 import { dbg, warn, error } from '../utils/debugLogger';
 import { formatRelativeTimeDisplay } from '../utils/relativeDateFormatter';
 import TimeHoverCard from './TimeHoverCard';
+import { Editor, Transforms, Element, Node } from 'slate'; // 🆕 导入 Slate API
+import { ReactEditor } from 'slate-react'; // 🆕 导入 ReactEditor
 import { calculateFixedPopupPosition } from '../utils/popupPositionUtils';
 
 // � 初始化调试标志 - 在模块加载时立即从 localStorage 读取
@@ -853,11 +855,10 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   const handleTextFormat = useCallback((command: string) => {
     // 🆕 使用 UnifiedSlateEditor 的编辑器实例
     const editor = unifiedEditorRef.current;
-    if (!editor) return;
-    
-    // Slate API
-    const { Editor, Transforms, Element, Node } = require('slate');
-    const { ReactEditor } = require('slate-react');
+    if (!editor) {
+      console.warn('[handleTextFormat] Editor not ready');
+      return;
+    }
     
     try {
       ReactEditor.focus(editor);

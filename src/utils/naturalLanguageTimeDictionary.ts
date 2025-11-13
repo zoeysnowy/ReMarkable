@@ -648,15 +648,28 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   
   // 🆕 下周二到下周日
   '下周二': (ref = new Date()) => {
-    const target = safelyConvertDateToDayjs(ref).add(1, 'week').day(2).startOf('day');
-    dbg('dict', '🎯 解析"下周二"', {
-      输入ref: ref.toISOString(),
+    dbg('dict', '🔍 开始解析"下周二"', {
+      输入ref类型: typeof ref,
+      ref的ISO: ref.toISOString(),
       ref本地时间: ref.toString(),
-      dayjs解析后: target.format('YYYY-MM-DD HH:mm:ss'),
-      dayjs内部毫秒: target.valueOf(),
-      目标日期: target.format('YYYY-MM-DD'),
-      星期几: target.day()
+      ref年月日: `${ref.getFullYear()}-${ref.getMonth()+1}-${ref.getDate()}`,
+      ref星期几: ref.getDay()
     });
+    
+    const safeDayjs = safelyConvertDateToDayjs(ref);
+    dbg('dict', '🛡️ safelyConvertDateToDayjs结果', {
+      结果: safeDayjs.format('YYYY-MM-DD HH:mm:ss'),
+      星期几: safeDayjs.day(),
+      毫秒值: safeDayjs.valueOf()
+    });
+    
+    const target = safeDayjs.add(1, 'week').day(2).startOf('day');
+    dbg('dict', '🎯 解析"下周二"完成', {
+      最终结果: target.format('YYYY-MM-DD HH:mm:ss'),
+      星期几: target.day(),
+      毫秒值: target.valueOf()
+    });
+    
     return {
       date: target,
       displayHint: '下周二',
