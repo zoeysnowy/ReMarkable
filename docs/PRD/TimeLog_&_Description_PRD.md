@@ -1,101 +1,1400 @@
-﻿# ReMarkable TimeLog 系统设计文档
+﻿# TimeLog 页面 & Event.eventlog 字段 PRD
 
-> **文档版本**: v2.1  
-> **创建日期**: 2024-01-XX  
+> **版本**: v2.2  
+> **创建时间**: 2024-01-XX  
 > **最后更新**: 2025-11-13  
-> **作者**: AI Assistant  
-> **目标**: 为 ReMarkable 时间追踪应用设计富文本 TimeLog 系统，支持情境感知时间轴、与 Outlook 双向同步和版本控制
+> **Figma 设计稿**: [TimeLog 页面设计](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=333-1178&m=dev)  
+> **依赖模块**: EventService, UnifiedSlateEditor, TimeHub, EventHub  
+> **关联文档**:
+> - [EventEditModal v2 PRD](./EVENTEDITMODAL_V2_PRD.md)
+> - [TIME_ARCHITECTURE.md](../TIME_ARCHITECTURE.md)
+> - [SLATE_DEVELOPMENT_GUIDE.md](../SLATE_DEVELOPMENT_GUIDE.md)
+
+---
+
+## 📋 目录
+
+1. [核心概念](#1-核心概念)
+   - TimeLog 页面 vs Event.eventlog 字段
+   - 数据字段职责划分
+2. [TimeLog 页面设计](#2-timelog-页面设计)
+   - 整体布局
+   - Event 卡片设计
+   - 时间轴与过滤器
+3. [Event.eventlog 字段](#3-eventeventlog-字段)
+   - 数据结构定义
+   - Timestamp 自动插入机制
+   - Slate 编辑器集成
+4. [编辑场景](#4-编辑场景)
+   - TimeLog 页面（主要）
+   - EventEditModal 右侧（次要）
+   - PlanManager（紧凑模式）
+5. [Outlook 同步机制](#5-outlook-同步机制)
+   - eventlog → description 自动转换
+   - 智能序列化策略
+6. [版本控制与历史](#6-版本控制与历史)
+7. [离线队列与保存机制](#7-离线队列与保存机制)
+8. [实现指南](#8-实现指南)
 
 ---
 
 ## 📢 架构决策记录（2025-11-13）
 
-### 核心决策：TimeLog 采用嵌入式设计
+### 决策 1：TimeLog = Event 集合的时间轴视图
 
-**决策内容：**
-- EventLog **不是独立实体**，而是 Event 接口的 `eventlog` 字段
-- TimeLog 是页面/功能模块，EventLog 是 Event 内部的日志记录字段
-- **不创建**单独的 `timelogs` 数据表/集合
-- 版本历史存储在 `Event.eventlog.versions` 数组中（最多保留 50 个版本）
+**核心概念澄清：**
 
-**理由：**
-1. **业务语义自然** - TimeLog 本质是"事件的详细描述"，是 1:1 关系
-2. **简化数据操作** - 一次查询即可获取完整事件，无需 JOIN
-3. **同步逻辑直观** - Outlook Event.body 直接映射到 Event.eventlog
-4. **避免事务问题** - 单实体更新，无孤儿记录风险
+| 概念 | 定义 | 说明 |
+|------|------|------|
+| **TimeLog 页面** | Event 集合的时间轴展示页面 | 左侧：日历选择器 + 标签过滤器<br>右侧：连续时间轴显示所有 Events |
+| **Event.eventlog** | 单个 Event 内部的日志字段 | Slate JSON 格式，包含 timestamp 分隔线<br>**用户唯一编辑的日志字段** |
+| **Event.description** | 自动生成的同步字段 | 从 eventlog 转换的 HTML<br>**仅用于 Outlook 同步，用户界面不显示** |
 
-**数据结构示意：**
+**TimeLog 页面架构：**
+```
+┌─────────────────────────────────────────────────────────────┐
+│ TimeLog 页面                                                 │
+├──────────────────┬──────────────────────────────────────────┤
+│ 左侧控制区        │ 右侧时间轴展示区                          │
+│ (固定宽度)        │ (flex: 1)                                │
+│                  │                                          │
+│ ┌──────────────┐ │ ┌──────────────────────────────────────┐ │
+│ │ 日历选择器    │ │ │ 2025-10-18 (周六)                    │ │
+│ │ 2025年 10月  │ │ ├──────────────────────────────────────┤ │
+│ │ [日历视图]    │ │ │ 📅⏰ 10:00 - 12:00 准备演讲稿        │ │
+│ └──────────────┘ │ │ #工作 #文档编辑                       │ │
+│                  │ │ 创建于12h前，距ddl还有2h30min          │ │
+│ ┌──────────────┐ │ │ 上级任务：Project Ace...              │ │
+│ │ 标签过滤器    │ │ │                                       │ │
+│ │ [x] #工作     │ │ │ ▸ 2025-10-19 10:21:18 ⊙              │ │
+│ │ [x] #学习     │ │ │ 处理完了一些出差的logistics，还有...   │ │
+│ │ [ ] #娱乐     │ │ │                                       │ │
+│ └──────────────┘ │ │ ▸ 16min later ⊙                       │ │
+│                  │ │ 双击"Alt"召唤美桶、格式等...            │ │
+│ ┌──────────────┐ │ │                                       │ │
+│ │ 事件类型      │ │ └──────────────────────────────────────┘ │
+│ │ [x] 计划事件  │ │                                          │
+│ │ [x] 计时事件  │ │ ┌──────────────────────────────────────┐ │
+│ └──────────────┘ │ │ 📅 14:00 - 16:00 开会讨论             │ │
+│                  │ │ ...                                    │ │
+└──────────────────┴──────────────────────────────────────────┘
+```
+
+### 决策 2：eventlog 是唯一可编辑的日志字段
+
+**字段职责明确划分：**
+
 ```typescript
 interface Event {
-  id: string;
-  title: string;
-  startTime: string;     // 保留用于快速查询
-  timeSpec?: TimeSpec;   // 完整时间对象
+  // === 日志字段（核心） ===
+  eventlog?: string;        // 🔥 Slate JSON 字符串
+                            // - 用户在 TimeLog/EventEditModal/PlanManager 中编辑
+                            // - 包含 timestamp 分隔线（自动插入）
+                            // - 支持富文本、附件、标签提及
   
-  eventlog?: {            // 🆕 嵌入式 TimeLog
-    content: Descendant[];        // Slate JSON
-    descriptionHtml: string;      // 用于 Outlook 同步
-    descriptionPlainText: string; // 用于搜索
-    attachments?: Attachment[];
-    versions?: EventLogVersion[];  // 版本历史
-    syncState?: SyncState;
-  };
+  description?: string;     // 🔥 HTML 字符串（自动生成）
+                            // - 从 eventlog 自动转换（Slate JSON → HTML）
+                            // - 仅用于 Outlook 同步
+                            // - ❌ 用户界面永远不显示此字段
+  
+  // === 时间信息 ===
+  startTime?: string;       // 计划开始时间（📅 日历 icon 依据）
+  endTime?: string;         // 计划结束时间
+  timeSpec?: TimeSpec;      // 完整时间对象（权威来源）
+  
+  // === Timer 计时信息 ===
+  segments?: TimerSegment[];// 计时片段（⏰ 闹钟 icon 依据）
+  isTimer?: boolean;        // 是否为 Timer 创建
+  
+  // === 其他元数据 ===
+  title: string;
+  emoji?: string;
+  tags?: string[];
+  participants?: string[];
+  location?: string;
+  calendarIds?: string[];
+  // ...
 }
 ```
 
-**影响范围：**
-- Section 1.3: 数据结构定义
-- Section 6: 版本控制实现（使用 eventId）
-- Section 7.2: 数据库设计（单表 + 可选归档表）
+**数据流：**
+```
+用户编辑（TimeLog/EventEditModal/PlanManager）
+              ↓
+    Event.eventlog (Slate JSON) ← 🔥 唯一数据源
+              ↓
+      自动转换（后台）
+              ↓
+   Event.description (HTML) ← 仅用于同步
+              ↓
+      同步到 Outlook
+```
 
-### 决策：TimeSpec 作为时间的唯一真相源
+### 决策 3：Timestamp 分隔线记录编辑行为
 
-**决策内容：**
-- **保留双重状态**：Event 同时包含 `timeSpec`（TimeSpec 对象）和 `startTime/endTime`（UTC 字符串）
-- **明确职责分工**：
-  - `timeSpec` - **权威来源（Source of Truth）**，用于所有应用内时间逻辑
-  - `startTime/endTime` - **派生字段**，仅用于数据库索引和 Outlook API 交互
+**Timestamp 的本质：**
+- **不是** Event 的 startTime/endTime（那是计划时间）
+- **是** eventlog 内部的编辑时间记录
+- 自动插入，标记用户的输入行为
 
-**核心规则：**
-1. **timeSpec 必填** - 从可选字段改为必填：`timeSpec?: TimeSpec` → `timeSpec: TimeSpec`
-2. **禁止直接读取派生字段** - UI 组件必须使用 `useEventTime()` hook，禁止直接读取 `event.startTime`
-3. **自动同步机制** - `TimeHub.setEventTime()` 更新 timeSpec 时，自动派生并更新 startTime/endTime
-4. **数据验证** - 确保 `timeSpec.resolved.start` 与 `new Date(startTime)` 保持一致
+**示例（见 Figma 截图）：**
+```
+┌─────────────────────────────────────────────┐
+│ ▸ 2025-10-19 10:21:18 ⊙                     │ ← 第一个 timestamp（当天首次输入）
+│ 处理完了一些出差的logistics，还有报销整理，  │
+│ 现在终于可以开工了！                         │
+│ 准备先一个提纲去给GPT，看看情况             │
+│                                             │
+│ ▸ 16min later ⊙                             │ ← 第二个 timestamp（距上次 16 分钟）
+│ 双击"Alt"召唤美桶、格式等，点击右下方问号...  │
+└─────────────────────────────────────────────┘
+```
 
-**时区处理：**
-- `startTime/endTime` - 存储 UTC 字符串（用于跨时区同步）
-- `timeSpec` - 存储用户本地时间 + 时区策略（用于显示和计算）
-- TimeHub 保证两者一致性
-
-**迁移策略：**
+**Slate JSON 结构（示意）：**
 ```typescript
-// 对于没有 timeSpec 的旧数据，从 startTime/endTime 重建
-async function migrateToTimeSpec(event: Event) {
-  if (!event.timeSpec && event.startTime) {
-    event.timeSpec = {
-      kind: 'fixed',
-      source: 'migration',
-      rawText: null,
-      policy: TimePolicy.getDefault(),
-      start: new Date(event.startTime),
-      end: new Date(event.endTime),
-      resolved: {
-        start: new Date(event.startTime),
-        end: new Date(event.endTime)
+[
+  {
+    type: 'timestamp-divider',
+    timestamp: '2025-10-19T10:21:18Z',
+    isFirstOfDay: true,
+    children: [{ text: '' }]
+  },
+  {
+    type: 'paragraph',
+    children: [{ text: '处理完了一些出差的logistics...' }]
+  },
+  {
+    type: 'timestamp-divider',
+    timestamp: '2025-10-19T10:37:42Z',
+    minutesSinceLast: 16,
+    children: [{ text: '' }]
+  },
+  {
+    type: 'paragraph',
+    children: [{ text: '双击"Alt"召唤美桶...' }]
+  }
+]
+```
+
+### 决策 4: Event 时间状态的 Icon 指示
+
+**时间状态 Icon 规则：**
+
+| Icon | 含义 | 判断条件 | 说明 |
+|------|------|----------|------|
+| 📅 | 计划时间 | `event.startTime` 存在 | 事先规划的事件 |
+| ⏰ | 实际计时 | `event.segments` 存在 | Timer 计时记录 |
+| 📅⏰ | 两者都有 | 同时满足上述条件 | 计划内的事情，也实际计时了 |
+
+**示例（见 TimeLog 页面 Figma）：**
+```
+📅⏰ 10:00 - 12:00 准备演讲稿
+  ↑  ↑
+  │  └─ 实际计时了（有 segments）
+  └──── 有计划时间（有 startTime/endTime）
+```
+
+### 决策 5：编辑场景与 Timestamp 显示规则
+
+**eventlog 编辑场景：**
+
+| 页面 | 编辑 eventlog | Timestamp 显示 | 用途 |
+|------|--------------|----------------|------|
+| **TimeLog 页面** | ✅ 主要编辑位置 | ✅ 完整显示 | 详细日志记录，时间轴展示 |
+| **EventEditModal 右侧** | ✅ 次要编辑位置 | ✅ 完整显示 | Slate 编辑区，面积较大 |
+| **PlanManager description 行** | ✅ 可编辑 | ❌ 隐藏 | 紧凑显示模式，节省空间 |
+
+**❌ 常见误解纠正：**
+- PlanManager 的 "description 行" **不是** Event.description 字段
+- 它编辑的是 Event.eventlog，只是隐藏了 timestamp 的显示
+- 数据保存时，写入的是 `Event.eventlog`，而非 `Event.description`
+
+### 决策 6：TimeLog 页面的过滤机制
+
+**左侧控制区功能：**
+
+1. **日历选择器**
+   - 默认显示所有时间的连续时间轴
+   - 用户可选择特定日期/时间段
+   - 右侧时间轴只显示选中范围的 Events
+
+2. **标签过滤器**
+   - 默认显示所有标签的 Events
+   - 用户点击标签前的 hide 按钮 → 过滤该标签
+   - **父标签 hide** → 整个 tag tree 的内容都被过滤
+
+3. **事件类型过滤**
+   - 计划事件（📅 有 startTime）
+   - 计时事件（⏰ 有 segments）
+   - 可多选
+
+**标签过滤示例：**
+```typescript
+interface TagFilter {
+  tagId: string;
+  isHidden: boolean;
+  childrenHidden?: boolean; // 父标签 hide 时，子标签自动 hide
+}
+
+// 用户点击 #工作 的 hide 按钮
+const filterEvents = (events: Event[], hiddenTags: Set<string>): Event[] => {
+  return events.filter(event => {
+    // 如果 event 的任何 tag 在 hiddenTags 中，就过滤掉
+    return !event.tags?.some(tagId => hiddenTags.has(tagId));
+  });
+};
+
+// 处理 tag tree 的递归 hide
+const getHiddenTagsWithChildren = (
+  hiddenTagIds: string[],
+  tagTree: TagHierarchy
+): Set<string> => {
+  const result = new Set<string>();
+  
+  hiddenTagIds.forEach(tagId => {
+    result.add(tagId);
+    // 递归添加所有子标签
+    const children = getChildTags(tagTree, tagId);
+    children.forEach(childId => result.add(childId));
+  });
+  
+  return result;
+};
+```
+
+---
+
+## 1. 核心概念
+
+### 1.1 TimeLog 页面 vs Event.eventlog 字段
+
+**TimeLog 页面**：
+- **定义**：Event 集合的时间轴展示页面
+- **功能**：按时间顺序展示所有 Events，支持日期范围选择和标签过滤
+- **布局**：
+  - 左侧：日历选择器 + 标签过滤器 + 事件类型筛选
+  - 右侧：连续时间轴，显示 Event 卡片列表
+
+**Event.eventlog 字段**：
+- **定义**：单个 Event 内部的富文本日志字段
+- **格式**：Slate JSON 字符串
+- **特性**：
+  - 包含自动插入的 timestamp 分隔线
+  - 支持富文本、附件、标签提及
+  - 用户在多个场景编辑（TimeLog/EventEditModal/PlanManager）
+
+**关键区别：**
+```
+TimeLog 页面 = Event[] 的视图
+Event.eventlog = Event 内部的字段
+```
+
+### 1.2 数据字段职责划分
+
+| 字段 | 类型 | 用途 | 编辑者 | 显示位置 |
+|------|------|------|--------|----------|
+| `Event.eventlog` | Slate JSON 字符串 | 用户日志记录（包含 timestamp） | 用户 | TimeLog, EventEditModal, PlanManager |
+| `Event.description` | HTML 字符串 | Outlook 同步字段 | 系统自动生成 | ❌ 用户界面不显示 |
+| `Event.startTime` | UTC 字符串 | 计划开始时间（📅 icon） | 用户 | 所有视图 |
+| `Event.endTime` | UTC 字符串 | 计划结束时间 | 用户 | 所有视图 |
+| `Event.segments` | TimerSegment[] | 实际计时记录（⏰ icon） | Timer 系统 | 所有视图 |
+
+**数据流图：**
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 用户编辑层                                                   │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  TimeLog 页面    EventEditModal    PlanManager              │
+│       │                │                │                   │
+│       └────────────────┴────────────────┘                   │
+│                        ↓                                    │
+│              编辑 Event.eventlog                             │
+│                  (Slate JSON)                               │
+│                        ↓                                    │
+├─────────────────────────────────────────────────────────────┤
+│ 自动转换层                                                   │
+├─────────────────────────────────────────────────────────────┤
+│                        ↓                                    │
+│         slateToHtml(Event.eventlog)                         │
+│                        ↓                                    │
+│           Event.description (HTML)                          │
+│                        ↓                                    │
+├─────────────────────────────────────────────────────────────┤
+│ 同步层                                                       │
+├─────────────────────────────────────────────────────────────┤
+│                        ↓                                    │
+│            同步到 Outlook/Google Calendar                    │
+│              (body.content = description)                   │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 2. TimeLog 页面设计
+
+### 2.1 整体布局
+
+**Figma 设计稿**: [TimeLog 页面](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=333-1178&m=dev)
+
+**布局结构：**
+```tsx
+<div className="timelog-page">
+  {/* 左侧控制区 */}
+  <aside className="timelog-sidebar">
+    <CalendarPicker value={selectedDate} onChange={setSelectedDate} />
+    <TagFilter tags={allTags} hiddenTags={hiddenTags} onToggle={toggleTag} />
+    <EventTypeFilter types={eventTypes} onChange={setEventTypes} />
+  </aside>
+  
+  {/* 右侧时间轴 */}
+  <main className="timelog-timeline">
+    <h2>{formatDate(selectedDate)}</h2>
+    <EventCardList events={filteredEvents} />
+  </main>
+</div>
+```
+
+**样式定义：**
+```css
+.timelog-page {
+  display: flex;
+  height: 100vh;
+  gap: 24px;
+  padding: 24px;
+}
+
+.timelog-sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.timelog-timeline {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px;
+}
+```
+
+### 2.2 Event 卡片设计
+
+**Event 卡片组件：**
+```tsx
+interface EventCardProps {
+  event: Event;
+  onExpand: (eventId: string) => void;  // 展开 EventEditModal
+}
+
+const EventCard: React.FC<EventCardProps> = ({ event, onExpand }) => {
+  const hasPlannedTime = !!event.startTime;
+  const hasActualTime = !!event.segments && event.segments.length > 0;
+  
+  return (
+    <div className="event-card">
+      {/* 时间与状态 */}
+      <div className="event-header">
+        <div className="event-time-icons">
+          {hasPlannedTime && <span className="icon">📅</span>}
+          {hasActualTime && <span className="icon">⏰</span>}
+        </div>
+        <div className="event-time-range">
+          {formatTimeRange(event.startTime, event.endTime)}
+        </div>
+        <button className="expand-btn" onClick={() => onExpand(event.id)}>
+          →
+        </button>
+      </div>
+      
+      {/* 标题与标签 */}
+      <h3 className="event-title">
+        {event.emoji} {event.title}
+      </h3>
+      <div className="event-tags">
+        {event.tags?.map(tagId => <TagChip key={tagId} tagId={tagId} />)}
+      </div>
+      
+      {/* 元数据 */}
+      <div className="event-metadata">
+        {event.participants && (
+          <div>参会人：{event.participants.join(', ')}</div>
+        )}
+        {event.location && (
+          <div>📍 {event.location}</div>
+        )}
+      </div>
+      
+      {/* eventlog 预览（折叠状态） */}
+      <div className="event-log-preview">
+        <EventLogPreview eventlog={event.eventlog} maxLines={3} />
+      </div>
+      
+      {/* 同步状态 */}
+      <div className="event-sync-status">
+        {renderSyncStatus(event)}
+      </div>
+    </div>
+  );
+};
+```
+
+**样式定义：**
+```css
+.event-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  transition: box-shadow 0.2s;
+}
+
+.event-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.event-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.event-time-icons {
+  display: flex;
+  gap: 4px;
+  font-size: 16px;
+}
+
+.event-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 8px 0;
+}
+
+.event-log-preview {
+  margin-top: 12px;
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 1.5;
+  
+  /* 截断超过 3 行 */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.expand-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #9ca3af;
+  transition: color 0.2s;
+}
+
+.expand-btn:hover {
+  color: #3b82f6;
+}
+```
+
+### 2.3 时间轴与过滤器
+
+#### 2.3.1 日历选择器
+
+**功能：**
+- 默认显示所有时间的连续时间轴
+- 用户可选择特定日期或日期范围
+- 右侧时间轴只显示选中范围的 Events
+
+**实现：**
+```typescript
+const [selectedDateRange, setSelectedDateRange] = useState<{
+  start: Date | null;
+  end: Date | null;
+}>({ start: null, end: null });
+
+const filteredEventsByDate = useMemo(() => {
+  if (!selectedDateRange.start) {
+    // 默认：显示所有 Events
+    return allEvents;
+  }
+  
+  return allEvents.filter(event => {
+    const eventDate = new Date(event.startTime || event.createdAt);
+    const inRange = 
+      (!selectedDateRange.start || eventDate >= selectedDateRange.start) &&
+      (!selectedDateRange.end || eventDate <= selectedDateRange.end);
+    return inRange;
+  });
+}, [allEvents, selectedDateRange]);
+```
+
+#### 2.3.2 标签过滤器
+
+**功能：**
+- 显示所有标签的层级树
+- 用户可点击标签前的 hide 按钮切换显示/隐藏
+- **父标签 hide** → 整个子标签树都被过滤
+
+**UI 示例：**
+```
+┌─────────────────────┐
+│ 标签过滤器           │
+├─────────────────────┤
+│ [👁️] #工作          │ ← 显示中
+│   [👁️] #文档编辑    │
+│   [👁️] #开会        │
+│ [👁️‍🗨️] #学习          │ ← 已隐藏（子标签也隐藏）
+│   [👁️‍🗨️] #英语        │
+│   [👁️‍🗨️] #编程        │
+│ [👁️] #娱乐          │
+└─────────────────────┘
+```
+
+**实现：**
+```typescript
+const [hiddenTagIds, setHiddenTagIds] = useState<Set<string>>(new Set());
+
+// 递归获取子标签
+const getChildTagIds = (tagId: string, tagTree: TagHierarchy): string[] => {
+  const tag = tagTree.find(t => t.id === tagId);
+  if (!tag || !tag.children) return [];
+  
+  const childIds = tag.children.map(c => c.id);
+  const grandChildIds = tag.children.flatMap(c => getChildTagIds(c.id, tagTree));
+  
+  return [...childIds, ...grandChildIds];
+};
+
+// 切换标签显示/隐藏
+const toggleTagVisibility = (tagId: string) => {
+  setHiddenTagIds(prev => {
+    const next = new Set(prev);
+    
+    if (next.has(tagId)) {
+      // 显示：移除自己和所有子标签
+      next.delete(tagId);
+      const childIds = getChildTagIds(tagId, tagTree);
+      childIds.forEach(id => next.delete(id));
+    } else {
+      // 隐藏：添加自己和所有子标签
+      next.add(tagId);
+      const childIds = getChildTagIds(tagId, tagTree);
+      childIds.forEach(id => next.add(id));
+    }
+    
+    return next;
+  });
+};
+
+// 过滤 Events
+const filteredEventsByTags = useMemo(() => {
+  if (hiddenTagIds.size === 0) return filteredEventsByDate;
+  
+  return filteredEventsByDate.filter(event => {
+    // 如果 event 的任何 tag 在 hiddenTagIds 中，就过滤掉
+    return !event.tags?.some(tagId => hiddenTagIds.has(tagId));
+  });
+}, [filteredEventsByDate, hiddenTagIds]);
+```
+
+#### 2.3.3 事件类型过滤
+
+**功能：**
+- 计划事件（有 `startTime`，显示 📅）
+- 计时事件（有 `segments`，显示 ⏰）
+- 可多选
+
+**实现：**
+```typescript
+const [eventTypeFilters, setEventTypeFilters] = useState<{
+  planned: boolean;   // 计划事件
+  timed: boolean;     // 计时事件
+}>({ planned: true, timed: true });
+
+const filteredEventsByType = useMemo(() => {
+  return filteredEventsByTags.filter(event => {
+    const isPlanned = !!event.startTime;
+    const isTimed = !!event.segments && event.segments.length > 0;
+    
+    // 如果两个 filter 都不选，显示所有
+    if (!eventTypeFilters.planned && !eventTypeFilters.timed) {
+      return true;
+    }
+    
+    // 符合任一条件即显示
+    return (
+      (eventTypeFilters.planned && isPlanned) ||
+      (eventTypeFilters.timed && isTimed)
+    );
+  });
+}, [filteredEventsByTags, eventTypeFilters]);
+```
+
+### 2.4 EventLog 预览与展开
+
+**预览模式（TimeLog 页面卡片）：**
+- 只显示 eventlog 的前 3 行
+- 隐藏 timestamp 分隔线（紧凑显示）
+- 点击卡片右侧的 `→` 按钮展开 EventEditModal
+
+**实现：**
+```typescript
+const EventLogPreview: React.FC<{ eventlog?: string; maxLines?: number }> = ({
+  eventlog,
+  maxLines = 3
+}) => {
+  if (!eventlog) return null;
+  
+  // 解析 Slate JSON
+  const slateNodes = JSON.parse(eventlog) as Descendant[];
+  
+  // 过滤掉 timestamp-divider 节点
+  const contentNodes = slateNodes.filter(
+    node => (node as any).type !== 'timestamp-divider'
+  );
+  
+  // 转换为纯文本
+  const plainText = contentNodes
+    .map(node => serializeToPlainText([node]))
+    .join('\n');
+  
+  // 截取前 maxLines 行
+  const lines = plainText.split('\n').slice(0, maxLines);
+  
+  return (
+    <div className="event-log-preview">
+      {lines.map((line, i) => (
+        <p key={i}>{line}</p>
+      ))}
+      {plainText.split('\n').length > maxLines && (
+        <span className="more-indicator">...</span>
+      )}
+    </div>
+  );
+};
+```
+
+**展开操作：**
+```typescript
+const handleExpandEvent = (eventId: string) => {
+  // 打开 EventEditModal（详情视图）
+  setCurrentEditingEvent(eventId);
+  setShowEventEditModal(true);
+};
+```
+
+---
+
+## 3. Event.eventlog 字段
+
+### 3.1 数据结构定义
+
+**字段类型：**
+```typescript
+interface Event {
+  // ... 其他字段
+  
+  /**
+   * 富文本日志字段（Slate JSON 字符串）
+   * 
+   * 特性：
+   * - 包含自动插入的 timestamp 分隔线
+   * - 支持富文本格式（加粗、颜色、列表等）
+   * - 支持附件、链接、标签提及
+   * - 用户在 TimeLog/EventEditModal/PlanManager 中编辑
+   * 
+   * ⚠️ 注意：用户界面只编辑此字段，description 字段由系统自动生成
+   */
+  eventlog?: string;
+  
+  /**
+   * HTML 同步字段（从 eventlog 自动转换）
+   * 
+   * ⚠️ 仅用于 Outlook 同步，用户界面不显示
+   */
+  description?: string;
+}
+```
+
+**Slate JSON 示例：**
+```json
+[
+  {
+    "type": "timestamp-divider",
+    "timestamp": "2025-10-19T10:21:18Z",
+    "isFirstOfDay": true,
+    "displayText": "2025-10-19 10:21:18",
+    "children": [{ "text": "" }]
+  },
+  {
+    "type": "paragraph",
+    "children": [
+      { "text": "处理完了一些出差的logistics，还有报销整理，" }
+    ]
+  },
+  {
+    "type": "paragraph",
+    "children": [
+      { "text": "现在终于可以开工了！" }
+    ]
+  },
+  {
+    "type": "timestamp-divider",
+    "timestamp": "2025-10-19T10:37:42Z",
+    "minutesSinceLast": 16,
+    "displayText": "16min later",
+    "children": [{ "text": "" }]
+  },
+  {
+    "type": "paragraph",
+    "children": [
+      { "text": "双击\"Alt\"召唤美桶、格式等，" },
+      {
+        "type": "tag",
+        "tagId": "tag-123",
+        "tagName": "工作",
+        "mentionOnly": true,
+        "children": [{ "text": "" }]
       },
-      allDay: false
+      { "text": " 点击右下方问号..." }
+    ]
+  }
+]
+```
+
+### 3.2 Timestamp 自动插入机制
+
+#### 3.2.1 插入规则
+
+**触发条件：**
+1. **当天首次编辑** → 插入完整时间戳（如 `2025-10-19 10:21:18`）
+2. **距上次编辑超过 5 分钟** → 插入相对时间戳（如 `16min later`）
+
+**节点类型定义：**
+```typescript
+type TimestampDividerElement = {
+  type: 'timestamp-divider';
+  timestamp: string;           // ISO 8601 格式
+  isFirstOfDay?: boolean;      // 是否为当天首次
+  minutesSinceLast?: number;   // 距上次间隔（分钟）
+  displayText: string;         // UI 显示文本
+  children: [{ text: '' }];    // Slate Void 节点要求
+};
+```
+
+#### 3.2.2 插入逻辑
+
+**实现：**
+```typescript
+class EventLogTimestampService {
+  private lastEditTimestamp: Map<string, Date> = new Map();
+  
+  /**
+   * 检查是否需要插入 timestamp
+   * @param eventId Event ID
+   * @param eventlog 当前 eventlog（Slate JSON）
+   * @returns 是否需要插入
+   */
+  shouldInsertTimestamp(eventId: string, eventlog: string): boolean {
+    const lastEdit = this.lastEditTimestamp.get(eventId);
+    const now = new Date();
+    
+    // 情况1：当天首次编辑
+    if (!lastEdit || !isSameDay(lastEdit, now)) {
+      return true;
+    }
+    
+    // 情况2：距上次编辑超过 5 分钟
+    const minutesElapsed = (now.getTime() - lastEdit.getTime()) / 1000 / 60;
+    return minutesElapsed >= 5;
+  }
+  
+  /**
+   * 创建 timestamp divider 节点
+   */
+  createTimestampDivider(eventId: string): TimestampDividerElement {
+    const lastEdit = this.lastEditTimestamp.get(eventId);
+    const now = new Date();
+    
+    const isFirstOfDay = !lastEdit || !isSameDay(lastEdit, now);
+    const minutesSinceLast = lastEdit 
+      ? Math.floor((now.getTime() - lastEdit.getTime()) / 1000 / 60)
+      : undefined;
+    
+    const displayText = isFirstOfDay
+      ? formatDateTime(now) // "2025-10-19 10:21:18"
+      : `${minutesSinceLast}min later`;
+    
+    return {
+      type: 'timestamp-divider',
+      timestamp: now.toISOString(),
+      isFirstOfDay,
+      minutesSinceLast,
+      displayText,
+      children: [{ text: '' }]
     };
+  }
+  
+  /**
+   * 在 Slate 编辑器中插入 timestamp
+   */
+  insertTimestamp(editor: Editor, eventId: string) {
+    if (!this.shouldInsertTimestamp(eventId, /* current eventlog */)) {
+      return;
+    }
+    
+    const timestampNode = this.createTimestampDivider(eventId);
+    
+    // 在当前光标位置插入
+    Transforms.insertNodes(editor, timestampNode);
+    
+    // 更新最后编辑时间
+    this.lastEditTimestamp.set(eventId, new Date());
   }
 }
 ```
 
-**影响范围：**
-- Section 1.3: Event 接口定义（timeSpec 改为必填）
-- Section 2: ContextMarker 使用 TimeSpec
-- Section 10: 时间架构集成规范
-- 所有使用时间的 UI 组件必须迁移到 useEventTime() hook
+#### 3.2.3 Slate 编辑器集成
 
-### 决策：ContextMarker 功能延后至 v2.0
+**在 onChange 中检测：**
+```typescript
+const UnifiedSlateEditor: React.FC<Props> = ({ eventId, initialValue, onChange }) => {
+  const [editor] = useState(() => withReact(createEditor()));
+  const timestampService = useRef(new EventLogTimestampService());
+  
+  const handleChange = (newValue: Descendant[]) => {
+    // 检查是否需要插入 timestamp
+    const shouldInsert = timestampService.current.shouldInsertTimestamp(
+      eventId,
+      JSON.stringify(newValue)
+    );
+    
+    if (shouldInsert) {
+      // 插入 timestamp divider
+      timestampService.current.insertTimestamp(editor, eventId);
+    }
+    
+    // 触发保存
+    onChange(newValue);
+  };
+  
+  return (
+    <Slate editor={editor} value={initialValue} onChange={handleChange}>
+      <Editable
+        renderElement={renderElement}
+        renderLeaf={renderLeaf}
+      />
+    </Slate>
+  );
+};
+```
+
+### 3.3 Timestamp 渲染
+
+**Slate 自定义元素渲染：**
+```tsx
+const TimestampDivider: React.FC<RenderElementProps> = ({
+  attributes,
+  children,
+  element
+}) => {
+  const node = element as TimestampDividerElement;
+  
+  return (
+    <div
+      {...attributes}
+      contentEditable={false}  // 不可编辑
+      className="timestamp-divider"
+    >
+      <div className="timestamp-line">
+        <span className="timestamp-icon">▸</span>
+        <span className="timestamp-text">{node.displayText}</span>
+        <span className="timestamp-badge">⊙</span>
+      </div>
+      {children}  {/* Slate Void 节点要求 */}
+    </div>
+  );
+};
+```
+
+**样式定义：**
+```css
+.timestamp-divider {
+  user-select: none;
+  margin: 16px 0;
+}
+
+.timestamp-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f3f4f6;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.timestamp-icon {
+  font-size: 14px;
+}
+
+.timestamp-text {
+  flex: 1;
+  font-family: 'Courier New', monospace;
+}
+
+.timestamp-badge {
+  font-size: 16px;
+  opacity: 0.5;
+}
+```
+
+### 3.4 不同场景下的显示策略
+
+| 场景 | Timestamp 显示 | 说明 |
+|------|----------------|------|
+| TimeLog 页面 | ✅ 完整显示 | 时间轴视图，需要完整时间信息 |
+| EventEditModal 右侧 | ✅ 完整显示 | Slate 编辑区，面积足够 |
+| PlanManager description 行 | ❌ 隐藏 | 紧凑模式，过滤掉 timestamp-divider 节点 |
+
+**PlanManager 隐藏 Timestamp 实现：**
+```typescript
+// PlanManager 渲染 eventlog 时
+const renderEventLogWithoutTimestamp = (eventlog: string) => {
+  const slateNodes = JSON.parse(eventlog) as Descendant[];
+  
+  // 过滤掉 timestamp-divider 节点
+  const contentNodes = slateNodes.filter(
+    node => (node as any).type !== 'timestamp-divider'
+  );
+  
+  return (
+    <Slate editor={editor} value={contentNodes}>
+      <Editable />
+    </Slate>
+  );
+};
+```
+
+---
+
+## 4. 编辑场景
+
+### 4.1 TimeLog 页面（主要编辑场景）
+
+**特点：**
+- 完整的 Slate 编辑器
+- 显示所有 timestamp 分隔线
+- 支持附件、富文本、标签提及
+- 自动保存（2 秒防抖）
+
+**布局：**
+```
+┌─────────────────────────────────────────┐
+│ Event 卡片（展开状态）                   │
+├─────────────────────────────────────────┤
+│ 📅⏰ 10:00 - 12:00 准备演讲稿          │
+│ #工作 #文档编辑                         │
+│                                         │
+│ ▸ 2025-10-19 10:21:18 ⊙                │ ← timestamp
+│ 处理完了一些出差的logistics...          │
+│ [Slate 编辑区]                          │
+│                                         │
+│ ▸ 16min later ⊙                        │ ← timestamp
+│ 双击"Alt"召唤美桶...                   │
+│ [Slate 编辑区]                          │
+│                                         │
+│ [😊 # 📅 • 🎨 ✓]  FloatingBar         │
+└─────────────────────────────────────────┘
+```
+
+### 4.2 EventEditModal 右侧（次要编辑场景）
+
+**特点：**
+- 与 TimeLog 页面相同的编辑体验
+- 右侧 Slate 编辑区（flex: 1）
+- 完整显示 timestamp
+
+**参考：**
+- 详见 [EventEditModal v2 PRD - Section 5](./EVENTEDITMODAL_V2_PRD.md#5-右侧event-log)
+
+### 4.3 PlanManager description 行（紧凑模式）
+
+**特点：**
+- **隐藏 timestamp 分隔线**
+- 只显示内容段落
+- 节省垂直空间
+
+**数据流纠正：**
+```typescript
+// ❌ 错误：PlanManager 写入 description 字段
+await EventService.updateEvent(eventId, {
+  description: slateHtml  // 错误！
+});
+
+// ✅ 正确：PlanManager 写入 eventlog 字段
+await EventService.updateEvent(eventId, {
+  eventlog: JSON.stringify(slateNodes)  // 正确！
+});
+```
+
+**实现示例：**
+```typescript
+// PlanManager.tsx
+const handleDescriptionChange = (slateNodes: Descendant[]) => {
+  const { tags, plainText } = serializeSlateToHtmlWithTags(slateNodes);
+  
+  const updatedEvent: Event = {
+    ...currentEvent,
+    // ✅ 写入 eventlog 字段
+    eventlog: JSON.stringify(slateNodes),
+    // description 由系统自动生成，不手动设置
+  };
+  
+  await EventService.updateEvent(currentEvent.id, updatedEvent);
+};
+```
+
+---
+
+## 5. Outlook 同步机制
+
+### 5.1 eventlog → description 自动转换
+
+**转换时机：**
+- EventService.updateEvent() 保存时
+- 同步到 Outlook 之前
+
+**转换流程：**
+```typescript
+class EventService {
+  async updateEvent(eventId: string, updates: Partial<Event>) {
+    const event = await this.getEvent(eventId);
+    
+    // 如果 eventlog 有更新，自动生成 description
+    if (updates.eventlog) {
+      const slateNodes = JSON.parse(updates.eventlog) as Descendant[];
+      
+      // 转换为 HTML（用于 Outlook）
+      const { html, plainText } = serializeSlateToHtml(slateNodes);
+      
+      updates.description = html;
+    }
+    
+    // 保存到 localStorage
+    const updatedEvent = { ...event, ...updates };
+    this.saveToStorage(updatedEvent);
+    
+    // 触发同步
+    if (shouldSync(updatedEvent)) {
+      await SyncManager.syncEvent(updatedEvent);
+    }
+    
+    return updatedEvent;
+  }
+}
+```
+
+### 5.2 智能序列化策略
+
+**目标：**
+- 保留格式（加粗、颜色、列表）
+- 降级复杂元素（表格 → Markdown 文本）
+- 过滤 timestamp 分隔线（Outlook 不需要）
+
+**实现：**
+```typescript
+function serializeSlateToHtml(nodes: Descendant[]): {
+  html: string;
+  plainText: string;
+} {
+  // 1. 过滤掉 timestamp-divider
+  const contentNodes = nodes.filter(
+    node => (node as any).type !== 'timestamp-divider'
+  );
+  
+  // 2. 转换为 HTML
+  const html = contentNodes
+    .map(node => serializeNode(node))
+    .join('');
+  
+  // 3. 提取纯文本
+  const plainText = contentNodes
+    .map(node => extractPlainText(node))
+    .join('\n');
+  
+  return { html, plainText };
+}
+
+function serializeNode(node: Descendant): string {
+  if (Text.isText(node)) {
+    let html = escapeHtml(node.text);
+    
+    // 应用格式
+    if (node.bold) html = `<strong>${html}</strong>`;
+    if (node.italic) html = `<em>${html}</em>`;
+    if (node.color) html = `<span style="color: ${node.color}">${html}</span>`;
+    
+    return html;
+  }
+  
+  const element = node as Element;
+  const children = element.children.map(serializeNode).join('');
+  
+  switch (element.type) {
+    case 'paragraph':
+      return `<p>${children}</p>`;
+    case 'heading':
+      return `<h${element.level}>${children}</h${element.level}>`;
+    case 'bulleted-list':
+      return `<ul>${children}</ul>`;
+    case 'list-item':
+      return `<li>${children}</li>`;
+    case 'tag':
+      // 标签转为纯文本提及
+      const tag = element as TagNode;
+      return tag.mentionOnly 
+        ? `#${tag.tagEmoji || ''}${tag.tagName}`
+        : `<span class="tag">${tag.tagEmoji}${tag.tagName}</span>`;
+    case 'table':
+      // 表格降级为 Markdown
+      return `<pre>${serializeTableToMarkdown(element)}</pre>`;
+    default:
+      return children;
+  }
+}
+```
+
+### 5.3 Outlook 同步示例
+
+**本地 Event.eventlog（Slate JSON）：**
+```json
+[
+  { "type": "timestamp-divider", "displayText": "2025-10-19 10:21:18", ... },
+  { "type": "paragraph", "children": [{ "text": "讨论了功能优先级" }] },
+  { "type": "paragraph", "children": [
+    { "text": "需要与 " },
+    { "type": "tag", "tagName": "张三", "mentionOnly": true, ... },
+    { "text": " 确认" }
+  ]}
+]
+```
+
+**转换后的 Event.description（HTML）：**
+```html
+<p>讨论了功能优先级</p>
+<p>需要与 #张三 确认</p>
+```
+
+**Outlook 中显示：**
+```
+讨论了功能优先级
+需要与 #张三 确认
+```
+
+---
+
+## 6. 版本控制与历史
+
+### 6.1 EventHistoryService（Event 级别）
+
+**职责：**
+- 记录 Event 的 CRUD 操作
+- 记录字段变更（title, tags, startTime 等）
+- 支持时间段查询
+
+**实现参考：**
+- 详见顶部「架构决策记录 → 决策：构建双层历史记录系统」
+
+### 6.2 VersionControlService（eventlog 内容级别）
+
+**职责：**
+- 自动保存 eventlog 版本快照（5 分钟间隔）
+- 记录 Slate 编辑操作
+- 版本对比和恢复
+
+**版本触发条件：**
+```typescript
+type VersionTriggerType =
+  | 'auto-save'      // 自动保存（5 分钟间隔）
+  | 'manual-save'    // 用户手动保存
+  | 'before-sync'    // 同步前快照
+  | 'major-edit';    // 重大编辑（如删除大段内容）
+```
+
+**数据结构：**
+```typescript
+type EventLogVersion = {
+  id: string;
+  eventId: string;
+  timestamp: string;         // ISO 8601
+  content: Descendant[];     // Slate JSON 快照
+  triggerType: VersionTriggerType;
+  changesSummary?: string;   // 变更摘要
+};
+```
+
+---
+
+## 7. 离线队列与保存机制
+
+### 7.1 保存架构层次
+
+**核心原则：保存逻辑在模块层统一实现**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ UnifiedSlateEditor（纯编辑器组件）                       │
+│ - 只负责编辑 Slate JSON                                  │
+│ - onChange 回调通知父组件内容变化                        │
+│ - 不关心保存到哪里、保存什么字段                         │
+└─────────────────────────────────────────────────────────┘
+                  ↓ onChange
+┌─────────────────────────────────────────────────────────┐
+│ 模块层（TimeLog/EventEditModal/PlanManager）            │
+│ ✅ 这里实现保存逻辑                                      │
+│ - 接收 Slate 的 onChange                                 │
+│ - 决定更新哪些字段（eventlog）                           │
+│ - 实现防抖、批量保存                                     │
+│ - 调用 EventService.updateEvent()                        │
+└─────────────────────────────────────────────────────────┘
+                  ↓ updateEvent
+┌─────────────────────────────────────────────────────────┐
+│ EventService（数据服务层）                               │
+│ - 更新 Event 对象的所有字段                              │
+│ - 自动生成 description（从 eventlog 转换）               │
+│ - 持久化到 localStorage                                  │
+│ - 触发 Outlook 同步（如需要）                            │
+│ - 检测离线时加入 OfflineQueue                            │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 7.2 离线队列触发时机
+
+**参考现有实现：**
+- Slate 编辑器：2 秒防抖 + Enter/失焦立即保存
+- PlanManager：300ms 二次防抖
+
+**离线队列触发：**
+```typescript
+class EventService {
+  async updateEvent(eventId: string, updates: Partial<Event>) {
+    try {
+      // 1. 本地保存
+      const updatedEvent = this.saveToLocalStorage(eventId, updates);
+      
+      // 2. 尝试同步
+      if (navigator.onLine) {
+        await SyncManager.syncEvent(updatedEvent);
+      } else {
+        // 3. 离线时加入队列
+        await OfflineQueue.enqueue(eventId, 'push');
+      }
+      
+      return updatedEvent;
+    } catch (error) {
+      // 4. 同步失败也加入队列
+      await OfflineQueue.enqueue(eventId, 'push');
+      throw error;
+    }
+  }
+}
+```
+
+**OfflineQueue 处理时机：**
+1. **应用启动时** - 检查并处理未完成的队列
+2. **网络恢复时** - 监听 `online` 事件自动触发
+3. **用户手动触发** - "同步"按钮
+
+```typescript
+class OfflineQueue {
+  async init() {
+    // 1. 应用启动时处理
+    await this.processQueue();
+    
+    // 2. 监听网络恢复
+    window.addEventListener('online', () => {
+      this.processQueue();
+    });
+  }
+  
+  async processQueue() {
+    if (!navigator.onLine) return;
+    
+    while (this.queue.length > 0) {
+      const op = this.queue[0];
+      
+      try {
+        await SyncManager.syncEvent(op.eventId);
+        this.queue.shift();  // 成功后移除
+      } catch (error) {
+        op.retryCount++;
+        
+        if (op.retryCount >= 3) {
+          this.queue.shift();  // 超过重试次数，移除
+        } else {
+          break;  // 等待下次重试
+        }
+      }
+    }
+  }
+}
+```
+
+---
+
+## 8. 实现指南
+
+### 8.1 Phase 1: TimeLog 页面基础（Week 1-2）
+
+- [ ] TimeLog 页面布局（左侧控制 + 右侧时间轴）
+- [ ] Event 卡片组件
+- [ ] 日历选择器集成
+- [ ] 标签过滤器（支持 tag tree）
+- [ ] Event 卡片展开 → EventEditModal
+
+### 8.2 Phase 2: eventlog 字段实现（Week 3-4）
+
+- [ ] Timestamp 分隔线节点类型定义
+- [ ] Timestamp 自动插入逻辑
+- [ ] Timestamp 渲染组件
+- [ ] PlanManager 数据流修正（写入 eventlog）
+- [ ] EventService 自动转换 description
+
+### 8.3 Phase 3: Outlook 同步优化（Week 5-6）
+
+- [ ] 智能序列化层（过滤 timestamp）
+- [ ] 表格降级为 Markdown
+- [ ] 附件链接生成（Web Viewer）
+- [ ] 字段级冲突检测
+- [ ] Git 风格 Diff UI
+
+### 8.4 Phase 4: 版本控制（Week 7-8）
+
+- [ ] EventHistoryService 实现
+- [ ] VersionControlService 实现
+- [ ] 版本历史 UI
+- [ ] 版本对比和恢复功能
+
+---
+
+## 9. 技术栈
+
+- **Slate.js**: 富文本编辑器核心
+- **React**: UI 框架
+- **TypeScript**: 类型安全
+- **UnifiedSlateEditor**: 统一编辑器组件（已有）
+- **EventService**: 事件数据服务（已有）
+- **TimeHub**: 时间管理中枢（已有）
+- **SyncManager**: Outlook 同步引擎（已有）
 
 **决策内容：**
 - ContextMarker（情境感知时间轴）功能**不作为 v1.0 核心功能**
@@ -414,13 +1713,14 @@ ReMarkable 需要一个富文本编辑系统来记录事件描述（`eventlog`�
 
 ---
 
-## 2. 情境感知时间轴编辑器
+---
+
+## 附录 A: ContextMarker 功能（v2.0）
 
 > **⏸️ 状态**: 延后至 v2.0 实施  
 > **原因**: 需要桌面活动监听、权限管理等额外工作，v1.0 优先完成基础 TimeLog 功能  
-> **参考**: 详见顶部"架构决策记录 → ContextMarker 功能延后至 v2.0"
 
-### 2.1 核心概念
+### A.1 核心概念
 
 情境感知时间轴将用户的编辑行为自动锚定在时间和活动的上下文中，创造一个 **"个人工作叙事"**。
 
