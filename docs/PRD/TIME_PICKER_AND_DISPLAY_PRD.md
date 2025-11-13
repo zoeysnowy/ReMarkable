@@ -1,8 +1,8 @@
 # Time Picker and Display 时间选择与显示模块 PRD
 
-> **文档版本**: v2.7.3  
+> **文档版本**: v2.7.4  
 > **创建日期**: 2025-01-15  
-> **最后更新**: 2025-11-12  
+> **最后更新**: 2025-11-13  
 > **文档状态**: ✅ 完整版本  
 > **核心组件**: 
 > - `src/components/FloatingToolbar/pickers/UnifiedDateTimePicker.tsx` (时间选择器)
@@ -50,6 +50,150 @@ TimeHoverCard({ startTime: startTimeStr })  // ✅ 使用已有的字符串变�
 ---
 
 ## 📝 更新日志
+
+### v2.7.4 (2025-11-13) - 截止时间关键词支持 + timeFieldState 优化 ⏰
+
+**新增功能**:
+
+1. **🎯 截止时间关键词识别**:
+   - **需求来源**: "周五晚上10点截止" 应设置 `endTime=22:00`（而非 `startTime=22:00`）
+   - **支持关键词**（大小写不敏感）:
+     - 中文核心词: **截止**、**结束**、**终止**、**完成**、**最晚**、**不晚于**
+     - 场景词: **ddl**、**deadline**、**due**、**闭馆**、**散会**、**下班**
+     - 英文词: **before**、**by**、**until**、**no later than**
+     - 特殊模式: **"X前"** 模式（如 "10点前"、"22:00前"）
+   - **智能设置**:
+     ```typescript
+     // 输入: "周五晚上10点截止"
+     // 解析结果:
+     {
+       matched: true,
+       timePeriod: {
+         startHour: 22,
+         startMinute: 0,
+         timeType: 'due'  // 🆕 标记为截止时间
+       },
+       timeType: 'due'
+     }
+     
+     // 应用逻辑:
+     if (timeType === 'due') {
+       setStartTime(null);          // 不设置开始时间
+       setEndTime({ hour: 22, minute: 0 });  // 只设置结束时间
+     }
+     ```
+   - **实现位置**:
+     - `naturalLanguageTimeDictionary.ts` L50-65: 关键词检测
+     - `UnifiedDateTimePicker.tsx` L930-960: 时间字段设置
+   - **显示效果**:
+     - PlanManager 显示: 🔴 **截止** 22:00（红色标签）
+     - 普通开始时间: 🟢 **开始** 15:00（绿色标签）
+
+2. **📊 timeFieldState 数据结构优化**:
+   - **旧设计问题（v2.5）**:
+     ```typescript
+     timeFieldState: [1, 0, 0, 0]  // [startTime?, endTime?, dueDate?, allDay?]
+     // 问题：只记录"是否设置"，重新打开 Picker 时需要从 ISO 解析
+     // 导致：endTime 被错误填充（start=15:00 → end=15:00）
+     ```
+   - **新设计（v2.7.4）**:
+     ```typescript
+     timeFieldState: [15, 0, null, null]  // [startHour, startMinute, endHour, endMinute]
+     // 优势：直接存储实际值，null 明确表示未设置
+     ```
+   - **精确恢复**:
+     ```typescript
+     // 保存时（handleApply）
+     const timeFieldState: [number | null, ...] = [
+       startTime?.hour ?? null,    // 直接保存实际值
+       startTime?.minute ?? null,
+       endTime?.hour ?? null,
+       endTime?.minute ?? null
+     ];
+     
+     // 读取时（useEffect 初始化）
+     if (savedFieldState) {
+       const [startHour, startMinute, endHour, endMinute] = savedFieldState;
+       setStartTime(startHour !== null && startMinute !== null 
+         ? { hour: startHour, minute: startMinute } 
+         : null);  // null 不会被填充
+       setEndTime(endHour !== null && endMinute !== null 
+         ? { hour: endHour, minute: endMinute } 
+         : null);
+     }
+     ```
+   - **降级兼容**: 无 `timeFieldState` 时回退到时间判断（兼容旧数据）
+
+**接口扩展**:
+```typescript
+/**
+ * 时间类型：开始时间 vs 截止时间
+ */
+export type TimeType = 'start' | 'due' | 'none';
+
+export interface TimePeriod {
+  name: string;
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
+  isFuzzyTime: boolean;
+  timeType?: TimeType;  // 🆕 新增字段
+}
+
+export interface ParseResult {
+  dateRange?: DateRange;
+  timePeriod?: TimePeriod;
+  pointInTime?: PointInTime;
+  matched: boolean;
+  timeType?: TimeType;  // 🆕 全局时间类型
+}
+
+// 🆕 v2.7.4: timeFieldState 改为存储实际值
+export interface TimeGetResult {
+  timeSpec?: TimeSpec;
+  start?: string;
+  end?: string;
+  displayHint?: string | null;
+  isFuzzyDate?: boolean;
+  timeFieldState?: [number | null, number | null, number | null, number | null];  // [startHour, startMinute, endHour, endMinute]
+  isFuzzyTime?: boolean;
+  fuzzyTimeName?: string;
+}
+```
+
+**测试案例**:
+
+| 输入示例 | 预期结果 | timeFieldState | 时间字段 | 显示 |
+|---------|---------|---------------|---------|------|
+| "周五晚上10点截止" | endTime=22:00 | `[null,null,22,0]` | endTime only | 🔴 截止 22:00 |
+| "下周二中午12点ddl" | endTime=12:00 | `[null,null,12,0]` | endTime only | 🔴 截止 12:00 |
+| "最晚明天10点前完成" | endTime=10:00 | `[null,null,10,0]` | endTime only | 🔴 截止 10:00 |
+| "周五晚上10点开始" | startTime=22:00 | `[22,0,null,null]` | startTime only | 🟢 开始 22:00 |
+| "下午3点" | startTime=15:00 | `[15,0,null,null]` | startTime only | 🟢 开始 15:00 |
+| "下午" | startTime=13:00, endTime=18:00 | `[13,0,18,0]` | both | 13:00 → 18:00 |
+
+**调试日志**:
+```typescript
+// 启用调试: localStorage.setItem('DEBUG', 'dict,picker');
+// 预期输出:
+🔍 检测截止关键词 { isDueTime: true, hasDueKeyword: true, input: "周五晚上10点截止" }
+⏰ 识别为截止时间（只设置结束时间） { timePeriod: "晚上10点", endTime: "22:00", keywords: "截止/ddl/deadline" }
+```
+
+**相关文件**:
+- `src/utils/naturalLanguageTimeDictionary.ts` - 接口定义、截止关键词检测
+- `src/components/FloatingToolbar/pickers/UnifiedDateTimePicker.tsx` - 时间字段设置逻辑
+- `src/components/PlanManager.tsx` - 红色"截止"标签显示
+
+**技术债务**:
+1. **"X前" 模式扩展**: 当前仅支持 `/\d+[：:点]\s*前/`，未来可扩展：
+   - "周五前" → 周五全天截止
+   - "本周前" → 本周日截止
+2. **模糊时间段+截止**: "下午截止" 应设置 endTime=18:00
+3. **多语言支持**: 日文（締切）、韩文（마감）等
+
+---
 
 ### v2.7.3 (2025-11-12) - 精确时间解析优化 🎯
 
