@@ -1,4 +1,4 @@
-# EventEditModal v2 产品需求文档 (PRD)
+﻿# EventEditModal v2 产品需求文档 (PRD)
 
 > **版本**: v2.0.0  
 > **创建时间**: 2025-11-06  
@@ -5780,7 +5780,7 @@ function openParentTaskModal(parentTaskId: string) {
   const treeCollapseState = getEventTreeCollapseState(parentTaskId);
   
   // 2. 获取子任务的 TimeLog 显示状态
-  const timeLogVisibility = getTimeLogVisibilityState(parentTaskId);
+  const EventLogVisibility = getEventLogVisibilityState(parentTaskId);
   
   // 3. 打开 Modal，传递状态
   openEventEditModal({
@@ -5788,7 +5788,7 @@ function openParentTaskModal(parentTaskId: string) {
     initialState: {
       showEventTree: true,                    // 默认展开关联区域
       eventTreeCollapseState: treeCollapseState,  // 记住的收缩状态
-      timeLogVisibility: timeLogVisibility,    // 子任务日志显示状态
+      EventLogVisibility: EventLogVisibility,    // 子任务日志显示状态
     }
   });
 }
@@ -5810,19 +5810,19 @@ function saveEventTreeCollapseState(rootEventId: string, state: EventTreeCollaps
 }
 
 // TimeLog 可见性状态
-interface TimeLogVisibilityState {
+interface EventLogVisibilityState {
   [childEventId: string]: boolean;  // true = 显示，false = 隐藏
 }
 
-function getTimeLogVisibilityState(rootEventId: string): TimeLogVisibilityState {
-  const key = `eventTree.timeLogVisibility.${rootEventId}`;
+function getEventLogVisibilityState(rootEventId: string): EventLogVisibilityState {
+  const key = `eventTree.EventLogVisibility.${rootEventId}`;
   const stored = localStorage.getItem(key);
   
   // 默认所有子任务的 TimeLog 都显示
   if (!stored) {
     const parentEvent = EventService.getEventById(rootEventId);
     const allChildIds = getAllChildEventIds(parentEvent);
-    const defaultState: TimeLogVisibilityState = {};
+    const defaultState: EventLogVisibilityState = {};
     allChildIds.forEach(id => defaultState[id] = true);
     return defaultState;
   }
@@ -5830,8 +5830,8 @@ function getTimeLogVisibilityState(rootEventId: string): TimeLogVisibilityState 
   return JSON.parse(stored);
 }
 
-function saveTimeLogVisibilityState(rootEventId: string, state: TimeLogVisibilityState) {
-  const key = `eventTree.timeLogVisibility.${rootEventId}`;
+function saveEventLogVisibilityState(rootEventId: string, state: EventLogVisibilityState) {
+  const key = `eventTree.EventLogVisibility.${rootEventId}`;
   localStorage.setItem(key, JSON.stringify(state));
 }
 ```
@@ -5856,8 +5856,8 @@ function EventTreePopover({
 }: EventTreePopoverProps) {
   const rootEvent = EventService.getEventById(rootEventId);
   const eventTree = buildEventTree(rootEvent);
-  const [visibilityState, setVisibilityState] = useState<TimeLogVisibilityState>(
-    () => getTimeLogVisibilityState(rootEventId)
+  const [visibilityState, setVisibilityState] = useState<EventLogVisibilityState>(
+    () => getEventLogVisibilityState(rootEventId)
   );
   
   const handleVisibilityToggle = (eventId: string, e: React.MouseEvent) => {
@@ -5865,7 +5865,7 @@ function EventTreePopover({
     const newState = !visibilityState[eventId];
     const updatedState = { ...visibilityState, [eventId]: newState };
     setVisibilityState(updatedState);
-    saveTimeLogVisibilityState(rootEventId, updatedState);
+    saveEventLogVisibilityState(rootEventId, updatedState);
     onVisibilityToggle(eventId, newState);
   };
   
@@ -6068,8 +6068,8 @@ function renderRelatedTasksSection(event: Event): ReactNode {
   const [collapseState, setCollapseState] = useState<EventTreeCollapseState>(
     () => getEventTreeCollapseState(event.id)
   );
-  const [timeLogVisibility, setTimeLogVisibility] = useState<TimeLogVisibilityState>(
-    () => getTimeLogVisibilityState(event.id)
+  const [EventLogVisibility, setEventLogVisibility] = useState<EventLogVisibilityState>(
+    () => getEventLogVisibilityState(event.id)
   );
   
   const handleCollapseToggle = (eventId: string) => {
@@ -6079,9 +6079,9 @@ function renderRelatedTasksSection(event: Event): ReactNode {
   };
   
   const handleVisibilityToggle = (eventId: string, visible: boolean) => {
-    const newState = { ...timeLogVisibility, [eventId]: visible };
-    setTimeLogVisibility(newState);
-    saveTimeLogVisibilityState(event.id, newState);
+    const newState = { ...EventLogVisibility, [eventId]: visible };
+    setEventLogVisibility(newState);
+    saveEventLogVisibilityState(event.id, newState);
     
     // 刷新 Slate 编辑器内容
     refreshSlateEditorWithVisibleTimeLogs(newState);
@@ -6116,7 +6116,7 @@ function renderRelatedTasksSection(event: Event): ReactNode {
   function renderCompactEventTree(parentEvent: Event, depth: number): ReactNode {
     const childEvents = EventService.getChildEvents(parentEvent.id);
     const isCollapsed = collapseState[parentEvent.id] || false;
-    const isVisible = timeLogVisibility[parentEvent.id] !== false;
+    const isVisible = EventLogVisibility[parentEvent.id] !== false;
     
     return (
       <>
@@ -6214,7 +6214,7 @@ function renderActualDurationCompact(event: Event): string {
 }
 
 // 根据可见性状态刷新 Slate 编辑器
-function refreshSlateEditorWithVisibleTimeLogs(visibilityState: TimeLogVisibilityState) {
+function refreshSlateEditorWithVisibleTimeLogs(visibilityState: EventLogVisibilityState) {
   const visibleEventIds = Object.entries(visibilityState)
     .filter(([_, visible]) => visible)
     .map(([eventId, _]) => eventId);
@@ -6597,21 +6597,21 @@ function refreshSlateEditorWithVisibleTimeLogs(visibilityState: TimeLogVisibilit
 
 ---
 
-### 【Slate 编辑区】- TimeLog 集成
+### 【Slate 编辑区】- EventLog 集成
 
-EventEditModal 的右侧编辑区直接集成 **TimeLog 模块**的 `UnifiedSlateEditor` 组件。
+EventEditModal 的右侧编辑区直接集成 **EventLog 模块**的 `UnifiedSlateEditor` 组件。
 
 > **详细实现参见**: [TimeLog & Description PRD](./TimeLog_&_Description_PRD.md)
 
 **集成要点**:
 
-#### 1. TimeLog 数据初始化
+#### 1. EventLog 数据初始化
 
 ```typescript
 import { UnifiedSlateEditor } from '@/components/UnifiedSlateEditor/UnifiedSlateEditor';
 import { parseExternalHtml, slateNodesToRichHtml } from '@/components/UnifiedSlateEditor/serialization';
 
-// 从 event.description 解析 TimeLog 数据
+// 从 event.description 解析 EventLog 数据
 const [slateItems, setSlateItems] = useState<PlanItem[]>(() => {
   return event?.description 
     ? parseExternalHtml(event.description)
@@ -7813,3 +7813,4 @@ sequenceDiagram
 
 **最后更新**: 2025-11-06  
 **维护者**: ReMarkable Team
+

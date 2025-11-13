@@ -1,4 +1,4 @@
-# ReMarkable TimeLog 系统设计文档
+﻿# ReMarkable TimeLog 系统设计文档
 
 > **文档版本**: v2.1  
 > **创建日期**: 2024-01-XX  
@@ -13,14 +13,15 @@
 ### 核心决策：TimeLog 采用嵌入式设计
 
 **决策内容：**
-- TimeLog **不是独立实体**，而是 Event 接口的 `timelog` 字段
+- EventLog **不是独立实体**，而是 Event 接口的 `eventlog` 字段
+- TimeLog 是页面/功能模块，EventLog 是 Event 内部的日志记录字段
 - **不创建**单独的 `timelogs` 数据表/集合
-- 版本历史存储在 `Event.timelog.versions` 数组中（最多保留 50 个版本）
+- 版本历史存储在 `Event.eventlog.versions` 数组中（最多保留 50 个版本）
 
 **理由：**
 1. **业务语义自然** - TimeLog 本质是"事件的详细描述"，是 1:1 关系
 2. **简化数据操作** - 一次查询即可获取完整事件，无需 JOIN
-3. **同步逻辑直观** - Outlook Event.body 直接映射到 Event.timelog
+3. **同步逻辑直观** - Outlook Event.body 直接映射到 Event.eventlog
 4. **避免事务问题** - 单实体更新，无孤儿记录风险
 
 **数据结构示意：**
@@ -31,12 +32,12 @@ interface Event {
   startTime: string;     // 保留用于快速查询
   timeSpec?: TimeSpec;   // 完整时间对象
   
-  timelog?: {            // 🆕 嵌入式 TimeLog
+  eventlog?: {            // 🆕 嵌入式 TimeLog
     content: Descendant[];        // Slate JSON
     descriptionHtml: string;      // 用于 Outlook 同步
     descriptionPlainText: string; // 用于搜索
     attachments?: Attachment[];
-    versions?: TimeLogVersion[];  // 版本历史
+    versions?: EventLogVersion[];  // 版本历史
     syncState?: SyncState;
   };
 }
@@ -168,7 +169,7 @@ class VersionControlService {
   recordOperation(operation: SlateOperation, editor: Editor): void;
   
   // 自动保存版本快照（5分钟间隔）
-  async createVersion(trigger: VersionTriggerType): Promise<TimeLogVersion>;
+  async createVersion(trigger: VersionTriggerType): Promise<EventLogVersion>;
   
   // 恢复到特定版本
   async restoreVersion(versionId: string): Promise<Descendant[]>;
@@ -180,7 +181,7 @@ class VersionControlService {
 
 **存储位置：**
 - **EventHistory** - 独立集合/表 `event_history`（便于跨 Event 查询）
-- **TimeLogVersions** - 嵌入在 `Event.timelog.versions` 数组中（最多 50 个）
+- **EventLogVersions** - 嵌入在 `Event.eventlog.versions` 数组中（最多 50 个）
 
 **关键区别：**
 
@@ -188,7 +189,7 @@ class VersionControlService {
 |------|-------------------|---------------------|
 | **粒度** | Event 级别（title/tags/startTime 等字段变更） | Slate 节点级别（段落/标签/ContextMarker） |
 | **触发** | 每次 EventService.updateEvent() | 每 5 分钟或重大编辑 |
-| **存储** | 独立 event_history 集合 | Event.timelog.versions 数组 |
+| **存储** | 独立 event_history 集合 | Event.eventlog.versions 数组 |
 | **用途** | 审计日志、变更溯源、时间段统计 | 内容撤销/重做、协作冲突解决 |
 | **保留期** | 永久保留（或按策略归档） | 最近 50 个版本 |
 
@@ -211,7 +212,7 @@ class VersionControlService {
 ### 决策：字段级冲突检测 + Git 风格 Diff UI
 
 **决策内容：**
-- **字段级冲突检测** - 检测 Event 每个字段的独立冲突（title/tags/timelog/startTime 等）
+- **字段级冲突检测** - 检测 Event 每个字段的独立冲突（title/tags/eventlog/startTime 等）
 - **Git 风格 Diff UI** - 显示本地 vs 远程的并排对比，用户选择 Keep/Undo
 - **智能序列化系统** - Slate JSON → HTML 转换，保留格式和元数据
 
@@ -232,7 +233,7 @@ class VersionControlService {
    }
    
    type FieldConflict = {
-     field: string;                   // 'title' | 'tags' | 'timelog' | 'startTime'
+     field: string;                   // 'title' | 'tags' | 'eventlog' | 'startTime'
      localValue: any;
      remoteValue: any;
      localHash: string;
@@ -256,7 +257,7 @@ class VersionControlService {
    - **ContextMarker（v2.0）** → 隐藏在 Outlook（仅保留 data-* 属性）
    
    **Web Viewer 链接：**
-   - 格式：`https://app.remarkable.com/events/{eventId}/timelog`
+   - 格式：`https://app.remarkable.com/events/{eventId}/eventlog`
    - 用户点击后打开完整的 TimeLog 页面（支持富文本渲染）
 
 **实施阶段：**
@@ -344,7 +345,7 @@ class VersionControlService {
 
 ### 1.2 核心需求
 
-ReMarkable 需要一个富文本编辑系统来记录事件描述（`timelog`），支持：
+ReMarkable 需要一个富文本编辑系统来记录事件描述（`eventlog`），支持：
 
 **内容格式**:
 - ✅ 文本格式：字体颜色、背景色、加粗、斜体、下划线
@@ -353,7 +354,7 @@ ReMarkable 需要一个富文本编辑系统来记录事件描述（`timelog`）
 - ✅ 特殊元素：@mention、标签
 
 **同步需求**:
-- ✅ timelog ↔ Outlook description 双向同步
+- ✅ eventlog ↔ Outlook description 双向同步
 - ✅ 富媒体降级为文本/HTML
 - ✅ 冲突检测和解决
 
@@ -1113,6 +1114,489 @@ Microsoft Outlook:
 
 ---
 
+### 3.11 Title 标签自动提取机制
+
+#### 3.11.1 核心原则
+
+**✅ 架构决策：统一由 Slate 序列化层处理，避免在业务代码中解析 HTML**
+
+所有标签提取、格式转换由 `UnifiedSlateEditor/serialization.ts` 统一处理，业务组件（PlanManager、EventEditModal 等）调用统一接口。
+
+#### 3.11.2 提取规则
+
+- **Title (titleContent 字段)** 中的 TagNode → 添加到 `Event.tags` 数组
+- **EventLog (eventlog 字段)** 中的 TagNode → **不添加**到 `Event.tags`（仅作为 mention）
+- **Description 字段** 中的标签 → **不添加**到 `Event.tags`（仅作为内容提及）
+
+**语义区分**：
+
+| 位置 | 标签类型 | 是否加入 Event.tags | 用途 |
+|------|----------|---------------------|------|
+| Title | TagNode (mentionOnly=false) | ✅ 是 | 事件分类 |
+| EventLog | TagNode (mentionOnly=true) | ❌ 否 | 上下文提及（如 @张三） |
+| Description | 纯文本提及 | ❌ 否 | 内容描述 |
+
+#### 3.11.3 Slate 序列化层实现
+
+**标准实现：`UnifiedSlateEditor/serialization.ts`**
+
+```typescript
+// src/components/UnifiedSlateEditor/serialization.ts L405-415
+
+/**
+ * 从 Slate fragment 提取标签 ID
+ * @param fragment Slate 节点数组
+ * @returns 标签 ID 数组（排除 mentionOnly）
+ */
+function extractTags(fragment: (TextNode | TagNode)[]): string[] {
+  if (!fragment || !Array.isArray(fragment)) {
+    console.warn('[extractTags] fragment 不是数组', { fragment });
+    return [];
+  }
+  
+  return fragment
+    .filter((node): node is TagNode => 
+      'type' in node && 
+      node.type === 'tag' && 
+      !node.mentionOnly  // ✅ 过滤掉 mention-only 标签
+    )
+    .map(node => node.tagId)
+    .filter(Boolean) as string[];
+}
+
+/**
+ * Slate → HTML + 提取标签（统一接口）
+ */
+export function serializeSlateToHtmlWithTags(nodes: Descendant[]): {
+  html: string;
+  plainText: string;
+  tags: string[];
+} {
+  const html = serializeToHtml(nodes);
+  const plainText = serializeToPlainText(nodes);
+  const tags = extractTags(nodes as any[]);
+  
+  return { 
+    html, 
+    plainText, 
+    tags: [...new Set(tags)]  // 去重
+  };
+}
+```
+
+**TagNode 接口定义**：
+
+```typescript
+// types/slate.ts
+
+type TagNode = {
+  type: 'tag';
+  tagId: string;           // 标签 ID（主键）
+  tagName: string;         // 标签名称（fallback，优先读取 TagService）
+  tagColor?: string;       // 标签颜色
+  tagEmoji?: string;       // 标签 emoji
+  mentionOnly?: boolean;   // ✅ 是否仅作为 mention（不加入 Event.tags）
+  children: [{ text: '' }]; // Slate 要求所有 element 必须有 children
+};
+```
+
+#### 3.11.4 EventService 统一接口
+
+```typescript
+// services/EventService.ts
+
+import { serializeSlateToHtmlWithTags } from '@/components/UnifiedSlateEditor/serialization';
+import type { Descendant } from 'slate';
+
+class EventService {
+  /**
+   * 从 titleContent 提取标签和纯文本
+   * @param titleContent Slate JSON 字符串 或 Slate 节点数组
+   */
+  static extractTagsFromTitle(titleContent: string | Descendant[]): {
+    tags: string[];
+    plainText: string;
+    html: string;
+  } {
+    // 1. 解析为 Slate 节点
+    const nodes = typeof titleContent === 'string' 
+      ? JSON.parse(titleContent) 
+      : titleContent;
+    
+    // 2. 调用 Slate 序列化层统一处理
+    return serializeSlateToHtmlWithTags(nodes);
+  }
+  
+  /**
+   * 创建事件时自动提取标签
+   */
+  static async createEvent(eventData: Partial<Event>): Promise<Event> {
+    // 如果有 titleContent（Slate JSON），自动提取 tags 和 title
+    if (eventData.titleContent) {
+      const { tags, plainText, html } = this.extractTagsFromTitle(eventData.titleContent);
+      eventData.tags = tags;
+      eventData.title = plainText;
+      eventData.titleContent = html;  // 标准化 HTML
+    }
+    
+    // ... 其他创建逻辑
+    return await this.saveEvent(eventData as Event);
+  }
+  
+  /**
+   * 更新事件时重新提取标签
+   */
+  static async updateEvent(eventId: string, updates: Partial<Event>): Promise<void> {
+    // 如果更新了 titleContent，重新提取 tags 和 title
+    if (updates.titleContent) {
+      const { tags, plainText, html } = this.extractTagsFromTitle(updates.titleContent);
+      updates.tags = tags;
+      updates.title = plainText;
+      updates.titleContent = html;
+    }
+    
+    // ... 其他更新逻辑
+    await this.saveEvent({ ...await this.getEvent(eventId), ...updates });
+  }
+}
+```
+
+#### 3.11.5 PlanManager 调用示例
+
+```typescript
+// src/components/PlanManager.tsx
+
+import { serializeSlateToHtmlWithTags } from '@/components/UnifiedSlateEditor/serialization';
+
+// ❌ 旧方法（已弃用）：在业务代码中解析 HTML
+// const tempDiv = document.createElement('div');
+// tempDiv.innerHTML = titleLine.content;
+// const tagElements = tempDiv.querySelectorAll('.inline-tag');
+// ...
+
+// ✅ 新方法：调用 Slate 序列化层统一接口
+const handleTitleChange = (slateNodes: Descendant[]) => {
+  const { tags, plainText, html } = serializeSlateToHtmlWithTags(slateNodes);
+  
+  const updatedEvent: Event = {
+    ...currentEvent,
+    title: plainText,          // 纯文本（用于显示、搜索）
+    titleContent: html,        // 标准化 HTML（保留所有格式）
+    tags: tags,                // 自动提取的标签 ID
+  };
+  
+  await EventService.updateEvent(currentEvent.id, updatedEvent);
+};
+```
+
+#### 3.11.6 用户操作场景
+
+**场景 1：在 Title 中插入标签**
+
+1. **用户操作**：
+   - 用户在 Title 通过 Slate 编辑器输入 `完成 #项目A 的设计稿`
+   - Slate 保存为 JSON：
+     ```json
+     [{
+       "type": "paragraph",
+       "children": [
+         { "text": "完成 " },
+         { 
+           "type": "tag", 
+           "tagId": "proj-a", 
+           "tagName": "项目A",
+           "mentionOnly": false,
+           "children": [{ "text": "" }]
+         },
+         { "text": " 的设计稿" }
+       ]
+     }]
+     ```
+
+2. **系统处理**：
+   - 调用 `serializeSlateToHtmlWithTags(slateNodes)` 返回：
+     ```typescript
+     {
+       tags: ['proj-a'],
+       plainText: "完成 项目A 的设计稿",
+       html: "<p>完成 <span class='inline-tag' data-tag-id='proj-a'>📊项目A</span> 的设计稿</p>"
+     }
+     ```
+
+3. **最终 Event 数据**：
+   ```json
+   {
+     "id": "event-123",
+     "title": "完成 项目A 的设计稿",
+     "titleContent": "<p>完成 <span class='inline-tag' data-tag-id='proj-a'>📊项目A</span> 的设计稿</p>",
+     "tags": ["proj-a"]
+   }
+   ```
+
+**场景 2：TimeLog 中的 mention 不影响 Event.tags**
+
+1. **用户操作**：
+   - Title: `完成项目文档`
+   - EventLog: `讨论了功能优先级，@张三 提出了性能优化建议`
+
+2. **TimeLog Slate JSON**：
+   ```json
+   [{
+     "type": "paragraph",
+     "children": [
+       { "text": "讨论了功能优先级，" },
+       { 
+         "type": "tag", 
+         "tagId": "zhang-san", 
+         "mentionOnly": true,  // ✅ 标记为 mention
+         "children": [{ "text": "" }]
+       },
+       { "text": " 提出了性能优化建议" }
+     ]
+   }]
+   ```
+
+3. **最终 Event 数据**：
+   ```json
+   {
+     "title": "完成项目文档",
+     "tags": [],  // ✅ EventLog 中的 @张三 不加入 tags
+     "eventlog": {
+       "content": [...],  // 包含 @张三 的 mention
+       "descriptionHtml": "<p>讨论了功能优先级，<span data-mention-only='true'>@张三</span> 提出了性能优化建议</p>"
+     }
+   }
+   ```
+
+**场景 3：标签删除自动同步**
+
+1. **用户操作**：
+   - 用户从 Title 删除 `#项目A` 标签
+   - Slate 编辑器更新节点数组（移除 TagNode）
+
+2. **系统处理**：
+   - 调用 `EventService.updateEvent()` 时自动重新提取标签
+   - `extractTagsFromTitle()` 返回空数组
+
+3. **最终 Event 数据**：
+   ```json
+   {
+     "title": "完成的设计稿",
+     "tags": []  // ✅ 自动从 Event.tags 移除
+   }
+   ```
+
+#### 3.11.7 标签重命名全局更新
+
+**TimeLog 中的标签（自动更新，无需额外处理）**
+
+✅ **已实现机制**：TagElement 组件渲染时动态读取 TagService
+
+```tsx
+// src/components/UnifiedSlateEditor/elements/TagElement.tsx L13-25
+
+const TagElementComponent: React.FC<RenderElementProps> = ({ 
+  attributes, 
+  children, 
+  element 
+}) => {
+  const tagElement = element as TagElement;
+  
+  // ✅ 从 TagService 获取最新标签数据（而非使用节点存储的旧值）
+  const tagData = useMemo(() => {
+    const tag = tagElement.tagId ? TagService.getTagById(tagElement.tagId) : null;
+    return {
+      name: tag?.name ?? tagElement.tagName,      // 优先使用 TagService 的最新 name
+      color: tag?.color ?? tagElement.tagColor,   // 优先使用 TagService 的最新 color
+      emoji: tag?.emoji ?? tagElement.tagEmoji,   // 优先使用 TagService 的最新 emoji
+    };
+  }, [tagElement.tagId, tagElement.tagName, tagElement.tagColor, tagElement.tagEmoji]);
+  
+  // ✅ 监听 TagService 更新，自动重新渲染
+  useEffect(() => {
+    const listener = () => { /* 触发重新渲染 */ };
+    TagService.addListener(listener as any);
+    return () => TagService.removeListener(listener as any);
+  }, [tagElement.tagId]);
+  
+  // 渲染时使用 tagData（而非 tagElement 的旧值）
+  return (
+    <span 
+      className="inline-tag" 
+      data-tag-id={tagElement.tagId}
+      data-tag-name={tagData.name}
+      {...attributes}
+    >
+      {tagData.emoji}{tagData.name}
+      {children}
+    </span>
+  );
+};
+```
+
+**为什么 TimeLog 不需要手动更新 Slate JSON？**
+
+- Slate 中的 `TagElement` 节点存储的是 `tagId`（而不是 `tagName`）
+- 示例 Slate JSON:
+  ```json
+  {
+    "type": "tag",
+    "tagId": "project-a-id",  // ✅ 存储 ID，不存储 name
+    "tagName": "项目A",        // ⚠️ 仅作为 fallback，优先读取 TagService
+    "children": [{ "text": "" }]
+  }
+  ```
+- 渲染时通过 `TagService.getTagById(tagId)` 获取最新的 name/color/emoji
+- 因此标签重命名后，**下次渲染自动显示新名称**，无需修改 JSON
+
+**Title HTML 字符串（推荐方案：渲染时动态读取）**
+
+考虑到标签重命名是低频操作，且批量更新 HTML 成本高，建议在 UI 渲染时动态读取 TagService：
+
+```typescript
+/**
+ * 渲染 Event 标题时，动态替换标签名称
+ */
+function renderEventTitle(event: Event): string {
+  if (!event.titleContent) return event.title;
+  
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = event.titleContent;
+  
+  // 遍历所有标签元素，动态读取 TagService 最新数据
+  tempDiv.querySelectorAll('.inline-tag').forEach(el => {
+    const tagId = el.getAttribute('data-tag-id');
+    if (!tagId) return;
+    
+    const tag = TagService.getTagById(tagId);
+    if (tag) {
+      el.setAttribute('data-tag-name', tag.name);
+      el.textContent = `${tag.emoji || ''}${tag.name}`;
+    }
+  });
+  
+  return tempDiv.innerHTML;
+}
+```
+
+**可选方案：标签重命名时批量更新 HTML**
+
+如果需要保持数据一致性（例如离线导出、数据迁移场景），可在 `TagService.renameTag()` 时批量更新：
+
+```typescript
+class TagService {
+  async renameTag(tagId: string, newName: string): Promise<void> {
+    const tag = this.getTagById(tagId);
+    if (!tag) throw new Error('Tag not found');
+    
+    // 1. 更新标签本身
+    tag.name = newName;
+    await this.updateTags(this.tags);
+    
+    // 2. ✅ TimeLog 中的 TagElement 自动更新（已实现，无需额外代码）
+    
+    // 3. 可选：批量更新 Title HTML
+    const events = EventService.getAllEvents();
+    const batch: Array<{ id: string; titleContent: string }> = [];
+    
+    for (const event of events) {
+      if (event.titleContent?.includes(`data-tag-id="${tagId}"`)) {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = event.titleContent;
+        
+        const tagElements = tempDiv.querySelectorAll(`.inline-tag[data-tag-id="${tagId}"]`);
+        tagElements.forEach(el => {
+          el.setAttribute('data-tag-name', newName);
+          el.textContent = `${tag.emoji || ''}${newName}`;
+        });
+        
+        batch.push({ id: event.id, titleContent: tempDiv.innerHTML });
+      }
+    }
+    
+    // 批量更新
+    await Promise.all(
+      batch.map(({ id, titleContent }) => EventService.updateEvent(id, { titleContent }))
+    );
+    
+    this.notifyListeners();
+  }
+}
+```
+
+#### 3.11.8 架构优势
+
+✅ **单一职责**：
+- Slate 序列化层负责所有格式转换
+- 业务组件只需调用统一接口
+
+✅ **类型安全**：
+- 直接操作 Slate AST，避免 HTML 解析错误
+- TypeScript 类型检查保证数据一致性
+
+✅ **性能更好**：
+- 避免创建 DOM 元素和字符串解析
+- 减少不必要的序列化/反序列化
+
+✅ **易于维护**：
+- 标签提取逻辑集中在 `serialization.ts`
+- 修改时只需更新一处代码
+
+✅ **避免重复**：
+- PlanManager、EventEditModal 等组件复用相同逻辑
+- 减少代码冗余和维护成本
+
+#### 3.11.9 不推荐的方法（已弃用）
+
+```typescript
+// ❌ 在业务代码中用 DOM API 解析 HTML（不推荐）
+// 示例：PlanManager.tsx L1398-1406（旧实现，仅作参考）
+
+const tempDiv = document.createElement('div');
+tempDiv.innerHTML = content;
+const tagElements = tempDiv.querySelectorAll('.inline-tag');
+const extractedTags: string[] = [];
+tagElements.forEach(tagEl => {
+  const tagId = tagEl.getAttribute('data-tag-id');
+  if (tagId) extractedTags.push(tagId);
+});
+
+// 问题：
+// 1. 每个组件重复实现解析逻辑
+// 2. DOM 操作性能差
+// 3. 类型不安全（依赖 HTML 字符串格式）
+// 4. 维护困难（多处实现需同步更新）
+// 5. 违反单一职责原则（业务逻辑混杂格式转换）
+```
+
+**为什么弃用**：
+
+1. **架构层面**：违反关注点分离原则
+2. **性能层面**：频繁创建 DOM 元素开销大
+3. **维护层面**：逻辑分散在多处，难以统一修改
+4. **安全层面**：依赖 HTML 字符串格式，容易出错
+
+**迁移指南**：
+
+如果现有代码使用了 DOM 解析方式，请按以下步骤迁移：
+
+1. **确认 Slate 序列化层已实现**：
+   - 验证 `src/components/UnifiedSlateEditor/serialization.ts` 中存在 `extractTags()` 和 `serializeSlateToHtmlWithTags()` 函数
+
+2. **更新 EventService**：
+   - 添加 `extractTagsFromTitle()` 方法
+   - 在 `createEvent()` 和 `updateEvent()` 中使用此方法
+
+3. **更新业务组件**：
+   - 替换 DOM 解析代码为 `serializeSlateToHtmlWithTags()` 调用
+   - 测试标签提取、删除、重命名等场景
+
+4. **删除旧代码**：
+   - 移除 `tempDiv.innerHTML` 等 DOM 解析逻辑
+   - 添加注释标记为已弃用
+
+---
+
 ## 4. 数据格式选型
 
 ## 2. 数据格式选型
@@ -1122,19 +1606,21 @@ Microsoft Outlook:
 采用 **Slate JSON** 作为主存储，配合预渲染的 HTML 和纯文本备份。
 
 ```typescript  
-// types/timelog.ts  
+// types/eventlog.ts  
 
 /**
- * Event 接口（含嵌入式 TimeLog）
+ * Event 接口（含嵌入式 EventLog）
  * 
  * 🆕 架构决策（2025-11-13）：
- * - TimeLog 不是独立实体，而是 Event 的 timelog 字段
- * - 版本历史存储在 Event.timelog.versions 数组中
+ * - EventLog 不是独立实体，而是 Event 的 eventlog 字段
+ * - TimeLog 是页面/功能模块，EventLog 是 Event 内部的日志字段
+ * - 版本历史存储在 Event.eventlog.versions 数组中
  * - 所有时间字段遵循 TimeHub/TimeSpec 架构
  */
 interface Event {
   id: string;
-  title: string;
+  title: string;              // 纯文本标题（用于显示、搜索）
+  titleContent?: string;      // 富文本 HTML（Slate 输出，用于编辑恢复）
   
   // 时间字段（保留字符串用于快速查询和向后兼容）
   startTime: string;     // ISO 字符串，用于数据库索引和 UI 显示
@@ -1143,10 +1629,10 @@ interface Event {
   // 完整时间对象（TimeSpec 架构）
   timeSpec?: TimeSpec;   // 包含 kind, source, policy, resolved
   
-  tags?: string[];       // 标签数组（仅来自 Title）
+  tags?: string[];       // 标签 ID 数组（从 titleContent 自动提取，不包含 eventlog 中的 mention）
   
-  // 🆕 嵌入式 TimeLog 字段
-  timelog?: {
+  // 🆕 嵌入式 EventLog 字段
+  eventlog?: {
     // 主存储：结构化 JSON (Slate format)  
     content: Descendant[]; // Slate 的原生格式，可包含 ContextMarkerElement
     
@@ -1160,7 +1646,7 @@ interface Event {
     attachments?: Attachment[];  
     
     // 版本控制（保留最近 50 个版本）
-    versions?: TimeLogVersion[];  
+    versions?: EventLogVersion[];  
     
     // 同步元数据  
     syncState?: SyncState;  
@@ -1232,7 +1718,7 @@ type Attachment = {
  * 用于检测本地和远程（Outlook）的变更冲突
  */
 type SyncState = {  
-  localHash: string;        // timelog 上次同步时的哈希  
+  localHash: string;        // eventlog 上次同步时的哈希  
   remoteHash: string;       // Outlook description 上次同步时的哈希  
   lastSyncedAt: Date;  
   syncStatus: 'synced' | 'pending' | 'conflict' | 'error';  
@@ -1366,7 +1852,7 @@ type SyncState = {
 
 ### 5.1 核心挑战
 
-- **信息不对称**: timelog 能存储视频/音频，但 Outlook description 不能
+- **信息不对称**: eventlog 能存储视频/音频，但 Outlook description 不能
 - **格式冲突**: Slate JSON ≠ Outlook HTML
 - **冲突检测**: 如何判断是哪一端发生了变更？
 
@@ -1378,7 +1864,7 @@ type SyncState = {
 
 **传统方案的问题：**
 - 只检测整个 Event 是否冲突
-- 即使只有 title 改变，也会导致整个 timelog 被覆盖
+- 即使只有 title 改变，也会导致整个 eventlog 被覆盖
 - 用户体验差，数据丢失风险高
 
 **改进方案：字段级检测**
@@ -1552,7 +2038,7 @@ function extractFieldValue(field: EventField, event: Event | OutlookEvent): any 
   const mapping: Record<EventField, (e: any) => any> = {
     title: (e) => e.subject || e.title,
     tags: (e) => e.categories || e.tags,
-    timelog: (e) => e.body?.content || e.timelog?.content,
+    eventlog: (e) => e.body?.content || e.eventlog?.content,
     startTime: (e) => e.start?.dateTime || e.startTime,
     endTime: (e) => e.end?.dateTime || e.endTime,
     location: (e) => e.location?.displayName || e.location,
@@ -1967,7 +2453,7 @@ export class SyncEngine {
     
     // 2. 检测冲突
     const conflict = detectConflict(
-      localEvent.timelog.content,
+      localEvent.eventlog.content,
       remoteEvent.body.content,
       localEvent.syncState
     );
@@ -1993,11 +2479,11 @@ export class SyncEngine {
     console.log('📤 推送到 Outlook...');
     
     // 1. 转换 Slate JSON → HTML
-    const html = slateToHtml(local.timelog.content);
-    const plainText = slateToPlainText(local.timelog.content);
+    const html = slateToHtml(local.eventlog.content);
+    const plainText = slateToPlainText(local.eventlog.content);
     
     // 2. 处理附件
-    const attachments = await this.uploadAttachments(local.timelog.attachments);
+    const attachments = await this.uploadAttachments(local.eventlog.attachments);
     
     // 3. 更新 Outlook
     await this.outlookApi.updateEvent(remote.id, {
@@ -2011,7 +2497,7 @@ export class SyncEngine {
     
     // 4. 更新同步状态
     await this.db.events.update(local.id, {
-      'syncState.localHash': hashContent(local.timelog.content),
+      'syncState.localHash': hashContent(local.eventlog.content),
       'syncState.remoteHash': hashContent(html),
       'syncState.lastSyncedAt': new Date(),
       'syncState.syncStatus': 'synced',
@@ -2064,7 +2550,7 @@ export class SyncEngine {
     // 策略 2: 提示用户手动选择（未来功能）
     // return {
     //   status: 'conflict',
-    //   local: local.timelog.content,
+    //   local: local.eventlog.content,
     //   remote: htmlToSlate(remote.body.content),
     // };
   }
@@ -2290,7 +2776,7 @@ function extractCellText(cell: TableCellElement): string {
  * 图片元素 → Web Viewer 链接
  */
 function serializeImage(imageNode: ImageElement, eventId: string): string {
-  const viewerUrl = `https://app.remarkable.com/events/${eventId}/timelog#image-${imageNode.id}`;
+  const viewerUrl = `https://app.remarkable.com/events/${eventId}/eventlog#image-${imageNode.id}`;
   
   // 方案 A: 内嵌缩略图 (如果 Outlook 支持)
   if (imageNode.thumbnailUrl) {
@@ -2314,7 +2800,7 @@ function serializeImage(imageNode: ImageElement, eventId: string): string {
  * 视频元素 → Web Viewer 链接
  */
 function serializeVideo(videoNode: VideoElement, eventId: string): string {
-  const viewerUrl = `https://app.remarkable.com/events/${eventId}/timelog#video-${videoNode.id}`;
+  const viewerUrl = `https://app.remarkable.com/events/${eventId}/eventlog#video-${videoNode.id}`;
   const duration = videoNode.duration ? ` (${formatDuration(videoNode.duration)})` : '';
   
   return `<p>📹 <a href="${escapeHtml(viewerUrl)}">观看视频: ${escapeHtml(videoNode.fileName)}${duration}</a></p>`;
@@ -2324,7 +2810,7 @@ function serializeVideo(videoNode: VideoElement, eventId: string): string {
  * 附件元素 → Web Viewer 链接
  */
 function serializeAttachment(attachmentNode: AttachmentElement, eventId: string): string {
-  const viewerUrl = `https://app.remarkable.com/events/${eventId}/timelog#attachment-${attachmentNode.id}`;
+  const viewerUrl = `https://app.remarkable.com/events/${eventId}/eventlog#attachment-${attachmentNode.id}`;
   const size = formatFileSize(attachmentNode.size);
   
   return `<p>📎 <a href="${escapeHtml(viewerUrl)}">下载附件: ${escapeHtml(attachmentNode.fileName)} (${size})</a></p>`;
@@ -3187,7 +3673,7 @@ export class OfflineQueue {
 - **目的**: 内容撤销/重做、协作冲突解决
 - **记录内容**: Slate 编辑操作（段落增删、标签插入等）
 - **粒度**: Slate 节点级别
-- **存储**: `Event.timelog.versions` 数组（嵌入式）
+- **存储**: `Event.eventlog.versions` 数组（嵌入式）
 - **保留策略**: 最近 50 个版本
 
 ---
@@ -3424,7 +3910,7 @@ export class EventHistoryService {
     // 排除元数据字段，只计算内容字段
     const contentFields = {
       title: event.title,
-      timelog: event.timelog,
+      eventlog: Event.eventlog,
       tags: event.tags,
       startTime: event.startTime,
       endTime: event.endTime,
@@ -3691,7 +4177,7 @@ interface DailySnapshot {
 ```
 
 **当前实现问题**:
-1. ❌ 使用简化的 `Event.content` 字段（应为 `Event.timelog.description`）
+1. ❌ 使用简化的 `Event.content` 字段（应为 `Event.eventlog.description`）
 2. ❌ 无法展示 TimeLog 的版本历史
 3. ❌ 缺少 Slate 富文本渲染
 4. ❌ 未集成 EventHistoryService
@@ -3753,7 +4239,7 @@ class SnapshotService {
             eventId: entry.eventId,
             title: entry.snapshot.title,
             changedFields: entry.changedFields,
-            versionCount: entry.snapshot.timelog?.versions?.length || 0,
+            versionCount: entry.snapshot.eventlog?.versions?.length || 0,
           });
         }
         // 检查是否标记为完成
@@ -3787,7 +4273,7 @@ import { SlatePreview } from './UnifiedSlateEditor/SlatePreview';
 const TaskCard: React.FC<TaskCardProps> = ({ item, highlight }) => {
   // 🆕 渲染 TimeLog 富文本内容
   const renderDescription = () => {
-    if (!item.timelog?.content) {
+    if (!item.eventlog?.content) {
       return null;
     }
     
@@ -3795,7 +4281,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ item, highlight }) => {
     return (
       <div className="task-timelog">
         <SlatePreview 
-          content={item.timelog.content} 
+          content={item.eventlog.content} 
           maxHeight={200}
           showTimestamps={false}  // 快照视图不显示时间戳
         />
@@ -3811,9 +4297,9 @@ const TaskCard: React.FC<TaskCardProps> = ({ item, highlight }) => {
       {renderDescription()}
       
       {/* 🆕 版本历史指示器 */}
-      {item.timelog?.versions && item.timelog.versions.length > 1 && (
+      {item.eventlog?.versions && item.eventlog.versions.length > 1 && (
         <div className="version-indicator">
-          📝 {item.timelog.versions.length} 个版本
+          📝 {item.eventlog.versions.length} 个版本
         </div>
       )}
       
@@ -3873,14 +4359,14 @@ const loadVersionDetails = async (eventId: string) => {
 **代码修改**:
 - [ ] `services/snapshotService.ts`: 集成 EventHistoryService
 - [ ] `components/DailySnapshotViewer.tsx`: 
-  - [ ] 替换 `item.content` → `item.timelog.description`
+  - [ ] 替换 `item.content` → `item.eventlog.description`
   - [ ] 添加 `SlatePreview` 组件渲染
   - [ ] 添加版本历史指示器
   - [ ] 添加 TimeLog 更新列表
 - [ ] `components/DailySnapshotViewer.css`: 
   - [ ] 添加 `.task-timelog` 样式
   - [ ] 添加 `.version-indicator` 样式
-  - [ ] 添加 `.timelog-updated` 样式
+  - [ ] 添加 `.eventlog-updated` 样式
 
 **测试场景**:
 1. 查看历史日期的快照（恢复 Event 状态）
@@ -3891,7 +4377,7 @@ const loadVersionDetails = async (eventId: string) => {
 **依赖关系**:
 - 依赖 EventHistoryService 实现（Section 6）
 - 依赖 SlatePreview 组件（假设已实现）
-- 依赖 Event.timelog 字段迁移（Conflict #1 解决方案）
+- 依赖 Event.eventlog 字段迁移（Conflict #1 解决方案）
 
 ---
 
@@ -3920,9 +4406,9 @@ VersionControlService 记录 TimeLog 内容的细粒度编辑历史，支持撤�
 
 | 维度 | EventHistoryService | VersionControlService |
 |------|-------------------|---------------------|
-| **记录对象** | 整个 Event | Event.timelog 内容 |
+| **记录对象** | 整个 Event | Event.eventlog 内容 |
 | **触发时机** | 每次 CRUD 操作 | 每 5 分钟或重大编辑 |
-| **存储位置** | event_history 集合 | Event.timelog.versions 数组 |
+| **存储位置** | event_history 集合 | Event.eventlog.versions 数组 |
 | **典型用途** | "谁在 11 月 10 日修改了这个事件？" | "恢复到 10 分钟前的编辑内容" |
 
 ### 7.2 时间戳管理：统一通过 TimeHub
@@ -4041,7 +4527,7 @@ class TimeHub {
 export const TimeHub = new TimeHubService();
 ```
 
-#### 7.2.2 TimeLogVersion 数据结构（修正版）
+#### 7.2.2 EventLogVersion 数据结构（修正版）
 
 ```typescript
 // types/version.ts
@@ -4053,7 +4539,7 @@ export const TimeHub = new TimeHubService();
  * ✅ 存储时使用 TimeHub.formatTimestamp() 转为 UTC 字符串
  * ✅ 显示时使用 TimeHub.parseTimestamp() 或 formatRelativeTime()
  */
-type TimeLogVersion = {
+type EventLogVersion = {
   id: string;
   createdAt: Date;              // 🎯 由 TimeHub.recordTimestamp() 生成
   
@@ -4171,7 +4657,7 @@ export class VersionControlService {
   }
   
   // 创建新版本
-  async createVersion(trigger: VersionTriggerType): Promise<TimeLogVersion> {
+  async createVersion(trigger: VersionTriggerType): Promise<EventLogVersion> {
     const timelog = await db.timelogs.findById(this.timelogId);
     
     // 1. 使用 TimeHub 记录时间戳
@@ -4190,7 +4676,7 @@ export class VersionControlService {
       : null;
     
     // 5. 创建版本对象
-    const version: TimeLogVersion = {
+    const version: EventLogVersion = {
       id: uuidv4(),
       createdAt,  // 🎯 使用 TimeHub 生成的时间戳
       content: timelog.content, // 完整快照
@@ -4445,7 +4931,7 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
   timelogId,
   onClose,
 }) => {
-  const [versions, setVersions] = useState<TimeLogVersion[]>([]);
+  const [versions, setVersions] = useState<EventLogVersion[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   
@@ -4457,7 +4943,7 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
     setLoading(true);
     try {
       const timelog = await db.timelogs.findById(timelogId);
-      setVersions([...timelog.versions].reverse()); // 最新的在前
+      setVersions([...eventlog.versions].reverse()); // 最新的在前
     } finally {
       setLoading(false);
     }
@@ -4606,7 +5092,7 @@ export class VersionStorageOptimizer {
     
     console.log(`🔧 开始优化版本存储: ${versions.length} 个版本`);
     
-    const optimized: TimeLogVersion[] = [];
+    const optimized: EventLogVersion[] = [];
     
     versions.forEach((version, index) => {
       const age = versions.length - index;
@@ -4718,20 +5204,20 @@ export class SyncEngine {
     const localEvent = await db.events.findById(eventId);
     
     // 获取或创建版本控制服务
-    if (!this.versionControl.has(localEvent.timelogId)) {
+    if (!this.versionControl.has(localEvent.eventlogId)) {
       this.versionControl.set(
-        localEvent.timelogId,
-        new VersionControlService(localEvent.timelogId)
+        localEvent.eventlogId,
+        new VersionControlService(localEvent.eventlogId)
       );
     }
-    const vc = this.versionControl.get(localEvent.timelogId)!;
+    const vc = this.versionControl.get(localEvent.eventlogId)!;
     
     // 同步前创建检查点
     await vc.createVersion('sync-push');
     
     const remoteEvent = await outlookApi.getEvent(eventId);
     const conflict = detectConflict(
-      localEvent.timelog.content,
+      localEvent.eventlog.content,
       remoteEvent.body.content,
       localEvent.syncState
     );
@@ -4798,8 +5284,8 @@ export class SyncEngine {
 
 **🆕 架构决策（2025-11-13）:**
 
-- **TimeLog 设计**: 嵌入式（Event.timelog 字段），不创建独立表
-- **版本存储**: Event.timelog.versions 数组（最多保留 50 个）
+- **TimeLog 设计**: 嵌入式（Event.eventlog 字段），不创建独立表
+- **版本存储**: Event.eventlog.versions 数组（最多保留 50 个）
 - **归档策略**: 50+ 版本时可选迁移到单独的 localStorage key
 
 #### 7.2.1 当前实现：localStorage + JSON 数组
@@ -4838,7 +5324,7 @@ export class SyncEngine {
     },
     tags: ["design", "work"],                      // 从 titleContent 提取
     description: "<p>讨论了...</p>",               // 富文本 HTML（Outlook body）
-    timelog: "[{\"type\":\"paragraph\",...}]",     // Slate JSON 字符串
+    eventlog: "[{\"type\":\"paragraph\",...}]",     // Slate JSON 字符串
     
     // 同步状态（嵌入）
     syncState: {
@@ -5028,7 +5514,7 @@ async function migrateToSQLite() {
   },
   tags: ["design", "work"],
   description: "<p>...</p>",
-  timelog: [{                  // Slate JSON（嵌入文档）
+  eventlog: [{                  // Slate JSON（嵌入文档）
     type: "paragraph",
     children: [...]
   }],
@@ -5174,10 +5660,10 @@ export const handleSyncError = (error: any): SyncError => {
 // 版本历史不要一次性全部加载
 async loadVersions(eventId: string, limit: number = 20, offset: number = 0) {
   const event = await EventService.getEventById(eventId);
-  if (!event?.timelog?.versions) {
+  if (!event?.eventlog?.versions) {
     return { versions: [], total: 0, hasMore: false };
   }
-  const versions = event.timelog.versions;
+  const versions = event.eventlog.versions;
   const total = versions.length;
   const sliced = versions
     .slice(Math.max(0, total - offset - limit), total - offset)
@@ -5324,12 +5810,12 @@ const TimeDisplay: React.FC<{ timeSpec: TimeSpec }> = ({ timeSpec }) => {
 ```typescript
 // 版本快照创建时的时间处理
 class VersionControlService {
-  async createVersion(trigger: VersionTriggerType): Promise<TimeLogVersion> {
+  async createVersion(trigger: VersionTriggerType): Promise<EventLogVersion> {
     const timelog = await db.timelogs.findById(this.timelogId);
     
     // timestamp 字段使用 Date 对象（内部处理）
     // 但内容中的 ContextMarker 都包含完整的 TimeSpec
-    const version: TimeLogVersion = {
+    const version: EventLogVersion = {
       id: uuidv4(),
       timestamp: new Date(), // 版本创建时间（内部使用）
       content: timelog.content, // 包含带 TimeSpec 的 ContextMarker
