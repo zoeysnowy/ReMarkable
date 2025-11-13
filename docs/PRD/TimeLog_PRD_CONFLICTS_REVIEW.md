@@ -467,8 +467,75 @@ type TimeLogVersion = {
 2. **如果保留 `timestamp: Date`，注释中的"通过 TimeHub 管理"具体指什么？**
 
 > 👤 **Zoey 回复:**
+> ✅ **采用统一 TimeHub 方案** - 扩展 TimeHub 管理所有时间戳
 > 
+> **决策理由:**
+> 1. TimeHub 应该是应用内唯一的"时间真相源"
+> 2. TimeLogVersion 的时间戳是"系统自动记录"，与 Event.timeSpec 的"用户设定"本质不同
+> 3. 避免到处 `new Date()`，方便未来扩展（NTP 校时、时间旅行调试）
 > 
+> **实施方案:**
+> - **扩展 TimeHub 职责**：从"管理 Event 时间"扩展到"管理所有应用内时间状态"
+> - **两类时间管理**：
+>   1. **事件时间 (Event Time)**: 用户设定的"事件发生时间"
+>      - 使用 TimeSpec 结构
+>      - 支持模糊时间、时区策略
+>      - 方法: `setEventTime()`, `getEventTime()`
+>   2. **系统时间戳 (System Timestamp)**: 自动记录的"操作时间"
+>      - 使用 Date 对象（内部）+ UTC 字符串（存储）
+>      - 精确到毫秒，UTC 存储
+>      - 方法: `recordTimestamp()`, `formatTimestamp()`, `parseTimestamp()`
+>      - 用途: 版本历史、事件历史、日志等
+> 
+> **TimeHub 新增方法:**
+> ```typescript
+> class TimeHub {
+>   // 记录系统时间戳（替代 new Date()）
+>   recordTimestamp(): Date
+>   
+>   // 格式化为 UTC 字符串（存储用）
+>   formatTimestamp(date: Date): string
+>   
+>   // 解析 UTC 字符串（读取用）
+>   parseTimestamp(isoString: string): Date
+>   
+>   // 格式化为相对时间（UI 显示用）
+>   formatRelativeTime(date: Date | string): string  // "2分钟前"
+> }
+> ```
+> 
+> **使用示例:**
+> ```typescript
+> // VersionControlService
+> const version = {
+>   createdAt: TimeHub.recordTimestamp(),  // 替代 new Date()
+> };
+> await db.save({
+>   ...version,
+>   createdAt: TimeHub.formatTimestamp(version.createdAt),  // 存储为 UTC
+> });
+> 
+> // EventHistoryService
+> const entry = {
+>   timestamp: TimeHub.recordTimestamp(),
+> };
+> 
+> // UI 显示
+> <span>{TimeHub.formatRelativeTime(version.createdAt)}</span>
+> ```
+> 
+> **需修改 PRD 章节:**
+> - Section 7.2: 新增 TimeHub 扩展章节（系统时间戳管理）
+> - Section 7.2: TimeLogVersion.timestamp → createdAt（语义更清晰）
+> - Section 7.3: VersionControlService 使用 TimeHub.recordTimestamp()
+> - Section 6.4: EventHistoryService 使用 TimeHub.recordTimestamp()
+> - Section 10.1: 更新时间架构原则（明确两类时间的区别）
+> 
+
+> 🤖 **Resolution (Copilot):**
+> **Status**: ✅ 已解决  
+> **Commit**: [待提交]  
+> **PRD Sections**: 7.2.1 (TimeHub 扩展), 7.2.2 (TimeLogVersion 修正), 7.3 (VersionControlService), 6.4 (EventHistoryService)
 
 
 ---

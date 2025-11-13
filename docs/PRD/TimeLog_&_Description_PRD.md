@@ -3296,24 +3296,27 @@ export class EventHistoryService {
     }
   ): Promise<EventHistoryEntry> {
     
-    // 1. 计算内容哈希（用于同步冲突检测）
+    // 1. 使用 TimeHub 记录时间戳
+    const timestamp = TimeHub.recordTimestamp();  // 🎯 统一时间来源
+    
+    // 2. 计算内容哈希（用于同步冲突检测）
     const contentHash = this.calculateEventHash(snapshot);
     
-    // 2. 计算字段级差异（如果提供了旧快照）
+    // 3. 计算字段级差异（如果提供了旧快照）
     const fieldDeltas = options?.previousSnapshot
       ? this.calculateFieldDeltas(options.previousSnapshot, snapshot)
       : undefined;
     
-    // 3. 自动推断变更字段（如果未提供）
+    // 4. 自动推断变更字段（如果未提供）
     const changedFields = options?.changedFields || 
       (fieldDeltas ? fieldDeltas.map(d => d.field) : undefined);
     
-    // 4. 创建历史记录
+    // 5. 创建历史记录
     const entry: EventHistoryEntry = {
       id: uuidv4(),
       eventId,
       operation,
-      timestamp: new Date(),
+      timestamp,  // 🎯 使用 TimeHub 生成的时间戳
       userId: options?.userId,
       source: options?.source || 'local-edit',
       snapshot,
@@ -3322,8 +3325,11 @@ export class EventHistoryService {
       contentHash,
     };
     
-    // 5. 存储到数据库
-    await db.eventHistory.insert(entry);
+    // 6. 存储到数据库（转为 UTC 字符串）
+    await db.eventHistory.insert({
+      ...entry,
+      timestamp: TimeHub.formatTimestamp(timestamp),  // 🎯 存储为 UTC 字符串
+    });
     
     console.log(`📝 [EventHistory] ${operation} event ${eventId}`, {
       fields: changedFields,
@@ -3919,7 +3925,123 @@ VersionControlService 记录 TimeLog 内容的细粒度编辑历史，支持撤�
 | **存储位置** | event_history 集合 | Event.timelog.versions 数组 |
 | **典型用途** | "谁在 11 月 10 日修改了这个事件？" | "恢复到 10 分钟前的编辑内容" |
 
-### 7.2 数据结构
+### 7.2 时间戳管理：统一通过 TimeHub
+
+> **架构决策（2025-11-13）**: TimeLog 版本的时间戳由 TimeHub 统一管理，避免直接使用 `new Date()`
+
+#### 7.2.1 TimeHub 扩展：系统时间戳管理
+
+TimeHub 的职责从"管理 Event 时间"扩展到"管理所有应用内时间状态"：
+
+```typescript
+// services/TimeHub.ts
+
+/**
+ * TimeHub: 应用内统一的时间管理服务
+ * 
+ * 两类时间管理：
+ * 1. 事件时间 (Event Time): 用户设定的"事件发生时间"
+ *    - 使用 TimeSpec 结构
+ *    - 支持模糊时间、时区策略
+ *    - 方法: setEventTime(), getEventTime()
+ * 
+ * 2. 系统时间戳 (System Timestamp): 自动记录的"操作时间"
+ *    - 使用 Date 对象（内部）+ UTC 字符串（存储）
+ *    - 精确到毫秒，UTC 存储
+ *    - 方法: recordTimestamp(), formatTimestamp(), parseTimestamp()
+ *    - 用途: 版本历史、事件历史、日志等
+ */
+class TimeHub {
+  // ==================== 现有方法：管理 Event 时间 ====================
+  
+  async setEventTime(eventId: string, input: TimeInput): Promise<void> {
+    const timeSpec: TimeSpec = this.parseTimeInput(input);
+    await EventService.updateEvent(eventId, { 
+      timeSpec,
+      // 同步更新派生字段
+      startTime: timeSpec.resolved.start.toISOString(),
+      endTime: timeSpec.resolved.end.toISOString(),
+    });
+  }
+  
+  async getEventTime(eventId: string): Promise<TimeSpec> {
+    const event = await EventService.getEventById(eventId);
+    return event.timeSpec;
+  }
+  
+  // ==================== 🆕 新增方法：管理系统时间戳 ====================
+  
+  /**
+   * 记录系统时间戳（用于版本历史、事件历史等）
+   * 
+   * 统一的时间戳生成逻辑：
+   * 1. 使用系统时间（未来可支持 NTP 校时）
+   * 2. 离线时使用本地时间，同步后可选修正
+   * 3. 保证应用内所有时间戳的一致性
+   * 
+   * @returns Date 对象（内部使用）
+   */
+  recordTimestamp(): Date {
+    // 当前实现：直接使用系统时间
+    return new Date();
+    
+    // 未来可扩展：
+    // - 添加 NTP 校时偏移量
+    // - 添加离线时间修正逻辑
+    // - 添加时间旅行调试模式（测试用）
+  }
+  
+  /**
+   * 格式化系统时间戳为 UTC 字符串（用于数据库存储）
+   * 
+   * @param date - Date 对象
+   * @returns ISO 8601 UTC 字符串 (e.g., "2025-11-13T10:30:00.123Z")
+   */
+  formatTimestamp(date: Date): string {
+    return date.toISOString();
+  }
+  
+  /**
+   * 解析 UTC 字符串为本地显示时间
+   * 
+   * @param isoString - UTC 时间字符串
+   * @returns Date 对象（用于 UI 显示）
+   */
+  parseTimestamp(isoString: string): Date {
+    return new Date(isoString);
+  }
+  
+  /**
+   * 格式化时间戳为用户友好的相对时间
+   * 
+   * @param date - Date 对象或 UTC 字符串
+   * @returns 相对时间字符串 (e.g., "2分钟前", "昨天 14:30", "2023-11-13")
+   */
+  formatRelativeTime(date: Date | string): string {
+    const d = typeof date === 'string' ? new Date(date) : date;
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return '刚刚';
+    if (diffMins < 60) return `${diffMins}分钟前`;
+    
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}小时前`;
+    
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays === 1) return `昨天 ${d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`;
+    if (diffDays < 7) return `${diffDays}天前`;
+    
+    return d.toLocaleDateString('zh-CN');
+  }
+}
+
+// 导出单例
+export const TimeHub = new TimeHubService();
+```
+
+#### 7.2.2 TimeLogVersion 数据结构（修正版）
 
 ```typescript
 // types/version.ts
@@ -3927,12 +4049,13 @@ VersionControlService 记录 TimeLog 内容的细粒度编辑历史，支持撤�
 /**
  * 版本快照（每 5 分钟或重要操作时保存）
  * 
- * ⚠️ 注意：timestamp 字段保留为 Date 类型用于内部处理
- * 但在序列化/反序列化时应通过 TimeHub 管理
+ * ✅ 时间戳由 TimeHub.recordTimestamp() 生成
+ * ✅ 存储时使用 TimeHub.formatTimestamp() 转为 UTC 字符串
+ * ✅ 显示时使用 TimeHub.parseTimestamp() 或 formatRelativeTime()
  */
 type TimeLogVersion = {
   id: string;
-  timestamp: Date;              // 版本创建时间（内部使用）
+  createdAt: Date;              // 🎯 由 TimeHub.recordTimestamp() 生成
   
   // 完整的内容快照（方便快速恢复）
   content: Descendant[];        // 包含 ContextMarkerElement（带 TimeSpec）
@@ -3943,7 +4066,7 @@ type TimeLogVersion = {
   // 版本元数据
   author?: string;              // 如果支持多用户
   triggerType: VersionTriggerType;
-  changesSummary: string;       // "添加了 3 个段落，删除了 1 张图片，新增 2 个情境标记"
+  changesSummary: string;       // "添加了 3 个段落，删除了 1 张图片"
   
   // 用于同步的哈希
   contentHash: string;
@@ -3994,6 +4117,7 @@ type DeltaChange = {
 import { Editor, Node, Operation as SlateOperation, Path } from 'slate';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
+import { TimeHub } from './TimeHub';  // 🎯 导入 TimeHub
 
 export class VersionControlService {
   private lastVersionTimestamp: Date | null = null;
@@ -4025,7 +4149,7 @@ export class VersionControlService {
   
   // 检查是否应该创建新版本
   private async checkAndCreateVersion(trigger: VersionTriggerType) {
-    const now = new Date();
+    const now = TimeHub.recordTimestamp();  // 🎯 使用 TimeHub
     
     // 1. 检查时间间隔
     if (this.lastVersionTimestamp) {
@@ -4050,22 +4174,25 @@ export class VersionControlService {
   async createVersion(trigger: VersionTriggerType): Promise<TimeLogVersion> {
     const timelog = await db.timelogs.findById(this.timelogId);
     
-    // 1. 计算内容哈希
+    // 1. 使用 TimeHub 记录时间戳
+    const createdAt = TimeHub.recordTimestamp();  // 🎯 统一时间来源
+    
+    // 2. 计算内容哈希
     const contentHash = this.hashContent(timelog.content);
     
-    // 2. 生成变更摘要
+    // 3. 生成变更摘要
     const changesSummary = this.generateChangesSummary(this.pendingOperations);
     
-    // 3. 计算差异（相对于上一个版本）
+    // 4. 计算差异（相对于上一个版本）
     const previousVersion = timelog.versions[timelog.versions.length - 1];
     const diff = previousVersion 
       ? this.calculateDiff(previousVersion.content, timelog.content)
       : null;
     
-    // 4. 创建版本对象
+    // 5. 创建版本对象
     const version: TimeLogVersion = {
       id: uuidv4(),
-      timestamp: new Date(),
+      createdAt,  // 🎯 使用 TimeHub 生成的时间戳
       content: timelog.content, // 完整快照
       diff,
       triggerType: trigger,
@@ -4073,14 +4200,19 @@ export class VersionControlService {
       contentHash,
     };
     
-    // 5. 保存版本
+    // 6. 保存版本（存储时转为 UTC 字符串）
     await db.timelogs.update(this.timelogId, {
-      $push: { versions: version },
-      updatedAt: new Date(),
+      $push: { 
+        versions: {
+          ...version,
+          createdAt: TimeHub.formatTimestamp(version.createdAt),  // 🎯 转为 UTC 字符串
+        }
+      },
+      updatedAt: TimeHub.formatTimestamp(createdAt),  // 🎯 使用 TimeHub
     });
     
-    // 6. 重置状态
-    this.lastVersionTimestamp = new Date();
+    // 7. 重置状态
+    this.lastVersionTimestamp = createdAt;
     this.pendingOperations = [];
     
     console.log(`✅ 版本已创建: ${trigger} - ${changesSummary}`);
@@ -4097,7 +4229,7 @@ export class VersionControlService {
     
     this.pendingOperations.push({
       id: uuidv4(),
-      timestamp: new Date(),
+      timestamp: TimeHub.recordTimestamp(),  // 🎯 使用 TimeHub
       type: this.mapSlateOpType(operation.type),
       path: operation.path || [],
       data: operation,
