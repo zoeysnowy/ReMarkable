@@ -477,7 +477,19 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
 
   const isInRange = (date: Dayjs) => {
     if (!selectedDates.start) return false;
-    if (!selectedDates.end && !hoverDate) return date.isSame(selectedDates.start, 'day');
+    if (!selectedDates.end && !hoverDate) {
+      const result = date.isSame(selectedDates.start, 'day');
+      if (result) {
+        dbg('picker', '📅 日历高亮选中日期', {
+          date日期: date.format('YYYY-MM-DD'),
+          date星期: ['日', '一', '二', '三', '四', '五', '六'][date.day()],
+          selectedStart: selectedDates.start.format('YYYY-MM-DD'),
+          selectedStart星期: ['日', '一', '二', '三', '四', '五', '六'][selectedDates.start.day()],
+          是否相同: result
+        });
+      }
+      return result;
+    }
     
     const end = selectedDates.end || hoverDate;
     if (!end) return false;
@@ -944,6 +956,16 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
         // 情况1: 精确时间点（如"大后天"、"月底"、"eom"）
         if (customParsed.pointInTime) {
           const point = customParsed.pointInTime;
+          
+          dbg('picker', '🎯 设置精确时间点到 selectedDates', {
+            原始date对象: point.date,
+            format结果: point.date.format('YYYY-MM-DD HH:mm:ss'),
+            valueOf: point.date.valueOf(),
+            星期几: point.date.day(),
+            星期名: ['日', '一', '二', '三', '四', '五', '六'][point.date.day()],
+            displayHint: point.displayHint
+          });
+          
           setSelectedDates({
             start: point.date,
             end: point.date

@@ -632,6 +632,14 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   // 🆕 下周二到下周日
   '下周二': (ref = new Date()) => {
     const target = dayjs(ref).add(1, 'week').day(2).startOf('day');
+    dbg('dict', '🎯 解析"下周二"', {
+      输入ref: ref.toISOString(),
+      ref本地时间: ref.toString(),
+      dayjs解析后: target.format('YYYY-MM-DD HH:mm:ss'),
+      dayjs内部毫秒: target.valueOf(),
+      目标日期: target.format('YYYY-MM-DD'),
+      星期几: target.day()
+    });
     return {
       date: target,
       displayHint: '下周二',
