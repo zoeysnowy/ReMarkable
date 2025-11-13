@@ -47,6 +47,80 @@ interface Event {
 - Section 6: 版本控制实现（使用 eventId）
 - Section 7.2: 数据库设计（单表 + 可选归档表）
 
+### 决策：TimeSpec 作为时间的唯一真相源
+
+**决策内容：**
+- **保留双重状态**：Event 同时包含 `timeSpec`（TimeSpec 对象）和 `startTime/endTime`（UTC 字符串）
+- **明确职责分工**：
+  - `timeSpec` - **权威来源（Source of Truth）**，用于所有应用内时间逻辑
+  - `startTime/endTime` - **派生字段**，仅用于数据库索引和 Outlook API 交互
+
+**核心规则：**
+1. **timeSpec 必填** - 从可选字段改为必填：`timeSpec?: TimeSpec` → `timeSpec: TimeSpec`
+2. **禁止直接读取派生字段** - UI 组件必须使用 `useEventTime()` hook，禁止直接读取 `event.startTime`
+3. **自动同步机制** - `TimeHub.setEventTime()` 更新 timeSpec 时，自动派生并更新 startTime/endTime
+4. **数据验证** - 确保 `timeSpec.resolved.start` 与 `new Date(startTime)` 保持一致
+
+**时区处理：**
+- `startTime/endTime` - 存储 UTC 字符串（用于跨时区同步）
+- `timeSpec` - 存储用户本地时间 + 时区策略（用于显示和计算）
+- TimeHub 保证两者一致性
+
+**迁移策略：**
+```typescript
+// 对于没有 timeSpec 的旧数据，从 startTime/endTime 重建
+async function migrateToTimeSpec(event: Event) {
+  if (!event.timeSpec && event.startTime) {
+    event.timeSpec = {
+      kind: 'fixed',
+      source: 'migration',
+      rawText: null,
+      policy: TimePolicy.getDefault(),
+      start: new Date(event.startTime),
+      end: new Date(event.endTime),
+      resolved: {
+        start: new Date(event.startTime),
+        end: new Date(event.endTime)
+      },
+      allDay: false
+    };
+  }
+}
+```
+
+**影响范围：**
+- Section 1.3: Event 接口定义（timeSpec 改为必填）
+- Section 2: ContextMarker 使用 TimeSpec
+- Section 10: 时间架构集成规范
+- 所有使用时间的 UI 组件必须迁移到 useEventTime() hook
+
+### 决策：ContextMarker 功能延后至 v2.0
+
+**决策内容：**
+- ContextMarker（情境感知时间轴）功能**不作为 v1.0 核心功能**
+- 延后至 **v2.0** 实施，优先完成基础 TimeLog 系统
+
+**理由：**
+1. **技术复杂度** - 需要桌面活动监听、权限管理、隐私保护等额外工作
+2. **平台差异** - Windows/macOS 权限机制不同，需要分别适配
+3. **优先级** - 基础富文本编辑、版本控制、同步功能更关键
+
+**v2.0 实施参考：**
+- **开源方案借鉴** - 参考 Shion 等开源项目的实现
+- **权限处理** - Windows 大概率不需要管理员权限（待验证）
+- **隐私保护** - 活动日志**不同步到 Outlook**，仅本地存储
+- **可选功能** - 提供用户开关，支持"隐私模式"（不记录特定应用）
+
+**当前版本（v1.0）影响：**
+- Section 2 的 ContextMarker 相关内容作为**未来设计参考**
+- 不实现 `DesktopActivityService` 类
+- 不依赖 `active-win` 库
+- Slate 编辑器暂不渲染时间轴和活动轴
+
+**保留内容：**
+- `ContextMarkerElement` 类型定义（为未来兼容）
+- TimeSpec 架构（v2.0 可直接使用）
+
 ---
 
 ## ⚠️ 重要：时间处理规范
@@ -193,6 +267,10 @@ ReMarkable 需要一个富文本编辑系统来记录事件描述（`timelog`）
 ---
 
 ## 2. 情境感知时间轴编辑器
+
+> **⏸️ 状态**: 延后至 v2.0 实施  
+> **原因**: 需要桌面活动监听、权限管理等额外工作，v1.0 优先完成基础 TimeLog 功能  
+> **参考**: 详见顶部"架构决策记录 → ContextMarker 功能延后至 v2.0"
 
 ### 2.1 核心概念
 
