@@ -34,7 +34,15 @@
    - 智能序列化策略
 6. [版本控制与历史](#6-版本控制与历史)
 7. [离线队列与保存机制](#7-离线队列与保存机制)
-8. [实现指南](#8-实现指南)
+   - 保存架构层次
+   - 离线队列触发时机
+8. [附件管理系统](#8-附件管理系统)
+   - 容量限制设计
+   - 本地缓存策略
+   - 云端上传降级
+   - 文件类型验证
+   - 容量监控与清理
+9. [实现指南](#9-实现指南)
 
 ---
 
@@ -1344,9 +1352,399 @@ class OfflineQueue {
 
 ---
 
-## 8. 实现指南
+## 8. 附件管理系统
 
-### 8.1 Phase 1: TimeLog 页面基础（Week 1-2）
+### 8.1 容量限制设计
+
+**用户级限制（总容量）：**
+
+```typescript
+const STORAGE_LIMITS = {
+  // 免费用户
+  FREE_TIER: {
+    total: 2 * 1024 * 1024 * 1024,        // 2GB 总容量
+    perEvent: 100 * 1024 * 1024,          // 单个 Event 100MB
+    perFile: 20 * 1024 * 1024,            // 单个文件 20MB
+    fileTypes: [
+      'image/*', 
+      'video/*', 
+      'application/pdf', 
+      'application/*', 
+      'text/*'
+    ],
+  },
+  
+  // 付费用户（未来）
+  PRO_TIER: {
+    total: 10 * 1024 * 1024 * 1024,       // 10GB
+    perEvent: 500 * 1024 * 1024,          // 500MB
+    perFile: 100 * 1024 * 1024,           // 100MB
+    fileTypes: ['*/*'],                   // 不限制类型
+  },
+};
+```
+
+**设计理由：**
+
+| 限制类型 | 值 | 理由 |
+|---------|-----|------|
+| 总容量 2GB | 约 2000 个 Event（每个 1MB） | 对标 Notion 免费版，个人使用足够 |
+| 单 Event 100MB | 约 5 个大文件 (20MB) | 避免单个事件占用过多空间 |
+| 单文件 20MB | 足够存储高清图片/短视频 | 对标 Outlook 附件限制（25MB）|
+| 文件类型限制 | 常见办公/媒体格式 | 防止滥用（如存储大型安装包）|
+
+**参考数据**：
+- Outlook 附件限制：25MB/文件
+- Notion 免费版：个人使用不限容量，团队版 5GB
+- Google Calendar：附件通过 Google Drive，15GB 共享
+- Apple Notes：200MB/笔记，5GB 总容量（免费 iCloud）
+
+### 8.2 本地缓存策略
+
+**本地存储路径：**
+
+```typescript
+const ATTACHMENT_PATHS = {
+  // Electron userData 路径
+  local: path.join(app.getPath('userData'), 'attachments'),
+  
+  // 按月分目录（方便清理）
+  getPath: (attachmentId: string, uploadedAt: Date) => {
+    const month = uploadedAt.toISOString().slice(0, 7); // "2025-11"
+    return path.join(ATTACHMENT_PATHS.local, month, attachmentId);
+  },
+};
+```
+
+**缓存清理策略：**
+
+```typescript
+interface CacheCleanupPolicy {
+  // 自动清理规则
+  autoCleanup: {
+    enabled: true,
+    rules: [
+      { condition: '90天未访问', action: '删除本地文件，保留云端' },
+      { condition: '本地缓存 > 500MB', action: '删除最旧的 20%' },
+      { condition: 'Event 已删除 > 30天', action: '删除关联附件' },
+    ],
+  },
+  
+  // 用户手动管理
+  userControl: {
+    viewCacheSize: true,       // 显示"本地缓存占用 350MB"
+    clearCache: true,          // "清空缓存"按钮（不影响云端）
+    downloadAll: true,         // "下载所有附件"（离线使用）
+    pinAttachment: true,       // "固定附件"（不自动清理）
+  },
+}
+
+// 实现示例
+class AttachmentCacheService {
+  async cleanupOldCache() {
+    const attachments = await this.getAllAttachments();
+    const now = Date.now();
+    
+    for (const att of attachments) {
+      const daysSinceAccess = (now - att.lastAccessedAt) / (1000 * 60 * 60 * 24);
+      
+      if (daysSinceAccess > 90 && !att.isPinned && att.cloudUrl) {
+        // 删除本地文件，保留元数据
+        await fs.unlink(att.localPath);
+        att.localPath = null;
+        att.status = 'cloud-only';
+      }
+    }
+  }
+  
+  async getCacheStats(): Promise<CacheStats> {
+    const files = await this.scanLocalFiles();
+    return {
+      totalSize: files.reduce((sum, f) => sum + f.size, 0),
+      fileCount: files.length,
+      oldestFile: files.sort((a, b) => a.accessedAt - b.accessedAt)[0],
+    };
+  }
+}
+```
+
+### 8.3 云端上传降级策略
+
+**智能降级流程：**
+
+```typescript
+interface UploadStrategy {
+  primary: 'cloud',      // 优先云端
+  fallback: 'local',     // 降级本地
+  retry: {
+    maxAttempts: 3,
+    backoff: 'exponential',  // 1s, 2s, 4s
+    timeout: 30000,          // 30s 超时
+  },
+}
+
+class AttachmentService {
+  async uploadAttachment(file: File, eventId: string): Promise<Attachment> {
+    // 1. 先保存到本地（即时可用）
+    const localPath = await this.saveToLocal(file, eventId);
+    const attachment: Attachment = {
+      id: generateId(),
+      filename: file.name,
+      size: file.size,
+      mimeType: file.type,
+      localPath,
+      cloudUrl: null,
+      status: 'local-only',
+      uploadedAt: new Date(),
+      lastAccessedAt: new Date(),
+    };
+    
+    // 2. 异步上传到云端（不阻塞用户）
+    this.uploadToCloud(attachment)
+      .then(cloudUrl => {
+        attachment.cloudUrl = cloudUrl;
+        attachment.status = 'synced';
+        this.notifyUploadSuccess(attachment);
+      })
+      .catch(error => {
+        if (error.code === 'NETWORK_ERROR') {
+          // 网络错误：加入离线队列
+          OfflineQueue.enqueue({ type: 'upload-attachment', attachment });
+          attachment.status = 'pending-upload';
+        } else if (error.code === 'QUOTA_EXCEEDED') {
+          // 容量不足：提示用户升级
+          this.notifyQuotaExceeded();
+          attachment.status = 'local-only';
+        } else {
+          // 其他错误：保持本地
+          this.notifyUploadFailed(error);
+          attachment.status = 'upload-failed';
+        }
+      });
+    
+    return attachment;  // 立即返回（本地可用）
+  }
+  
+  private async uploadToCloud(attachment: Attachment): Promise<string> {
+    // 重试逻辑
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const cloudUrl = await CloudStorageAPI.upload(
+          attachment.localPath,
+          { timeout: 30000 }
+        );
+        return cloudUrl;
+      } catch (error) {
+        if (attempt === 3) throw error;
+        await sleep(Math.pow(2, attempt) * 1000);  // 指数退避
+      }
+    }
+  }
+}
+```
+
+**用户通知设计：**
+
+```typescript
+// UI 提示
+const NOTIFICATIONS = {
+  uploadSuccess: '📤 附件已上传到云端',
+  uploadFailed: '⚠️ 附件上传失败，已保存到本地（稍后自动重试）',
+  quotaExceeded: '💾 云端容量不足（已使用 1.9GB / 2GB），请清理旧附件或升级',
+  networkError: '📡 网络连接中断，附件将在网络恢复后自动上传',
+  cacheCleanup: '🧹 已清理 90 天未访问的本地缓存（云端文件未受影响）',
+};
+
+// 状态指示器（附件卡片右上角）
+const StatusBadge = ({ attachment }) => {
+  const badges = {
+    'synced': '☁️',          // 已同步
+    'local-only': '💾',      // 仅本地
+    'pending-upload': '⏳',  // 上传中
+    'cloud-only': '☁️📥',    // 仅云端（点击下载）
+    'upload-failed': '❌',   // 失败
+  };
+  return <span>{badges[attachment.status]}</span>;
+};
+```
+
+### 8.4 文件类型验证
+
+**允许的文件类型（免费版）：**
+
+```typescript
+const ALLOWED_MIME_TYPES = {
+  // 图片（常用）
+  images: [
+    'image/jpeg', 
+    'image/png', 
+    'image/gif', 
+    'image/webp', 
+    'image/svg+xml'
+  ],
+  
+  // 视频（限制大小）
+  videos: [
+    'video/mp4', 
+    'video/quicktime', 
+    'video/webm'
+  ],
+  
+  // 文档
+  documents: [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  ],
+  
+  // 压缩包
+  archives: [
+    'application/zip', 
+    'application/x-rar-compressed'
+  ],
+  
+  // 文本
+  text: [
+    'text/plain', 
+    'text/markdown', 
+    'text/csv'
+  ],
+};
+
+// 验证函数
+function validateFile(file: File): { valid: boolean; error?: string } {
+  // 1. 大小检查
+  if (file.size > STORAGE_LIMITS.FREE_TIER.perFile) {
+    return { 
+      valid: false, 
+      error: `文件过大（${formatBytes(file.size)}），单个文件限制 20MB` 
+    };
+  }
+  
+  // 2. 类型检查
+  const isAllowed = Object.values(ALLOWED_MIME_TYPES)
+    .flat()
+    .some(type => file.type.match(type));
+  
+  if (!isAllowed) {
+    return { 
+      valid: false, 
+      error: `不支持的文件类型（${file.type}）` 
+    };
+  }
+  
+  return { valid: true };
+}
+```
+
+### 8.5 容量监控与清理
+
+**实时容量显示：**
+
+```tsx
+const StorageQuotaIndicator: React.FC = () => {
+  const { used, total } = useStorageQuota();
+  const percentage = (used / total) * 100;
+  
+  return (
+    <div className="storage-quota">
+      <div className="quota-bar">
+        <div 
+          className={`quota-fill ${percentage > 90 ? 'warning' : ''}`}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+      <span className="quota-text">
+        {formatBytes(used)} / {formatBytes(total)} 
+        ({percentage.toFixed(1)}%)
+      </span>
+      
+      {percentage > 90 && (
+        <button onClick={showCleanupDialog}>
+          清理空间
+        </button>
+      )}
+    </div>
+  );
+};
+```
+
+**容量预警机制：**
+
+```typescript
+class StorageMonitorService {
+  private checkQuota() {
+    const { used, total } = this.getQuota();
+    const percentage = (used / total) * 100;
+    
+    if (percentage > 95) {
+      showNotification({
+        type: 'error',
+        message: '⚠️ 云端容量即将用尽（95%），请立即清理',
+        actions: [
+          { label: '清理附件', onClick: () => showCleanupDialog() },
+          { label: '升级容量', onClick: () => showUpgradeDialog() },
+        ],
+      });
+    } else if (percentage > 80) {
+      showNotification({
+        type: 'warning',
+        message: '💾 云端容量已使用 80%，建议清理旧附件',
+      });
+    }
+  }
+}
+```
+
+**附件清理对话框：**
+
+```tsx
+const AttachmentCleanupDialog: React.FC = () => {
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  
+  useEffect(() => {
+    // 获取可清理的附件（90天未访问）
+    AttachmentService.getCleanableAttachments().then(setAttachments);
+  }, []);
+  
+  const totalSize = attachments.reduce((sum, a) => sum + a.size, 0);
+  
+  return (
+    <Dialog>
+      <h2>清理旧附件</h2>
+      <p>以下附件超过 90 天未访问，删除本地缓存可释放 {formatBytes(totalSize)}</p>
+      
+      <ul>
+        {attachments.map(att => (
+          <li key={att.id}>
+            <input type="checkbox" defaultChecked />
+            <span>{att.filename}</span>
+            <span className="text-gray-500">{formatBytes(att.size)}</span>
+            <span className="text-gray-400">
+              最后访问：{formatDate(att.lastAccessedAt)}
+            </span>
+          </li>
+        ))}
+      </ul>
+      
+      <div className="actions">
+        <button onClick={handleCleanup}>清理选中项</button>
+        <button onClick={handleCancel}>取消</button>
+      </div>
+    </Dialog>
+  );
+};
+```
+
+---
+
+## 9. 实现指南
+
+### 9.1 Phase 1: TimeLog 页面基础（Week 1-2）
 
 - [ ] TimeLog 页面布局（左侧控制 + 右侧时间轴）
 - [ ] Event 卡片组件
@@ -1354,7 +1752,7 @@ class OfflineQueue {
 - [ ] 标签过滤器（支持 tag tree）
 - [ ] Event 卡片展开 → EventEditModal
 
-### 8.2 Phase 2: eventlog 字段实现（Week 3-4）
+### 9.2 Phase 2: eventlog 字段实现（Week 3-4）
 
 - [ ] Timestamp 分隔线节点类型定义
 - [ ] Timestamp 自动插入逻辑
@@ -1362,7 +1760,7 @@ class OfflineQueue {
 - [ ] PlanManager 数据流修正（写入 eventlog）
 - [ ] EventService 自动转换 description
 
-### 8.3 Phase 3: Outlook 同步优化（Week 5-6）
+### 9.3 Phase 3: Outlook 同步优化（Week 5-6）
 
 - [ ] 智能序列化层（过滤 timestamp）
 - [ ] 表格降级为 Markdown
@@ -1370,7 +1768,16 @@ class OfflineQueue {
 - [ ] 字段级冲突检测
 - [ ] Git 风格 Diff UI
 
-### 8.4 Phase 4: 版本控制（Week 7-8）
+### 9.4 Phase 4: 附件管理系统（Week 7-8）
+
+- [ ] 本地附件存储（Electron userData）
+- [ ] 文件类型验证和大小限制
+- [ ] 云端上传集成（OneDrive API）
+- [ ] 智能缓存清理策略
+- [ ] 容量监控与预警 UI
+- [ ] 离线队列附件上传
+
+### 9.5 Phase 5: 版本控制（Week 9-10）
 
 - [ ] EventHistoryService 实现
 - [ ] VersionControlService 实现
@@ -1379,7 +1786,7 @@ class OfflineQueue {
 
 ---
 
-## 9. 技术栈
+## 10. 技术栈
 
 - **Slate.js**: 富文本编辑器核心
 - **React**: UI 框架
