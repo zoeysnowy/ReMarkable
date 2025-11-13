@@ -1136,7 +1136,9 @@ export function parseNaturalLanguage(input: string, referenceDate: Date = new Da
       // 检查是否还包含日期范围
       let dateRange: DateRange | null = null;
       
-      for (const [dateKey, dateFunc] of Object.entries(DATE_RANGE_DICTIONARY)) {
+      // 🔧 修复：按词条长度从长到短排序，优先匹配更具体的词条（如"下周五"优先于"下周"）
+      const sortedDateEntries = Object.entries(DATE_RANGE_DICTIONARY).sort((a, b) => b[0].length - a[0].length);
+      for (const [dateKey, dateFunc] of sortedDateEntries) {
         if (trimmedInput.includes(dateKey.toLowerCase())) {
           dateRange = dateFunc(referenceDate);
           dbg('dict', '📅 同时匹配到日期范围', { dateKey });
@@ -1146,7 +1148,9 @@ export function parseNaturalLanguage(input: string, referenceDate: Date = new Da
       
       // 检查是否包含精确日期点
       if (!dateRange) {
-        for (const [pointKey, pointFunc] of Object.entries(POINT_IN_TIME_DICTIONARY)) {
+        // 🔧 修复：按词条长度从长到短排序，优先匹配更具体的词条
+        const sortedPointEntries = Object.entries(POINT_IN_TIME_DICTIONARY).sort((a, b) => b[0].length - a[0].length);
+        for (const [pointKey, pointFunc] of sortedPointEntries) {
           if (trimmedInput.includes(pointKey.toLowerCase())) {
             const point = pointFunc(referenceDate);
             dateRange = {
@@ -1202,7 +1206,9 @@ export function parseNaturalLanguage(input: string, referenceDate: Date = new Da
   }
   
   // 1. 尝试匹配精确时间点（大后天、月底、eom等）
-  for (const [pointKey, pointFunc] of Object.entries(POINT_IN_TIME_DICTIONARY)) {
+  // 🔧 修复：按词条长度从长到短排序，优先匹配更具体的词条（如"下周五"优先于"下周"）
+  const sortedPointEntries = Object.entries(POINT_IN_TIME_DICTIONARY).sort((a, b) => b[0].length - a[0].length);
+  for (const [pointKey, pointFunc] of sortedPointEntries) {
     if (trimmedInput === pointKey.toLowerCase() || trimmedInput.includes(pointKey.toLowerCase())) {
       const pointInTime = pointFunc(referenceDate);
       return {
@@ -1213,12 +1219,15 @@ export function parseNaturalLanguage(input: string, referenceDate: Date = new Da
   }
   
   // 2. 尝试匹配日期范围 + 时间段组合
-  for (const [dateKey, dateFunc] of Object.entries(DATE_RANGE_DICTIONARY)) {
+  // 🔧 修复：按词条长度从长到短排序，优先匹配更具体的词条
+  const sortedDateEntries = Object.entries(DATE_RANGE_DICTIONARY).sort((a, b) => b[0].length - a[0].length);
+  for (const [dateKey, dateFunc] of sortedDateEntries) {
     if (trimmedInput.includes(dateKey.toLowerCase())) {
       const dateRange = dateFunc(referenceDate);
       
       // 检查是否包含时间段
-      for (const [timeKey, timePeriod] of Object.entries(TIME_PERIOD_DICTIONARY)) {
+      const sortedTimeEntries = Object.entries(TIME_PERIOD_DICTIONARY).sort((a, b) => b[0].length - a[0].length);
+      for (const [timeKey, timePeriod] of sortedTimeEntries) {
         if (trimmedInput.includes(timeKey.toLowerCase())) {
           return {
             dateRange,
