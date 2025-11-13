@@ -588,8 +588,60 @@ const deserializeContextMarker = (html: string): ContextMarkerElement | null => 
    - 需要实际测试 Outlook 是否保留 `data-*` 属性
 
 > 👤 **Zoey 回复:**
+> ✅ **统一使用 TimeHub 进行时间序列化** - 保留 TimeSpec 完整信息
 > 
+> **决策理由:**
+> 1. Outlook 同步需要保留 TimeSpec 元数据（kind, rawText, policy）
+> 2. 简单的 ISO 时间戳会导致往返同步时信息丢失
+> 3. 符合 Time Architecture 原则：应用内禁止直接使用 ISO 字符串
 > 
+> **实施方案:**
+> - **序列化策略**：在 HTML 的 `data-timespec` 属性中嵌入完整 TimeSpec JSON
+> - **Date 对象处理**：
+>   - 序列化：使用 `TimeHub.formatTimestamp()` 将 Date 转为 UTC 字符串
+>   - 反序列化：使用 `TimeHub.parseTimestamp()` 将 UTC 字符串转回 Date
+> - **降级策略**：如果 Outlook Mobile 过滤 `data-*` 属性，从显示文本提取时间，创建 `kind='fixed'` 的简单 TimeSpec
+> 
+> **序列化示例:**
+> ```typescript
+> // 序列化：TimeSpec → HTML
+> const timeSpecJson = JSON.stringify({
+>   ...marker.timeSpec,
+>   start: TimeHub.formatTimestamp(timeSpec.start),  // Date → UTC string
+>   end: TimeHub.formatTimestamp(timeSpec.end),
+>   resolved: {
+>     start: TimeHub.formatTimestamp(timeSpec.resolved.start),
+>     end: TimeHub.formatTimestamp(timeSpec.resolved.end),
+>   }
+> });
+> 
+> return `<div data-timespec="${escapeHTML(timeSpecJson)}">...</div>`;
+> 
+> // 反序列化：HTML → TimeSpec
+> const timeSpecData = JSON.parse(timeSpecJson);
+> const timeSpec: TimeSpec = {
+>   ...timeSpecData,
+>   start: TimeHub.parseTimestamp(timeSpecData.start),  // UTC string → Date
+>   end: TimeHub.parseTimestamp(timeSpecData.end),
+>   // ...
+> };
+> ```
+> 
+> **Outlook 兼容性:**
+> - ✅ Outlook Desktop (Windows/Mac): 保留 `data-*` 属性
+> - ✅ Outlook Web: 保留 `data-*` 属性
+> - ⚠️ Outlook Mobile: 可能被过滤（使用降级策略）
+> 
+> **需修改 PRD 章节:**
+> - Section 10.4: 更新 serializeContextMarker() 使用 TimeHub
+> - Section 10.4: 更新 deserializeContextMarker() 使用 TimeHub
+> - Section 10.4: 添加设计决策说明和降级策略
+> 
+
+> 🤖 **Resolution (Copilot):**
+> **Status**: ✅ 已解决  
+> **Commit**: [待提交]  
+> **PRD Sections**: 10.4 (ContextMarker 序列化)
 
 
 ---
@@ -625,7 +677,7 @@ Description: 需要与 #张三 讨论，参考 #项目B 的风格
 
 > 👤 **Zoey 回复:**
 > 
-> 
+> 1. 这种场景理论上的处理逻辑是，description中删除tag，title中创建tag
 
 
 ---

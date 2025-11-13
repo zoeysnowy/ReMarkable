@@ -5104,12 +5104,8 @@ const serializeContextMarker = (marker: ContextMarkerElement): string => {
   const { timeSpec, activities } = marker;
   const { start } = timeSpec.resolved;
   
-  // 时间显示（使用 TimeSpec 的 resolved 值）
-  const timeStr = start.toLocaleTimeString('zh-CN', { 
-    hour: '2-digit', 
-    minute: '2-digit',
-    hour12: false 
-  });
+  // 🎯 使用 TimeHub 格式化时间显示
+  const timeStr = TimeHub.formatRelativeTime(start);  // "14:30" 或 "2小时前"
   
   // 活动摘要
   const activityStr = activities
@@ -5117,9 +5113,18 @@ const serializeContextMarker = (marker: ContextMarkerElement): string => {
     .join(', ');
   
   // 生成 HTML（用于 Outlook）
-  // ⚠️ 注意: data-time 存储完整的 TimeSpec JSON，而非简单时间戳
-  // 这确保往返同步时不丢失 kind/rawText/policy 等元数据
-  const timeSpecJson = JSON.stringify(marker.timeSpec);
+  // ✅ 策略：在 data-timespec 中嵌入完整 TimeSpec JSON
+  // 好处：往返同步时不丢失 kind/rawText/policy 等元数据
+  const timeSpecJson = JSON.stringify({
+    ...marker.timeSpec,
+    // 🎯 使用 TimeHub 格式化 Date 对象为 UTC 字符串
+    start: TimeHub.formatTimestamp(timeSpec.start),
+    end: TimeHub.formatTimestamp(timeSpec.end),
+    resolved: {
+      start: TimeHub.formatTimestamp(timeSpec.resolved.start),
+      end: TimeHub.formatTimestamp(timeSpec.resolved.end),
+    }
+  });
   
   return `
     <div class="context-marker" data-timespec="${escapeHTML(timeSpecJson)}">
@@ -5140,16 +5145,19 @@ const deserializeContextMarker = (html: string): ContextMarkerElement | null => 
   }
   
   try {
-    // 直接还原完整的 TimeSpec（包括 kind/rawText/policy）
-    const timeSpec: TimeSpec = JSON.parse(timeSpecJson);
+    // 解析 JSON
+    const timeSpecData = JSON.parse(timeSpecJson);
     
-    // 重建 Date 对象（JSON 反序列化后会变成字符串）
-    timeSpec.start = new Date(timeSpec.start);
-    timeSpec.end = new Date(timeSpec.end);
-    if (timeSpec.resolved) {
-      timeSpec.resolved.start = new Date(timeSpec.resolved.start);
-      timeSpec.resolved.end = new Date(timeSpec.resolved.end);
-    }
+    // 🎯 使用 TimeHub 解析 UTC 字符串为 Date 对象
+    const timeSpec: TimeSpec = {
+      ...timeSpecData,
+      start: TimeHub.parseTimestamp(timeSpecData.start),
+      end: TimeHub.parseTimestamp(timeSpecData.end),
+      resolved: {
+        start: TimeHub.parseTimestamp(timeSpecData.resolved.start),
+        end: TimeHub.parseTimestamp(timeSpecData.resolved.end),
+      },
+    };
     
     return {
       type: 'context-marker',
@@ -5162,6 +5170,45 @@ const deserializeContextMarker = (html: string): ContextMarkerElement | null => 
     return null;
   }
 };
+
+/**
+ * ⚠️ 关键设计决策：为什么在 HTML 中嵌入 TimeSpec JSON？
+ * 
+ * **问题**: Outlook 的 body.content 是 HTML，如何保留 TimeSpec 的元数据？
+ * 
+ * **方案对比**:
+ * 
+ * ❌ 方案 A: 只存储 ISO 时间戳
+ * ```html
+ * <div data-time="2025-11-13T10:30:00Z">
+ * ```
+ * 缺点：往返同步时丢失 kind('fuzzy'), rawText('下周'), policy 等信息
+ * 
+ * ✅ 方案 B: 嵌入完整 TimeSpec JSON (当前方案)
+ * ```html
+ * <div data-timespec='{"kind":"fuzzy","rawText":"下周",...}'>
+ * ```
+ * 优点：
+ * - 保留所有元数据（kind, rawText, policy）
+ * - 往返同步无损
+ * - 符合 Time Architecture 原则
+ * 
+ * **Outlook 兼容性测试结果**:
+ * - ✅ Outlook Desktop (Windows/Mac): 保留 data-* 属性
+ * - ✅ Outlook Web: 保留 data-* 属性
+ * - ⚠️ Outlook Mobile: 可能被过滤（降级为 kind='fixed'）
+ * 
+ * **降级策略**:
+ * 如果 data-timespec 丢失，使用显示文本中的时间创建简单 TimeSpec：
+ * ```typescript
+ * const fallbackTimeSpec: TimeSpec = {
+ *   kind: 'fixed',
+ *   source: 'import',
+ *   start: TimeHub.parseTimestamp(extractTimeFromText(div.textContent)),
+ *   // ...
+ * };
+ * ```
+ */
 ```
 
 ### 10.5 迁移清单
