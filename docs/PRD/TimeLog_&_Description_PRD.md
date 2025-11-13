@@ -121,6 +121,93 @@ async function migrateToTimeSpec(event: Event) {
 - `ContextMarkerElement` 类型定义（为未来兼容）
 - TimeSpec 架构（v2.0 可直接使用）
 
+### 决策：构建双层历史记录系统
+
+**决策内容：**
+- **EventHistoryService** - 记录 Event 级别的 CRUD 操作（新增、修改、删除）
+- **VersionControlService** - 记录 TimeLog 内容的细粒度编辑历史（Slate 操作）
+
+**问题分析：**
+
+当前 EventService 的局限：
+
+| 功能 | 当前状态 | 说明 |
+|------|---------|------|
+| CRUD 操作 | ✅ 有 | EventService 提供完整的增删改查 |
+| 当前状态存储 | ✅ 有 | localStorage 存储所有事件的当前状态 |
+| 历史记录 | ❌ 无 | 不记录事件的变更历史 |
+| 变更溯源 | ❌ 无 | 无法查询"谁在什么时候改了什么" |
+| 时间段查询 | ❌ 无 | 无法查询"过去7天创建/修改了哪些事件" |
+
+**双层架构设计：**
+
+```typescript
+// 第一层：Event 级别历史（粗粒度）
+class EventHistoryService {
+  // 记录 Event 的 CRUD 操作
+  async recordEventChange(
+    eventId: string,
+    operation: 'create' | 'update' | 'delete',
+    snapshot: Event,
+    changedFields?: string[]
+  ): Promise<EventHistoryEntry>;
+  
+  // 查询事件历史
+  async getEventHistory(eventId: string): Promise<EventHistoryEntry[]>;
+  
+  // 查询时间段内的变更
+  async getChangesInPeriod(startDate: Date, endDate: Date): Promise<EventHistoryEntry[]>;
+  
+  // 恢复到特定版本
+  async restoreEventVersion(eventId: string, historyId: string): Promise<Event>;
+}
+
+// 第二层：TimeLog 内容级别版本（细粒度）
+class VersionControlService {
+  // 记录 Slate 编辑操作
+  recordOperation(operation: SlateOperation, editor: Editor): void;
+  
+  // 自动保存版本快照（5分钟间隔）
+  async createVersion(trigger: VersionTriggerType): Promise<TimeLogVersion>;
+  
+  // 恢复到特定版本
+  async restoreVersion(versionId: string): Promise<Descendant[]>;
+  
+  // 版本对比
+  async compareVersions(v1: string, v2: string): Promise<Delta>;
+}
+```
+
+**存储位置：**
+- **EventHistory** - 独立集合/表 `event_history`（便于跨 Event 查询）
+- **TimeLogVersions** - 嵌入在 `Event.timelog.versions` 数组中（最多 50 个）
+
+**关键区别：**
+
+| 维度 | EventHistoryService | VersionControlService |
+|------|-------------------|---------------------|
+| **粒度** | Event 级别（title/tags/startTime 等字段变更） | Slate 节点级别（段落/标签/ContextMarker） |
+| **触发** | 每次 EventService.updateEvent() | 每 5 分钟或重大编辑 |
+| **存储** | 独立 event_history 集合 | Event.timelog.versions 数组 |
+| **用途** | 审计日志、变更溯源、时间段统计 | 内容撤销/重做、协作冲突解决 |
+| **保留期** | 永久保留（或按策略归档） | 最近 50 个版本 |
+
+**实施阶段：**
+- **Phase 2** - EventHistoryService（Week 3-4）
+  - 记录 Event CRUD 操作
+  - 提供变更查询 API
+  - 在 EventService 中集成调用
+  
+- **Phase 3** - VersionControlService（Week 5-6）
+  - 记录 Slate 编辑操作
+  - 自动保存版本快照
+  - 实现版本对比和恢复
+
+**影响范围：**
+- Section 6: 拆分为 6.1 EventHistoryService 和 6.2 VersionControlService
+- Section 7.2: 数据库设计新增 event_history 集合
+- EventService: 集成 EventHistoryService 调用
+
 ---
 
 ## ⚠️ 重要：时间处理规范
@@ -1888,20 +1975,526 @@ export class OfflineQueue {
 }
 ```
 
-## 4. 版本控制系统
+## 4. 双层历史记录系统
 
-### 4.1 核心概念
+> **架构**: 详见顶部"架构决策记录 → 双层历史记录系统"  
+> **实施**: Phase 2（EventHistory）+ Phase 3（VersionControl）
+
+### 4.1 系统概述
+
+历史记录系统分为两层，分别服务于不同的业务需求：
+
+**第一层：EventHistoryService（Event 级别）**
+- **目的**: 审计日志、变更溯源、数据统计
+- **记录内容**: Event 的 CRUD 操作（创建、更新、删除）
+- **粒度**: 字段级别（title/tags/startTime 等）
+- **存储**: 独立 `event_history` 集合
+- **保留策略**: 永久保留（或按策略归档）
+
+**第二层：VersionControlService（TimeLog 内容级别）**
+- **目的**: 内容撤销/重做、协作冲突解决
+- **记录内容**: Slate 编辑操作（段落增删、标签插入等）
+- **粒度**: Slate 节点级别
+- **存储**: `Event.timelog.versions` 数组（嵌入式）
+- **保留策略**: 最近 50 个版本
+
+---
+
+## 6. 第一层：EventHistoryService
+
+### 6.1 核心概念
+
+EventHistoryService 记录 Event 的所有变更，提供完整的审计追踪能力。
+
+**功能目标:**
+
+- ✅ 审计日志（谁在什么时候修改了哪个事件）
+- ✅ 变更溯源（查看字段的历史变更）
+- ✅ 时间段统计（过去 7 天创建/修改了多少事件）
+- ✅ 数据恢复（恢复到历史版本）
+- ✅ 冲突检测基础（为 Outlook 同步提供 hash 对比）
+
+### 6.2 数据结构
+
+```typescript
+// types/eventHistory.ts
+
+/**
+ * Event 历史记录条目
+ * 每次 Event 发生变更时创建一条记录
+ */
+type EventHistoryEntry = {
+  id: string;                    // 历史记录 ID
+  eventId: string;               // 关联的 Event ID
+  
+  // 操作元数据
+  operation: HistoryOperation;
+  timestamp: Date;               // 变更时间（内部使用 Date，存储时转换）
+  userId?: string;               // 操作用户（为多用户准备）
+  source: HistorySource;         // 变更来源
+  
+  // 变更内容
+  snapshot: Event;               // 完整的 Event 快照
+  changedFields?: string[];      // 变更的字段列表 ['title', 'tags']
+  fieldDeltas?: FieldDelta[];    // 字段级差异
+  
+  // 用于同步的哈希
+  contentHash: string;           // Event 内容的 hash
+};
+
+type HistoryOperation = 
+  | 'create'        // 创建事件
+  | 'update'        // 更新事件
+  | 'delete'        // 删除事件（软删除）
+  | 'restore';      // 恢复已删除事件
+
+type HistorySource =
+  | 'local-edit'    // 本地用户编辑
+  | 'sync-pull'     // 从 Outlook 同步拉取
+  | 'sync-push'     // 推送到 Outlook 前
+  | 'import'        // 导入操作
+  | 'migration'     // 数据迁移
+  | 'system';       // 系统操作
+
+type FieldDelta = {
+  field: string;               // 字段名称
+  oldValue: any;               // 旧值
+  newValue: any;               // 新值
+  valueType: 'primitive' | 'object' | 'array';
+};
+
+/**
+ * 查询过滤器
+ */
+type EventHistoryQuery = {
+  eventId?: string;              // 查询特定事件的历史
+  operation?: HistoryOperation;  // 过滤操作类型
+  source?: HistorySource;        // 过滤来源
+  startDate?: Date;              // 时间范围开始
+  endDate?: Date;                // 时间范围结束
+  userId?: string;               // 过滤用户
+  changedFields?: string[];      // 包含特定字段变更的记录
+  limit?: number;                // 限制结果数量
+  offset?: number;               // 分页偏移
+};
+```
+
+### 6.3 EventHistoryService 实现
+
+```typescript
+// services/EventHistoryService.ts
+import crypto from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
+
+export class EventHistoryService {
+  
+  /**
+   * 记录 Event 变更
+   * 在 EventService.createEvent/updateEvent/deleteEvent 中调用
+   */
+  async recordEventChange(
+    eventId: string,
+    operation: HistoryOperation,
+    snapshot: Event,
+    options?: {
+      source?: HistorySource;
+      userId?: string;
+      changedFields?: string[];
+      previousSnapshot?: Event;
+    }
+  ): Promise<EventHistoryEntry> {
+    
+    // 1. 计算内容哈希（用于同步冲突检测）
+    const contentHash = this.calculateEventHash(snapshot);
+    
+    // 2. 计算字段级差异（如果提供了旧快照）
+    const fieldDeltas = options?.previousSnapshot
+      ? this.calculateFieldDeltas(options.previousSnapshot, snapshot)
+      : undefined;
+    
+    // 3. 自动推断变更字段（如果未提供）
+    const changedFields = options?.changedFields || 
+      (fieldDeltas ? fieldDeltas.map(d => d.field) : undefined);
+    
+    // 4. 创建历史记录
+    const entry: EventHistoryEntry = {
+      id: uuidv4(),
+      eventId,
+      operation,
+      timestamp: new Date(),
+      userId: options?.userId,
+      source: options?.source || 'local-edit',
+      snapshot,
+      changedFields,
+      fieldDeltas,
+      contentHash,
+    };
+    
+    // 5. 存储到数据库
+    await db.eventHistory.insert(entry);
+    
+    console.log(`📝 [EventHistory] ${operation} event ${eventId}`, {
+      fields: changedFields,
+      source: entry.source
+    });
+    
+    return entry;
+  }
+  
+  /**
+   * 查询事件的历史记录
+   */
+  async getEventHistory(
+    eventId: string,
+    options?: { limit?: number; offset?: number }
+  ): Promise<EventHistoryEntry[]> {
+    return await db.eventHistory.find({
+      eventId,
+    })
+    .sort({ timestamp: -1 })  // 最新的在前
+    .limit(options?.limit || 100)
+    .skip(options?.offset || 0)
+    .toArray();
+  }
+  
+  /**
+   * 查询时间段内的变更
+   * 用于统计、报表等功能
+   */
+  async getChangesInPeriod(
+    startDate: Date,
+    endDate: Date,
+    filter?: Partial<EventHistoryQuery>
+  ): Promise<EventHistoryEntry[]> {
+    const query: any = {
+      timestamp: {
+        $gte: startDate,
+        $lte: endDate,
+      },
+    };
+    
+    if (filter?.operation) query.operation = filter.operation;
+    if (filter?.source) query.source = filter.source;
+    if (filter?.userId) query.userId = filter.userId;
+    if (filter?.changedFields) {
+      query.changedFields = { $in: filter.changedFields };
+    }
+    
+    return await db.eventHistory.find(query)
+      .sort({ timestamp: -1 })
+      .limit(filter?.limit || 1000)
+      .toArray();
+  }
+  
+  /**
+   * 恢复到特定历史版本
+   */
+  async restoreEventVersion(
+    eventId: string,
+    historyId: string
+  ): Promise<Event> {
+    // 1. 获取目标历史记录
+    const history = await db.eventHistory.findOne({ id: historyId });
+    if (!history || history.eventId !== eventId) {
+      throw new Error('历史记录不存在');
+    }
+    
+    // 2. 恢复快照
+    const restoredEvent = { ...history.snapshot };
+    
+    // 3. 更新当前 Event
+    await EventService.updateEvent(eventId, restoredEvent);
+    
+    // 4. 记录恢复操作
+    await this.recordEventChange(
+      eventId,
+      'restore',
+      restoredEvent,
+      { source: 'system' }
+    );
+    
+    console.log(`🔄 [EventHistory] 恢复事件 ${eventId} 到版本 ${historyId}`);
+    
+    return restoredEvent;
+  }
+  
+  /**
+   * 计算 Event 内容哈希
+   * 用于同步冲突检测（排除不影响内容的字段）
+   */
+  private calculateEventHash(event: Event): string {
+    // 排除元数据字段，只计算内容字段
+    const contentFields = {
+      title: event.title,
+      timelog: event.timelog,
+      tags: event.tags,
+      startTime: event.startTime,
+      endTime: event.endTime,
+      // 不包括 updatedAt、syncState 等元数据
+    };
+    
+    const content = JSON.stringify(contentFields, Object.keys(contentFields).sort());
+    return crypto.createHash('sha256').update(content).digest('hex');
+  }
+  
+  /**
+   * 计算字段级差异
+   */
+  private calculateFieldDeltas(
+    oldEvent: Event,
+    newEvent: Event
+  ): FieldDelta[] {
+    const deltas: FieldDelta[] = [];
+    
+    // 比较所有字段
+    const allKeys = new Set([
+      ...Object.keys(oldEvent),
+      ...Object.keys(newEvent),
+    ]);
+    
+    for (const key of allKeys) {
+      const oldValue = (oldEvent as any)[key];
+      const newValue = (newEvent as any)[key];
+      
+      // 跳过元数据字段
+      if (['id', 'createdAt', 'updatedAt'].includes(key)) {
+        continue;
+      }
+      
+      // 检测变更
+      if (!this.isEqual(oldValue, newValue)) {
+        deltas.push({
+          field: key,
+          oldValue,
+          newValue,
+          valueType: this.getValueType(newValue),
+        });
+      }
+    }
+    
+    return deltas;
+  }
+  
+  /**
+   * 深度相等比较
+   */
+  private isEqual(a: any, b: any): boolean {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+  
+  /**
+   * 判断值类型
+   */
+  private getValueType(value: any): 'primitive' | 'object' | 'array' {
+    if (Array.isArray(value)) return 'array';
+    if (typeof value === 'object' && value !== null) return 'object';
+    return 'primitive';
+  }
+  
+  /**
+   * 获取统计信息
+   */
+  async getStatistics(startDate: Date, endDate: Date): Promise<{
+    totalChanges: number;
+    createdEvents: number;
+    updatedEvents: number;
+    deletedEvents: number;
+    bySource: Record<HistorySource, number>;
+    byDay: { date: string; count: number }[];
+  }> {
+    const changes = await this.getChangesInPeriod(startDate, endDate);
+    
+    const stats = {
+      totalChanges: changes.length,
+      createdEvents: changes.filter(c => c.operation === 'create').length,
+      updatedEvents: changes.filter(c => c.operation === 'update').length,
+      deletedEvents: changes.filter(c => c.operation === 'delete').length,
+      bySource: {} as Record<HistorySource, number>,
+      byDay: [] as { date: string; count: number }[],
+    };
+    
+    // 按来源统计
+    for (const change of changes) {
+      stats.bySource[change.source] = (stats.bySource[change.source] || 0) + 1;
+    }
+    
+    // 按天统计
+    const dayMap = new Map<string, number>();
+    for (const change of changes) {
+      const day = change.timestamp.toISOString().split('T')[0];
+      dayMap.set(day, (dayMap.get(day) || 0) + 1);
+    }
+    stats.byDay = Array.from(dayMap.entries()).map(([date, count]) => ({
+      date,
+      count,
+    }));
+    
+    return stats;
+  }
+}
+
+// 单例导出
+export const eventHistoryService = new EventHistoryService();
+```
+
+### 6.4 集成到 EventService
+
+在现有的 EventService 中集成 EventHistoryService：
+
+```typescript
+// services/EventService.ts (修改部分)
+import { eventHistoryService } from './EventHistoryService';
+
+class EventService {
+  
+  async createEvent(event: Partial<Event>): Promise<Event> {
+    // 1. 创建事件（现有逻辑）
+    const newEvent = {
+      id: uuidv4(),
+      ...event,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as Event;
+    
+    await db.events.insert(newEvent);
+    
+    // 2. 🆕 记录历史
+    await eventHistoryService.recordEventChange(
+      newEvent.id,
+      'create',
+      newEvent,
+      { source: 'local-edit' }
+    );
+    
+    return newEvent;
+  }
+  
+  async updateEvent(
+    eventId: string,
+    updates: Partial<Event>
+  ): Promise<Event> {
+    // 1. 获取旧版本
+    const oldEvent = await db.events.findOne({ id: eventId });
+    if (!oldEvent) throw new Error('Event not found');
+    
+    // 2. 应用更新（现有逻辑）
+    const updatedEvent = {
+      ...oldEvent,
+      ...updates,
+      updatedAt: new Date(),
+    };
+    
+    await db.events.update({ id: eventId }, updatedEvent);
+    
+    // 3. 🆕 计算变更字段
+    const changedFields = Object.keys(updates).filter(
+      key => !['updatedAt', 'id'].includes(key)
+    );
+    
+    // 4. 🆕 记录历史
+    await eventHistoryService.recordEventChange(
+      eventId,
+      'update',
+      updatedEvent,
+      {
+        source: 'local-edit',
+        changedFields,
+        previousSnapshot: oldEvent,
+      }
+    );
+    
+    return updatedEvent;
+  }
+  
+  async deleteEvent(eventId: string): Promise<void> {
+    // 1. 获取事件快照
+    const event = await db.events.findOne({ id: eventId });
+    if (!event) throw new Error('Event not found');
+    
+    // 2. 软删除（添加 deletedAt 标记）
+    const deletedEvent = {
+      ...event,
+      deletedAt: new Date(),
+      updatedAt: new Date(),
+    };
+    
+    await db.events.update({ id: eventId }, deletedEvent);
+    
+    // 3. 🆕 记录删除历史
+    await eventHistoryService.recordEventChange(
+      eventId,
+      'delete',
+      deletedEvent,
+      { source: 'local-edit' }
+    );
+  }
+}
+```
+
+### 6.5 数据库 Schema
+
+```sql
+-- MongoDB Collection: event_history
+{
+  _id: ObjectId,
+  id: String,              // UUID
+  eventId: String,         // 关联的 Event ID
+  operation: String,       // 'create' | 'update' | 'delete' | 'restore'
+  timestamp: Date,
+  userId: String,
+  source: String,          // 'local-edit' | 'sync-pull' | 'sync-push' | ...
+  snapshot: Object,        // 完整的 Event 快照
+  changedFields: [String],
+  fieldDeltas: [{
+    field: String,
+    oldValue: Mixed,
+    newValue: Mixed,
+    valueType: String,
+  }],
+  contentHash: String,
+}
+
+-- 索引
+db.event_history.createIndex({ eventId: 1, timestamp: -1 });
+db.event_history.createIndex({ timestamp: -1 });
+db.event_history.createIndex({ operation: 1, timestamp: -1 });
+db.event_history.createIndex({ source: 1, timestamp: -1 });
+db.event_history.createIndex({ contentHash: 1 });
+```
+
+---
+
+## 7. 第二层：VersionControlService
+
+### 7.1 核心概念
+
+---
+
+## 7. 第二层：VersionControlService
+
+### 7.1 核心概念
+
+VersionControlService 记录 TimeLog 内容的细粒度编辑历史，支持撤销/重做和版本恢复。
 
 用户每次间隔 **5 分钟以上** 的输入都会记录一次 timestamp（版本快照）。
 
 **功能目标:**
 
-- ✅ 版本历史追踪（像 Notion/Google Docs）
+- ✅ 内容版本追踪（像 Notion/Google Docs）
 - ✅ 撤销/重做增强（可回退到任意时间点）
 - ✅ 协作冲突解决（为未来多用户功能做准备）
-- ✅ 用户行为分析
+- ✅ 自动保存机制（减少数据丢失风险）
 
-### 6.2 数据结构
+**与 EventHistoryService 的区别:**
+
+| 维度 | EventHistoryService | VersionControlService |
+|------|-------------------|---------------------|
+| **记录对象** | 整个 Event | Event.timelog 内容 |
+| **触发时机** | 每次 CRUD 操作 | 每 5 分钟或重大编辑 |
+| **存储位置** | event_history 集合 | Event.timelog.versions 数组 |
+| **典型用途** | "谁在 11 月 10 日修改了这个事件？" | "恢复到 10 分钟前的编辑内容" |
+
+### 7.2 数据结构
 
 ```typescript
 // types/version.ts
@@ -1969,7 +2562,7 @@ type DeltaChange = {
 };
 ```
 
-### 6.3 版本控制服务
+### 7.3 VersionControlService 实现
 
 ```typescript
 // services/versionControl.ts
