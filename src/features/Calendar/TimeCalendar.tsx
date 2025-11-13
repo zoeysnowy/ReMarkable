@@ -1735,9 +1735,10 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
 
   /**
    * 📝 更新事件 - 支持拖拽和编辑
+   * 🎯 已迁移到 EventHub 统一管理
    */
   const handleBeforeUpdateEvent = async (updateInfo: any) => {
-    console.log('📝 [TimeCalendar] Updating event:', updateInfo);
+    console.log('📝 [TimeCalendar] Updating event via EventHub:', updateInfo);
     
     try {
       const { event: calendarEvent, changes } = updateInfo;
@@ -1747,15 +1748,13 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       if (!saved) return;
       
       const existingEvents: Event[] = JSON.parse(saved);
-      const eventIndex = existingEvents.findIndex((e: Event) => e.id === calendarEvent.id);
+      const originalEvent = existingEvents.find((e: Event) => e.id === calendarEvent.id);
       
-      if (eventIndex === -1) {
+      if (!originalEvent) {
         console.error('❌ [TimeCalendar] Event not found:', calendarEvent.id);
         return;
       }
 
-      const originalEvent = existingEvents[eventIndex];
-      
       // 应用更新
       const updatedCalendarEvent = {
         ...calendarEvent,
@@ -1770,37 +1769,48 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         return;
       }
 
-      // 更新 localStorage
-      existingEvents[eventIndex] = updatedEvent;
-      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
+      // 🎯 使用 EventHub 更新事件（替代直接操作 localStorage）
+      const { EventHub } = await import('../../services/EventHub');
       
-      // ✅ 增量更新：只更新被修改的事件，避免重渲染全部 1150 个事件
-      setEvents(prevEvents => 
-        prevEvents.map(e => e.id === updatedEvent.id ? updatedEvent : e)
-      );
-
-      // 🔄 同步到 Outlook（异步，不阻塞）
-      const activeSyncManager = syncManager || (window as any).syncManager;
-      if (activeSyncManager) {
-        activeSyncManager.recordLocalAction('update', 'event', updatedEvent.id, updatedEvent, originalEvent)
-          .then(() => console.log('✅ [TimeCalendar] Event updated and synced'))
-          .catch((error: unknown) => console.error('❌ [TimeCalendar] Failed to sync updated event:', error));
+      // 提取需要更新的字段
+      const updates: Partial<Event> = {};
+      if (changes.start || changes.end) {
+        updates.startTime = updatedEvent.startTime;
+        updates.endTime = updatedEvent.endTime;
       }
+      if (changes.isAllday !== undefined) {
+        updates.isAllDay = updatedEvent.isAllDay;
+      }
+      if (changes.title) {
+        updates.title = updatedEvent.title;
+      }
+      if (changes.location) {
+        updates.location = updatedEvent.location;
+      }
+      
+      await EventHub.updateFields(calendarEvent.id, updates, { source: 'TimeCalendar-Drag' });
+      
+      console.log('✅ [TimeCalendar] Event updated via EventHub, waiting for eventsUpdated event');
+      
+      // ✅ 不需要手动刷新 UI - EventHub 会触发 eventsUpdated 事件
+      // ✅ 不需要手动调用 recordLocalAction - EventHub 内部会自动处理同步
+      
     } catch (error) {
-      console.error('❌ [TimeCalendar] Failed to update event:', error);
+      console.error('❌ [TimeCalendar] Failed to update event via EventHub:', error);
     }
   };
 
   /**
    * 🗑️ 删除事件
+   * 🎯 已迁移到 EventHub 统一管理
    */
   const handleBeforeDeleteEvent = async (eventInfo: any) => {
-    console.log('🗑️ [TimeCalendar] Deleting event:', eventInfo.event.id);
+    console.log('🗑️ [TimeCalendar] Deleting event via EventHub:', eventInfo.event.id);
     
     try {
       const eventId = eventInfo.event.id;
       
-      // 从 localStorage 删除
+      // 验证事件存在
       const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
       if (!saved) return;
       
@@ -1812,31 +1822,18 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         return;
       }
 
-      const updatedEvents = existingEvents.filter((e: Event) => e.id !== eventId);
-      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(updatedEvents));
+      // 🎯 使用 EventHub 删除事件（替代直接操作 localStorage）
+      const { EventHub } = await import('../../services/EventHub');
+      await EventHub.deleteEvent(eventId);
       
-      // ✅ 增量更新：只从数组中移除该事件，避免重渲染全部 1150 个事件
-      setEvents(prevEvents => prevEvents.filter(e => e.id !== eventId));
-
-      // 触发全局事件更新通知（通知DailyStatsCard等组件刷新）
-      console.log('🔔 [TimeCalendar] Dispatching eventsUpdated event after delete');
-      window.dispatchEvent(new CustomEvent('eventsUpdated', {
-        detail: { 
-          eventId: eventId,
-          isDeleted: true,
-          tags: eventToDelete.tags
-        }
-      }));
-
-      // 🔄 同步删除到 Outlook（异步，不阻塞）
-      const activeSyncManager = syncManager || (window as any).syncManager;
-      if (activeSyncManager) {
-        activeSyncManager.recordLocalAction('delete', 'event', eventId, null, eventToDelete)
-          .then(() => console.log('✅ [TimeCalendar] Event deleted and synced'))
-          .catch((error: unknown) => console.error('❌ [TimeCalendar] Failed to sync deleted event:', error));
-      }
+      console.log('✅ [TimeCalendar] Event deleted via EventHub, waiting for eventsUpdated event');
+      
+      // ✅ 不需要手动删除 localStorage - EventHub 会自动处理
+      // ✅ 不需要手动刷新 UI - EventHub 会触发 eventsUpdated 事件
+      // ✅ 不需要手动调用 recordLocalAction - EventHub 内部会自动处理同步
+      
     } catch (error) {
-      console.error('❌ [TimeCalendar] Failed to delete event:', error);
+      console.error('❌ [TimeCalendar] Failed to delete event via EventHub:', error);
     }
   };
 
@@ -1887,51 +1884,21 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
 
   /**
    * 🗑️ 从编辑弹窗删除事件
+   * ✨ 使用 EventHub 统一接口（架构升级 v1.7）
    */
   const handleDeleteEventFromModal = async (eventId: string) => {
     console.log('🗑️ [TimeCalendar] Deleting event from modal:', eventId);
     
     try {
-      // 从 localStorage 删除
-      const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
-      if (!saved) return;
-      
-      const existingEvents: Event[] = JSON.parse(saved);
-      const eventToDelete = existingEvents.find((e: Event) => e.id === eventId);
-      
-      if (!eventToDelete) {
-        console.error('❌ [TimeCalendar] Event to delete not found');
-        return;
-      }
-
-      const updatedEvents = existingEvents.filter((e: Event) => e.id !== eventId);
-      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(updatedEvents));
+      // ✨ 使用 EventHub 统一删除接口
+      // EventHub 自动处理：localStorage删除 + recordLocalAction + eventsUpdated事件
+      const { EventHub } = await import('../../services/EventHub');
+      await EventHub.deleteEvent(eventId);
       
       // ✅ 增量更新：只从数组中移除该事件，避免重渲染全部 1150 个事件
       setEvents(prevEvents => prevEvents.filter(e => e.id !== eventId));
-
-      // 触发全局事件更新通知（通知DailyStatsCard等组件刷新）
-      console.log('🔔 [TimeCalendar] Dispatching eventsUpdated event after delete from modal');
-      window.dispatchEvent(new CustomEvent('eventsUpdated', {
-        detail: { 
-          eventId: eventId,
-          isDeleted: true,
-          tags: eventToDelete.tags
-        }
-      }));
-
-      // �🔄 同步到 Outlook
-      const activeSyncManager = syncManager || (window as any).syncManager;
-      if (activeSyncManager) {
-        // ⚡ 移除阻塞 await - 让同步在后台异步执行
-        activeSyncManager.recordLocalAction('delete', 'event', eventId, eventToDelete)
-          .then(() => {
-            console.log('✅ [TimeCalendar] Event deleted and synced from modal');
-          })
-          .catch((error: Error) => {
-            console.error('❌ [TimeCalendar] Failed to sync deleted event:', error);
-          });
-      }
+      
+      console.log('✅ [TimeCalendar] Event deleted via EventHub from modal');
     } catch (error) {
       console.error('❌ [TimeCalendar] Failed to delete event from modal:', error);
     }
