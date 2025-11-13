@@ -28,8 +28,10 @@ interface EventEditModalV2Props {
     elapsedTime: number;
     isRunning: boolean;
     isPaused?: boolean;
+    eventId?: string;
   } | null;
   onStartTimeChange?: (newStartTime: number) => void;
+  onTimerAction?: (action: 'start' | 'pause' | 'stop' | 'cancel', eventId?: string) => void;
 }
 
 export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
@@ -41,6 +43,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   hierarchicalTags,
   globalTimer,
   onStartTimeChange,
+  onTimerAction,
 }) => {
   // ==================== 状态管理 ====================
   
@@ -53,7 +56,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     emoji: '',
     tags: [] as string[],
     isTask: false,
-    organizer: { name: '', email: '' },
+    organizer: null as any,
     attendees: [] as any[],
     startTime: '',
     endTime: '',
@@ -73,7 +76,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         emoji: extractEmoji(event.title) || '',
         tags: event.tags || [],
         isTask: event.isTask || false,
-        organizer: event.organizer || { name: '', email: '' },
+        organizer: event.organizer || null,
         attendees: event.attendees || [],
         startTime: event.startTime ? formatDateTimeLocal(event.startTime) : '',
         endTime: event.endTime ? formatDateTimeLocal(event.endTime) : '',
@@ -128,7 +131,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
               tags={formData.tags}
               isTask={formData.isTask}
               hierarchicalTags={hierarchicalTags}
-              onChange={(updates) => setFormData({ ...formData, ...updates })}
+              onChange={(updates: any) => setFormData({ ...formData, ...updates })}
             />
           </section>
 
@@ -151,7 +154,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
               isAllDay={formData.isAllDay}
               calendarIds={formData.calendarIds}
               syncMode={formData.syncMode}
-              onChange={(updates) => setFormData({ ...formData, ...updates })}
+              onChange={(updates: any) => setFormData({ ...formData, ...updates })}
             />
           </section>
 
@@ -256,38 +259,165 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
 
 // ==================== 子组件（占位实现）====================
 
-const EventIdentitySection: React.FC<any> = ({ emoji, title, tags, isTask, onChange }) => (
-  <div className="identity-section">
-    <div className="emoji-large">{emoji || '📅'}</div>
-    <input
-      type="text"
-      className="title-input"
-      value={title}
-      onChange={(e) => onChange({ title: e.target.value })}
-      placeholder="事件标题"
-    />
-    <div className="tags-display">
-      {tags.length > 0 ? `#${tags.join(' #')}` : '选择标签...'}
-    </div>
-    {isTask && (
-      <label className="task-checkbox">
-        <input
-          type="checkbox"
-          checked={isTask}
-          onChange={(e) => onChange({ isTask: e.target.checked })}
-        />
-        <span>任务模式</span>
-      </label>
-    )}
-  </div>
-);
-
-const TimerButtonSection: React.FC<any> = ({ globalTimer, event }) => {
-  const isRunning = globalTimer?.isRunning && globalTimer?.eventId === event?.id;
+const EventIdentitySection: React.FC<any> = ({ emoji, title, tags, isTask, hierarchicalTags, onChange }) => {
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showTagSelector, setShowTagSelector] = useState(false);
   
+  const getTagPath = (tagId: string): string => {
+    const tag = hierarchicalTags.find((t: any) => t.id === tagId);
+    if (!tag) return tagId;
+    
+    const path = [];
+    let current = tag;
+    while (current) {
+      path.unshift(current.name);
+      if (current.parentId) {
+        current = hierarchicalTags.find((t: any) => t.id === current.parentId);
+      } else {
+        break;
+      }
+    }
+    return path.join('/');
+  };
+
+  // 简化版 emoji 选择器（实际应使用专业组件）
+  const commonEmojis = ['📅', '⏰', '💼', '📝', '✅', '🎯', '💡', '🔔', '📧', '👥', '🎨', '🏃'];
+
+  return (
+    <div className="identity-section">
+      {/* Emoji 选择器 */}
+      <div className="emoji-large" onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
+        {emoji || '📅'}
+      </div>
+      {showEmojiPicker && (
+        <div className="emoji-picker-dropdown" style={{
+          position: 'absolute',
+          zIndex: 100,
+          background: 'white',
+          padding: '12px',
+          borderRadius: '8px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(6, 1fr)',
+          gap: '8px'
+        }}>
+          {commonEmojis.map((e) => (
+            <div
+              key={e}
+              style={{ fontSize: '28px', cursor: 'pointer', textAlign: 'center' }}
+              onClick={() => {
+                onChange({ emoji: e });
+                setShowEmojiPicker(false);
+              }}
+            >
+              {e}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 标题输入 */}
+      <input
+        type="text"
+        className="title-input"
+        value={title}
+        onChange={(e) => {
+          const newTitle = e.target.value;
+          // 简单检测标题开头的 emoji
+          const commonEmojis = ['📅', '⏰', '💼', '📝', '✅', '🎯', '💡', '🔔', '📧', '👥', '🎨', '🏃'];
+          for (const emoji of commonEmojis) {
+            if (newTitle.startsWith(emoji)) {
+              onChange({ emoji, title: newTitle.replace(emoji, '').trim() });
+              return;
+            }
+          }
+          onChange({ title: newTitle });
+        }}
+        placeholder="事件标题"
+      />
+
+      {/* 标签显示与选择 */}
+      <div className="tags-display" onClick={() => setShowTagSelector(!showTagSelector)}>
+        {tags.length > 0 
+          ? tags.map((tagId: string) => getTagPath(tagId)).join(' · ')
+          : '选择标签...'}
+      </div>
+      {showTagSelector && (
+        <div className="tag-selector-dropdown" style={{
+          position: 'absolute',
+          zIndex: 100,
+          background: 'white',
+          padding: '12px',
+          borderRadius: '8px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          maxHeight: '200px',
+          overflowY: 'auto'
+        }}>
+          {hierarchicalTags.map((tag: any) => (
+            <label key={tag.id} style={{ display: 'block', padding: '6px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={tags.includes(tag.id)}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    onChange({ tags: [...tags, tag.id] });
+                  } else {
+                    onChange({ tags: tags.filter((id: string) => id !== tag.id) });
+                  }
+                }}
+              />
+              {' '}{getTagPath(tag.id)}
+            </label>
+          ))}
+        </div>
+      )}
+
+      {/* 任务模式复选框 */}
+      {isTask !== undefined && (
+        <label className="task-checkbox">
+          <input
+            type="checkbox"
+            checked={isTask}
+            onChange={(e) => onChange({ isTask: e.target.checked })}
+          />
+          <span>任务模式</span>
+        </label>
+      )}
+    </div>
+  );
+};
+
+const TimerButtonSection: React.FC<any> = ({ globalTimer, event, onTimerAction }) => {
+  const isRunning = globalTimer?.isRunning && globalTimer?.eventId === event?.id;
+  const isPaused = isRunning && globalTimer?.isPaused;
+  
+  const handleStart = () => {
+    if (onTimerAction) {
+      onTimerAction('start', event?.id);
+    }
+  };
+
+  const handlePause = () => {
+    if (onTimerAction) {
+      onTimerAction('pause');
+    }
+  };
+
+  const handleStop = () => {
+    if (onTimerAction) {
+      onTimerAction('stop');
+    }
+  };
+
+  const handleCancel = () => {
+    if (onTimerAction) {
+      onTimerAction('cancel');
+    }
+  };
+
   if (!isRunning) {
     return (
-      <button className="timer-button-start">
+      <button className="timer-button-start" onClick={handleStart}>
         ▶️ 开始专注
       </button>
     );
@@ -295,56 +425,342 @@ const TimerButtonSection: React.FC<any> = ({ globalTimer, event }) => {
 
   return (
     <div className="timer-buttons-group">
-      <button className="timer-button-circle gray">⏸️</button>
-      <button className="timer-button-circle gray">⏹️</button>
-      <button className="timer-button-circle gradient-red">❌</button>
+      <button 
+        className="timer-button-circle gray" 
+        onClick={handlePause}
+        title={isPaused ? "继续" : "暂停"}
+      >
+        {isPaused ? '▶️' : '⏸️'}
+      </button>
+      <button 
+        className="timer-button-circle gray" 
+        onClick={handleStop}
+        title="停止"
+      >
+        ⏹️
+      </button>
+      <button 
+        className="timer-button-circle gradient-red" 
+        onClick={handleCancel}
+        title="取消并删除本次计时"
+      >
+        ❌
+      </button>
     </div>
   );
 };
 
-const PlannedScheduleSection: React.FC<any> = ({ startTime, endTime, location, onChange }) => (
-  <div className="planned-schedule">
-    <h3 className="section-title">计划安排</h3>
-    <div className="time-row">
-      <input
-        type="datetime-local"
-        value={startTime}
-        onChange={(e) => onChange({ startTime: e.target.value })}
-      />
-      <span className="arrow">→</span>
-      <input
-        type="datetime-local"
-        value={endTime}
-        onChange={(e) => onChange({ endTime: e.target.value })}
-      />
-    </div>
-    <input
-      type="text"
-      className="location-input"
-      value={location}
-      onChange={(e) => onChange({ location: e.target.value })}
-      placeholder="📍 地点"
-    />
-  </div>
-);
+const PlannedScheduleSection: React.FC<any> = ({ 
+  organizer, 
+  attendees, 
+  startTime, 
+  endTime, 
+  location, 
+  isAllDay,
+  calendarIds,
+  syncMode,
+  onChange 
+}) => {
+  const [showOrganizerPicker, setShowOrganizerPicker] = useState(false);
+  const [showAttendeesPicker, setShowAttendeesPicker] = useState(false);
+  const [showSyncSettings, setShowSyncSettings] = useState(false);
 
-const ActualProgressSection: React.FC<any> = ({ event }) => (
-  <div className="actual-progress">
-    <div className="section-header">
-      <h3 className="section-title">实际进展</h3>
-      <span className="total-duration">总时长: 0h</span>
+  const formatDateTimeLocal = (isoString: string | null): string => {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  };
+
+  const calculateDuration = (): string => {
+    if (!startTime || !endTime) return '';
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    const durationMs = end.getTime() - start.getTime();
+    const hours = Math.floor(durationMs / (1000 * 60 * 60));
+    const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+    if (hours > 0) {
+      return `${hours}h ${minutes}min`;
+    }
+    return `${minutes}min`;
+  };
+
+  return (
+    <div className="planned-schedule">
+      <h3 className="section-title">计划安排</h3>
+      
+      {/* 组织者与参与者 */}
+      <div className="organizer-attendees">
+        <div className="field-row" style={{ marginBottom: '8px' }}>
+          <label style={{ fontSize: '13px', color: '#6b7280', marginBottom: '4px', display: 'block' }}>
+            组织者
+          </label>
+          <div 
+            className="contact-display" 
+            onClick={() => setShowOrganizerPicker(!showOrganizerPicker)}
+            style={{
+              padding: '8px 12px',
+              background: '#f9fafb',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              color: '#1f2937'
+            }}
+          >
+            {organizer?.name || organizer?.email || '选择组织者...'}
+          </div>
+        </div>
+
+        <div className="field-row">
+          <label style={{ fontSize: '13px', color: '#6b7280', marginBottom: '4px', display: 'block' }}>
+            参与者
+          </label>
+          <div 
+            className="contact-display" 
+            onClick={() => setShowAttendeesPicker(!showAttendeesPicker)}
+            style={{
+              padding: '8px 12px',
+              background: '#f9fafb',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              color: '#1f2937'
+            }}
+          >
+            {attendees && attendees.length > 0 
+              ? attendees.map((a: any) => a.name || a.email).join(', ')
+              : '添加参与者...'}
+          </div>
+        </div>
+      </div>
+
+      {/* 时间选择 */}
+      <div className="time-row" style={{ marginTop: '12px' }}>
+        <input
+          type="datetime-local"
+          value={formatDateTimeLocal(startTime)}
+          onChange={(e) => onChange({ startTime: e.target.value ? new Date(e.target.value).toISOString() : null })}
+        />
+        <span className="arrow">→</span>
+        <input
+          type="datetime-local"
+          value={formatDateTimeLocal(endTime)}
+          onChange={(e) => onChange({ endTime: e.target.value ? new Date(e.target.value).toISOString() : null })}
+        />
+      </div>
+      
+      {/* 时长显示 */}
+      {calculateDuration() && (
+        <div style={{ fontSize: '13px', color: '#6b7280', marginTop: '4px', textAlign: 'right' }}>
+          时长: {calculateDuration()}
+        </div>
+      )}
+
+      {/* 全天事件 */}
+      <label className="all-day-checkbox" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+        <input
+          type="checkbox"
+          checked={isAllDay || false}
+          onChange={(e) => onChange({ isAllDay: e.target.checked })}
+        />
+        <span style={{ fontSize: '14px', color: '#6b7280' }}>全天事件</span>
+      </label>
+
+      {/* 地点 */}
+      <input
+        type="text"
+        className="location-input"
+        value={location || ''}
+        onChange={(e) => onChange({ location: e.target.value })}
+        placeholder="📍 地点"
+        style={{ marginTop: '12px' }}
+      />
+
+      {/* 日历同步设置 */}
+      <div className="sync-settings" style={{ marginTop: '12px' }}>
+        <div 
+          className="sync-toggle"
+          onClick={() => setShowSyncSettings(!showSyncSettings)}
+          style={{
+            padding: '8px 12px',
+            background: '#eff6ff',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontSize: '13px',
+            color: '#3b82f6',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}
+        >
+          <span>📅 日历同步设置</span>
+          <span>{showSyncSettings ? '▲' : '▼'}</span>
+        </div>
+        
+        {showSyncSettings && (
+          <div style={{ marginTop: '8px', padding: '12px', background: '#f9fafb', borderRadius: '6px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <input
+                type="radio"
+                name="syncMode"
+                value="receive-only"
+                checked={syncMode === 'receive-only'}
+                onChange={(e) => onChange({ syncMode: e.target.value })}
+              />
+              <span style={{ fontSize: '13px' }}>仅接收更新</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="radio"
+                name="syncMode"
+                value="bidirectional"
+                checked={syncMode === 'bidirectional'}
+                onChange={(e) => onChange({ syncMode: e.target.value })}
+              />
+              <span style={{ fontSize: '13px' }}>双向同步</span>
+            </label>
+            <div style={{ marginTop: '8px', fontSize: '12px', color: '#9ca3af' }}>
+              同步至: {calendarIds && calendarIds.length > 0 ? calendarIds.join(', ') : '未选择日历'}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
-    <p className="placeholder-text">暂无计时记录</p>
-  </div>
-);
+  );
+};
+
+const ActualProgressSection: React.FC<any> = ({ event, globalTimer }) => {
+  // 计算总时长
+  const calculateTotalDuration = (): string => {
+    if (!event?.segments || event.segments.length === 0) {
+      return '0h 0min';
+    }
+
+    const totalMs = event.segments.reduce((sum: number, segment: any) => {
+      const start = new Date(segment.startTime).getTime();
+      const end = segment.endTime ? new Date(segment.endTime).getTime() : Date.now();
+      return sum + (end - start);
+    }, 0);
+
+    const hours = Math.floor(totalMs / (1000 * 60 * 60));
+    const minutes = Math.floor((totalMs % (1000 * 60 * 60)) / (1000 * 60));
+    return `${hours}h ${minutes}min`;
+  };
+
+  // 格式化时间段
+  const formatSegment = (segment: any): string => {
+    const start = new Date(segment.startTime);
+    const end = segment.endTime ? new Date(segment.endTime) : null;
+    const formatTime = (date: Date) => {
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    };
+
+    if (end) {
+      const durationMs = end.getTime() - start.getTime();
+      const minutes = Math.floor(durationMs / (1000 * 60));
+      return `${formatTime(start)} - ${formatTime(end)} (${minutes}min)`;
+    } else {
+      return `${formatTime(start)} - 进行中`;
+    }
+  };
+
+  // 检查是否有正在运行的计时
+  const isTimerRunning = globalTimer?.isRunning && globalTimer?.eventId === event?.id;
+
+  return (
+    <div className="actual-progress">
+      <div className="section-header">
+        <h3 className="section-title">实际进展</h3>
+        <span className="total-duration">总时长: {calculateTotalDuration()}</span>
+      </div>
+
+      {event?.segments && event.segments.length > 0 ? (
+        <div className="segments-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {event.segments.map((segment: any, index: number) => (
+            <div 
+              key={index}
+              className="segment-item"
+              style={{
+                padding: '8px 12px',
+                background: segment.endTime ? '#f9fafb' : '#eff6ff',
+                borderRadius: '6px',
+                fontSize: '13px',
+                color: '#1f2937',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
+              <span>⏱️ {formatSegment(segment)}</span>
+              {!segment.endTime && isTimerRunning && (
+                <span style={{ 
+                  fontSize: '11px', 
+                  color: '#3b82f6', 
+                  fontWeight: '600',
+                  animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                }}>
+                  ● 进行中
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="placeholder-text">暂无计时记录</p>
+      )}
+
+      {/* 同步状态显示 */}
+      {event?.calendarIds && event.calendarIds.length > 0 && (
+        <div className="sync-status" style={{
+          marginTop: '12px',
+          padding: '8px 12px',
+          background: '#ecfdf5',
+          borderRadius: '6px',
+          fontSize: '12px',
+          color: '#047857',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}>
+          <span>✓</span>
+          <span>已同步至 {event.calendarIds.length} 个日历</span>
+        </div>
+      )}
+
+      {/* 里程碑完成状态（如果是任务） */}
+      {event?.isTask && event?.status && (
+        <div className="task-status" style={{
+          marginTop: '12px',
+          padding: '8px 12px',
+          background: event.status === 'completed' ? '#dcfce7' : '#fef3c7',
+          borderRadius: '6px',
+          fontSize: '12px',
+          color: event.status === 'completed' ? '#15803d' : '#92400e',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}>
+          <span>{event.status === 'completed' ? '✅' : '⏳'}</span>
+          <span>{event.status === 'completed' ? '任务已完成' : '任务进行中'}</span>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ==================== 工具函数 ====================
 
 function extractEmoji(text: string): string | null {
   if (!text) return null;
-  const emojiRegex = /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu;
-  const match = text.match(emojiRegex);
-  return match ? match[0] : null;
+  // 使用简单的方法检测常见 emoji
+  const commonEmojis = ['📅', '⏰', '💼', '📝', '✅', '🎯', '💡', '🔔', '📧', '👥', '🎨', '🏃'];
+  for (const emoji of commonEmojis) {
+    if (text.includes(emoji)) {
+      return emoji;
+    }
+  }
+  return null;
 }
 
 function formatDateTimeLocal(isoString: string): string {

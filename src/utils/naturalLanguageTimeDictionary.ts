@@ -629,7 +629,9 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   
   '下周一': (ref = new Date()) => {
     const safeDayjs = safelyConvertDateToDayjs(ref);
-    const target = safeDayjs.startOf('week').add(1, 'week').add(1, 'day').startOf('day');
+    const currentDay = safeDayjs.day();
+    const daysToMonday = currentDay === 0 ? 6 : currentDay - 1;
+    const target = safeDayjs.subtract(daysToMonday, 'day').add(7, 'day').startOf('day');
     return {
       date: target,
       displayHint: '下周一',
@@ -652,12 +654,19 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
     const safeDayjs = safelyConvertDateToDayjs(ref);
     
     // 🔧 修复：按周一作为一周开始（符合time.config.ts配置）
-    // dayjs默认周日开始，先调整到周一，再计算下周二
-    // 步骤：startOf('week')到本周日 → +1天到本周一 → +1周到下周一 → +1天到下周二
-    const target = safeDayjs.startOf('week').add(1, 'day').add(1, 'week').add(1, 'day').startOf('day');
+    // dayjs的day(): 0=周日, 1=周一, 2=周二, ..., 6=周六
+    const currentDay = safeDayjs.day();
+    
+    // 计算到本周一的天数偏移（周日算上周，需要回退6天到上周一）
+    const daysToMonday = currentDay === 0 ? 6 : currentDay - 1;
+    
+    // 本周一 → +7天到下周一 → +1天到下周二
+    const target = safeDayjs.subtract(daysToMonday, 'day').add(7, 'day').add(1, 'day').startOf('day');
     
     dbg('dict', '🎯 解析"下周二"', {
       今天: safeDayjs.format('YYYY-MM-DD (ddd)'),
+      今天星期: currentDay,
+      回退天数到本周一: daysToMonday,
       结果: target.format('YYYY-MM-DD (ddd)'),
       星期几: target.day()
     });
@@ -681,7 +690,9 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   
   '下周三': (ref = new Date()) => {
     const safeDayjs = safelyConvertDateToDayjs(ref);
-    const target = safeDayjs.startOf('week').add(1, 'week').add(3, 'day').startOf('day');
+    const currentDay = safeDayjs.day();
+    const daysToMonday = currentDay === 0 ? 6 : currentDay - 1;
+    const target = safeDayjs.subtract(daysToMonday, 'day').add(7, 'day').add(2, 'day').startOf('day');
     return {
       date: target,
       displayHint: '下周三',
@@ -701,7 +712,9 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   
   '下周四': (ref = new Date()) => {
     const safeDayjs = safelyConvertDateToDayjs(ref);
-    const target = safeDayjs.startOf('week').add(1, 'week').add(4, 'day').startOf('day');
+    const currentDay = safeDayjs.day();
+    const daysToMonday = currentDay === 0 ? 6 : currentDay - 1;
+    const target = safeDayjs.subtract(daysToMonday, 'day').add(7, 'day').add(3, 'day').startOf('day');
     return {
       date: target,
       displayHint: '下周四',
@@ -721,7 +734,9 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   
   '下周五': (ref = new Date()) => {
     const safeDayjs = safelyConvertDateToDayjs(ref);
-    const target = safeDayjs.startOf('week').add(1, 'week').add(5, 'day').startOf('day');
+    const currentDay = safeDayjs.day();
+    const daysToMonday = currentDay === 0 ? 6 : currentDay - 1;
+    const target = safeDayjs.subtract(daysToMonday, 'day').add(7, 'day').add(4, 'day').startOf('day');
     return {
       date: target,
       displayHint: '下周五',
@@ -741,7 +756,9 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   
   '下周六': (ref = new Date()) => {
     const safeDayjs = safelyConvertDateToDayjs(ref);
-    const target = safeDayjs.startOf('week').add(1, 'week').add(6, 'day').startOf('day');
+    const currentDay = safeDayjs.day();
+    const daysToMonday = currentDay === 0 ? 6 : currentDay - 1;
+    const target = safeDayjs.subtract(daysToMonday, 'day').add(7, 'day').add(5, 'day').startOf('day');
     return {
       date: target,
       displayHint: '下周六',
@@ -761,7 +778,9 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
   
   '下周日': (ref = new Date()) => {
     const safeDayjs = safelyConvertDateToDayjs(ref);
-    const target = safeDayjs.startOf('week').add(2, 'week').startOf('day');
+    const currentDay = safeDayjs.day();
+    const daysToMonday = currentDay === 0 ? 6 : currentDay - 1;
+    const target = safeDayjs.subtract(daysToMonday, 'day').add(7, 'day').add(6, 'day').startOf('day');
     return {
       date: target,
       displayHint: '下周日',

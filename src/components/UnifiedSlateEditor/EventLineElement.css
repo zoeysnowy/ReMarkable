@@ -16,6 +16,13 @@
   color: #666;
   font-size: 0.9em;
   font-style: italic;
+  line-height: 1.4; /* 🔧 紧凑行距，仅用于 eventlog */
+  padding: 2px 0; /* 🔧 减少上下间距 */
+}
+
+/* 🆕 description 模式下的段落间距更紧凑 */
+.unified-event-line.description-mode .event-line-content > div {
+  margin: 2px 0; /* 段落间距紧凑 */
 }
 
 .event-line-prefix {
