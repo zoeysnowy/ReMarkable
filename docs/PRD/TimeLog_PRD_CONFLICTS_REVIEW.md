@@ -677,7 +677,359 @@ Description: 需要与 #张三 讨论，参考 #项目B 的风格
 
 > 👤 **Zoey 回复:**
 > 
-> 1. 这种场景理论上的处理逻辑是，description中删除tag，title中创建tag
+> 1. 这种场景理论上的处理逻辑是，timelog（让我们不要称用户的编辑界面为description，会造成字段定义混淆）中删除tag，title中创建tag
+> 2. 是的
+> 3. tag重命名，更新所有mention的位置，无论是标题还是timelog
+> 4. tag的字段、颜色、emoji都是global全局更新的，你可以看看tagservice和eventservice是不是这样的逻辑
+
+> 🤖 **Resolution (Copilot):**
+> **Status**: ✅ 已有实现，需整合到 EventService  
+> **需要明确的设计**:
+> 
+> ### 1. Title 标签自动提取机制
+> 
+> **规则**：
+> - Title 中的 `#标签名` 自动添加到 `Event.tags` 数组
+> - TimeLog (Slate 编辑器) 中的 TagElement **不添加**到 `Event.tags`（仅作为 mention）
+> 
+> **✅ 现有实现复用**：
+> 
+> **方案 A: HTML 解析方式（PlanManager 已实现）**
+> ```typescript
+> // src/components/PlanManager.tsx L1398-1406
+> // 从 HTML 富文本中提取标签
+> function extractTagsFromHtml(html: string): string[] {
+>   const tempDiv = document.createElement('div');
+>   tempDiv.innerHTML = html;
+>   const tagElements = tempDiv.querySelectorAll('.inline-tag');
+>   const extractedTags: string[] = [];
+>   
+>   tagElements.forEach(tagEl => {
+>     const tagId = tagEl.getAttribute('data-tag-id');
+>     if (tagId) extractedTags.push(tagId);
+>   });
+>   
+>   return extractedTags;
+> }
+> ```
+> 
+> **方案 B: Slate Fragment 方式（UnifiedSlateEditor 已实现）**
+> ```typescript
+> // src/components/UnifiedSlateEditor/serialization.ts L405-415
+> // 从 Slate 节点中提取标签（排除 mentionOnly）
+> function extractTags(fragment: (TextNode | TagNode | DateMentionNode)[]): string[] {
+>   if (!fragment || !Array.isArray(fragment)) {
+>     return [];
+>   }
+>   
+>   return fragment
+>     .filter((node): node is TagNode => 
+>       'type' in node && 
+>       node.type === 'tag' && 
+>       !node.mentionOnly  // ✅ 排除 mention-only 标签
+>     )
+>     .map(node => node.tagId)  // 返回 tagId，不是 tagName
+>     .filter(Boolean) as string[];
+> }
+> ```
+> 
+> **推荐方案 C: 统一到 EventService（新增）**
+> ```typescript
+> // EventService 新增方法（整合现有逻辑）
+> class EventService {
+>   /**
+>    * 从 HTML 内容中提取标签 ID（排除 mention-only）
+>    * 复用 PlanManager 的逻辑，但需过滤 data-mention-only="true"
+>    */
+>   extractTagsFromHtml(html: string): string[] {
+>     if (!html) return [];
+>     
+>     const tempDiv = document.createElement('div');
+>     tempDiv.innerHTML = html;
+>     const tagElements = tempDiv.querySelectorAll('.inline-tag:not([data-mention-only="true"])');
+>     const extractedTags: string[] = [];
+>     
+>     tagElements.forEach(tagEl => {
+>       const tagId = tagEl.getAttribute('data-tag-id');
+>       if (tagId) extractedTags.push(tagId);
+>     });
+>     
+>     return [...new Set(extractedTags)];  // 去重
+>   }
+>   
+>   /**
+>    * 在 createEvent/updateEvent 时自动调用
+>    */
+>   async createEvent(eventData: Partial<Event>) {
+>     // 如果 title 是富文本 HTML，提取标签
+>     if (eventData.content) {
+>       const extractedTags = this.extractTagsFromHtml(eventData.content);
+>       eventData.tags = extractedTags;
+>     }
+>     // ...
+>   }
+> }
+> ```
+> 
+> **用户操作场景**：
+> - 用户在 Title 输入 `完成 #项目A 的设计稿`（通过 Slate 编辑器插入 TagElement）
+> - 系统自动解析 HTML：`Event.tags = ['project-a-id']`
+> - 用户在 TimeLog 中提及 `#张三`（TagElement，data-mention-only="true"）
+> - 系统**不影响** `Event.tags`（仍为 `['project-a-id']`）
+> 
+> **关键差异**：
+> - PlanManager 使用 `event.content` 字段（富文本 HTML）
+> - EventService 可能使用 `event.title` 字段（纯文本字符串）
+> - **建议统一**：Event.title 改为富文本（存储 Slate HTML），复用 PlanManager 逻辑
+> 
+> ---
+> 
+> ### 2. Title 标签删除自动同步
+> 
+> **规则**：
+> - 用户从 Title 删除 `#标签` → 自动从 `Event.tags` 移除对应 ID
+> - 如果标签在 TimeLog 中仍有 mention，**不影响** `Event.tags`（因为 mention 不应加入 tags）
+> 
+> **实现方案**：
+> ```typescript
+> // 在 updateEvent 时重新提取标签
+> async updateEvent(eventId: string, updates: Partial<Event>) {
+>   if (updates.content || updates.title) {
+>     // 重新解析 content/title，覆盖原有 tags
+>     updates.tags = this.extractTagsFromHtml(updates.content || updates.title || '');
+>   }
+>   // ...
+> }
+> ```
+> 
+> **✅ 现有实现**：
+> - PlanManager 已在 `handleChange()` 中实现此逻辑（L1398-1421）
+> - 每次编辑后自动重新提取标签，确保 `Event.tags` 与 title 内容同步
+> 
+> **注意事项**：
+> - ✅ PlanManager 已处理此场景，无需额外实现
+> - 如果用户手动通过标签选择器添加标签（而非在 title 中输入 `#`），需要**合并**策略
+> 
+> **合并策略（如需支持手动添加标签）**：
+> ```typescript
+> async updateEvent(eventId: string, updates: Partial<Event>) {
+>   const currentEvent = await this.getEvent(eventId);
+>   
+>   if (updates.content) {
+>     const contentTags = this.extractTagsFromHtml(updates.content);
+>     const manualTags = updates.tags || currentEvent.tags || [];
+>     
+>     // 合并策略：content 标签 + 手动添加的标签
+>     // 注意：需要区分哪些是手动添加的（可能需要额外字段标记）
+>     updates.tags = [...new Set([...contentTags, ...manualTags])];
+>   }
+>   // ...
+> }
+> ```
+> 
+> ---
+> 
+> ### 3. 标签重命名全局更新
+> 
+> **规则**：
+> - 用户重命名 `#项目A` → `#项目Alpha`
+> - 更新所有位置的 mention（Title 字符串 + TimeLog TagElement）
+> 
+> **✅ TimeLog TagElement 自动更新机制已实现**：
+> 
+> **当前实现验证**：
+> ```tsx
+> // src/components/UnifiedSlateEditor/elements/TagElement.tsx L13-25
+> const TagElementComponent: React.FC<RenderElementProps> = ({ attributes, children, element }) => {
+>   const tagElement = element as TagElement;
+>   
+>   // ✅ 从 TagService 获取最新标签数据（而非使用节点存储的旧值）
+>   const tagData = useMemo(() => {
+>     const tag = tagElement.tagId ? TagService.getTagById(tagElement.tagId) : null;
+>     return {
+>       name: tag?.name ?? tagElement.tagName,      // 优先使用 TagService 的最新 name
+>       color: tag?.color ?? tagElement.tagColor,  // 优先使用 TagService 的最新 color
+>       emoji: tag?.emoji ?? tagElement.tagEmoji,  // 优先使用 TagService 的最新 emoji
+>     };
+>   }, [tagElement.tagId, tagElement.tagName, tagElement.tagColor, tagElement.tagEmoji]);
+>   
+>   // ✅ 监听 TagService 更新，自动重新渲染
+>   useEffect(() => {
+>     const listener = () => { /* 触发重新渲染 */ };
+>     TagService.addListener(listener as any);
+>     return () => TagService.removeListener(listener as any);
+>   }, [tagElement.tagId]);
+>   
+>   // 渲染时使用 tagData（而非 tagElement 的旧值）
+>   return <span data-tag-name={tagData.name} ...>{tagData.emoji}{tagData.name}</span>;
+> };
+> ```
+> 
+> **为什么 TimeLog 不需要手动更新 Slate JSON？**
+> - Slate 中的 `TagElement` 节点存储的是 `tagId`（而不是 `tagName`）
+> - 示例 Slate JSON:
+>   ```json
+>   {
+>     "type": "tag",
+>     "tagId": "project-a-id",  // ✅ 存储 ID，不存储 name
+>     "tagName": "项目A",        // ⚠️ 仅作为 fallback，优先读取 TagService
+>     "children": [{ "text": "" }]
+>   }
+>   ```
+> - 渲染时通过 `TagService.getTagById(tagId)` 获取最新的 name/color/emoji
+> - 因此标签重命名后，**下次渲染自动显示新名称**，无需修改 JSON
+> 
+> **❌ Title HTML 字符串需要手动更新**：
+> 
+> **问题**：如果 Event.title 存储的是富文本 HTML（如 PlanManager），则：
+> ```html
+> <!-- 旧 HTML -->
+> <span class="inline-tag" data-tag-id="project-a-id" data-tag-name="项目A">📊项目A</span>
+> 
+> <!-- 问题：data-tag-name 和文本内容仍是旧名称 -->
+> ```
+> 
+> **实现方案（需新增）**：
+> ```typescript
+> class TagService {
+>   async renameTag(tagId: string, newName: string): Promise<void> {
+>     const tag = this.getTagById(tagId);
+>     if (!tag) throw new Error('Tag not found');
+>     
+>     const oldName = tag.name;
+>     
+>     // 1. 更新标签本身
+>     tag.name = newName;
+>     await this.updateTags(this.tags);
+>     
+>     // 2. ✅ TimeLog 中的 TagElement 自动更新（已实现，无需额外代码）
+>     
+>     // 3. ❌ Title HTML 需要手动更新（需实现）
+>     const events = EventService.getAllEvents();
+>     const batch: Array<{ id: string; content: string }> = [];
+>     
+>     for (const event of events) {
+>       if (event.content?.includes(`data-tag-id="${tagId}"`)) {
+>         // 更新 HTML 中的 data-tag-name 和文本
+>         const tempDiv = document.createElement('div');
+>         tempDiv.innerHTML = event.content;
+>         
+>         const tagElements = tempDiv.querySelectorAll(`.inline-tag[data-tag-id="${tagId}"]`);
+>         tagElements.forEach(el => {
+>           el.setAttribute('data-tag-name', newName);
+>           // 更新显示文本（保留 emoji）
+>           const emoji = tag.emoji || '';
+>           el.textContent = `${emoji}${newName}`;
+>         });
+>         
+>         batch.push({ id: event.id, content: tempDiv.innerHTML });
+>       }
+>     }
+>     
+>     // 批量更新
+>     await Promise.all(
+>       batch.map(({ id, content }) => EventService.updateEvent(id, { content }))
+>     );
+>     
+>     this.notifyListeners();
+>   }
+> }
+> ```
+> 
+> **优化方案（延迟更新）**：
+> - 考虑到标签重命名是低频操作，且 HTML 更新成本高
+> - **建议**：只在 UI 渲染时动态读取 TagService（类似 TagElement 组件）
+> - **实现**：在显示 Event.title 时，解析 HTML 并替换 tagName
+>   ```typescript
+>   function renderEventTitle(event: Event): string {
+>     const tempDiv = document.createElement('div');
+>     tempDiv.innerHTML = event.content;
+>     
+>     tempDiv.querySelectorAll('.inline-tag').forEach(el => {
+>       const tagId = el.getAttribute('data-tag-id');
+>       const tag = TagService.getTagById(tagId);
+>       if (tag) {
+>         el.setAttribute('data-tag-name', tag.name);
+>         el.textContent = `${tag.emoji || ''}${tag.name}`;
+>       }
+>     });
+>     
+>     return tempDiv.innerHTML;
+>   }
+>   ```
+> 
+> ---
+> 
+> ### 4. 标签字段全局一致性
+> 
+> **当前实现检查**：
+> - ✅ `TagService` 维护全局标签列表（颜色、emoji、name）
+> - ✅ `TagElement.tsx` 组件监听 `TagService` 更新
+> - ✅ 标签修改后自动重新渲染所有使用该标签的地方
+> 
+> **验证代码**：
+> ```tsx
+> // src/components/UnifiedSlateEditor/elements/TagElement.tsx
+> const tagData = useMemo(() => {
+>   const tag = tagElement.tagId ? TagService.getTagById(tagElement.tagId) : null;
+>   return {
+>     name: tag?.name ?? tagElement.tagName,      // ✅ 从 TagService 读取最新 name
+>     color: tag?.color ?? tagElement.tagColor,  // ✅ 从 TagService 读取最新 color
+>     emoji: tag?.emoji ?? tagElement.tagEmoji,  // ✅ 从 TagService 读取最新 emoji
+>   };
+> }, [tagElement.tagId, ...]);
+> 
+> useEffect(() => {
+>   const listener = () => { /* 触发重新渲染 */ };
+>   TagService.addListener(listener);           // ✅ 监听 TagService 更新
+>   return () => TagService.removeListener(listener);
+> }, [tagElement.tagId]);
+> ```
+> 
+> **结论**：
+> - ✅ 全局一致性已实现
+> - 标签的颜色、emoji、name 修改后，所有地方（Title、TimeLog、日历）自动同步
+> 
+> ---
+> 
+> ### 5. 需补充到 PRD 的章节
+> 
+> **Section 4.3 (标签语义规则) 应补充**：
+> 
+> 1. **Title 标签自动提取**：
+>    - 正则表达式：`/#([^\s#/]+)/g`
+>    - 支持 emoji 前缀：`#📊数据分析` → 匹配 `数据分析`
+>    - 去重逻辑：同一个标签在 title 出现多次，只添加一次到 `Event.tags`
+> 
+> 2. **TimeLog 标签语义**：
+>    - TagElement 仅作为"mention"（提及）
+>    - **不影响** `Event.tags` 数组
+>    - 用于上下文引用（如 `需要与 #张三 讨论`）
+> 
+> 3. **标签迁移场景**：
+>    - 用户从 TimeLog 删除 TagElement → 无影响（因为本就不在 `Event.tags`）
+>    - 用户在 Title 添加 `#标签` → 自动添加到 `Event.tags`
+>    - 用户从 Title 删除 `#标签` → 自动从 `Event.tags` 移除
+> 
+> 4. **标签重命名流程**：
+>    - 调用 `TagService.renameTag(tagId, newName)`
+>    - 自动更新所有 Event 的 Title 字符串
+>    - TimeLog 的 TagElement 自动重新渲染（无需手动更新 Slate JSON）
+> 
+> 5. **手动标签 vs 自动标签**：
+>    - 自动标签：从 Title 提取的 `#标签`
+>    - 手动标签：用户通过标签选择器添加（未在 Title 显示）
+>    - 合并策略：`Event.tags = titleTags ∪ manualTags`（取并集）
+> 
+> **Section 7 (TagService) 应新增方法**：
+> ```typescript
+> renameTag(tagId: string, newName: string): Promise<void>
+> ```
+> 
+> **Section 8 (EventService) 应新增方法**：
+> ```typescript
+> extractTagsFromTitle(title: string): string[]
+> ```
 
 
 ---
