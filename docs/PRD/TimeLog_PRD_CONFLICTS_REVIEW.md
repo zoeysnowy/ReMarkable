@@ -1083,7 +1083,188 @@ Description: 需要与 #张三 讨论，参考 #项目B 的风格
 
 > 👤 **Zoey 回复:**
 > 
+> 直接迁移就好了，我们是开发中的app，而且所有信息在Outlook都有同步的版本
+
+> 🤖 **Resolution (Copilot):**
+> **Status**: ✅ 已解决 + ⚠️ 发现 PRD 与现有架构不一致  
+> **Commit**: [待提交]
 > 
+> ### 决策：简化迁移策略
+> 
+> **理由**：
+> 1. ✅ 应用处于开发阶段，可以接受数据迁移
+> 2. ✅ Outlook 作为备份源，本地数据丢失可从云端恢复
+> 3. ✅ 避免复杂的双格式兼容逻辑
+> 
+> **实施方案**：
+> ```typescript
+> // 一次性迁移脚本（应用启动时执行）
+> async function migrateTimelogToSlateJSON() {
+>   const events = EventService.getAllEvents();
+>   const needsMigration = events.filter(e => 
+>     e.timelog && typeof e.timelog === 'string'
+>   );
+>   
+>   if (needsMigration.length === 0) return;
+>   
+>   console.log(`🔄 开始迁移 ${needsMigration.length} 个事件的 timelog...`);
+>   
+>   for (const event of needsMigration) {
+>     try {
+>       // HTML → Slate JSON
+>       const slateContent = htmlToSlate(event.timelog as string);
+>       
+>       // 更新为新格式
+>       await EventService.updateEvent(event.id, {
+>         timelog: JSON.stringify(slateContent)
+>       });
+>     } catch (error) {
+>       console.error(`❌ 迁移事件 ${event.id} 失败:`, error);
+>       // 失败的事件从 Outlook 重新同步
+>     }
+>   }
+>   
+>   console.log('✅ 迁移完成');
+> }
+> ```
+> 
+> **降级策略**：
+> - 不保留旧格式字段（descriptionHtml）
+> - 迁移失败的事件：标记为需要重新同步
+> - 用户可手动触发"从 Outlook 重新同步"
+> 
+> ---
+> 
+> ### ⚠️ 发现问题：PRD 数据库设计与现有架构不一致
+> 
+> **PRD 设计 (Section 7.2)**：
+> ```javascript
+> // MongoDB 设计
+> {
+>   _id: "evt_123",
+>   timelog: {
+>     content: [...],           // Slate JSON
+>     descriptionHtml: "...",   // HTML
+>     descriptionPlainText: "", // 纯文本
+>     versions: [...],          // 版本历史
+>     syncState: {...}          // 同步状态
+>   }
+> }
+> 
+> // SQLite 设计
+> CREATE TABLE events (
+>   timelog_content TEXT,      -- Slate JSON
+>   timelog_html TEXT,         -- HTML
+>   timelog_plaintext TEXT     -- 纯文本
+> );
+> ```
+> 
+> **当前实现 (src/services/EventService.ts)**：
+> ```typescript
+> // ✅ 实际使用 localStorage + JSON 数组
+> class EventService {
+>   static getAllEvents(): Event[] {
+>     const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
+>     return saved ? JSON.parse(saved) : [];
+>   }
+>   
+>   static async updateEvent(id: string, updates: Partial<Event>) {
+>     const events = this.getAllEvents();
+>     const index = events.findIndex(e => e.id === id);
+>     events[index] = { ...events[index], ...updates };
+>     localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+>   }
+> }
+> ```
+> 
+> **其他服务也采用相同模式**：
+> - ✅ **TagService**: `localStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS)`，存储为 JSON 数组
+> - ✅ **MicrosoftCalendarService**: 
+>   - CalendarGroups: `localStorage.getItem(STORAGE_KEYS.CALENDAR_GROUPS_CACHE)`
+>   - TodoLists: `localStorage.getItem(STORAGE_KEYS.TODO_LISTS_CACHE)`
+>   - Calendars: `localStorage.getItem(STORAGE_KEYS.CALENDARS_CACHE)`
+> - ✅ **ContactService**: `localStorage.getItem(STORAGE_KEY)`，存储联系人数组
+> 
+> **架构差异总结**：
+> 
+> | 方面 | PRD 设计 | 当前实现 |
+> |------|---------|---------|
+> | 存储引擎 | MongoDB/SQLite | localStorage |
+> | 数据结构 | 数据库表/集合 | JSON 数组 |
+> | 查询方式 | SQL/MongoDB 查询 | Array.filter() |
+> | 索引策略 | db.createIndex() | 无（内存遍历）|
+> | 事务支持 | ✅ 有 | ❌ 无 |
+> | 跨进程同步 | ✅ 原生支持 | ⚠️ 需 BroadcastChannel |
+> | 性能（大数据） | ✅ 优秀 | ⚠️ 受限（<10MB）|
+> 
+> **建议：更新 PRD Section 7.2**
+> 
+> **选项 A：采用当前架构（推荐）**
+> - PRD 改为："使用 localStorage + JSON 数组存储"
+> - 理由：
+>   1. 简单、无依赖、跨平台兼容
+>   2. 当前数据量小（<1000 events），性能足够
+>   3. 已有 PersistentStorage 封装（TagService 使用）
+>   4. 符合 Electron 最佳实践（小型应用）
+> - 限制：
+>   - localStorage 限制 5-10MB（约 5000 events）
+>   - 需手动实现跨标签页同步（BroadcastChannel）
+>   - 无事务保证（需自行实现乐观锁）
+> 
+> **选项 B：迁移到数据库（未来）**
+> - Phase 2 引入 SQLite（electron-store + better-sqlite3）
+> - Phase 3 支持 MongoDB（云端备份）
+> - 迁移路径：localStorage → SQLite → MongoDB
+> 
+> **需更新的 PRD 章节**：
+> - Section 7.2: 数据库设计 → 改为"数据存储设计"
+> - Section 7.2.1: 当前架构（localStorage + JSON）
+> - Section 7.2.2: 未来架构（SQLite/MongoDB）
+> - Section 7.2.3: 迁移路径
+> - Section 8.1: 性能优化 → 考虑 localStorage 限制
+> - Section 9.1: 实施指南 → 移除 MongoDB/SQLite 依赖
+> 
+> **localStorage 存储设计示例**：
+> ```typescript
+> // STORAGE_KEYS.EVENTS 存储格式
+> [
+>   {
+>     id: "evt_123",
+>     title: "完成设计稿",
+>     titleContent: "<p>完成 <span class='inline-tag'>设计稿</span></p>",
+>     startTime: "2025-11-13T10:00:00Z",
+>     endTime: "2025-11-13T11:00:00Z",
+>     timeSpec: { kind: "fixed", ... },
+>     tags: ["design"],
+>     description: "<p>讨论了...</p>",  // 富文本 HTML
+>     timelog: "[{\"type\":\"paragraph\",...}]",  // Slate JSON 字符串
+>     
+>     // 同步状态（嵌入）
+>     syncState: {
+>       lastSyncedAt: "2025-11-13T10:00:00Z",
+>       contentHash: "abc123",
+>       status: "synced"
+>     }
+>   }
+> ]
+> 
+> // 版本历史存储（可选，单独 key）
+> // STORAGE_KEYS.EVENT_VERSIONS
+> {
+>   "evt_123": [
+>     { id: "v1", createdAt: "...", content: [...] },
+>     { id: "v2", createdAt: "...", diff: {...} }
+>   ]
+> }
+> ```
+> 
+> **性能优化建议**：
+> 1. 分离冷热数据：
+>    - EVENTS: 当前活跃事件（最近 30 天）
+>    - ARCHIVED_EVENTS: 历史事件（30+ 天前）
+> 2. 延迟加载版本历史（单独存储）
+> 3. 定期清理归档数据（保留最近 1 年）
+> 4. 监控 localStorage 使用量（超过 5MB 提示用户）
 
 
 ---
