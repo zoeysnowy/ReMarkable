@@ -20,8 +20,8 @@ import { Slate, Editable, withReact, RenderElementProps, RenderLeafProps, ReactE
 import { withHistory } from 'slate-history';
 import { EventLineNode, ParagraphNode, TagNode, DateMentionNode, TextNode, CustomEditor } from './types';
 import { EventLineElement } from './EventLineElement';
-import { TagElementComponent } from '../SlateEditor/elements/TagElement';
-import { DateMentionElementComponent } from '../SlateEditor/elements/DateMentionElement';
+import { TagElementComponent } from './elements/TagElement';
+import { DateMentionElementComponent } from './elements/DateMentionElement';
 import { SlateErrorBoundary } from './ErrorBoundary';
 import { EventService } from '../../services/EventService';
 import {
