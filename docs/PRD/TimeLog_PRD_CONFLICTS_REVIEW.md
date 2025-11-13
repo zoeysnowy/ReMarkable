@@ -683,92 +683,111 @@ Description: 需要与 #张三 讨论，参考 #项目B 的风格
 > 4. tag的字段、颜色、emoji都是global全局更新的，你可以看看tagservice和eventservice是不是这样的逻辑
 
 > 🤖 **Resolution (Copilot):**
-> **Status**: ✅ 已有实现，需整合到 EventService  
+> **Status**: ✅ 架构统一，需补充字段规范  
 > **需要明确的设计**:
+> 
+> ### 架构决策：统一的双层内容存储
+> 
+> **核心原则**：所有富文本内容都采用"纯文本 + 富文本"双层存储
+> 
+> **Event 数据结构完善**：
+> ```typescript
+> interface Event {
+>   // ========== Title 双层存储 ==========
+>   title: string;           // 纯文本（用于 Outlook 同步、搜索、简单显示）
+>   titleContent?: string;   // 富文本 HTML（Slate 输出，支持加粗、高亮、标签等）
+>   
+>   // ========== Description 双层存储 ==========
+>   description?: string;           // 纯文本（已存在，用于 Outlook body）
+>   descriptionContent?: string;    // 富文本 HTML（待补充）
+>   
+>   // ========== TimeLog 双层存储 ==========
+>   timelogPlainText?: string;      // 纯文本（用于预览、搜索）
+>   timelog?: string;                // 富文本 HTML（Slate 输出，完整日志）
+>   
+>   // ========== 标签提取来源 ==========
+>   tags?: string[];         // 从 titleContent 自动提取（不包含 timelog 的 mention）
+> }
+> ```
+> 
+> **字段职责说明**：
+> 
+> | 字段 | 类型 | 用途 | 来源 |
+> |------|------|------|------|
+> | `title` | 纯文本 | Outlook 同步、列表显示、搜索 | 从 `titleContent` 提取 |
+> | `titleContent` | 富文本 | 本地富文本编辑、完整格式保留 | Slate 编辑器输出 |
+> | `description` | 纯文本 | Outlook body 字段 | 从 `descriptionContent` 提取 |
+> | `descriptionContent` | 富文本 | Plan 页面 description 行 | Slate 编辑器输出 |
+> | `timelogPlainText` | 纯文本 | 快速预览、搜索索引 | 从 `timelog` 提取 |
+> | `timelog` | 富文本 | TimeLog 完整日志 | Slate 编辑器输出 |
+> | `tags` | ID 数组 | 标签索引、过滤、分类 | 从 `titleContent` 提取 |
+> 
+> **设计理由**：
+> 1. **同步兼容性**：Outlook/Google Calendar 只支持纯文本，需要 `title` 和 `description` 纯文本字段
+> 2. **本地体验**：用户需要富文本编辑能力（加粗、高亮、标签、图片等）
+> 3. **性能优化**：纯文本字段用于搜索索引，避免解析 HTML
+> 4. **模块灵活性**：不同模块可根据需要选择显示纯文本或富文本
+> 
+> **示例**：
+> ```typescript
+> // 用户在 PlanManager 编辑标题
+> const slateOutput = "<p>今天下午要提交 <strong>ReMarkable 1.0</strong> 版本的 <span class='inline-tag' data-tag-id='prd-id'>PRD</span> 文档</p>";
+> 
+> // 保存到 Event
+> {
+>   title: "今天下午要提交 ReMarkable 1.0 版本的 PRD 文档",  // 纯文本（用于 Outlook）
+>   titleContent: slateOutput,  // 富文本（本地显示）
+>   tags: ['prd-id'],  // 从 titleContent 提取
+>   
+>   // TimeLog 同理
+>   timelogPlainText: "讨论了功能优先级，@张三 提出了性能优化建议...",
+>   timelog: "<p>讨论了功能优先级，<span class='inline-tag' data-mention-only='true'>@张三</span> 提出了...</p>",
+>   // 注意：timelog 中的 @张三 不会加入 tags（因为 mention-only=true）
+> }
+> ```
+> 
+> ---
 > 
 > ### 1. Title 标签自动提取机制
 > 
 > **规则**：
-> - Title 中的 `#标签名` 自动添加到 `Event.tags` 数组
-> - TimeLog (Slate 编辑器) 中的 TagElement **不添加**到 `Event.tags`（仅作为 mention）
+> - **Title (content 字段)** 中的 TagElement → 添加到 `Event.tags` 数组
+> - **TimeLog (timelog 字段)** 中的 TagElement → **不添加**到 `Event.tags`（仅作为 mention）
 > 
 > **✅ 现有实现复用**：
 > 
-> **方案 A: HTML 解析方式（PlanManager 已实现）**
+> **PlanManager 已实现（推荐作为标准）**：
 > ```typescript
-> // src/components/PlanManager.tsx L1398-1406
-> // 从 HTML 富文本中提取标签
-> function extractTagsFromHtml(html: string): string[] {
+> // src/components/PlanManager.tsx L1398-1423
+> // 从富文本 HTML (content) 中提取标签
+> function extractTagsFromContent(content: string): { tags: string[], plainText: string } {
 >   const tempDiv = document.createElement('div');
->   tempDiv.innerHTML = html;
->   const tagElements = tempDiv.querySelectorAll('.inline-tag');
->   const extractedTags: string[] = [];
+>   tempDiv.innerHTML = content;
 >   
+>   // 提取标签 ID（排除 mention-only）
+>   const tagElements = tempDiv.querySelectorAll('.inline-tag:not([data-mention-only="true"])');
+>   const extractedTags: string[] = [];
 >   tagElements.forEach(tagEl => {
 >     const tagId = tagEl.getAttribute('data-tag-id');
 >     if (tagId) extractedTags.push(tagId);
+>     tagEl.remove();  // 从 DOM 中移除，获取纯文本
 >   });
 >   
->   return extractedTags;
-> }
-> ```
-> 
-> **方案 B: Slate Fragment 方式（UnifiedSlateEditor 已实现）**
-> ```typescript
-> // src/components/UnifiedSlateEditor/serialization.ts L405-415
-> // 从 Slate 节点中提取标签（排除 mentionOnly）
-> function extractTags(fragment: (TextNode | TagNode | DateMentionNode)[]): string[] {
->   if (!fragment || !Array.isArray(fragment)) {
->     return [];
->   }
+>   const plainText = tempDiv.textContent || '';
 >   
->   return fragment
->     .filter((node): node is TagNode => 
->       'type' in node && 
->       node.type === 'tag' && 
->       !node.mentionOnly  // ✅ 排除 mention-only 标签
->     )
->     .map(node => node.tagId)  // 返回 tagId，不是 tagName
->     .filter(Boolean) as string[];
+>   return { 
+>     tags: [...new Set(extractedTags)],  // 去重
+>     plainText 
+>   };
 > }
-> ```
 > 
-> **推荐方案 C: 统一到 EventService（新增）**
-> ```typescript
-> // EventService 新增方法（整合现有逻辑）
-> class EventService {
->   /**
->    * 从 HTML 内容中提取标签 ID（排除 mention-only）
->    * 复用 PlanManager 的逻辑，但需过滤 data-mention-only="true"
->    */
->   extractTagsFromHtml(html: string): string[] {
->     if (!html) return [];
->     
->     const tempDiv = document.createElement('div');
->     tempDiv.innerHTML = html;
->     const tagElements = tempDiv.querySelectorAll('.inline-tag:not([data-mention-only="true"])');
->     const extractedTags: string[] = [];
->     
->     tagElements.forEach(tagEl => {
->       const tagId = tagEl.getAttribute('data-tag-id');
->       if (tagId) extractedTags.push(tagId);
->     });
->     
->     return [...new Set(extractedTags)];  // 去重
->   }
->   
->   /**
->    * 在 createEvent/updateEvent 时自动调用
->    */
->   async createEvent(eventData: Partial<Event>) {
->     // 如果 title 是富文本 HTML，提取标签
->     if (eventData.content) {
->       const extractedTags = this.extractTagsFromHtml(eventData.content);
->       eventData.tags = extractedTags;
->     }
->     // ...
->   }
-> }
+> // 使用示例
+> const { tags, plainText } = extractTagsFromContent(titleLine.content);
+> const updatedEvent: Event = {
+>   title: plainText,      // 纯文本（用于显示、搜索）
+>   content: titleLine.content,  // 富文本（保留所有格式）
+>   tags: tags,            // 提取的标签 ID
+> };
 > ```
 > 
 > **用户操作场景**：
