@@ -9,7 +9,7 @@
  * 5. 确保所有事件创建路径（Timer、TimeCalendar、PlanManager）都经过统一处理
  */
 
-import { Event } from '../types';
+import { Event, EventLog } from '../types';
 import { STORAGE_KEYS } from '../constants/storage';
 import { formatTimeForStorage } from '../utils/timeUtils';
 import { logger } from '../utils/logger';
@@ -155,14 +155,37 @@ export class EventService {
         return { success: false, error };
       }
 
+      // 🆕 v1.8.1: 初始化 eventlog 为新格式（如果未提供）
+      const now = formatTimeForStorage(new Date());
+      let eventlogField: string | EventLog | undefined = event.eventlog;
+      
+      if (!eventlogField && event.description) {
+        // 从 description 初始化 eventlog（简化版 Slate JSON）
+        const initialEventLog: EventLog = {
+          content: JSON.stringify([{ type: 'paragraph', children: [{ text: event.description }] }]),
+          descriptionHtml: event.description,
+          descriptionPlainText: event.description,
+          attachments: [],
+          versions: [],
+          syncState: {
+            status: 'pending',
+            contentHash: this.hashContent(event.description),
+          },
+          createdAt: now,
+          updatedAt: now,
+        };
+        eventlogField = initialEventLog;
+      }
+      
       // 确保必要字段
       // 🔧 [BUG FIX] skipSync=true时，强制设置syncStatus='local-only'，忽略event.syncStatus
       const finalEvent: Event = {
         ...event,
         remarkableSource: true,
         syncStatus: skipSync ? 'local-only' : (event.syncStatus || 'pending'), // skipSync优先级最高
-        createdAt: event.createdAt || formatTimeForStorage(new Date()),
-        updatedAt: formatTimeForStorage(new Date())
+        createdAt: event.createdAt || now,
+        updatedAt: now,
+        eventlog: eventlogField, // 🆕 使用新格式 eventlog
       };
       
       // 🔍 [DEBUG] 验证最终的syncStatus
@@ -281,44 +304,95 @@ export class EventService {
 
       const originalEvent = existingEvents[eventIndex];
       
-      // 🆕 v1.8: 双向同步 description ↔ timelog
-      // 场景1: Outlook 同步回来的 description → 更新 timelog
-      // 场景2: ReMarkable 内部编辑 timelog → 提取纯文本更新 description
-      // 场景3: 初始状态 timelog 为空但 description 有内容 → 从 description 初始化 timelog
+      // 🆕 v1.8.1: 双向同步 description ↔ eventlog
+      // 支持新旧格式兼容：
+      // - 旧格式：eventlog 是字符串（HTML）
+      // - 新格式：eventlog 是 EventLog 对象（Slate JSON + metadata）
       
       const updatesWithSync = { ...updates };
       
-      // 检测 description 的增量更新
+      // 场景1: description 有变化 → 同步到 eventlog
       if (updates.description !== undefined && updates.description !== originalEvent.description) {
-        // description 有变化 → 同步到 eventlog（如果 eventlog 未在本次更新中设置）
         if ((updates as any).eventlog === undefined) {
-          (updatesWithSync as any).eventlog = updates.description; // 纯文本 → 富文本（简单复制）
+          // 判断 originalEvent.eventlog 类型
+          const isNewFormat = typeof (originalEvent as any).eventlog === 'object' && (originalEvent as any).eventlog !== null;
+          
+          if (isNewFormat) {
+            // 新格式：更新 EventLog 对象
+            const existingEventLog = (originalEvent as any).eventlog as EventLog;
+            const newEventLog: EventLog = {
+              ...existingEventLog,
+              content: JSON.stringify([{ type: 'paragraph', children: [{ text: updates.description }] }]),
+              descriptionHtml: updates.description,
+              descriptionPlainText: this.stripHtml(updates.description),
+              syncState: {
+                ...existingEventLog.syncState,
+                contentHash: this.hashContent(updates.description),
+                status: 'pending',
+              },
+              updatedAt: formatTimeForStorage(new Date()),
+            };
+            (updatesWithSync as any).eventlog = newEventLog;
+          } else {
+            // 旧格式：直接赋值字符串
+            (updatesWithSync as any).eventlog = updates.description;
+          }
+          
           console.log('[EventService] description 增量更新 → 同步到 eventlog:', {
             eventId,
+            isNewFormat,
             description: updates.description.substring(0, 50),
-            eventlog: (updatesWithSync as any).eventlog.substring(0, 50)
           });
         }
       }
       
-      // 检测 eventlog 的增量更新
+      // 场景2: eventlog 有变化 → 同步到 description
       if ((updates as any).eventlog !== undefined && (updates as any).eventlog !== (originalEvent as any).eventlog) {
-        // eventlog 有变化 → 提取纯文本同步到 description（如果 description 未在本次更新中设置）
         if (updates.description === undefined) {
-          // 简单提取：移除 HTML 标签，保留纯文本
-          const plainText = ((updates as any).eventlog as string).replace(/<[^>]*>/g, '');
-          updatesWithSync.description = plainText;
+          const newEventlog = (updates as any).eventlog;
+          const isNewFormat = typeof newEventlog === 'object' && newEventlog !== null;
+          
+          if (isNewFormat) {
+            // 新格式：从 EventLog 提取 descriptionHtml 或 descriptionPlainText
+            const eventLogObj = newEventlog as EventLog;
+            updatesWithSync.description = eventLogObj.descriptionHtml || eventLogObj.descriptionPlainText || '';
+            
+            // 🆕 自动更新 updatedAt
+            (updatesWithSync as any).eventlog = {
+              ...eventLogObj,
+              updatedAt: formatTimeForStorage(new Date()),
+            };
+          } else {
+            // 旧格式：提取纯文本
+            const plainText = this.stripHtml(newEventlog as string);
+            updatesWithSync.description = plainText;
+          }
+          
           console.log('[EventService] eventlog 增量更新 → 同步到 description:', {
             eventId,
-            eventlog: ((updates as any).eventlog as string).substring(0, 50),
-            description: plainText.substring(0, 50)
+            isNewFormat,
+            description: updatesWithSync.description?.substring(0, 50),
           });
         }
       }
       
-      // 初始化场景：eventlog 为空但 description 有内容
+      // 场景3: 初始化场景 - eventlog 为空但 description 有内容
       if (!(originalEvent as any).eventlog && originalEvent.description && (updates as any).eventlog === undefined) {
-        (updatesWithSync as any).eventlog = originalEvent.description;
+        const initialEventLog: EventLog = {
+          content: JSON.stringify([{ type: 'paragraph', children: [{ text: originalEvent.description }] }]),
+          descriptionHtml: originalEvent.description,
+          descriptionPlainText: this.stripHtml(originalEvent.description),
+          attachments: [],
+          versions: [],
+          syncState: {
+            status: 'pending',
+            contentHash: this.hashContent(originalEvent.description),
+          },
+          createdAt: originalEvent.createdAt || formatTimeForStorage(new Date()),
+          updatedAt: formatTimeForStorage(new Date()),
+        };
+        (updatesWithSync as any).eventlog = initialEventLog;
+        
         console.log('[EventService] 初始化 eventlog 从 description:', {
           eventId,
           description: originalEvent.description.substring(0, 50)
@@ -514,6 +588,39 @@ export class EventService {
    */
   static isInitialized(): boolean {
     return syncManagerInstance !== null;
+  }
+
+  /**
+   * 🆕 v1.8.1: 生成内容哈希（用于检测 eventlog 变化）
+   * 简化版实现：使用字符串长度 + 前100字符
+   */
+  private static hashContent(content: string): string {
+    if (!content) return '0-';
+    const prefix = content.substring(0, 100);
+    return `${content.length}-${prefix.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)}`;
+  }
+
+  /**
+   * 🆕 v1.8.1: 移除 HTML 标签，提取纯文本
+   */
+  private static stripHtml(html: string): string {
+    if (!html) return '';
+    return html.replace(/<[^>]*>/g, '').trim();
+  }
+
+  /**
+   * 🆕 v1.8.1: Slate JSON → HTML 转换（简化版）
+   */
+  private static slateToHtml(slateJson: any[]): string {
+    if (!slateJson || !Array.isArray(slateJson)) return '';
+    
+    return slateJson.map(node => {
+      if (node.type === 'paragraph') {
+        const text = node.children?.map((child: any) => child.text || '').join('') || '';
+        return `<p>${text}</p>`;
+      }
+      return '';
+    }).join('');
   }
 }
 
