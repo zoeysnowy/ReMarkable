@@ -1133,33 +1133,33 @@ export function parseNaturalLanguage(input: string, referenceDate: Date = new Da
         input: trimmedInput 
       });
       
-      // 检查是否还包含日期范围
+      // 检查是否包含日期
       let dateRange: DateRange | null = null;
       
-      // 🔧 修复：按词条长度从长到短排序，优先匹配更具体的词条（如"下周五"优先于"下周"）
-      const sortedDateEntries = Object.entries(DATE_RANGE_DICTIONARY).sort((a, b) => b[0].length - a[0].length);
-      for (const [dateKey, dateFunc] of sortedDateEntries) {
-        if (trimmedInput.includes(dateKey.toLowerCase())) {
-          dateRange = dateFunc(referenceDate);
-          dbg('dict', '📅 同时匹配到日期范围', { dateKey });
+      // 🔧 修复：先检查精确日期点（如"下周五"），再检查日期范围（如"下周"）
+      // 按词条长度从长到短排序，优先匹配更具体的词条
+      const sortedPointEntries = Object.entries(POINT_IN_TIME_DICTIONARY).sort((a, b) => b[0].length - a[0].length);
+      for (const [pointKey, pointFunc] of sortedPointEntries) {
+        if (trimmedInput.includes(pointKey.toLowerCase())) {
+          const point = pointFunc(referenceDate);
+          dateRange = {
+            start: point.date,
+            end: point.date,
+            displayHint: point.displayHint,
+            isFuzzyDate: false
+          };
+          dbg('dict', '📍 同时匹配到精确日期点', { pointKey });
           break;
         }
       }
       
-      // 检查是否包含精确日期点
+      // 如果没有匹配到精确日期点，再检查日期范围
       if (!dateRange) {
-        // 🔧 修复：按词条长度从长到短排序，优先匹配更具体的词条
-        const sortedPointEntries = Object.entries(POINT_IN_TIME_DICTIONARY).sort((a, b) => b[0].length - a[0].length);
-        for (const [pointKey, pointFunc] of sortedPointEntries) {
-          if (trimmedInput.includes(pointKey.toLowerCase())) {
-            const point = pointFunc(referenceDate);
-            dateRange = {
-              start: point.date,
-              end: point.date,
-              displayHint: point.displayHint,
-              isFuzzyDate: false
-            };
-            dbg('dict', '📍 同时匹配到精确日期点', { pointKey });
+        const sortedDateEntries = Object.entries(DATE_RANGE_DICTIONARY).sort((a, b) => b[0].length - a[0].length);
+        for (const [dateKey, dateFunc] of sortedDateEntries) {
+          if (trimmedInput.includes(dateKey.toLowerCase())) {
+            dateRange = dateFunc(referenceDate);
+            dbg('dict', '📅 同时匹配到日期范围', { dateKey });
             break;
           }
         }
