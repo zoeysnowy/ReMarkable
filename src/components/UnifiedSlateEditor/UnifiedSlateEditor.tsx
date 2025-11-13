@@ -121,7 +121,7 @@ export interface UnifiedSlateEditorHandle {
 
 // 自定义编辑器配置
 const withCustom = (editor: CustomEditor) => {
-  const { isInline, isVoid, normalizeNode } = editor;
+  const { isInline, isVoid, normalizeNode, insertBreak } = editor;
 
   editor.isInline = element => {
     const e = element as any;
@@ -131,6 +131,48 @@ const withCustom = (editor: CustomEditor) => {
   editor.isVoid = element => {
     const e = element as any;
     return (e.type === 'tag' || e.type === 'dateMention') ? true : isVoid(element);
+  };
+
+  // 🆕 拦截 insertBreak（Enter 键）以继承 bullet 属性
+  editor.insertBreak = () => {
+    const { selection } = editor;
+    
+    if (selection) {
+      // 查找当前段落节点
+      const [paragraphNode] = Editor.nodes(editor, {
+        match: n => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+      });
+      
+      if (paragraphNode) {
+        const [node] = paragraphNode;
+        const para = node as any;
+        
+        // 如果当前段落有 bullet 属性，在分割后继承
+        if (para.bullet) {
+          const bulletLevel = para.bulletLevel || 0;
+          
+          // 执行默认的分割操作
+          insertBreak();
+          
+          // 为新段落设置 bullet 属性
+          const [newParagraphNode] = Editor.nodes(editor, {
+            match: n => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+          });
+          
+          if (newParagraphNode) {
+            Transforms.setNodes(editor, { 
+              bullet: true, 
+              bulletLevel: bulletLevel 
+            } as any);
+          }
+          
+          return;
+        }
+      }
+    }
+    
+    // 默认行为
+    insertBreak();
   };
 
   // 🔥 normalizeNode 确保 void inline 元素后面总有空格

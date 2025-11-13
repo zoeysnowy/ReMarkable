@@ -416,8 +416,10 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
   const generateCalendar = () => {
     const startOfMonth = currentMonth.startOf('month');
     const endOfMonth = currentMonth.endOf('month');
-    const startOfWeek = startOfMonth.startOf('week');
-    const endOfWeek = endOfMonth.endOf('week');
+    // 🔧 修复：按周一作为一周开始（符合中国习惯和time.config.ts配置）
+    // dayjs默认周日开始，需要加1天调整到周一
+    const startOfWeek = startOfMonth.startOf('week').add(1, 'day');
+    const endOfWeek = endOfMonth.endOf('week').add(1, 'day');
 
     const days = [];
     let current = startOfWeek;
@@ -1299,7 +1301,7 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
           
           <div className="calendar-grid">
             <div className="weekdays">
-              {['日', '一', '二', '三', '四', '五', '六'].map(day => (
+              {['一', '二', '三', '四', '五', '六', '日'].map(day => (
                 <div key={day} className="weekday">{day}</div>
               ))}
             </div>
