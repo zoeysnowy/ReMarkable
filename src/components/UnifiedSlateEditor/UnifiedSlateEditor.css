@@ -53,3 +53,60 @@
 .unified-event-line.placeholder-line .event-line-content {
   pointer-events: all;
 }
+
+/* 🆕 Bullet List 样式 */
+.slate-bulleted-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.slate-list-item {
+  position: relative;
+  padding-left: 24px;
+  margin: 4px 0;
+}
+
+/* Level 1: ● (实心圆) */
+.slate-list-item[data-level="0"]::before {
+  content: '●';
+  position: absolute;
+  left: 8px;
+  color: #374151;
+}
+
+/* Level 2: ○ (空心圆) */
+.slate-list-item[data-level="1"]::before {
+  content: '○';
+  position: absolute;
+  left: 8px;
+  color: #374151;
+}
+
+/* Level 3: – (破折号) */
+.slate-list-item[data-level="2"]::before {
+  content: '–';
+  position: absolute;
+  left: 8px;
+  color: #374151;
+}
+
+/* Level 4: □ (空心方块) */
+.slate-list-item[data-level="3"]::before {
+  content: '□';
+  position: absolute;
+  left: 8px;
+  color: #374151;
+}
+
+/* Level 5: ▸ (三角形) */
+.slate-list-item[data-level="4"]::before {
+  content: '▸';
+  position: absolute;
+  left: 8px;
+  color: #374151;
+}
+
+.slate-list-item > div {
+  display: inline;
+}

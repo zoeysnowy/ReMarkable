@@ -1306,6 +1306,15 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
         );
       case 'paragraph':
         return <div {...props.attributes}>{props.children}</div>;
+      case 'bulleted-list':
+        return <ul className="slate-bulleted-list" {...props.attributes}>{props.children}</ul>;
+      case 'list-item':
+        const level = (element as any).level || 0;
+        return (
+          <li className="slate-list-item" data-level={level} {...props.attributes}>
+            {props.children}
+          </li>
+        );
       case 'tag':
         return <TagElementComponent {...props} />;
       case 'dateMention':

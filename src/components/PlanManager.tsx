@@ -838,7 +838,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     if (!editor) return;
     
     // Slate API
-    const { Editor } = require('slate');
+    const { Editor, Transforms, Element, Node } = require('slate');
     const { ReactEditor } = require('slate-react');
     
     try {
@@ -863,6 +863,30 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           Editor.removeMark(editor, 'italic');
           Editor.removeMark(editor, 'underline');
           Editor.removeMark(editor, 'strikethrough');
+          break;
+        case 'toggleBulletList':
+          // 🆕 Toggle bullet list
+          const [match] = Editor.nodes(editor, {
+            match: (n: any) => !Editor.isEditor(n) && Element.isElement(n) && (n as any).type === 'bulleted-list',
+          });
+          
+          if (match) {
+            // 已是列表，转换回段落
+            Transforms.unwrapNodes(editor, {
+              match: (n: any) => !Editor.isEditor(n) && Element.isElement(n) && (n as any).type === 'bulleted-list',
+              split: true,
+            });
+            Transforms.setNodes(editor, { type: 'paragraph' });
+          } else {
+            // 转换为列表
+            const level = 0; // 默认为第一层
+            Transforms.wrapNodes(editor, { type: 'list-item', level, children: [] } as any, {
+              mode: 'all',
+            });
+            Transforms.wrapNodes(editor, { type: 'bulleted-list', children: [] } as any, {
+              mode: 'all',
+            });
+          }
           break;
         default:
           break;

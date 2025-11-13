@@ -80,7 +80,24 @@ export interface EventMetadata {
  */
 export interface ParagraphNode {
   type: 'paragraph';
-  children: (TextNode | TagNode | DateMentionNode)[];
+  children: (TextNode | TagNode | DateMentionNode | BulletedListNode)[];
+}
+
+/**
+ * BulletedList - 无序列表节点
+ */
+export interface BulletedListNode {
+  type: 'bulleted-list';
+  children: ListItemNode[];
+}
+
+/**
+ * ListItem - 列表项节点
+ */
+export interface ListItemNode {
+  type: 'list-item';
+  level?: number;  // 嵌套层级 (0-4)
+  children: (ParagraphNode | BulletedListNode)[];
 }
 
 /**
@@ -122,7 +139,7 @@ export interface DateMentionNode {
 
 // ==================== 类型导出 ====================
 
-export type CustomElement = EventLineNode | ParagraphNode | TagNode | DateMentionNode;
+export type CustomElement = EventLineNode | ParagraphNode | TagNode | DateMentionNode | BulletedListNode | ListItemNode;
 export type CustomText = TextNode;
 
 // ==================== 工具类型 ====================

@@ -32,6 +32,61 @@ export enum SyncStatus {
 export type SyncStatusType = 'pending' | 'synced' | 'error' | 'local-only' | 'conflict';
 
 /**
+ * 附件元数据
+ * 用于 Event.eventlog.attachments
+ */
+export interface Attachment {
+  id: string;
+  filename: string;
+  size: number;              // 文件大小（字节）
+  mimeType: string;          // MIME 类型
+  localPath?: string;        // 本地路径（Electron userData/attachments/）
+  cloudUrl?: string;         // 云端 URL（OneDrive）
+  status: 'local-only' | 'synced' | 'pending-upload' | 'cloud-only' | 'upload-failed';
+  uploadedAt: string;        // 上传时间
+  lastAccessedAt?: string;   // 最后访问时间
+  isPinned?: boolean;        // 是否固定（不自动清理）
+}
+
+/**
+ * EventLog 版本快照
+ * 用于版本控制和冲突解决
+ */
+export interface EventLogVersion {
+  id: string;
+  createdAt: string;         // 版本创建时间
+  content: string;           // Slate JSON 快照
+  diff?: any;                // Delta（可选，用于压缩存储）
+  triggerType: 'auto' | 'manual' | 'sync' | 'conflict-resolved';
+  changesSummary?: string;   // 变更摘要（如 "添加 3 段，删除 1 段"）
+  contentHash?: string;      // SHA-256 哈希
+}
+
+/**
+ * EventLog 同步状态
+ */
+export interface EventLogSyncState {
+  lastSyncedAt?: string;     // 最后同步时间
+  contentHash?: string;      // 内容哈希（用于冲突检测）
+  status?: 'pending' | 'synced' | 'conflict';
+}
+
+/**
+ * EventLog 完整结构
+ * 用于 Event.eventlog 字段（重构后）
+ */
+export interface EventLog {
+  content: string;              // Slate JSON 字符串（主存储，用户编辑）
+  descriptionHtml?: string;     // HTML（自动从 content 生成，用于 Outlook 同步）
+  descriptionPlainText?: string; // 纯文本（用于搜索）
+  attachments?: Attachment[];   // 附件列表
+  versions?: EventLogVersion[]; // 版本历史（最多 50 个）
+  syncState?: EventLogSyncState; // 同步状态
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
  * 联系人平台来源
  */
 export type ContactSource = 'remarkable' | 'outlook' | 'google' | 'icloud';
@@ -133,7 +188,33 @@ export interface Event {
   type?: 'todo' | 'task' | 'event'; // 事件类型（向后兼容）
   
   // 🆕 v1.8: Rich-text description support
-  eventlog?: string;     // 富文本日志（HTML 格式，ReMarkable 内部展示用，支持标签、图片等）
+  // 🔧 v2.0: 重构为完整的 EventLog 对象
+  /**
+   * 富文本日志字段
+   * 
+   * ⚠️ 兼容性说明：
+   * - 旧数据：string（HTML 格式）
+   * - 新数据：EventLog 对象（Slate JSON + 元数据）
+   * 
+   * 使用方式：
+   * ```typescript
+   * // 读取时检测类型
+   * if (typeof event.eventlog === 'string') {
+   *   // 旧格式：HTML 字符串
+   *   const html = event.eventlog;
+   * } else if (event.eventlog && 'content' in event.eventlog) {
+   *   // 新格式：EventLog 对象
+   *   const slateJSON = event.eventlog.content;
+   * }
+   * 
+   * // 写入时使用新格式
+   * event.eventlog = {
+   *   content: JSON.stringify(slateNodes),
+   *   descriptionHtml: '<p>...</p>',
+   * };
+   * ```
+   */
+  eventlog?: string | EventLog;
   
   // 🆕 Issue #12: Timer ↔ Plan 集成
   parentEventId?: string;   // 父事件 ID（用于 Timer 子事件关联）

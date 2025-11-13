@@ -60,7 +60,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
 
   // 🆕 根据 mode 决定显示的功能集合
   const menuFloatingbarFeatures: ToolbarFeatureType[] = ['tag', 'emoji', 'dateRange', 'priority', 'color', 'addTask'];
-  const textFloatingbarFeatures: ToolbarFeatureType[] = ['bold', 'italic', 'underline', 'strikethrough', 'clearFormat', 'bullet', 'indent', 'outdent', 'collapse', 'expand'];
+  const textFloatingbarFeatures: ToolbarFeatureType[] = ['bold', 'italic', 'underline', 'strikethrough', 'clearFormat', 'bullet'];
   
   // 根据 mode 覆盖 config.features（如果外层没有提供）
   const effectiveFeatures = mode === 'text_floatingbar' 
@@ -74,11 +74,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
     underline: { icon: '𝐔', label: '下划线', command: 'underline' },
     strikethrough: { icon: '𝐒', label: '删除线', command: 'strikeThrough' },
     clearFormat: { icon: '✕', label: '清除格式', command: 'removeFormat' },
-    bullet: { icon: '•', label: '项目符号', command: 'toggleBulletList' },
-    indent: { icon: '→', label: '缩进 (Tab)', command: 'sinkListItem' },
-    outdent: { icon: '←', label: '减少缩进 (Shift+Tab)', command: 'liftListItem' },
-    collapse: { icon: '▸', label: '收起 (Ctrl+↑)', command: 'collapseListItem' },
-    expand: { icon: '▾', label: '展开 (Ctrl+↓)', command: 'expandListItem' },
+    bullet: { icon: 'bulletpoints-svg', label: '项目符号', command: 'toggleBulletList' },
   };
 
   const actionFeatureConfig = {
@@ -94,6 +90,25 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
   const renderTextFormatButton = (feature: ToolbarFeatureType) => {
     const btnConfig = textFeatureConfig[feature as keyof typeof textFeatureConfig];
     if (!btnConfig) return null;
+
+    // 🆕 bullet 特殊处理：使用 SVG 图标
+    if (feature === 'bullet') {
+      return (
+        <Tippy key={feature} content={btnConfig.label} placement="top">
+          <button
+            className="headless-toolbar-btn headless-toolbar-text-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onTextFormat?.(btnConfig.command);
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <use href="/src/assets/icons/bulletpoints.svg#bulletpoints" />
+            </svg>
+          </button>
+        </Tippy>
+      );
+    }
 
     return (
       <Tippy key={feature} content={btnConfig.label} placement="top">
@@ -351,7 +366,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
         <div className="headless-toolbar-main">
           {effectiveFeatures.map((feature) => {
             // 文本格式化功能
-            if (['bold', 'italic', 'underline', 'strikethrough', 'clearFormat', 'bullet', 'indent', 'outdent', 'collapse', 'expand'].includes(feature)) {
+            if (['bold', 'italic', 'underline', 'strikethrough', 'clearFormat', 'bullet'].includes(feature)) {
               return renderTextFormatButton(feature);
             }
             // 快捷操作功能
