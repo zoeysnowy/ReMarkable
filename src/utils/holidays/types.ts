@@ -122,7 +122,7 @@ export interface Event {
   priority?: 'low' | 'medium' | 'high' | 'urgent'; // 优先级
   isCompleted?: boolean; // 是否完成
   level?: number;        // 层级缩进（用于 Plan 页面显示）
-  mode?: 'title' | 'description'; // 显示模式（title或description行）
+  mode?: 'title' | 'eventlog'; // 显示模式（title或eventlog行）
   type?: 'todo' | 'task' | 'event'; // 事件类型（向后兼容）
   
   // 🆕 v1.8: Rich-text description support

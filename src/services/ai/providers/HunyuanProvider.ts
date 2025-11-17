@@ -13,6 +13,8 @@
  * 优势：
  * - 免费额度：10 万 tokens/月（可持续）
  * - 中文优化：腾讯自研，中文理解强
+
+import { formatTimeForStorage } from '../../../utils/timeUtils';
  * - 速度快：国内服务器，延迟低
  * - 稳定性高：腾讯云基础设施
  * 
@@ -69,7 +71,7 @@ export class HunyuanProvider implements AIProvider {
    */
   private async generateSignature(payload: string, timestamp: number): Promise<string> {
     const service = 'hunyuan';
-    const date = new Date(timestamp * 1000).toISOString().split('T')[0];
+    const date = formatTimeForStorage(new Date(timestamp * 1000)).split(' ')[0];
     const algorithm = 'TC3-HMAC-SHA256';
     
     // 简化版签名（实际应用中需要完整实现）

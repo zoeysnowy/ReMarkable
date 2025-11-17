@@ -21,11 +21,13 @@ dayjs.locale('zh-cn');
 interface UnifiedDateTimePickerProps {
   onSelect?: (start: string | null, end: string | null) => void;
   onClose?: () => void;
-  onApplied?: (startIso: string, endIso?: string, allDay?: boolean) => void; // TimeHub 模式：写入成功后回调（外层可插入可视化标记/保存其它字段）
+  onApplied?: (startIso: string, endIso?: string, allDay?: boolean, userInputText?: string) => void; // TimeHub 模式：写入成功后回调（外层可插入可视化标记/保存其它字段），新增 userInputText 参数
   eventId?: string;         // 可选：绑定事件ID时，将通过 TimeHub 读写
   useTimeHub?: boolean;     // 可选：默认 false，置为 true 时启用 TimeHub
   initialStart?: string | Date; // 当没有 eventId 或 TimeHub 尚未返回时的初始值
   initialEnd?: string | Date;
+  initialText?: string;     // 🆕 用户在 @ 后输入的初始文本（如 "明天"），作为自然语言输入框的初始值
+  onSearchChange?: (text: string, parsed: { start?: Date; end?: Date } | null) => void; // 🆕 搜索框变化时的回调，用于实时更新父组件的解析结果
 }
 
 // 自定义时间列选择器
@@ -275,6 +277,8 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
   useTimeHub = false,
   initialStart,
   initialEnd,
+  initialText = '', // 🆕 接收用户在 @ 后输入的初始文本
+  onSearchChange,   // 🆕 搜索框变化回调
 }) => {
   // Hooks must be called unconditionally; useEventTime gracefully handles undefined eventId
   const eventTime = useEventTime(eventId);
@@ -295,8 +299,9 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
   const [scrollTrigger, setScrollTrigger] = useState<number>(0); // 用于强制重新滚动
   
   // 新增: chrono 搜索框和全天按钮状态
-  const [searchInput, setSearchInput] = useState('');
+  const [searchInput, setSearchInput] = useState(initialText); // 🔧 使用 initialText 作为初始值
   const [allDay, setAllDay] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   
   // 🆕 v1.1: displayHint 状态（保存用户原始输入的模糊时间）
   const [displayHint, setDisplayHint] = useState<string | null>(null);
@@ -306,6 +311,18 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
 
   const containerRef = useRef<HTMLDivElement>(null);
   const editContainerRef = useRef<HTMLDivElement>(null);
+  
+  // 🆕 v2.9: 组件挂载时自动聚焦到自然语言输入框
+  useEffect(() => {
+    // 延迟聚焦，确保 DOM 已完全渲染
+    const timer = setTimeout(() => {
+      if (searchInputRef.current) {
+        searchInputRef.current.focus();
+        dbg('picker', '🎯 自动聚焦到自然语言输入框');
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   // 当绑定了事件且存在已保存时间时，用其初始化本地选择状态；否则尝试使用初始值
   useEffect(() => {
@@ -315,7 +332,7 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
     // 原因：eventTime.start/end 是 'YYYY-MM-DD HH:mm:ss' 格式（本地时间，空格分隔）
     // parseLocalTimeString 会手动构造 Date 对象（new Date(y,m,d,h,min,s)），绕过 ISO 8601 解析器
     const start = eventTime.start ? dayjs(parseLocalTimeString(eventTime.start)) : null;
-    const end = eventTime.end ? dayjs(parseLocalTimeString(eventTime.end)) : start;
+    const end = eventTime.end ? dayjs(parseLocalTimeString(eventTime.end)) : null;
     
     dbg('picker', '🔄 从 TimeHub 快照初始化 Picker', { 
       eventId, 
@@ -324,9 +341,12 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
       loading: eventTime.loading,
       timeFieldState: eventTime.timeFieldState,
       解析后的start: start?.format('YYYY-MM-DD HH:mm'),
-      解析后的end: end?.format('YYYY-MM-DD HH:mm')
+      解析后的end: end?.format('YYYY-MM-DD HH:mm'),
+      是否有endTime: !!eventTime.end
     });
     if (start) {
+      // 🔧 v2.9: 日期选择器需要 end 来高亮范围，如果没有 end 就用 start
+      // 但时间状态由 timeFieldState 恢复，不受影响
       setSelectedDates({ start, end: end || start });
       
       // 🆕 v2.7.4: 直接使用 timeFieldState 中存储的实际值（避免从 ISO 解析时间）
@@ -363,24 +383,26 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
     if (eventTime && (eventTime.start || eventTime.end)) return; // 已有 TimeHub 数据
     if (!initialStart) return; // 无初始值
     
-    // 🆕 v2.7.4: 使用统一的时间解析函数（符合 Time Architecture 约定）
+    // 🆕 v2.8: 使用统一的时间解析函数，正确处理 undefined endTime
     const start = dayjs(typeof initialStart === 'string' ? parseLocalTimeString(initialStart) : initialStart);
     const end = initialEnd
       ? dayjs(typeof initialEnd === 'string' ? parseLocalTimeString(initialEnd) : initialEnd)
-      : start;
+      : null;
     
     dbg('picker', '🔄 使用 initialStart/initialEnd 初始化 Picker (无TimeHub快照)', { 
       eventId, 
       initialStart, 
       initialEnd,
       解析后的start: start?.format('YYYY-MM-DD HH:mm'),
-      解析后的end: end?.format('YYYY-MM-DD HH:mm')
+      解析后的end: end?.format('YYYY-MM-DD HH:mm'),
+      是否有initialEnd: !!initialEnd
     });
-    setSelectedDates({ start, end });
+    // 🔧 v2.9: 日期选择器需要 end 来高亮范围，如果没有 end 就用 start
+    setSelectedDates({ start, end: end || start });
     const hasSpecificStart = start.hour() !== 0 || start.minute() !== 0;
     const hasSpecificEnd = end ? (end.hour() !== 0 || end.minute() !== 0) : false;
     setStartTime(hasSpecificStart ? { hour: start.hour(), minute: start.minute() } : null);
-    setEndTime(end && hasSpecificEnd ? { hour: end.hour(), minute: end.minute() } : null);
+    setEndTime(end && hasSpecificEnd ? { hour: end.hour(), minute: end.minute() } : null);  // ✅ 如果没有 end，设置为 null
     // 重置滚动以对齐选中项
     setScrollTrigger((x) => x + 1);
   }, [eventId, initialStart, initialEnd]);
@@ -639,8 +661,8 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
         // 🔧 修复时区问题：直接使用 dayjs.format() 而不是 .toDate()
         // 原因：.toDate() 会触发 UTC 转换，导致日期错位（如"下周五"变成周四）
         const startIso = startDateTime.format('YYYY-MM-DD HH:mm:ss');
-        // 🔧 修复：只有 endDateTime 存在时才设置 end，否则使用 start
-        const endIso = endDateTime ? endDateTime.format('YYYY-MM-DD HH:mm:ss') : startIso;
+        // 🔥 修复：只有 endDateTime 存在时才设置 end，否则传 undefined
+        const endIso = endDateTime ? endDateTime.format('YYYY-MM-DD HH:mm:ss') : undefined;
         // 🔧 使用组件的 allDay 状态，而不是自动推断
         const allDaySelected = allDay;
         // 🆕 v1.1: 如果有 displayHint 且用户勾选了全天，添加"全天"后缀
@@ -662,8 +684,7 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
           eventId, 
           startIso, 
           endIso, 
-          allDaySelected, 
-          displayHint: finalDisplayHint,
+          allDaySelected,
           timeFieldState,
           isFuzzyDate,
           isFuzzyTime,
@@ -678,14 +699,13 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
             kind: startIso !== endIso ? 'range' : 'fixed',
             allDay: allDaySelected,
             source: 'picker',
-            displayHint: finalDisplayHint,
             isFuzzyDate,         // 🆕 v2.6
             timeFieldState,      // 🆕 v2.6
             isFuzzyTime,         // 🆕 v2.7
             fuzzyTimeName: fuzzyTimeName || undefined  // 🆕 v2.7
           });
           dbg('picker', '✅ TimeHub 写入成功，准备调用 onApplied', { eventId });
-          onApplied?.(startIso, endIso, allDaySelected);
+          onApplied?.(startIso, endIso, allDaySelected, searchInput); // 🔧 传递完整的用户输入文本
         } catch (err) {
           error('picker', '❌ TimeHub 写入失败', { eventId, error: err });
         }
@@ -693,11 +713,11 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
         // TimeHub 模式但没有 eventId：先回调 onApplied，让外层创建 Event 并写入 TimeHub
         // 🔧 修复时区问题：直接使用 dayjs.format()
         const startIso = startDateTime.format('YYYY-MM-DD HH:mm:ss');
-        const endIso = endDateTime ? endDateTime.format('YYYY-MM-DD HH:mm:ss') : startIso;
+        const endIso = endDateTime ? endDateTime.format('YYYY-MM-DD HH:mm:ss') : undefined;
         // 🔧 使用组件的 allDay 状态
         const allDaySelected = allDay;
         dbg('picker', '🆕 TimeHub 模式但没有 eventId，先调用 onApplied', { startIso, endIso, allDaySelected });
-        onApplied?.(startIso, endIso, allDaySelected);
+        onApplied?.(startIso, endIso, allDaySelected, searchInput); // 🔧 传递完整的用户输入文本
       } else {
         // 保持向后兼容的回调
         const startStr = startDateTime.format('YYYY-MM-DD HH:mm');
@@ -719,6 +739,62 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
     onSelect?.(null, null);
     onClose?.();
   };
+
+  // 🆕 document 级别的键盘事件监听（仅当 Picker 内部有焦点时）
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // 检查 Picker 是否可见
+      if (!containerRef.current) return;
+      
+      // 🔧 如果事件来自 input/textarea，不拦截（让输入框自己处理）
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return;
+      }
+      
+      // 🔧 v2.9: 改进焦点检测逻辑
+      // 1. 如果焦点在 Picker 内部元素 → 处理
+      // 2. 如果焦点在 body，但最近一次点击/blur 在 Picker 内部 → 也处理
+      const activeElement = document.activeElement;
+      const isInPicker = activeElement && containerRef.current.contains(activeElement);
+      const isFocusOnBody = !activeElement || activeElement.tagName === 'BODY';
+      
+      // 如果焦点在 Picker 外部（且不是 body），不处理
+      if (!isInPicker && !isFocusOnBody) {
+        return;
+      }
+      
+      // 🔧 如果焦点在 body，检查是否最近有交互在 Picker 内
+      if (isFocusOnBody) {
+        // 检查最近一次点击是否在 Picker 内
+        const lastClickedElement = e.target as HTMLElement;
+        const wasClickInPicker = lastClickedElement && containerRef.current.contains(lastClickedElement);
+        
+        // 检查 searchInput 是否有内容（说明用户在使用）
+        const hasSearchInput = searchInput.trim().length > 0;
+        
+        // 只有在用户明确与 Picker 交互时才处理
+        if (!wasClickInPicker && !hasSearchInput) {
+          return;
+        }
+      }
+      
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        dbg('picker', '⌨️ Picker 内 Enter 键触发 handleApply');
+        handleApply();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        dbg('picker', '⌨️ Picker 内 Escape 键触发 handleCancel');
+        handleCancel();
+      }
+    };
+
+    document.addEventListener('keydown', handleGlobalKeyDown, true);
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown, true);
+  }, [handleApply, handleCancel, searchInput]); // 🔧 v2.9: 添加 searchInput 依赖
 
   // 生成预览内容
   const renderPreviewContent = () => {
@@ -768,8 +844,14 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
     }
     
     // 情况1: 通过快捷按钮选择（上午/下午/晚上）且未手动调整
-    if (isQuickBtnSelection && (selectedQuickBtn === 'morning' || selectedQuickBtn === 'afternoon' || selectedQuickBtn === 'evening')) {
-      const timeLabel = selectedQuickBtn === 'morning' ? '上午' : selectedQuickBtn === 'afternoon' ? '下午' : '晚上';
+    // 🆕 v2.8.3: 也支持通过自然语言输入模糊时间段（fuzzyTimeName）
+    const isFuzzyTimeSelection = isQuickBtnSelection && (selectedQuickBtn === 'morning' || selectedQuickBtn === 'afternoon' || selectedQuickBtn === 'evening');
+    const hasFuzzyTimeName = fuzzyTimeName && (fuzzyTimeName === '上午' || fuzzyTimeName === '下午' || fuzzyTimeName === '晚上' || fuzzyTimeName === 'morning' || fuzzyTimeName === 'afternoon' || fuzzyTimeName === 'evening');
+    
+    if (isFuzzyTimeSelection || hasFuzzyTimeName) {
+      // 优先使用 fuzzyTimeName，其次使用 selectedQuickBtn
+      const timeLabel = fuzzyTimeName || 
+        (selectedQuickBtn === 'morning' ? '上午' : selectedQuickBtn === 'afternoon' ? '下午' : '晚上');
       return {
         startDateTime: dateStr,
         endDateTime: timeLabel,
@@ -975,8 +1057,7 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
             format结果: point.date.format('YYYY-MM-DD HH:mm:ss'),
             valueOf: point.date.valueOf(),
             星期几: point.date.day(),
-            星期名: ['日', '一', '二', '三', '四', '五', '六'][point.date.day()],
-            displayHint: point.displayHint
+            星期名: ['日', '一', '二', '三', '四', '五', '六'][point.date.day()]
           });
           
           setSelectedDates({
@@ -984,15 +1065,12 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
             end: point.date
           });
           
-          if (point.displayHint) {
-            setDisplayHint(point.displayHint);
-          }
+          // 🔥 v2.8.2: 移除 displayHint 设置，由 formatRelativeDate 动态计算
           
           setFuzzyTimeName(null);
           
           dbg('picker', '✅ 精确时间点解析完成', {
-            date: point.date.format('YYYY-MM-DD'),
-            displayHint: point.displayHint
+            date: point.date.format('YYYY-MM-DD')
           });
           
           setScrollTrigger(prev => prev + 1);
@@ -1008,17 +1086,8 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
             end: customParsed.dateRange.end
           });
           
-          // 设置 displayHint（用于模糊日期显示）
-          if (customParsed.dateRange.displayHint) {
-            let finalDisplayHint = customParsed.dateRange.displayHint;
-            
-            // 🔧 修复：如果有时间段，总是组合显示（不管是精确时间还是模糊时间）
-            if (customParsed.timePeriod && customParsed.timePeriod.name) {
-              finalDisplayHint = `${finalDisplayHint}${customParsed.timePeriod.name}`;
-            }
-            
-            setDisplayHint(finalDisplayHint);
-          }
+          // 🔥 v2.8.2: 移除 displayHint 设置 - 由 formatRelativeDate 动态计算
+          // displayHint 不再存储，避免远程同步事件无法正确显示
           
           setCurrentMonth(customParsed.dateRange.start);
         }
@@ -1171,16 +1240,16 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
     setAllDay(newAllDay);
     
     if (newAllDay) {
-      // 切换到全天：清除时间
+      // 切换到全天：清除时间（isAllDay 字段会记录全天状态）
       setStartTime(null);
       setEndTime(null);
-      dbg('picker', '🌅 切换到全天模式');
+      dbg('picker', '🌅 切换到全天模式（时间设置为 null）');
     } else {
-      // 切换到非全天：设置默认时间
-      setStartTime({ hour: 9, minute: 0 });
-      setEndTime({ hour: 10, minute: 0 });
-      setScrollTrigger(prev => prev + 1);
-      dbg('picker', '⏰ 切换到非全天模式，默认时间 9:00-10:00');
+      // 🆕 v2.8.3: 取消全天：不自动设置任何时间，保持 null
+      // 理由：是否勾选全天和时间无关，只要没有输入时间，都按 null 处理
+      // 用户可以自己决定是否需要设置时间
+      dbg('picker', '⏰ 取消全天模式（时间保持 null，等待用户输入）');
+      // 不修改 startTime 和 endTime，保持当前状态
     }
     setSelectedQuickBtn(null);
   };
@@ -1224,16 +1293,64 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
         <div className="search-input-wrapper">
           <SearchIcon />
           <input
+            ref={searchInputRef}
             className="search-input"
             type="text"
             placeholder="输入'明天下午3点'试试"
             value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
+            onChange={(e) => {
+              const newText = e.target.value;
+              setSearchInput(newText);
+              
+              // 🆕 实时解析并通知父组件
+              if (onSearchChange && newText.trim().length > 0) {
+                const parsed = parseNaturalLanguage(newText);
+                if (parsed && parsed.matched) {
+                  // 提取开始和结束时间
+                  let start: Date | undefined;
+                  let end: Date | undefined;
+                  
+                  if (parsed.dateRange && parsed.timePeriod) {
+                    const baseDate = parsed.dateRange.start.toDate();
+                    start = new Date(baseDate);
+                    start.setHours(parsed.timePeriod.startHour, parsed.timePeriod.startMinute, 0, 0);
+                    
+                    if (parsed.timePeriod.endHour > 0 || parsed.timePeriod.endMinute > 0) {
+                      end = new Date(baseDate);
+                      end.setHours(parsed.timePeriod.endHour, parsed.timePeriod.endMinute, 0, 0);
+                    }
+                  } else if (parsed.dateRange) {
+                    start = parsed.dateRange.start.toDate();
+                    end = parsed.dateRange.end?.toDate();
+                  } else if (parsed.pointInTime) {
+                    start = parsed.pointInTime.date.toDate();
+                  } else if (parsed.timePeriod) {
+                    const baseDate = new Date();
+                    baseDate.setHours(parsed.timePeriod.startHour, parsed.timePeriod.startMinute, 0, 0);
+                    start = baseDate;
+                    
+                    if (parsed.timePeriod.endHour > 0 || parsed.timePeriod.endMinute > 0) {
+                      const endDate = new Date();
+                      endDate.setHours(parsed.timePeriod.endHour, parsed.timePeriod.endMinute, 0, 0);
+                      end = endDate;
+                    }
+                  }
+                  
+                  onSearchChange(newText, { start, end });
+                } else {
+                  onSearchChange(newText, null);
+                }
+              } else if (onSearchChange) {
+                onSearchChange(newText, null);
+              }
+            }}
             onBlur={handleSearchBlur}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
+                // 🔧 v2.9: 第一次 Enter 解析并显示预览，失焦后允许再次 Enter 确认
                 handleSearchBlur();
-                e.currentTarget.blur();
+                e.currentTarget.blur(); // 失焦以便下次 Enter 触发全局确认
+                e.preventDefault(); // 防止表单提交
               }
             }}
           />

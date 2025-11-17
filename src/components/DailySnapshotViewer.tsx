@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { snapshotService } from '../services/snapshotService';
 import type { Event } from '../types';
+import { formatTimeForStorage } from '../utils/timeUtils';
 import './DailySnapshotViewer.css';
 
 interface DailySnapshotViewerProps {
@@ -42,7 +43,7 @@ export const DailySnapshotViewer: React.FC<DailySnapshotViewerProps> = ({
     setLoading(true);
     try {
       // 检查是否是今天
-      const today = new Date().toISOString().split('T')[0];
+      const today = formatTimeForStorage(new Date()).split(' ')[0];
       
       if (date === today) {
         // 今天的数据直接显示当前状态，不需要恢复快照

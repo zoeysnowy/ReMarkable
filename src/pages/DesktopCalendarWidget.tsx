@@ -216,6 +216,32 @@ const DesktopCalendarWidget: React.FC = () => {
     return () => clearTimeout(t);
   }, [bgOpacity, bgColor, isLocked]);
 
+  // 🔔 监听 Widget Settings 窗口的更新（通过 IPC 消息）
+  useEffect(() => {
+    if (!window.electronAPI?.onWidgetSettingsUpdate) {
+      widgetLogger.warn('⚠️ [Widget] IPC 通信不可用');
+      return;
+    }
+
+    const removeListener = window.electronAPI.onWidgetSettingsUpdate((settings: any) => {
+      widgetLogger.log('🎨 [Widget] 收到设置更新:', settings);
+      if (settings.bgOpacity !== undefined) {
+        console.log('🔹 [Widget] 设置透明度:', settings.bgOpacity, '原值:', bgOpacity);
+        setBgOpacity(settings.bgOpacity);
+      }
+      if (settings.bgColor) {
+        console.log('🔹 [Widget] 设置颜色:', settings.bgColor, '原值:', bgColor);
+        setBgColor(settings.bgColor);
+      }
+      if (settings.isLocked !== undefined) {
+        console.log('🔹 [Widget] 设置锁定:', settings.isLocked, '原值:', isLocked);
+        setIsLocked(settings.isLocked);
+      }
+    });
+
+    return removeListener;
+  }, []);
+
   // 初始�?widget-mode 样式
   useEffect(() => {
     widgetLogger.log('🎨 [Renderer] DesktopCalendarWidget mounted');

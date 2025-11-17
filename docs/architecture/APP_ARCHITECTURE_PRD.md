@@ -23,6 +23,7 @@
 3. **服务初始化**: 初始化 TagService, EventService, MicrosoftCalendarService, SyncManager
 4. **布局渲染**: 提供统一的应用布局和导航
 5. **全局事件协调**: 处理跨组件的事件通信
+6. **Timer 父子事件管理**: 自动检测独立 Timer 二次计时，升级为父子结构
 
 ### 1.2 子组件渲染
 

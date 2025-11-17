@@ -115,10 +115,12 @@ export interface TagNode {
  */
 export interface DateMentionNode {
   type: 'dateMention';
-  startDate: string;      // ISO string
-  endDate?: string;       // ISO string
+  startDate: string;      // ISO string - 用户插入时的时间
+  endDate?: string;       // ISO string - 用户插入时的结束时间
   mentionOnly?: boolean;  // description 模式下的只读提及
   eventId?: string;       // 🆕 关联的事件 ID
+  originalText?: string;  // 🆕 v2.3: 用户原始输入文本（如"下周二下午3点"）
+  isOutdated?: boolean;   // 🆕 v2.3: 时间是否过期（与 TimeHub 不一致）
   children: [{ text: '' }];
 }
 

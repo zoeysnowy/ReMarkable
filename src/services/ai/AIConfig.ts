@@ -7,6 +7,8 @@
  * @version 1.0.0
  */
 
+import { formatTimeForStorage } from '../../utils/timeUtils';
+
 export interface AIConfig {
   /** 提供商类型 */
   provider: 'ollama' | 'dashscope' | 'hunyuan' | 'google-ai';
@@ -206,7 +208,8 @@ export class AIConfigManager {
 
     // 自动检测地区
     const region = await this.detectRegion();
-    const recommendedModel = region === 'china' ? 'qwen' : 'gemma';      // console.log(`[AIConfig] 推荐模型: ${recommendedModel} (基于地区: ${region})`);
+    const recommendedModel = region === 'china' ? 'qwen' : 'gemma';
+      // console.log(`[AIConfig] 推荐模型: ${recommendedModel} (基于地区: ${region})`);
     return recommendedModel;
   }
 
@@ -266,7 +269,7 @@ export class AIConfigManager {
       const newPreset: APIPreset = {
         ...preset,
         id: `preset-${Date.now()}`,
-        createdAt: new Date().toISOString()
+        createdAt: formatTimeForStorage(new Date())
       };
       
       presets.push(newPreset);

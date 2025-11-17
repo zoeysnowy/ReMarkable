@@ -1,9 +1,11 @@
 /**
  * PriorityPicker - 优先级选择器
+ * 支持键盘导航：↑↓ 选择，Enter 确认，Esc 关闭
  */
 
 import React from 'react';
 import './PriorityPicker.css';
+import { useKeyboardNavigation } from './useKeyboardNavigation';
 
 interface PriorityPickerProps {
   onSelect: (priority: 'low' | 'medium' | 'high' | 'urgent') => void;
@@ -21,6 +23,14 @@ export const PriorityPicker: React.FC<PriorityPickerProps> = ({
   onSelect,
   onClose,
 }) => {
+  const { hoveredIndex, setHoveredIndex, containerRef } = useKeyboardNavigation({
+    items: PRIORITIES,
+    onSelect: (priority) => onSelect(priority.value),
+    onClose,
+    enabled: true,
+    gridColumns: 1, // 列表布局
+  });
+
   return (
     <div className="priority-picker-panel">
       <div className="picker-header">
@@ -30,12 +40,13 @@ export const PriorityPicker: React.FC<PriorityPickerProps> = ({
         </button>
       </div>
 
-      <div className="priority-list">
-        {PRIORITIES.map((priority) => (
+      <div className="priority-list" ref={containerRef}>
+        {PRIORITIES.map((priority, index) => (
           <button
             key={priority.value}
-            className="priority-item"
+            className={`priority-item ${index === hoveredIndex ? 'keyboard-focused' : ''}`}
             onClick={() => onSelect(priority.value)}
+            onMouseEnter={() => setHoveredIndex(index)}
             style={{ borderLeftColor: priority.color }}
           >
             <span className="priority-icon">{priority.icon}</span>

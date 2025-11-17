@@ -7,14 +7,17 @@
 import React from 'react';
 import { RenderElementProps } from 'slate-react';
 import { EventLineNode } from './types';
+import { EventLinePrefix } from './EventLinePrefix';
+import { EventLineSuffix } from './EventLineSuffix';
 import './EventLineElement.css';
 
 export interface EventLineElementProps {
   element: EventLineNode;
   attributes: any;
   children: React.ReactNode;
-  renderPrefix?: (element: EventLineNode) => React.ReactNode;
-  renderSuffix?: (element: EventLineNode) => React.ReactNode;
+  onSave?: (eventId: string, updates: any) => void;  // 保存回调
+  onTimeClick?: (eventId: string, anchor: HTMLElement) => void;  // 时间点击
+  onMoreClick?: (eventId: string) => void;  // More 图标点击
   onPlaceholderClick?: () => void; // 🆕 Placeholder 点击回调
 }
 
@@ -22,8 +25,9 @@ export const EventLineElement: React.FC<EventLineElementProps> = ({
   element,
   attributes,
   children,
-  renderPrefix,
-  renderSuffix,
+  onSave,
+  onTimeClick,
+  onMoreClick,
   onPlaceholderClick,
 }) => {
   const isEventlogMode = element.mode === 'eventlog';
@@ -56,13 +60,13 @@ export const EventLineElement: React.FC<EventLineElementProps> = ({
         display: 'flex',
         alignItems: isEventlogMode ? 'flex-start' : 'center',
         gap: '8px',
-        minHeight: '32px',
+        minHeight: isEventlogMode ? '20px' : '32px', // 🔧 eventlog 模式更紧凑
       }}
     >
       {/* 前缀装饰 (Checkbox、Emoji 等) - Eventlog 模式不显示 */}
-      {renderPrefix && !isEventlogMode && (
+      {!isEventlogMode && onSave && (
         <div className="event-line-prefix" contentEditable={false}>
-          {renderPrefix(element)}
+          <EventLinePrefix element={element} onSave={onSave} />
         </div>
       )}
       
@@ -79,9 +83,9 @@ export const EventLineElement: React.FC<EventLineElementProps> = ({
       </div>
       
       {/* 后缀装饰 (标签、时间等) - Eventlog 模式不显示 */}
-      {renderSuffix && !isEventlogMode && (
+      {!isEventlogMode && onTimeClick && onMoreClick && (
         <div className="event-line-suffix" contentEditable={false}>
-          {renderSuffix(element)}
+          <EventLineSuffix element={element} onTimeClick={onTimeClick} onMoreClick={onMoreClick} />
         </div>
       )}
     </div>

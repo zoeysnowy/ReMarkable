@@ -70,18 +70,18 @@
   color: #3b82f6;
 }
 
-/* 🆕 Description 模式下隐藏勾选框 */
-.floating-toolbar-tag-picker.description-mode .tag-option input[type="checkbox"],
-.floating-toolbar-tag-picker.description-mode .tag-checkmark {
+/* 🆕 Eventlog 模式下隐藏勾选框 */
+.floating-toolbar-tag-picker.eventlog-mode .tag-option input[type="checkbox"],
+.floating-toolbar-tag-picker.eventlog-mode .tag-checkmark {
   display: none !important;
 }
 
-/* Description 模式下的标签项样式优化 */
-.floating-toolbar-tag-picker.description-mode .tag-option {
+/* Eventlog 模式下的标签项样式优化 */
+.floating-toolbar-tag-picker.eventlog-mode .tag-option {
   padding-left: 12px; /* 移除 checkbox 后减少左边距 */
 }
 
-/* Description 模式下的标签内容 */
-.floating-toolbar-tag-picker.description-mode .tag-content {
+/* Eventlog 模式下的标签内容 */
+.floating-toolbar-tag-picker.eventlog-mode .tag-content {
   padding-left: 0; /* 移除因 checkbox 产生的额外缩进 */
 }

@@ -110,6 +110,17 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   const { r, g, b } = hexToRgb(calendarBackgroundColor);
   const bgRgba = `rgba(${r}, ${g}, ${b}, ${calendarOpacity})`;
   
+  // 🔍 调试：打印背景色和透明度
+  useEffect(() => {
+    if (isWidgetMode) {
+      console.log('🎨 [TimeCalendar] 背景设置:', {
+        color: calendarBackgroundColor,
+        opacity: calendarOpacity,
+        rgba: bgRgba
+      });
+    }
+  }, [calendarBackgroundColor, calendarOpacity, bgRgba, isWidgetMode]);
+  
   // 🎨 颜色自适应系统：根据背景色明暗度生成适配的颜色
   const getAdaptiveColors = useMemo(() => {
     // 计算亮度 (0-255)
@@ -705,7 +716,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   // 📅 持久化当前查看的日期 + 触发优先同步
   useEffect(() => {
     try {
-      localStorage.setItem('remarkable-calendar-current-date', currentDate.toISOString());
+      localStorage.setItem('remarkable-calendar-current-date', formatTimeForStorage(currentDate));
       console.log(`💾 [SAVE] Saved current date: ${currentDate.toLocaleDateString()}`);
       
       // 🚀 [NEW] 触发可见日期范围的优先同步
@@ -1730,14 +1741,14 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     const newEvent: Event = {
       id: `local-${Date.now()}`,
       title: '',
-      startTime: start.toISOString(),
-      endTime: end.toISOString(),
+      startTime: formatTimeForStorage(start),
+      endTime: formatTimeForStorage(end),
       location: '',
       description: '',
       tags: [],
       isAllDay: isAllday || false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: formatTimeForStorage(new Date()),
+      updatedAt: formatTimeForStorage(new Date()),
       syncStatus: 'pending',
       remarkableSource: true // 🔧 标记为本地创建
     };
@@ -2274,14 +2285,14 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         display: 'flex',
         flexDirection: 'column',
         background: 'transparent', // 🔧 改为透明，让三个矩形各自的背景色生效
-        opacity: calendarOpacity, // 🎨 整体透明度：影响所有子元素
+        // ❌ 移除容器级opacity，改为在背景rgba中控制
         position: 'relative', // 提供定位上下文
         overflow: 'hidden', // ✅ 恢复 hidden（Settings 已改为独立子窗口）
         ...style // 允许外部覆盖
       }}>
         {/* 🎛️ 控制工具栏 */}
         <div className="toastui-calendar-controls" style={{
-          background: bgRgba, // 🎨 使用与主体相同的背景色+透明度
+          background: bgRgba, // 🎨 使用rgba控制透明度和颜色
           backdropFilter: calendarOpacity < 1 ? 'blur(10px)' : 'none',
           border: 'none' // 🎯 移除边框
         }}>
@@ -2325,14 +2336,14 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
                 const newEvent: Event = {
                   id: `local-${Date.now()}`,
                   title: '',
-                  startTime: now.toISOString(),
-                  endTime: end.toISOString(),
+                  startTime: formatTimeForStorage(now),
+                  endTime: formatTimeForStorage(end),
                   location: '',
                   description: '',
                   tags: [],
                   isAllDay: false,
-                  createdAt: new Date().toISOString(),
-                  updatedAt: new Date().toISOString(),
+                  createdAt: formatTimeForStorage(new Date()),
+                  updatedAt: formatTimeForStorage(new Date()),
                   syncStatus: 'pending',
                   remarkableSource: true // 🔧 标记为本地创建
                 };

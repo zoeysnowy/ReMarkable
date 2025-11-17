@@ -22,7 +22,7 @@ export const RecoveryService = {
         isTask: !!ev.isTask,
         type: ev.isTask ? 'task' : 'event',
         level: 0,
-        mode: ev.description ? 'description' : 'title',
+        mode: ev.description ? 'eventlog' : 'title',
         // 必需的 Event 字段
         startTime: ev.startTime || now,
         endTime: ev.endTime || now,

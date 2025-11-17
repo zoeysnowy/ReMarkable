@@ -5,7 +5,7 @@ import { icons } from '../assets/icons';
 import { formatTimeForStorage } from '../utils/timeUtils';
 
 // 页面类型定义
-export type PageType = 'home' | 'time' | 'log' | 'tag' | 'plan' | 'sync' | 'ai-demo';
+export type PageType = 'home' | 'time' | 'log' | 'tag' | 'plan' | 'sync' | 'ai-demo' | 'eventmodal-v2-demo';
 
 interface AppLayoutProps {
   currentPage: PageType;
@@ -156,7 +156,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, onPageChange, clickTrack
     { id: 'tag' as PageType, label: '标签', icon: 'tag' },
     { id: 'plan' as PageType, label: '计划', icon: 'plan' },
     { id: 'sync' as PageType, label: '同步', icon: 'sync' },
-    { id: 'ai-demo' as PageType, label: 'AI Demo', icon: 'sync' } // 临时用 sync 图标
+    { id: 'ai-demo' as PageType, label: 'AI Demo', icon: 'sync' }, // 临时用 sync 图标
+    { id: 'eventmodal-v2-demo' as PageType, label: 'Modal v2', icon: 'plan' } // 临时用 plan 图标
   ];
 
   // 处理导航点击

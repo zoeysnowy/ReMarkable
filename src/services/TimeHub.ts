@@ -20,7 +20,6 @@ export type SetEventTimeInput = {
   policy?: Partial<TimePolicy>;
   rawText?: string; // optional when updating intent
   timeSpec?: TimeSpec; // allow direct replacement
-  displayHint?: string | null; // 🆕 v1.1: 用户原始输入的模糊时间表述
   isFuzzyDate?: boolean;  // 🆕 v2.6: 是否为模糊日期
   timeFieldState?: [number | null, number | null, number | null, number | null];  // 🆕 v2.7.4: [startHour, startMinute, endHour, endMinute]
   isFuzzyTime?: boolean;  // 🆕 v2.7: 是否为模糊时间段
@@ -129,12 +128,11 @@ class TimeHubImpl {
       const start = ev.startTime;
       const end = ev.endTime;
       const timeSpec = (ev as any).timeSpec as TimeSpec | undefined;
-      const displayHint = (ev as any).displayHint as string | null | undefined; // 🆕 v1.1
       const isFuzzyDate = (ev as any).isFuzzyDate as boolean | undefined; // 🆕 v2.6
       const timeFieldState = (ev as any).timeFieldState as [number, number, number, number] | undefined; // 🆕 v2.6
       const isFuzzyTime = (ev as any).isFuzzyTime as boolean | undefined; // 🆕 v2.7
       const fuzzyTimeName = (ev as any).fuzzyTimeName as string | undefined; // 🆕 v2.7
-      return { timeSpec, start, end, displayHint, isFuzzyDate, timeFieldState, isFuzzyTime, fuzzyTimeName };
+      return { timeSpec, start, end, isFuzzyDate, timeFieldState, isFuzzyTime, fuzzyTimeName };
     } catch {
       return {};
     }
@@ -163,13 +161,16 @@ class TimeHubImpl {
 
     // Normalize start/end into local-time ISO
     const normalize = (v?: string | Date) => {
+      console.log('[TimeHub.normalize] 输入:', v, typeof v);
       if (!v) return undefined;
       const d = v instanceof Date ? v : parseLocalTimeString(v);
-      return formatTimeForStorage(d);
+      const result = formatTimeForStorage(d);
+      console.log('[TimeHub.normalize] 输出:', result);
+      return result;
     };
 
     const start = normalize(input.start);
-    const end = normalize(input.end ?? input.start);
+    const end = normalize(input.end);  // 🔧 修复：不要强制 end = start
 
     dbg('timehub', '🔄 标准化后的时间', { 
       标准化start: start,
@@ -179,93 +180,93 @@ class TimeHubImpl {
     if (!timeSpec) {
       const policy: TimePolicy = { ...defaultTimePolicy, ...(input.policy ?? {}) };
       const kind: TimeKind = input.kind ?? (start && end && start !== end ? 'range' : 'fixed');
+      
+      // 🔧 v2.7: 单个时间点时，end 应该是 undefined（不是 start）
+      const finalEnd = kind === 'range' ? end : undefined;
+      
       timeSpec = {
         kind,
         rawText: input.rawText,
         source: input.source ?? 'picker',
         policy,
         start,
-        end,
+        end: finalEnd,  // 🔧 使用 finalEnd
         allDay: input.allDay,
-        resolved: { start, end },
+        resolved: { start, end: finalEnd },
       };
     }
 
-    // Merge and persist via EventService
+    // 🚀 [架构修复 v2.10] 立即更新内存缓存，确保同步读取时能获取最新值
+    const snapshot: TimeGetResult = {
+      timeSpec: timeSpec,
+      start: timeSpec.start,
+      end: timeSpec.end,
+    };
+    this.cache.set(eventId, snapshot);
+    console.log('[TimeHub.setEventTime] ⚡ 立即更新缓存', { 
+      eventId, 
+      start: snapshot.start, 
+      end: snapshot.end 
+    });
+
+    // 🔔 立即通知订阅者（UI 即时响应）
+    this.emit(eventId);
+
+    // 🔧 持久化到 EventService（同步操作，无需 await）
     const existing = EventService.getEventById(eventId);
     if (!existing) {
-      error('timehub', '❌ 事件不存在', { eventId });
-      return { success: false, error: `Event not found: ${eventId}` };
+      // 🔧 [新行场景] 事件尚未创建
+      // 缓存已更新，订阅者已通知，serialization.ts 会在创建时读取缓存
+      console.warn('[TimeHub.setEventTime] ⚠️ 事件尚未创建，仅更新缓存', { 
+        eventId, 
+        start: snapshot.start, 
+        end: snapshot.end 
+      });
+      return { success: true }; // ✅ 返回成功（缓存已设置）
     }
 
     const updated: Partial<Event> = {
       startTime: timeSpec.start ?? existing.startTime,
-      endTime: timeSpec.end ?? existing.endTime,
+      endTime: timeSpec.end ?? undefined,  // 🔧 v2.9: undefined 时设为 undefined（不是空字符串）
       isAllDay: timeSpec.allDay ?? existing.isAllDay,
       updatedAt: formatTimeForStorage(new Date()),
+      timeSpec: timeSpec, // 附加完整 timeSpec
     } as any;
+    
+    console.log('[TimeHub.setEventTime] 🔍 准备更新字段:', {
+      eventId,
+      'timeSpec.start': timeSpec.start,
+      'timeSpec.end': timeSpec.end,
+      'updated.startTime': updated.startTime,
+      'updated.endTime': updated.endTime,
+      'endTime是否为undefined': updated.endTime === undefined,
+      'endTime类型': typeof updated.endTime
+    });
+    
+    // 🆕 v2.6-v2.7: 保存模糊时间相关字段
+    if (input.isFuzzyDate !== undefined) (updated as any).isFuzzyDate = input.isFuzzyDate;
+    if (input.timeFieldState !== undefined) (updated as any).timeFieldState = input.timeFieldState;
+    if (input.isFuzzyTime !== undefined) (updated as any).isFuzzyTime = input.isFuzzyTime;
+    if (input.fuzzyTimeName !== undefined) (updated as any).fuzzyTimeName = input.fuzzyTimeName;
 
-    // Attach timeSpec (non-breaking)
-    (updated as any).timeSpec = timeSpec;
-    
-    // 🆕 v1.1: 保存 displayHint（模糊时间表述）
-    if (input.displayHint !== undefined) {
-      (updated as any).displayHint = input.displayHint;
-    }
-    
-    // 🆕 v2.6: 保存 isFuzzyDate 和 timeFieldState（时间字段状态位图）
-    if (input.isFuzzyDate !== undefined) {
-      (updated as any).isFuzzyDate = input.isFuzzyDate;
-    }
-    if (input.timeFieldState !== undefined) {
-      (updated as any).timeFieldState = input.timeFieldState;
-    }
-    
-    // 🆕 v2.7: 保存 isFuzzyTime 和 fuzzyTimeName（模糊时间段）
-    if (input.isFuzzyTime !== undefined) {
-      (updated as any).isFuzzyTime = input.isFuzzyTime;
-    }
-    if (input.fuzzyTimeName !== undefined) {
-      (updated as any).fuzzyTimeName = input.fuzzyTimeName;
-    }
-
-    dbg('timehub', '💾 准备持久化到 EventService', { 
+    dbg('timehub', '💾 持久化到 EventService', { 
       eventId, 
-      更新的startTime: updated.startTime,
-      更新的endTime: updated.endTime,
-      isAllDay: updated.isAllDay,
+      startTime: updated.startTime,
+      endTime: updated.endTime,
       skipSync
     });
 
+    // ✅ 同步调用（localStorage 操作是同步的）
     const result = await EventService.updateEvent(eventId, updated, skipSync);
-    if (result.success && result.event) {
-      // Update cache and notify
-      const snapshot: TimeGetResult = {
-        timeSpec,
-        start: result.event.startTime,
-        end: result.event.endTime,
-      };
-      this.cache.set(eventId, snapshot);
-      dbg('timehub', '✅ 持久化成功，缓存已更新，准备通知订阅者', { 
-        eventId, 
-        快照start: snapshot.start, 
-        快照end: snapshot.end, 
-        allDay: timeSpec?.allDay,
-        订阅者数量: this.listeners.get(eventId)?.size ?? 0
-      });
-      
-      // 🔧 Issue #11 修复：使用 queueMicrotask 确保订阅者在下一个微任务中收到通知
-      // 这样可以避免 React 18 的批量更新导致的延迟
-      queueMicrotask(() => {
-        this.emit(eventId);
-      });
-      
-      // ✅ 架构优化：EventService 已经触发了 eventsUpdated 事件
-      // 不需要 TimeHub 再触发 timeChanged，避免重复事件
-      // 订阅者可以监听 eventsUpdated 获取时间变化信息
-    } else {
-      error('timehub', '❌ EventService.updateEvent 失败', { eventId, result });
+    
+    if (!result.success) {
+      error('timehub', '❌ EventService.updateEvent 失败', { eventId, error: result.error });
     }
+    
+    // 📝 注意：不需要再次更新缓存和通知订阅者
+    // - 缓存已在第 210 行更新
+    // - 订阅者已在第 219 行通知
+    // - EventService 会触发 eventsUpdated 事件（由其他模块监听）
     return result;
   }
 

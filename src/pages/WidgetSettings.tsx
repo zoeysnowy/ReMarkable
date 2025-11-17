@@ -2,10 +2,12 @@
  * Widget Settings Window - Widget 设置子窗口
  * 
  * 直接复用 CalendarSettingsPanel 组件
+ * 🎨 Widget 专用：包含面板颜色和透明度设置
  */
 
 import React, { useState, useEffect } from 'react';
 import CalendarSettingsPanel, { CalendarSettings } from '../features/Calendar/components/CalendarSettingsPanel';
+import './WidgetSettings.css'; // 🎨 Widget Settings 专用样式
 
 const WidgetSettings: React.FC = () => {
   const [settings, setSettings] = useState<CalendarSettings>({
@@ -19,6 +21,11 @@ const WidgetSettings: React.FC = () => {
     taskHeight: 72,
     allDayHeight: 24
   });
+
+  // 🎨 Widget 专用状态
+  const [widgetOpacity, setWidgetOpacity] = useState<number>(0.95);
+  const [widgetColor, setWidgetColor] = useState<string>('#ffffff');
+  const [widgetLocked, setWidgetLocked] = useState<boolean>(false);
 
   const [availableTags, setAvailableTags] = useState<Array<{
     id: string;
@@ -69,6 +76,16 @@ const WidgetSettings: React.FC = () => {
           parsed = JSON.parse(saved);
           setSettings(prev => ({ ...prev, ...parsed }));
           console.log('✅ [WidgetSettings] 加载保存的设置:', parsed);
+        }
+
+        // 🎨 加载 Widget 专用设置
+        const widgetSettings = localStorage.getItem('desktop-calendar-widget-settings');
+        if (widgetSettings) {
+          const widgetParsed = JSON.parse(widgetSettings);
+          if (widgetParsed.bgOpacity !== undefined) setWidgetOpacity(widgetParsed.bgOpacity);
+          if (widgetParsed.bgColor) setWidgetColor(widgetParsed.bgColor);
+          if (widgetParsed.isLocked !== undefined) setWidgetLocked(widgetParsed.isLocked);
+          console.log('✅ [WidgetSettings] 加载 Widget 样式设置:', widgetParsed);
         }
 
         // 加载标签
@@ -173,28 +190,121 @@ const WidgetSettings: React.FC = () => {
     }));
   };
 
+  // 🎨 Widget 专用：保存透明度
+  const handleWidgetOpacityChange = (opacity: number) => {
+    console.log('🎨 [WidgetSettings] 透明度变化:', opacity);
+    setWidgetOpacity(opacity);
+    const widgetSettings = { bgOpacity: opacity, bgColor: widgetColor, isLocked: widgetLocked };
+    localStorage.setItem('desktop-calendar-widget-settings', JSON.stringify(widgetSettings));
+    
+    // 🔗 通过IPC通知Widget窗口
+    if (window.electronAPI?.widgetUpdateSettings) {
+      window.electronAPI.widgetUpdateSettings(widgetSettings);
+      console.log('✅ [WidgetSettings] IPC通知已发送:', widgetSettings);
+    } else {
+      console.warn('⚠️ [WidgetSettings] widgetUpdateSettings 不可用');
+    }
+    
+    console.log('💾 [WidgetSettings] 保存透明度:', opacity);
+  };
+
+  // 🎨 Widget 专用：保存颜色
+  const handleWidgetColorChange = (color: string) => {
+    console.log('🎨 [WidgetSettings] 颜色变化:', color);
+    setWidgetColor(color);
+    const widgetSettings = { bgOpacity: widgetOpacity, bgColor: color, isLocked: widgetLocked };
+    localStorage.setItem('desktop-calendar-widget-settings', JSON.stringify(widgetSettings));
+    
+    // 🔗 通过IPC通知Widget窗口
+    if (window.electronAPI?.widgetUpdateSettings) {
+      window.electronAPI.widgetUpdateSettings(widgetSettings);
+      console.log('✅ [WidgetSettings] IPC通知已发送:', widgetSettings);
+    } else {
+      console.warn('⚠️ [WidgetSettings] widgetUpdateSettings 不可用');
+    }
+    
+    console.log('💾 [WidgetSettings] 保存颜色:', color);
+  };
+
+  // 🎨 Widget 专用：切换锁定状态
+  const handleWidgetLockToggle = (locked: boolean) => {
+    setWidgetLocked(locked);
+    const widgetSettings = { bgOpacity: widgetOpacity, bgColor: widgetColor, isLocked: locked };
+    localStorage.setItem('desktop-calendar-widget-settings', JSON.stringify(widgetSettings));
+    
+    // 🔗 通过IPC通知Widget窗口
+    if (window.electronAPI?.widgetUpdateSettings) {
+      window.electronAPI.widgetUpdateSettings(widgetSettings);
+    }
+    
+    console.log('💾 [WidgetSettings] 切换锁定:', locked);
+  };
+
   const handleClose = () => {
     if (window.electronAPI?.widget?.closeSettings) {
       window.electronAPI.widget.closeSettings();
     }
   };
 
+  // 🖱️ 简化的拖动处理（使用 requestAnimationFrame 节流）
+  const handleHeaderMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return; // 只响应左键
+    e.preventDefault();
+
+    let lastX = e.screenX;
+    let lastY = e.screenY;
+    let animationFrameId: number | null = null;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (animationFrameId) return; // 已有待处理的帧，跳过
+
+      animationFrameId = requestAnimationFrame(() => {
+        const deltaX = moveEvent.screenX - lastX;
+        const deltaY = moveEvent.screenY - lastY;
+        
+        if (deltaX !== 0 || deltaY !== 0) {
+          // 直接移动窗口
+          if (window.electronAPI?.invoke) {
+            window.electronAPI.invoke('move-widget-settings-window', { deltaX, deltaY });
+          }
+          
+          lastX = moveEvent.screenX;
+          lastY = moveEvent.screenY;
+        }
+        
+        animationFrameId = null;
+      });
+    };
+
+    const handleMouseUp = () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
   return (
-    <div style={{
-      width: '100%',
-      height: '100vh',
-      overflow: 'hidden',
-      backgroundColor: '#f5f5f5'
-    }}>
-      <CalendarSettingsPanel
-        isOpen={true}
-        onClose={handleClose}
-        settings={settings}
-        onSettingsChange={handleSettingsChange}
-        availableTags={availableTags}
-        availableCalendars={availableCalendars}
-      />
-    </div>
+    <CalendarSettingsPanel
+      isOpen={true}
+      onClose={handleClose}
+      settings={settings}
+      onSettingsChange={handleSettingsChange}
+      availableTags={availableTags}
+      availableCalendars={availableCalendars}
+      isWidgetMode={true} // 🎨 启用 Widget 模式
+      widgetOpacity={widgetOpacity}
+      widgetColor={widgetColor}
+      widgetLocked={widgetLocked}
+      onWidgetOpacityChange={handleWidgetOpacityChange}
+      onWidgetColorChange={handleWidgetColorChange}
+      onWidgetLockToggle={handleWidgetLockToggle}
+      onHeaderMouseDown={handleHeaderMouseDown}
+    />
   );
 };
 

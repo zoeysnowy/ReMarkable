@@ -12,6 +12,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import '../styles/CalendarSettingsPanel.css';
+import '../styles/CalendarPicker.css'; // 🎨 导入 CalendarPicker 样式以保持日历列表一致性
 
 export interface CalendarSettings {
   eventOpacity: number; // 0-100
@@ -40,6 +41,7 @@ interface CalendarSettingsPanelProps {
   onWidgetOpacityChange?: (opacity: number) => void;
   onWidgetColorChange?: (color: string) => void;
   onWidgetLockToggle?: (locked: boolean) => void;
+  onHeaderMouseDown?: (e: React.MouseEvent) => void;
 }
 
 const CalendarSettingsPanel: React.FC<CalendarSettingsPanelProps> = ({
@@ -55,7 +57,8 @@ const CalendarSettingsPanel: React.FC<CalendarSettingsPanelProps> = ({
   widgetLocked = false,
   onWidgetOpacityChange,
   onWidgetColorChange,
-  onWidgetLockToggle
+  onWidgetLockToggle,
+  onHeaderMouseDown
 }) => {
   const [localSettings, setLocalSettings] = useState<CalendarSettings>(settings);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -305,222 +308,234 @@ const CalendarSettingsPanel: React.FC<CalendarSettingsPanelProps> = ({
     onSettingsChange(newSettings);
   };
 
+  // 🖱️ 拖拽功能（仅普通模式）
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (isWidgetMode) return; // Widget模式不允许拖拽
+    
+    e.preventDefault();
+    const panel = (e.target as HTMLElement).closest('.calendar-settings-panel') as HTMLElement;
+    if (!panel) return;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startLeft = panel.offsetLeft;
+    const startTop = panel.offsetTop;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - startX;
+      const deltaY = e.clientY - startY;
+      panel.style.left = `${startLeft + deltaX}px`;
+      panel.style.top = `${startTop + deltaY}px`;
+      panel.style.position = 'absolute';
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
   if (!isOpen) return null;
 
-  return (
-    <div className="calendar-settings-overlay">
-      <div 
-        className="calendar-settings-panel" 
-        ref={panelRef}
-        style={{
-          position: 'absolute', // 🔧 改为 absolute，允许溢出
-          left: `${position.x}px`,
-          top: `${position.y}px`,
-          margin: 0
-        }}
-      >
-        <div 
-          className="settings-header"
-          onMouseDown={handleHeaderMouseDown}
-        >
-          <h3>⚙️ 日历设置</h3>
-          <button className="close-btn" onClick={onClose}>×</button>
-        </div>
-
-        <div className="settings-content">
-          {/* 🖥️ Widget 模式专用控件 */}
-          {isWidgetMode && (
-            <>
-              {/* Widget 透明度调整 */}
-              <div className="settings-section compact-section">
-                <div className="compact-slider-row">
-                  <span className="slider-label">🪟 组件透明度</span>
-                  <div className="slider-track-wrapper">
-                    <div 
-                      className="slider-track-fill" 
-                      style={{ width: `${widgetOpacity * 100}%` }}
-                    />
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={widgetOpacity * 100}
-                      onChange={(e) => {
-                        const newOpacity = parseInt(e.target.value) / 100;
-                        onWidgetOpacityChange?.(newOpacity);
-                      }}
-                      className="inline-slider with-track"
-                      onMouseDown={(e) => e.stopPropagation()}
-                    />
-                  </div>
-                  <span className="slider-value">{Math.round(widgetOpacity * 100)}%</span>
-                </div>
-              </div>
-
-              {/* Widget 背景颜色 */}
-              <div className="settings-section compact-section">
-                <div className="compact-slider-row">
-                  <span className="slider-label">🎨 背景颜色</span>
-                  <input
-                    type="color"
-                    value={widgetColor}
-                    onChange={(e) => onWidgetColorChange?.(e.target.value)}
-                    style={{
-                      width: '80px',
-                      height: '32px',
-                      border: '1px solid #ddd',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      marginLeft: 'auto'
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                  />
-                </div>
-              </div>
-
-              {/* Widget 锁定位置 */}
-              <div className="settings-section compact-section">
-                <div className="compact-slider-row">
-                  <span className="slider-label">� 置顶显示</span>
-                  <label 
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      cursor: 'pointer',
-                      marginLeft: 'auto'
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={widgetLocked}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        onWidgetLockToggle?.(e.target.checked);
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                      }}
-                      style={{
-                        width: '18px',
-                        height: '18px',
-                        cursor: 'pointer'
-                      }}
-                    />
-                    <span style={{ marginLeft: '8px', fontSize: '14px' }}>
-                      {widgetLocked ? '已置顶' : '未置顶'}
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              {/* 分隔线 */}
-              <div style={{ 
-                borderTop: '1px solid #e0e0e0', 
-                margin: '12px 0' 
-              }} />
-            </>
-          )}
-
-          {/* 透明度调整 */}
+  // 🎨 渲染设置内容（Widget 模式和普通模式共用）
+  const renderSettingsContent = () => (
+    <div className="settings-content" onMouseDown={(e) => e.stopPropagation()}>
+      {/* 🖥️ Widget 模式专用控件 */}
+      {isWidgetMode && (
+        <>
+          {/* Widget 透明度调整 */}
           <div className="settings-section compact-section">
             <div className="compact-slider-row">
-              <span className="slider-label">🎨 事件透明度</span>
+              <span className="slider-label">🪟 组件透明度</span>
               <div className="slider-track-wrapper">
                 <div 
                   className="slider-track-fill" 
-                  style={{ width: `${(localSettings.eventOpacity - 20) / 0.8}%` }}
+                  style={{ width: `${widgetOpacity * 100}%` }}
                 />
                 <input
                   type="range"
-                  min="20"
+                  min="0"
                   max="100"
-                  value={localSettings.eventOpacity}
-                  onChange={handleOpacityChange}
-                  onMouseUp={handleOpacityChangeEnd}
-                  onTouchEnd={handleOpacityChangeEnd}
+                  value={widgetOpacity * 100}
+                  onChange={(e) => {
+                    const newOpacity = parseInt(e.target.value) / 100;
+                    onWidgetOpacityChange?.(newOpacity);
+                  }}
                   className="inline-slider with-track"
                   onMouseDown={(e) => e.stopPropagation()}
                 />
               </div>
-              <span className="slider-value">{localSettings.eventOpacity}%</span>
+              <span className="slider-value">{Math.round(widgetOpacity * 100)}%</span>
             </div>
           </div>
 
-          {/* 事件类型显示设置 */}
+          {/* Widget 背景颜色 */}
           <div className="settings-section compact-section">
-            <div className="section-title">
-              <span>📋 事件类型显示</span>
+            <div className="compact-slider-row">
+              <span className="slider-label">🎨 背景颜色</span>
+              <input
+                type="color"
+                value={widgetColor}
+                onChange={(e) => onWidgetColorChange?.(e.target.value)}
+                style={{
+                  width: '80px',
+                  height: '32px',
+                  border: '1px solid #ddd',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  marginLeft: 'auto'
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+              />
             </div>
-            <div className="category-settings-compact">
-              {/* Deadline */}
-              <div className="compact-category-row">
-                <label className="category-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={localSettings.showDeadline !== false}
-                    onChange={() => handleCategoryToggle('deadline')}
-                  />
-                  <span>🎯 Deadline</span>
-                </label>
-                {localSettings.showDeadline !== false && (
-                  <>
-                    <div className="slider-track-wrapper compact">
-                      <div 
-                        className="slider-track-fill" 
-                        style={{ width: `${((localSettings.deadlineHeight || 24) / 300) * 100}%` }}
-                      />
-                      <input
-                        type="range"
-                        min="0"
-                        max="300"
-                        value={localSettings.deadlineHeight || 24}
-                        onChange={(e) => handleHeightChange('deadline', Number(e.target.value))}
-                        className="inline-slider compact with-track"
-                        onMouseDown={(e) => e.stopPropagation()}
-                      />
-                    </div>
-                    <span className="slider-value compact">{localSettings.deadlineHeight || 24}px</span>
-                  </>
-                )}
-              </div>
+          </div>
 
-              {/* Task */}
-              <div className="compact-category-row">
-                <label className="category-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={localSettings.showTask !== false}
-                    onChange={() => handleCategoryToggle('task')}
-                  />
-                  <span>✅ Task</span>
-                </label>
-                {localSettings.showTask !== false && (
-                  <>
-                    <div className="slider-track-wrapper compact">
-                      <div 
-                        className="slider-track-fill" 
-                        style={{ width: `${((localSettings.taskHeight || 24) / 300) * 100}%` }}
-                      />
-                      <input
-                        type="range"
-                        min="0"
-                        max="300"
-                        value={localSettings.taskHeight || 24}
-                        onChange={(e) => handleHeightChange('task', Number(e.target.value))}
-                        className="inline-slider compact with-track"
-                        onMouseDown={(e) => e.stopPropagation()}
-                      />
-                    </div>
-                    <span className="slider-value compact">{localSettings.taskHeight || 24}px</span>
-                  </>
-                )}
-              </div>
+          {/* Widget 锁定位置 */}
+          <div className="settings-section compact-section">
+            <div className="compact-slider-row">
+              <span className="slider-label">� 置顶显示</span>
+              <label 
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  marginLeft: 'auto'
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={widgetLocked}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    onWidgetLockToggle?.(e.target.checked);
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                  style={{
+                    width: '18px',
+                    height: '18px',
+                    cursor: 'pointer'
+                  }}
+                />
+                <span style={{ marginLeft: '8px', fontSize: '14px' }}>
+                  {widgetLocked ? '已置顶' : '未置顶'}
+                </span>
+              </label>
+            </div>
+          </div>
 
-              {/* All Day */}
-              <div className="compact-category-row">
+          {/* 分隔线 */}
+          <div style={{ 
+            borderTop: '1px solid #e0e0e0', 
+            margin: '12px 0' 
+          }} />
+        </>
+      )}
+
+      {/* 透明度调整 */}
+      <div className="settings-section compact-section">
+        <div className="compact-slider-row">
+          <span className="slider-label">🎨 事件透明度</span>
+          <div className="slider-track-wrapper">
+            <div 
+              className="slider-track-fill" 
+              style={{ width: `${(localSettings.eventOpacity - 20) / 0.8}%` }}
+            />
+            <input
+              type="range"
+              min="20"
+              max="100"
+              value={localSettings.eventOpacity}
+              onChange={handleOpacityChange}
+              onMouseUp={handleOpacityChangeEnd}
+              onTouchEnd={handleOpacityChangeEnd}
+              className="inline-slider with-track"
+              onMouseDown={(e) => e.stopPropagation()}
+            />
+          </div>
+          <span className="slider-value">{localSettings.eventOpacity}%</span>
+        </div>
+      </div>
+
+      {/* 事件类型显示设置 */}
+      <div className="settings-section compact-section">
+        <div className="section-title">
+          <span>📋 事件类型显示</span>
+        </div>
+        <div className="category-settings-compact">
+          {/* Deadline */}
+          <div className="compact-category-row">
+            <label className="category-checkbox">
+              <input
+                type="checkbox"
+                checked={localSettings.showDeadline !== false}
+                onChange={() => handleCategoryToggle('deadline')}
+              />
+              <span>🎯 Deadline</span>
+            </label>
+            {localSettings.showDeadline !== false && (
+              <>
+                <div className="slider-track-wrapper compact">
+                  <div 
+                    className="slider-track-fill" 
+                    style={{ width: `${((localSettings.deadlineHeight || 24) / 300) * 100}%` }}
+                  />
+                  <input
+                    type="range"
+                    min="0"
+                    max="300"
+                    value={localSettings.deadlineHeight || 24}
+                    onChange={(e) => handleHeightChange('deadline', Number(e.target.value))}
+                    className="inline-slider compact with-track"
+                    onMouseDown={(e) => e.stopPropagation()}
+                  />
+                </div>
+                <span className="slider-value compact">{localSettings.deadlineHeight || 24}px</span>
+              </>
+            )}
+          </div>
+
+          {/* Task */}
+          <div className="compact-category-row">
+            <label className="category-checkbox">
+              <input
+                type="checkbox"
+                checked={localSettings.showTask !== false}
+                onChange={() => handleCategoryToggle('task')}
+              />
+              <span>✅ Task</span>
+            </label>
+            {localSettings.showTask !== false && (
+              <>
+                <div className="slider-track-wrapper compact">
+                  <div 
+                    className="slider-track-fill" 
+                    style={{ width: `${((localSettings.taskHeight || 24) / 300) * 100}%` }}
+                  />
+                  <input
+                    type="range"
+                    min="0"
+                    max="300"
+                    value={localSettings.taskHeight || 24}
+                    onChange={(e) => handleHeightChange('task', Number(e.target.value))}
+                    className="inline-slider compact with-track"
+                    onMouseDown={(e) => e.stopPropagation()}
+                  />
+                </div>
+                <span className="slider-value compact">{localSettings.taskHeight || 24}px</span>
+              </>
+            )}
+          </div>
+
+          {/* All Day */}
+          <div className="compact-category-row">
                 <label className="category-checkbox">
                   <input
                     type="checkbox"
@@ -553,90 +568,133 @@ const CalendarSettingsPanel: React.FC<CalendarSettingsPanelProps> = ({
             </div>
           </div>
 
-          {/* 标签筛选 */}
-          <div className="settings-section">
-            <div className="section-title">
-              <span>🏷️ 显示标签 {localSettings.visibleTags.length === 0 && <span style={{fontSize: '11px', color: '#28a745'}}>(全部)</span>}</span>
-              <div className="section-actions">
-                <button onClick={handleSelectAllTags} className="action-btn">全选</button>
-                <button onClick={handleDeselectAllTags} className="action-btn">清空</button>
-              </div>
-            </div>
-            <div className="filter-list">
-              {availableTags.length === 0 ? (
-                <div className="empty-message">暂无标签</div>
-              ) : (
-                availableTags.map(tag => {
-                  const paddingLeft = `${(tag.level || 0) * 12}px`;
-                  
-                  return (
-                    <label key={tag.id} className="filter-item">
-                      <input
-                        type="checkbox"
-                        checked={localSettings.visibleTags.includes(tag.id)}
-                        onChange={() => handleTagToggle(tag.id)}
-                      />
-                      <div 
-                        className="tag-content"
-                        style={{ paddingLeft }}
-                        data-level={tag.level || 0}
-                        data-padding={paddingLeft}
-                      >
-                        <span 
-                          className="tag-hash" 
-                          style={{ color: tag.color }}
-                        >#</span>
-                        
-                        <span className="tag-emoji">{tag.emoji || '🏷️'}</span>
-                        
-                        <span 
-                          className="tag-name"
-                          style={{ color: tag.color }}
-                        >{tag.name}</span>
-                      </div>
-                    </label>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* 日历分组筛选 */}
-          <div className="settings-section">
-            <div className="section-title">
-              <span>📅 显示日历</span>
-              <div className="section-actions">
-                <button onClick={handleSelectAllCalendars} className="action-btn">全选</button>
-                <button onClick={handleDeselectAllCalendars} className="action-btn">清空</button>
-              </div>
-            </div>
-            <div className="filter-list">
-              {availableCalendars.length === 0 ? (
-                <div className="empty-message">暂无日历</div>
-              ) : (
-                availableCalendars.map(calendar => (
-                  <label key={calendar.id} className="filter-item calendar-item">
-                    <input
-                      type="checkbox"
-                      checked={localSettings.visibleCalendars.includes(calendar.id)}
-                      onChange={() => handleCalendarToggle(calendar.id)}
-                    />
-                    <div className="calendar-content">
-                      {/* 颜色圆点 */}
-                      <span 
-                        className="calendar-dot" 
-                        style={{ backgroundColor: calendar.color || '#3788d8' }}
-                      ></span>
-                      
-                      {/* 日历名称 */}
-                      <span className="calendar-name">{calendar.name}</span>
-                    </div>
-                  </label>
-                ))
-              )}
-            </div>
+      {/* 标签筛选 */}
+      <div className="settings-section">
+        <div className="section-title">
+          <span>🏷️ 显示标签 {localSettings.visibleTags.length === 0 && <span style={{fontSize: '11px', color: '#28a745'}}>(全部)</span>}</span>
+          <div className="section-actions">
+            <button onClick={handleSelectAllTags} className="action-btn">全选</button>
+            <button onClick={handleDeselectAllTags} className="action-btn">清空</button>
           </div>
         </div>
+        <div className="filter-list">
+          {availableTags.length === 0 ? (
+            <div className="empty-message">暂无标签</div>
+          ) : (
+            availableTags.map(tag => {
+              const paddingLeft = `${(tag.level || 0) * 12}px`;
+              
+              return (
+                <label key={tag.id} className="filter-item">
+                  <input
+                    type="checkbox"
+                    checked={localSettings.visibleTags.includes(tag.id)}
+                    onChange={() => handleTagToggle(tag.id)}
+                  />
+                  <div 
+                    className="tag-content"
+                    style={{ paddingLeft }}
+                    data-level={tag.level || 0}
+                    data-padding={paddingLeft}
+                  >
+                    <span 
+                      className="tag-hash" 
+                      style={{ color: tag.color }}
+                    >#</span>
+                    
+                    <span className="tag-emoji">{tag.emoji || '🏷️'}</span>
+                    
+                    <span 
+                      className="tag-name"
+                      style={{ color: tag.color }}
+                    >{tag.name}</span>
+                  </div>
+                </label>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* 日历分组筛选 */}
+      <div className="settings-section">
+        <div className="section-title">
+          <span>📅 显示日历</span>
+          <div className="section-actions">
+            <button onClick={handleSelectAllCalendars} className="action-btn">全选</button>
+            <button onClick={handleDeselectAllCalendars} className="action-btn">清空</button>
+          </div>
+        </div>
+        <div className="filter-list">
+          {availableCalendars.length === 0 ? (
+            <div className="empty-message">暂无日历</div>
+          ) : (
+            availableCalendars.map(calendar => (
+              <label key={calendar.id} className="filter-item calendar-item">
+                <input
+                  type="checkbox"
+                  checked={localSettings.visibleCalendars.includes(calendar.id)}
+                  onChange={() => handleCalendarToggle(calendar.id)}
+                />
+                <div className="calendar-content">
+                  {/* 颜色圆点 */}
+                  <span 
+                    className="calendar-dot" 
+                    style={{ backgroundColor: calendar.color || '#3788d8' }}
+                  ></span>
+                  
+                  {/* 日历名称 */}
+                  <span className="calendar-name">{calendar.name}</span>
+                </div>
+              </label>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );  // 🖥️ Widget 模式：不需要 overlay 包裹
+  if (isWidgetMode) {
+    return (
+      <div className="calendar-settings-panel widget-mode">
+        <div 
+          className="settings-header"
+          onMouseDown={onHeaderMouseDown}
+        >
+          <h3>⚙️ Widget 设置</h3>
+          <button 
+            className="close-button" 
+            onClick={onClose}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            ✕
+          </button>
+        </div>
+        {renderSettingsContent()}
+      </div>
+    );
+  }
+
+  // 📅 普通模式：带 overlay 包裹（主应用中）
+  return (
+    <div className="calendar-settings-overlay" onClick={onClose}>
+      <div 
+        className="calendar-settings-panel"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div 
+          className="settings-header"
+          onMouseDown={handleMouseDown}
+        >
+          <h3>⚙️ 日历设置</h3>
+          <button 
+            className="close-button" 
+            onClick={onClose}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            ✕
+          </button>
+        </div>
+        {renderSettingsContent()}
       </div>
     </div>
   );

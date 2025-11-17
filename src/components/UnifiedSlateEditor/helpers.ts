@@ -2,7 +2,7 @@
  * 插入辅助函数 - 用于 FloatingBar 集成
  */
 
-import { Editor, Transforms, Node } from 'slate';
+import { Editor, Transforms, Node, Element, Path } from 'slate';
 import { ReactEditor } from 'slate-react';
 import { TagNode, DateMentionNode, TextNode, EventLineNode } from './types';
 
@@ -44,19 +44,28 @@ export function insertTag(
       return false;
     }
     
-    // 🔥 使用 Editor.withoutNormalizing 确保插入过程不被 normalize 打断
-    Editor.withoutNormalizing(editor, () => {
-      console.log('[insertTag] 插入节点前 selection:', JSON.stringify(editor.selection));
-      Transforms.insertNodes(editor, tagNode as any);
-      console.log('[insertTag] 插入节点后 selection:', JSON.stringify(editor.selection));
-      
-      // 🔥 插入空格，光标会自动移动到空格后
-      Transforms.insertText(editor, ' ');
-      console.log('[insertTag] 插入空格后 selection:', JSON.stringify(editor.selection));
-    });
+    // 插入 tag 节点
+    Transforms.insertNodes(editor, tagNode as any);
+    console.log('[insertTag] tag 插入后 selection:', JSON.stringify(editor.selection));
     
-    // ✅ 退出 withoutNormalizing 后，normalizeNode 会运行一次，确保结构正确
-    // 但此时光标已经在正确位置（空格后），不会再跳动
+    // 插入后光标在 void 元素内部: [段落, 0, tagIndex, 0]
+    // void 元素路径就是去掉最后的 0: [段落, 0, tagIndex]
+    if (editor.selection) {
+      const voidPath = editor.selection.anchor.path.slice(0, -1); // [段落, 0, tagIndex]
+      console.log('[insertTag] void 元素路径:', JSON.stringify(voidPath));
+      
+      // normalizeNode 会在 void 后插入空格文本节点: [段落, 0, tagIndex+1]
+      // 光标移到空格文本节点内 offset: 1
+      const paragraphPath = voidPath.slice(0, -1);
+      const voidIndex = voidPath[voidPath.length - 1];
+      const spaceTextNodePath = [...paragraphPath, voidIndex + 1]; // 文本节点路径，不是 [x,x,x,0]
+      
+      Transforms.select(editor, {
+        anchor: { path: spaceTextNodePath, offset: 1 },
+        focus: { path: spaceTextNodePath, offset: 1 },
+      });
+      console.log('[insertTag] 光标已设置到空格后 path:', JSON.stringify(spaceTextNodePath), 'offset: 1');
+    }
     
     return true;
   } catch (err) {
@@ -82,6 +91,15 @@ export function insertEmoji(editor: Editor, emoji: string): boolean {
     }
     
     Transforms.insertText(editor, emoji + ' ');
+    
+    // 🔧 确保插入后编辑器保持焦点
+    setTimeout(() => {
+      if (!ReactEditor.isFocused(editor as ReactEditor)) {
+        ReactEditor.focus(editor as ReactEditor);
+        console.log('[insertEmoji] 恢复编辑器焦点');
+      }
+    }, 100); // 🔧 增加延迟到 100ms，确保在 FloatingBar 关闭后执行
+    
     return true;
   } catch (err) {
     console.error('[insertEmoji] Failed:', err);
@@ -94,10 +112,11 @@ export function insertEmoji(editor: Editor, emoji: string): boolean {
  */
 export function insertDateMention(
   editor: Editor,
-  startDate: string,
-  endDate?: string,
+  startDate: string,  // ✅ 本地时间字符串 'YYYY-MM-DD HH:mm:ss'
+  endDate?: string,   // ✅ 本地时间字符串 'YYYY-MM-DD HH:mm:ss'
   mentionOnly?: boolean,
-  eventId?: string  // 🆕 添加 eventId 参数，用于 TimeHub 同步
+  eventId?: string,  // 🆕 添加 eventId 参数，用于 TimeHub 同步
+  displayHint?: string  // 🆕 用户输入的原始文本（如"下周二下午3点"）
 ): boolean {
   try {
     const dateMentionNode: DateMentionNode = {
@@ -106,8 +125,18 @@ export function insertDateMention(
       endDate,
       mentionOnly,
       eventId,  // 🆕 保存 eventId
-      children: [{ text: '' }],
+      originalText: displayHint,  // 🆕 v2.3: 保存用户原始输入文本
+      isOutdated: false,  // 🆕 v2.3: 初始时不过期
+      children: [{ text: '' }],  // DateMention 是 void 元素，children 必须为空文本
     };
+    
+    console.log('[insertDateMention] 创建 DateMention 节点', {
+      eventId,
+      startDate,
+      endDate,
+      displayHint,
+      fullNode: dateMentionNode
+    });
     
     // 🔧 只在没有选区时才设置焦点
     if (!editor.selection) {
@@ -122,8 +151,16 @@ export function insertDateMention(
     
     Transforms.insertNodes(editor, dateMentionNode as any);
     
-    // � Gemini方案：插入空格后，normalizeNode会确保dateMention后总有空格
+    // 🔥 Gemini方案：插入空格后，normalizeNode会确保dateMention后总有空格
     Transforms.insertText(editor, ' ');
+    
+    // 🔧 确保插入后编辑器保持焦点
+    setTimeout(() => {
+      if (!ReactEditor.isFocused(editor as ReactEditor)) {
+        ReactEditor.focus(editor as ReactEditor);
+        console.log('[insertDateMention] 恢复编辑器焦点');
+      }
+    }, 100); // 🔧 增加延迟到 100ms，确保在 FloatingBar 关闭后执行
     
     return true;
   } catch (err) {
@@ -169,6 +206,9 @@ function slateFragmentToHtml(fragment: (TextNode | TagNode | DateMentionNode)[])
         `data-type="dateMention"`,
         `data-start-date="${node.startDate}"`,
         node.endDate ? `data-end-date="${node.endDate}"` : '',
+        node.eventId ? `data-event-id="${node.eventId}"` : '',  // 🆕 保存 eventId
+        node.originalText ? `data-original-text="${node.originalText}"` : '',  // 🆕 保存原始输入
+        node.isOutdated ? `data-is-outdated="true"` : '',  // 🆕 保存过期状态
         node.mentionOnly ? `data-mention-only="true"` : '',
       ].filter(Boolean).join(' ');
       
@@ -223,5 +263,142 @@ export function getEditorHTML(editor: Editor): string {
   } catch (err) {
     console.error('[getEditorHTML] Failed:', err);
     return '';
+  }
+}
+
+/**
+ * 应用文本格式化命令
+ */
+export function applyTextFormat(editor: Editor, command: string): boolean {
+  try {
+    // 🔧 确保编辑器有焦点
+    if (!ReactEditor.isFocused(editor as ReactEditor)) {
+      ReactEditor.focus(editor as ReactEditor);
+    }
+    
+    switch (command) {
+      case 'bold':
+        Editor.addMark(editor, 'bold', true);
+        break;
+      case 'italic':
+        Editor.addMark(editor, 'italic', true);
+        break;
+      case 'underline':
+        Editor.addMark(editor, 'underline', true);
+        break;
+      case 'strikeThrough':
+        Editor.addMark(editor, 'strikethrough', true);
+        break;
+      case 'removeFormat':
+        // 移除所有格式
+        Editor.removeMark(editor, 'bold');
+        Editor.removeMark(editor, 'italic');
+        Editor.removeMark(editor, 'underline');
+        Editor.removeMark(editor, 'strikethrough');
+        break;
+      case 'toggleBulletList':
+        toggleBulletList(editor);
+        break;
+      case 'increaseBulletLevel':
+        adjustBulletLevel(editor, 1);
+        break;
+      case 'decreaseBulletLevel':
+        adjustBulletLevel(editor, -1);
+        break;
+      default:
+        console.warn('[applyTextFormat] Unknown command:', command);
+        return false;
+    }
+    
+    return true;
+  } catch (err) {
+    console.error('[applyTextFormat] Failed:', err);
+    return false;
+  }
+}
+
+/**
+ * 切换 Bullet List
+ */
+function toggleBulletList(editor: Editor): void {
+  const [paraMatch] = Editor.nodes(editor, {
+    match: (n: any) => !Editor.isEditor(n) && Element.isElement(n) && (n as any).type === 'paragraph',
+  });
+  
+  if (paraMatch) {
+    const [node] = paraMatch;
+    const para = node as any;
+    
+    if (para.bullet) {
+      // 已是 bullet，取消
+      Transforms.setNodes(editor, { bullet: undefined, bulletLevel: undefined } as any);
+    } else {
+      // 设置为 bullet（默认 level 0）
+      Transforms.setNodes(editor, { bullet: true, bulletLevel: 0 } as any);
+    }
+  }
+}
+
+/**
+ * 调整 Bullet 层级
+ * @param delta +1 增加层级，-1 减少层级
+ */
+function adjustBulletLevel(editor: Editor, delta: number): void {
+  const [paraMatch] = Editor.nodes(editor, {
+    match: (n: any) => !Editor.isEditor(n) && Element.isElement(n) && (n as any).type === 'paragraph',
+  });
+  
+  if (paraMatch) {
+    const [node] = paraMatch;
+    const para = node as any;
+    
+    if (para.bullet) {
+      const currentLevel = para.bulletLevel || 0;
+      const newLevel = currentLevel + delta;
+      
+      if (newLevel < 0) {
+        // Level 0 再减少就取消 bullet
+        Transforms.setNodes(editor, { bullet: undefined, bulletLevel: undefined } as any);
+      } else if (newLevel <= 4) {
+        // 最多 5 层 (0-4)
+        Transforms.setNodes(editor, { bulletLevel: newLevel } as any);
+      }
+      // 超过 4 不处理
+    }
+  }
+}
+
+/**
+ * 提取指定行的所有标签 ID
+ * @param editor Slate 编辑器实例
+ * @param lineId 行 ID
+ * @returns 标签 ID 数组
+ */
+export function extractTagsFromLine(editor: Editor, lineId: string): string[] {
+  try {
+    // 查找指定的 event-line 节点
+    const lineNode = editor.children.find((node: any) => {
+      return node.lineId === lineId || node.lineId === lineId.replace('-desc', '');
+    });
+
+    if (!lineNode) {
+      return [];
+    }
+
+    // 扫描所有子节点，提取 type='tag' 的元素
+    const tagIds = new Set<string>();
+    const descendants = Array.from(Node.descendants(lineNode as any));
+    
+    descendants.forEach((entry: any) => {
+      const [node] = entry;
+      if (node.type === 'tag' && node.tagId) {
+        tagIds.add(node.tagId);
+      }
+    });
+
+    return Array.from(tagIds);
+  } catch (err) {
+    console.error('[extractTagsFromLine] Failed:', err);
+    return [];
   }
 }

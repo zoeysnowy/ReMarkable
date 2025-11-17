@@ -2,6 +2,7 @@ import * as Y from 'yjs';
 import { encodeStateAsUpdate, applyUpdate, encodeStateVector } from 'yjs';
 import type { Event } from '../types';
 import dayjs from 'dayjs';
+import { formatTimeForStorage } from '../utils/timeUtils';
 
 // ==================== 类型定义 ====================
 
@@ -58,7 +59,7 @@ class SnapshotService {
    * 创建基准快照
    */
   createBaseSnapshot(items: Event[], date?: string): BaseSnapshot {
-    const snapshotDate = date || new Date().toISOString().split('T')[0];
+    const snapshotDate = date || formatTimeForStorage(new Date()).split(' ')[0];
     
     // 创建新的 Yjs 文档并同步数据
     const ydoc = new Y.Doc();
@@ -110,7 +111,7 @@ class SnapshotService {
 
     const record: ChangeRecord = {
       id: `change-${Date.now()}`,
-      date: new Date().toISOString().split('T')[0],
+      date: formatTimeForStorage(new Date()).split(' ')[0],
       timestamp: Date.now(),
       update: update,
       stateVector: stateVector,

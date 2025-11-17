@@ -16,10 +16,18 @@
   cursor: pointer;
   transition: all 0.2s;
   font-size: 14px;
+  border: 2px solid transparent; /* 为键盘焦点预留边框空间 */
 }
 
 .priority-item:hover {
   background-color: #f3f4f6;
+}
+
+/* 键盘导航焦点样式 */
+.priority-item.keyboard-focused {
+  background-color: #e0f2fe;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
 .priority-icon {

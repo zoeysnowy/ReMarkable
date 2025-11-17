@@ -1,7 +1,8 @@
 # EventHub & TimeHub 统一架构文档
 
-> **文档版本**: v1.0  
+> **文档版本**: v1.2  
 > **创建时间**: 2025-11-06  
+> **最后更新**: 2025-11-14  
 > **关联模块**: EventHub, TimeHub, EventService, TimeParsingService  
 > **文档类型**: 核心架构文档
 
@@ -36,6 +37,9 @@
 |------|------|----------|
 | **v1.0** | 2025-11-06 | 初始版本，定义 EventHub/TimeHub 职责 |
 | **v1.1** | 2025-11-06 | 添加 EventEditModal v2 新字段支持（emoji, isTimeCalendar, 任务关联字段） |
+| **v1.2** | 2025-11-14 | 🔥 移除 displayHint 存储依赖，时间显示完全基于动态计算 |
+| **v1.3** | 2025-11-14 | 🆕 支持 undefined 时间字段，完善自然语言处理链路文档 |
+| **v1.4** | 2025-11-16 | 🆕 添加 Timer 父子事件自动升级机制（parentEventId, timerLogs） |
 
 ### 1.2 架构图
 
@@ -85,10 +89,92 @@ graph TB
 
 | 组件 | 职责 | 数据类型 | 代码位置 |
 |------|------|----------|----------|
-| **EventHub** | 事件状态管理、增量更新、缓存 | Event (非时间字段) | `src/services/EventHub.ts` |
-| **TimeHub** | 时间意图管理、TimeSpec 存储、订阅通知 | TimeSpec, start/end | `src/services/TimeHub.ts` |
+| **EventHub** | 事件状态管理、增量更新、缓存、**时间字段透传到 TimeHub**（便捷封装） | Event (非时间字段) | `src/services/EventHub.ts` |
+| **TimeHub** | 时间意图管理、TimeSpec 存储、订阅通知、**支持 undefined 时间** | TimeSpec, start/end | `src/services/TimeHub.ts` |
 | **EventService** | 事件 CRUD 统一入口、持久化 | Event (完整) | `src/services/EventService.ts` |
-| **TimeParsingService** | 自然语言时间解析 | rawText → TimeSpec | `src/services/TimeParsingService.ts` |
+| **parseNaturalLanguage** | 自然语言解析（词典匹配） | rawText → ParseResult | `src/utils/naturalLanguageTimeDictionary.ts` |
+| **formatRelativeDate** | 动态计算相对时间显示 | Date → 相对时间字符串 | `src/utils/relativeDateFormatter.ts` |
+
+### 1.4 完整数据链路
+
+#### 用户输入时间 → 持久化
+```
+DateMention/UnifiedPicker/EditModal
+  ↓
+TimeHub.setEventTime(eventId, { start, end, allDay })
+  ↓
+EventService.updateEvent(eventId, { startTime, endTime, isAllDay, timeSpec })
+  ↓
+localStorage 持久化
+  ↓
+TimeHub.cache.set() + TimeHub.emit()
+  ↓
+所有订阅者 (useEventTime) 收到通知并重新渲染
+```
+
+#### 初始加载 → 显示
+```
+PlanManager/TimeCalendar 初始化
+  ↓
+EventService.getAllEvents() (从 localStorage 读取)
+  ↓
+planItemsToSlateNodes(items) (转换为 Slate 节点)
+  ↓
+Slate 编辑器渲染
+```
+
+#### 显示时间 (实时订阅)
+```
+PlanItemTimeDisplay/DateMentionElement 渲染
+  ↓
+useEventTime(eventId)
+  ↓
+TimeHub.getSnapshot(eventId)
+  ↓
+有缓存? 返回缓存
+  ↓
+无缓存? EventService.getEventById() → 加载到缓存 → 返回
+```
+
+#### Slate 编辑保存 → 持久化
+```
+用户编辑内容并失焦
+  ↓
+Slate onBlur → flushPendingChanges()
+  ↓
+slateNodesToPlanItems()
+  ↓
+TimeHub.getSnapshot(eventId) (读取最新时间)
+  ↓
+返回 { startTime, endTime }
+  ↓
+PlanManager.executeBatchUpdate()
+  ↓
+直接使用 updatedItem (包含从 TimeHub 来的时间)
+  ↓
+EventService.updateEvent() (保存完整数据)
+  ↓
+TimeHub 收到 eventsUpdated 事件 → 更新缓存
+```
+
+#### 关键原则
+
+**时间的唯一来源: TimeHub**
+- ✅ 所有时间**写入**都通过 `TimeHub.setEventTime()`
+- ✅ 所有时间**读取**都通过 `TimeHub.getSnapshot()`
+- ✅ 所有组件**显示**都通过 `useEventTime(eventId)`
+
+**EventService 的角色**:
+- 只负责持久化到 localStorage
+- 不直接读取用于显示,只在 TimeHub 缓存未命中时作为数据源
+- TimeHub 内部调用 EventService 来持久化和加载
+
+**数据流向**:
+```
+输入 → TimeHub → EventService(持久化) → TimeHub 缓存 → 显示
+      ↑                                          ↓
+      └──────── 缓存未命中时从 EventService 加载 ──┘
+```
 
 ---
 
@@ -157,14 +243,14 @@ await EventService.updateEvent('event-123', event); // 会覆盖 description 等
 - 更新缓存 + 持久化到 EventService
 - 发出 `eventUpdated` 全局事件
 
-#### 2.2.3 setEventTime - 时间字段便捷方法
+#### 2.2.3 setEventTime - 时间字段便捷方法（内部调用 TimeHub）
 
 ```typescript
 EventHub.setEventTime(
   eventId: string,
   timeInput: {
-    start?: string | Date;
-    end?: string | Date;
+    start?: string | Date | undefined;
+    end?: string | Date | undefined;
     kind?: TimeKind;
     allDay?: boolean;
     source?: TimeSource;
@@ -173,13 +259,18 @@ EventHub.setEventTime(
 ): Promise<Result>
 ```
 
-**用途**: 通过 EventHub 调用 TimeHub，简化时间更新
+**用途**: **便捷封装**，内部直接调用 `TimeHub.setEventTime()`
+
+**⚠️ 重要**: EventHub **不直接处理时间字段**，只是透传到 TimeHub
+
+**⚠️ 不推荐使用**: 应该直接调用 `TimeHub.setEventTime()`，职责更明确
 
 **示例**:
 ```typescript
-await EventHub.setEventTime('event-123', {
-  start: '2025-11-06T09:00:00',
-  end: '2025-11-06T10:00:00',
+// ✅ 推荐: 直接调用 TimeHub
+await TimeHub.setEventTime('event-123', {
+  start: '2025-11-06 09:00:00',
+  end: '2025-11-06 10:00:00',
   kind: 'range',
   source: 'picker'
 });
@@ -275,8 +366,8 @@ TimeHub.setEventTime(
 **输入参数**:
 ```typescript
 interface SetEventTimeInput {
-  start?: string | Date;
-  end?: string | Date;
+  start?: string | Date | undefined;  // ✅ 支持 undefined 清除时间
+  end?: string | Date | undefined;    // ✅ 支持 undefined 清除时间
   kind?: TimeKind;
   allDay?: boolean;
   source?: TimeSource;
@@ -290,13 +381,20 @@ interface SetEventTimeInput {
 ```typescript
 // 方式 1: 直接设置时间
 await TimeHub.setEventTime('event-123', {
-  start: '2025-11-06T09:00:00',
-  end: '2025-11-06T10:00:00',
+  start: '2025-11-06 09:00:00',  // ✅ 使用空格分隔符
+  end: '2025-11-06 10:00:00',
   kind: 'range',
   source: 'picker'
 });
 
-// 方式 2: 解析自然语言
+// 方式 2: 清除时间（支持 Task 类型）
+await TimeHub.setEventTime('event-123', {
+  start: undefined,  // ✅ 清除开始时间
+  end: undefined,    // ✅ 清除结束时间
+  source: 'user'
+});
+
+// 方式 3: 解析自然语言
 await TimeHub.setFuzzy('event-123', '下周一早上9点');
 ```
 
@@ -371,8 +469,8 @@ function EventTimeDisplay({ eventId }: { eventId: string }) {
       <p>原始输入: {timeSpec?.rawText}</p>
       
       <button onClick={() => setEventTime({
-        start: '2025-11-06T14:00:00',
-        end: '2025-11-06T15:00:00'
+        start: '2025-11-06 14:00:00',  // ✅ 空格分隔符
+        end: '2025-11-06 15:00:00'
       })}>
         更新时间
       </button>
@@ -450,12 +548,423 @@ const handleSave = async (updatedEvent: Event) => {
     allDay: updatedEvent.isAllDay,
     source: 'picker'
   });
+
+#### 4.2.4 DateMentionElement 集成 (v2.9) 🆕
+
+**用途**: Slate 编辑器中的 DateMention 元素，支持实时过期检测和悬浮卡片显示
+
+**代码位置**: `src/components/Slate/elements/DateMentionElement.tsx`
+
+**集成模式**:
+```typescript
+// ✅ 订阅 TimeHub 实时时间
+const eventTime = useEventTime(eventId);
+
+// ✅ 实时过期检测
+const isOutdated = useMemo(() => {
+  if (!eventTime.start || !dateMentionElement.date) return false;
+  const hubTime = new Date(eventTime.start);
+  const mentionTime = new Date(dateMentionElement.date);
+  return hubTime.getTime() !== mentionTime.getTime();
+}, [eventTime.start, dateMentionElement.date]);
+
+// ✅ 计算时间差（用于悬浮卡片显示）
+const timeDiff = useMemo(() => {
+  if (!isOutdated || !eventTime.start || !dateMentionElement.date) return null;
+  const hubTime = new Date(eventTime.start);
+  const mentionTime = new Date(dateMentionElement.date);
+  // 注意：hubTime 在前，mentionTime 在后
+  return calculateTimeDiff(hubTime, mentionTime);
+}, [isOutdated, eventTime.start, dateMentionElement.date]);
+
+// ✅ 更新到当前时间（同步到 TimeHub）
+const handleUpdateToCurrentTime = useCallback(() => {
+  const hubTime = new Date(eventTime.start);
+  const displayText = formatRelativeTimeDisplay(
+    eventTime.start,
+    eventTime.end || eventTime.start,
+    eventTime.allDay || false
+  );
+  
+  // 更新 Slate 节点
+  Transforms.setNodes(editor, {
+    date: hubTime.toISOString(),
+    displayText,
+  }, { at: path });
+  
+  setIsPopoverVisible(false);
+}, [eventTime, editor, path]);
+```
+
+**核心特性**:
+1. **实时订阅**: 通过 `useEventTime(eventId)` 订阅 TimeHub，自动响应时间变化
+2. **过期检测**: 比较 DateMention 节点时间与 TimeHub 时间，检测不一致
+3. **悬浮卡片**: 使用 Tippy.js 显示详细时间差和操作按钮（取消/删除/更新）
+4. **时间同步**: 点击"更新"按钮将 DateMention 同步到 TimeHub 最新时间
+
+**显示逻辑**:
+```typescript
+// 优先使用 TimeHub 数据（实时）
+const displayText = useMemo(() => {
+  if (eventTime.start) {
+    return formatRelativeTimeDisplay(
+      eventTime.start,
+      eventTime.end || eventTime.start,
+      eventTime.allDay || false
+    );
+  }
+  // 回退到节点自带数据
+  return dateMentionElement.displayText || 
+         formatRelativeDate(new Date(dateMentionElement.date));
+}, [eventTime, dateMentionElement]);
+```
+
+**样式状态**:
+- **正常**: 绿色背景（TimeHub 与 DateMention 时间一致）
+- **过期**: 红色背景 + ⚠️ 图标（TimeHub 时间已变更）
+- **被删除**: 橙色背景 + 🔶 图标（TimeHub 无时间数据）
+
+**详细文档**: [DATEMENTION_V2.9_UPDATE.md](../features/DATEMENTION_V2.9_UPDATE.md) | [SLATE_EDITOR_PRD.md](../PRD/SLATE_EDITOR_PRD.md#datemention-过期检测与悬浮卡片-v29-)
 };
 ```
 
 ---
 
 ## 5. 数据流向
+
+### 5.0 🆕 v1.3 自然语言完整处理链路
+
+**核心设计**: 从用户输入自然语言到最终显示，完全不依赖存储的 `displayHint`，实现动态计算。
+
+#### 5.0.1 完整数据流图
+
+```mermaid
+graph TB
+    subgraph "输入阶段"
+        A1[用户输入: 下周三中午12点] --> A2[UnifiedDateTimePicker]
+        A2 --> A3[handleSearchBlur]
+    end
+    
+    subgraph "解析阶段"
+        A3 --> B1[parseNaturalLanguage 词典]
+        B1 --> B2{匹配成功?}
+        B2 -->|是| B3[ParseResult]
+        B2 -->|否| B4[chrono.zh Fallback]
+        B4 --> B3
+    end
+    
+    subgraph "UI 状态阶段"
+        B3 --> C1[设置 selectedDates]
+        B3 --> C2[设置 startTime/endTime]
+        B3 --> C3[设置 fuzzyTimeName]
+    end
+    
+    subgraph "写入阶段"
+        C1 --> D1[用户点击确定]
+        C2 --> D1
+        C3 --> D1
+        D1 --> D2[TimeHub.setEventTime]
+        D2 --> D3["保存 startTime: 2025-11-20 12:00:00"]
+        D2 --> D4["保存 timeFieldState: [12, 0, null, null]"]
+        D2 --> D5["保存 isFuzzyTime: false"]
+        D3 --> D6[EventService 持久化]
+        D4 --> D6
+        D5 --> D6
+    end
+    
+    subgraph "显示阶段"
+        D6 --> E1[PlanManager 读取 Event]
+        E1 --> E2["获取 startTime: 2025-11-20 12:00:00"]
+        E2 --> E3[formatRelativeDate 动态计算]
+        E3 --> E4["显示: 下周三 12:00"]
+        E4 --> E5[时间流逝...]
+        E5 --> E6[formatRelativeDate 重新计算]
+        E6 --> E7["显示: 昨天 12:00"]
+    end
+    
+    style B1 fill:#90EE90
+    style D2 fill:#87CEEB
+    style E3 fill:#FFD700
+    style E6 fill:#FFD700
+```
+
+#### 5.0.2 自然语言输入 → 解析
+
+```typescript
+// 步骤 1: 用户在 UnifiedDateTimePicker 输入 "下周三中午12点"
+const handleSearchBlur = () => {
+  const customParsed = parseNaturalLanguage(searchInput);
+  // customParsed = {
+  //   matched: true,
+  //   pointInTime: { date: dayjs('2025-11-20'), displayHint: '下周三' },
+  //   timePeriod: { startHour: 12, startMinute: 0, name: '中午12点' }
+  // }
+}
+```
+
+**parseNaturalLanguage 匹配逻辑**:
+```typescript
+// 文件：src/utils/naturalLanguageTimeDictionary.ts
+export function parseNaturalLanguage(input: string): ParseResult {
+  // 1. 优先匹配精确时间点（如"下周三"）
+  for (const [pointKey, pointFunc] of POINT_IN_TIME_DICTIONARY) {
+    if (input.includes(pointKey)) {
+      const pointInTime = pointFunc(new Date());
+      return { pointInTime, matched: true };
+    }
+  }
+  
+  // 2. 匹配日期范围（如"周末"）
+  for (const [dateKey, dateFunc] of DATE_RANGE_DICTIONARY) {
+    if (input.includes(dateKey)) {
+      const dateRange = dateFunc(new Date());
+      
+      // 3. 检查是否包含时间段（如"中午12点"）
+      for (const [timeKey, timePeriod] of TIME_PERIOD_DICTIONARY) {
+        if (input.includes(timeKey)) {
+          return { dateRange, timePeriod, matched: true };
+        }
+      }
+      
+      return { dateRange, matched: true };
+    }
+  }
+  
+  // 4. Fallback: chrono.zh 解析
+  return { matched: false };
+}
+```
+
+#### 5.0.3 解析结果 → UI 状态
+
+```typescript
+// 步骤 2: 设置 Picker 内部状态
+if (customParsed.pointInTime) {
+  setSelectedDates({
+    start: dayjs('2025-11-20'),  // ✅ 只存储日期
+    end: dayjs('2025-11-20')
+  });
+  // ❌ 不设置 displayHint（移除存储）
+}
+
+if (customParsed.timePeriod) {
+  setStartTime({ hour: 12, minute: 0 });  // ✅ 只存储时间值
+  setEndTime(null);  // 精确开始时间，无结束时间
+  setFuzzyTimeName('中午12点');  // UI 显示用
+}
+```
+
+#### 5.0.4 UI 状态 → TimeHub 写入
+
+```typescript
+// 步骤 3: 用户点击"确定"，写入 TimeHub
+const handleApply = async () => {
+  const startDateTime = selectedDates.start
+    .hour(startTime.hour)
+    .minute(startTime.minute);
+  
+  const startIso = startDateTime.format('YYYY-MM-DD HH:mm:ss');
+  // → '2025-11-20 12:00:00'
+  
+  await TimeHub.setEventTime(eventId, {
+    start: startIso,
+    end: startIso,  // 精确开始时间，end = start
+    kind: 'fixed',
+    source: 'picker',
+    isFuzzyTime: false,  // ✅ 中午12点是精确时间
+    timeFieldState: [12, 0, null, null],  // ✅ 只有开始时间
+    // ❌ 不再传递 displayHint
+  });
+};
+```
+
+#### 5.0.5 TimeHub → Event 持久化
+
+```typescript
+// 步骤 4: TimeHub 内部处理
+TimeHub.setEventTime(eventId, input) {
+  // 1. 更新 Event 对象
+  const event = {
+    ...existingEvent,
+    startTime: '2025-11-20 12:00:00',  // ✅ 绝对时间
+    endTime: '2025-11-20 12:00:00',
+    timeFieldState: [12, 0, null, null],  // ✅ 时间字段状态
+    isFuzzyTime: false,
+    // ❌ 不存储 displayHint
+  };
+  
+  // 2. 调用 EventService 持久化
+  await EventService.updateEvent(eventId, event);
+  
+  // 3. 触发事件通知
+  window.dispatchEvent(new CustomEvent('eventsUpdated'));
+  window.dispatchEvent(new CustomEvent('timeChanged', { detail: { eventId } }));
+}
+```
+
+#### 5.0.6 Event → 动态显示
+
+```typescript
+// 步骤 5: PlanManager 显示时动态计算
+// 文件：src/utils/relativeDateFormatter.ts
+function formatRelativeTimeDisplay(event: Event): string {
+  if (!event.startTime) return '';
+  
+  const startDate = parseLocalTimeString(event.startTime);
+  const today = new Date();
+  
+  // ✅ 动态计算相对日期
+  const relativeDate = formatRelativeDate(startDate, today);
+  // → "下周三"（如果今天是 2025-11-13）
+  // → "昨天"（如果今天是 2025-11-21）
+  
+  // ✅ 从 timeFieldState 读取时间
+  const [startHour, startMinute] = event.timeFieldState || [null, null];
+  
+  if (startHour !== null && startMinute !== null) {
+    return `${relativeDate} ${startHour}:${String(startMinute).padStart(2, '0')}`;
+    // → "下周三 12:00"
+  }
+  
+  return relativeDate;
+}
+```
+
+**formatRelativeDate 动态计算逻辑**:
+```typescript
+function formatRelativeDate(targetDate: Date, today: Date = new Date()): string {
+  const daysDiff = calculateDaysDiff(targetDate, today);
+  
+  // ✅ 动态计算，随时间变化
+  if (daysDiff === 0) return "今天";
+  if (daysDiff === 1) return "明天";
+  if (daysDiff === -1) return "昨天";
+  if (daysDiff === 2) return "后天";
+  if (daysDiff === -2) return "前天";
+  
+  // 本周/下周判断
+  const targetWeek = getWeekNumber(targetDate);
+  const todayWeek = getWeekNumber(today);
+  
+  if (targetWeek === todayWeek) {
+    return `本周${getWeekdayName(targetDate)}`;  // "本周三"
+  } else if (targetWeek === todayWeek + 1) {
+    return `下周${getWeekdayName(targetDate)}`;  // "下周三"
+  } else if (targetWeek === todayWeek - 1) {
+    return `上周${getWeekdayName(targetDate)}`;  // "上周三"
+  }
+  
+  // 更远的日期显示绝对日期
+  return formatAbsoluteDate(targetDate);  // "11月20日"
+}
+```
+
+#### 5.0.7 核心优势总结
+
+| 阶段 | 旧架构（v2.8.1） | 新架构（v1.3） |
+|------|-----------------|---------------|
+| **解析** | parseNaturalLanguage → ParseResult | ✅ 同左 |
+| **UI 状态** | 生成 displayHint = "下周三中午12点" | ✅ 只存储 selectedDates + startTime |
+| **写入** | 保存 displayHint 到数据库 | ❌ 不保存 displayHint |
+| **存储** | `{ displayHint: "下周三中午12点", startTime: "2025-11-20 12:00:00" }` | ✅ `{ startTime: "2025-11-20 12:00:00", timeFieldState: [12, 0, null, null] }` |
+| **显示** | 直接返回 displayHint | ✅ formatRelativeDate 动态计算 |
+| **时间变化** | 永远显示 "下周三" | ✅ 自动变成 "昨天" |
+| **远程同步** | ❌ 无 displayHint，无法显示 | ✅ 只需要 startTime，完美支持 |
+
+### 5.0 🆕 v2.8.2 新架构：动态时间显示
+
+**核心变更**: 移除 `displayHint` 字段的存储和传递，时间显示完全基于动态计算。
+
+#### 5.0.1 旧架构（v2.8.1 及之前）的问题
+
+❌ **问题 1: displayHint 存储在数据库**
+```typescript
+// ❌ 旧流程：Picker 生成 displayHint 并保存
+自然语言输入 → 词典解析 → Picker 拼接 displayHint 
+→ TimeHub.setEventTime({ displayHint: "下周三下午1点" }) 
+→ 保存到 Event 数据库
+```
+
+❌ **问题 2: 远程同步事件无法显示**
+- 远程同步的 Event **没有** displayHint 字段
+- 导致远程事件无法显示友好的相对时间
+- 只能显示原始的 "2025-11-20 13:00:00"
+
+❌ **问题 3: 时间显示不会自动更新**
+- displayHint = "下周三" 保存后永远是 "下周三"
+- 即使过了一周，仍显示 "下周三" 而非 "上周三"
+
+#### 5.0.2 新架构（v2.8.2）解决方案
+
+✅ **写入路径**（用户输入）:
+```typescript
+自然语言输入 → 词典解析 → TimeHub.setEventTime()
+→ 只保存 startTime/endTime + timeFieldState
+→ Event 数据库
+
+// 示例：输入 "下周三下午1点"
+TimeHub.setEventTime(eventId, {
+  start: "2025-11-20 13:00:00",  // ✅ 只存储绝对时间
+  end: "2025-11-20 13:00:00",
+  isFuzzyTime: false,            // ✅ 时间类型标记
+  timeFieldState: [13, 0, null, null]  // ✅ 时间字段状态
+  // ❌ 不再保存 displayHint
+});
+```
+
+✅ **读取路径**（显示时）:
+```typescript
+Event (startTime/endTime) → formatRelativeTimeDisplay()
+→ 动态调用 formatRelativeDate(startTime, now) 
+→ 实时计算相对时间
+→ PlanManager 显示 "下周三 13:00"
+
+// 示例：显示逻辑
+function formatRelativeDate(targetDate: Date, today: Date = new Date()): string {
+  const daysDiff = calculateDaysDiff(targetDate, today);
+  
+  if (daysDiff === 0) return "今天";      // ✅ 动态计算
+  if (daysDiff === 1) return "明天";      // ✅ 随时间变化
+  if (daysDiff === -1) return "昨天";     // ✅ 自动更新
+  
+  // ... 更多逻辑，详见 relativeDateFormatter.ts
+}
+```
+
+✅ **核心优势**:
+1. **远程同步完美支持**: 只要有 startTime/endTime，就能自动显示相对时间
+2. **时间显示自动更新**: "下周三" → 过了之后自动变成 "上周三"
+3. **架构统一**: 所有事件（本地/远程）显示逻辑一致
+4. **无存储依赖**: 不依赖可能不存在的 displayHint 字段
+
+✅ **数据流对比**:
+```mermaid
+graph LR
+    subgraph "v2.8.2 新架构 ✅"
+        A1[自然语言] --> B1[词典解析]
+        B1 --> C1[TimeHub.setEventTime]
+        C1 --> D1["只保存 startTime/endTime"]
+        D1 --> E1[Event 数据库]
+        E1 --> F1[formatRelativeDate]
+        F1 --> G1["动态计算相对时间"]
+        G1 --> H1[PlanManager 显示]
+    end
+    
+    subgraph "v2.8.1 旧架构 ❌"
+        A2[自然语言] --> B2[词典解析]
+        B2 --> C2[Picker 拼接]
+        C2 --> D2["保存 displayHint"]
+        D2 --> E2[Event 数据库]
+        E2 --> F2[formatRelativeDate]
+        F2 --> G2["直接返回 displayHint"]
+        G2 --> H2[PlanManager 显示]
+    end
+    
+    style A1 fill:#90EE90
+    style G1 fill:#90EE90
+    style D2 fill:#FFB6C6
+    style G2 fill:#FFB6C6
+```
 
 ### 5.1 创建事件流程
 
@@ -531,7 +1040,8 @@ graph LR
 
 | 场景 | 使用 | 原因 |
 |------|------|------|
-| **设置时间字段** | TimeHub.setEventTime | 保留时间意图 |
+| **设置时间字段** | TimeHub.setEventTime | 保留时间意图，支持 undefined |
+| **清除时间字段** | TimeHub.setEventTime({ start: undefined }) | 支持 Task 类型无时间事件 |
 | **解析自然语言** | TimeHub.setFuzzy | 自动创建 TimeSpec |
 | **订阅时间变化** | TimeHub.subscribe 或 useEventTime | 响应式更新 |
 | **Timer 更新** | TimeHub.setTimerWindow | 跳过外部同步 |
@@ -612,6 +1122,31 @@ await TimeHub.setEventTime(eventId, {
 });
 ```
 
+#### ❌ 错误 5: 尝试创建 clearEventTime() 方法
+
+```typescript
+// ❌ 错误：多余的封装
+class EventHub {
+  async clearEventTime(eventId: string) {
+    await TimeHub.clearEventTime(eventId);  // ← 不需要
+  }
+}
+```
+
+**✅ 正确**:
+```typescript
+// 直接使用 TimeHub.setEventTime 支持 undefined
+await TimeHub.setEventTime(eventId, {
+  start: undefined,
+  end: undefined,
+  source: 'user'
+});
+```
+
+**原因**: 
+- `setEventTime` 已支持 `undefined`，无需单独的清除方法
+- 保持 API 简洁，一个功能一个方法
+
 ---
 
 ## 7. 常见问题
@@ -674,6 +1209,53 @@ await TimeHub.setFuzzy('event-123', '下周', {
 });
 ```
 
+### 7.6 Q: 如何清除事件的时间字段？
+
+**A**: 
+```typescript
+// ✅ 直接通过 TimeHub
+await TimeHub.setEventTime('event-123', {
+  start: undefined,
+  end: undefined,
+  source: 'user'
+});
+
+// ❌ 不需要: 单独的 clearEventTime() 方法
+```
+
+**使用场景**: 
+- Task 类型事件可以没有时间（待办事项）
+- 用户删除了时间选择
+- 从 Calendar 事件转换为 Task 事件
+
+### 7.7 Q: 自然语言解析的优先级是什么？
+
+**A**: 
+```typescript
+// 解析优先级（从高到低）:
+1. 自定义词典 - 精确时间点（如"下周三"、"月底"、"eom"）
+2. 自定义词典 - 日期范围（如"周末"、"下周"）
+3. 自定义词典 - 时间段（如"上午"、"中午12点"）
+4. chrono.zh - Fallback 通用解析
+
+// 词条匹配规则：按长度从长到短排序，优先匹配更具体的词条
+// 例如："下周五"优先于"下周"
+```
+
+### 7.8 Q: 为什么不存储 displayHint？
+
+**A**: 
+**问题**:
+1. ❌ 远程同步的事件没有 displayHint，无法显示友好时间
+2. ❌ displayHint = "下周三" 永远是"下周三"，不会自动更新
+3. ❌ 增加存储字段，数据冗余
+
+**解决方案**:
+1. ✅ 只存储 `startTime`/`endTime`（绝对时间）
+2. ✅ 显示时调用 `formatRelativeDate()` 动态计算
+3. ✅ 时间流逝后自动更新显示（"下周三" → "昨天"）
+4. ✅ 远程同步事件完美支持（只需要 startTime 即可）
+
 ---
 
 ## 8. Event 类型字段完整定义
@@ -689,9 +1271,13 @@ interface Event {
   emoji?: string;                  // 🆕 v1.1：事件 Emoji 图标
   
   // ========== 时间字段（由 TimeHub 管理） ==========
-  startTime?: string;              // 开始时间（ISO 8601 本地时间）
-  endTime?: string;                // 结束时间（ISO 8601 本地时间）
-  dueDate?: string;                // 截止日期
+  // ⚠️ 重要：时间格式统一为 'YYYY-MM-DD HH:mm:ss'（空格分隔符）
+  // ❌ 禁止：不允许使用 ISO 8601 的 'T' 分隔符（如 '2025-11-06T14:00:00'）
+  // 原因：数据会同步到 Outlook，ISO 格式会被误认为 UTC 时间，造成时区偏移
+  // 详见：TIME_ARCHITECTURE.md 和 src/utils/timeUtils.ts
+  startTime?: string;              // 开始时间（'YYYY-MM-DD HH:mm:ss' 格式，本地时间）
+  endTime?: string;                // 结束时间（'YYYY-MM-DD HH:mm:ss' 格式，本地时间）
+  dueDate?: string;                // 截止日期（'YYYY-MM-DD HH:mm:ss' 格式）
   isAllDay?: boolean;              // 是否全天事件
   timeSpec?: TimeSpec;             // 时间意图对象（TimeHub 专用）
   
@@ -705,20 +1291,31 @@ interface Event {
   attendees?: Contact[];           // 参会人列表
   location?: string;               // 地点
   
-  // ========== 来源标识 ==========
+  // ========== 来源标识（标记创建页面） ==========
   remarkableSource?: boolean;      // 是否由 ReMarkable 创建
   microsoftEventId?: string;       // Outlook 事件 ID
-  isPlan?: boolean;                // 🆕 v1.1：是否从 Plan 页面创建
-  isTimeCalendar?: boolean;        // 🆕 v1.1：是否从 TimeCalendar 日历区域直接创建
+  
+  // 【页面来源标记】互斥，只能有一个为 true
+  isPlan?: boolean;                // PlanManager 页面创建
+  isTimeCalendar?: boolean;        // TimeCalendar 日历区域创建
+  isTimer?: boolean;               // Timer 计时器页面创建
+  
+  // 【事件标记】可与页面来源组合使用
+  isDeadline?: boolean;            // 截止日期事件标记
   
   // ========== 任务模式（EventEditModal v2） ==========
-  isTask?: boolean;                // 🆕 v1.1：是否为任务模式
+  // 【事件类型】影响时间字段要求
+  isTask?: boolean;                // 🆕 v1.1：任务类型（true=Task可无时间，false/undefined=Calendar事件必须有时间）
   isCompleted?: boolean;           // 🆕 v1.1：任务是否已完成
   
   // ========== 任务关联（EventEditModal v2） ==========
   parentTaskId?: string;           // 🆕 v1.1：父任务 ID
   childTaskCount?: number;         // 🆕 v1.1：子任务总数
   childTaskCompletedCount?: number; // 🆕 v1.1：已完成子任务数量
+  
+  // ========== Timer 父子事件关联（v1.4） ==========
+  parentEventId?: string;          // 🆕 v1.4：父事件 ID（用于 Timer 子事件关联）
+  timerLogs?: string[];            // 🆕 v1.4：计时日志（子 Timer 事件 ID 列表）
   
   // ========== 元数据 ==========
   createdAt?: string;              // 创建时间
@@ -728,6 +1325,41 @@ interface Event {
 ```
 
 ### 8.2 新增字段详解（v1.1）
+
+#### 🔖 字段分类层级
+
+事件对象中的布尔标记字段分为三个层级：
+
+**1. 页面来源标记**（互斥，只能有一个为 `true`）：
+- `isPlan` - PlanManager 页面创建
+- `isTimeCalendar` - TimeCalendar 日历区域创建
+- `isTimer` - Timer 计时器页面创建
+
+**2. 事件类型**（影响时间字段要求）：
+- `isTask` - 任务类型（`true` = Task 可无时间，`false/undefined` = Calendar 事件必须有时间）
+
+**3. 事件标记**（可与任何页面来源/事件类型组合）：
+- `isDeadline` - 截止日期事件标记
+- `isCompleted` - 任务完成状态
+
+**字段组合示例**：
+```typescript
+// ✅ 合法组合：PlanManager 创建的截止日期任务
+{
+  isPlan: true,         // 页面来源：PlanManager
+  isTask: true,         // 事件类型：Task
+  isDeadline: true,     // 事件标记：有截止日期
+  isCompleted: false,   // 事件标记：未完成
+}
+
+// ❌ 非法组合：不能同时有多个页面来源
+{
+  isPlan: true,
+  isTimeCalendar: true,  // ❌ 错误！页面来源互斥
+}
+```
+
+---
 
 #### 8.2.1 emoji - 事件图标
 
@@ -746,7 +1378,36 @@ emoji?: string;  // 如 "🎯"、"📝"
 
 ---
 
-#### 8.2.2 isTimeCalendar - 日历区域创建标识
+#### 8.2.2 isPlan - PlanManager 页面来源
+
+```typescript
+isPlan?: boolean;
+```
+
+**用途**: 标识事件是否从 **PlanManager** 页面创建
+
+**页面来源层级**:
+```typescript
+// 页面来源标记（互斥，只能有一个为 true）
+isPlan?: boolean;           // PlanManager 页面
+isTimeCalendar?: boolean;   // TimeCalendar 日历区域
+isTimer?: boolean;          // Timer 计时器页面
+```
+
+**使用场景**:
+```typescript
+// 判断创建来源
+function getEventSource(event: Event): string {
+  if (event.isPlan) return 'PlanManager';
+  if (event.isTimeCalendar) return 'TimeCalendar';
+  if (event.isTimer) return 'Timer';
+  return 'Unknown';
+}
+```
+
+---
+
+#### 8.2.3 isTimeCalendar - TimeCalendar 页面来源
 
 ```typescript
 isTimeCalendar?: boolean;
@@ -767,19 +1428,108 @@ function shouldShowPlanSection(event: Event): boolean {
 
 ---
 
-#### 8.2.3 isTask - 任务模式标识
+#### 8.2.4 isTimer - Timer 页面来源
+
+```typescript
+isTimer?: boolean;
+```
+
+**用途**: 标识事件是否从 **Timer** 页面创建（计时器事件）
+
+**特性**:
+- 计时器事件通常有时间跟踪需求
+- 与其他页面来源字段互斥
+- 可能需要特殊的时间显示逻辑
+
+**使用场景**:
+```typescript
+// 判断是否需要计时器特殊处理
+function needsTimerTracking(event: Event): boolean {
+  return event.isTimer === true;
+}
+
+// 计时器事件创建
+const timerEvent: Event = {
+  id: generateId(),
+  title: '番茄钟计时',
+  isTimer: true,          // ✅ Timer 页面来源
+  isPlan: false,
+  isTimeCalendar: false,
+  startTime: '2024-01-15 14:00:00',
+  endTime: '2024-01-15 14:25:00',  // 25分钟番茄钟
+};
+```
+
+---
+
+#### 8.2.5 isDeadline - 截止日期标记
+
+```typescript
+isDeadline?: boolean;
+```
+
+**用途**: 标识事件是否为**截止日期事件**
+
+**特性**:
+- 可与任何页面来源字段组合使用（不互斥）
+- 影响事件的显示和提醒逻辑
+- 通常配合 `dueDate` 字段使用
+
+**使用场景**:
+```typescript
+// 截止日期事件创建
+const deadlineEvent: Event = {
+  id: generateId(),
+  title: '项目交付',
+  isDeadline: true,       // ✅ 截止日期标记
+  isPlan: true,           // 可以组合使用
+  dueDate: '2024-12-31 23:59:59',
+  startTime: undefined,   // 截止日期可以没有开始时间
+  endTime: '2024-12-31 23:59:59',
+};
+
+// 判断是否需要截止日期提醒
+function needsDeadlineReminder(event: Event): boolean {
+  return event.isDeadline === true && !!event.dueDate;
+}
+```
+
+---
+
+#### 8.2.6 isTask - 任务类型标识（影响时间字段要求）
 
 ```typescript
 isTask?: boolean;
 ```
 
-**用途**: 显示任务勾选框（checkbox icon）
+**用途**: 标记事件是否为任务类型，决定时间字段是否必需
 
-**显示条件**:
+**时间字段规则**:
+- `isTask = true`: **Task 任务**，startTime/endTime 可以为 `undefined`（支持无时间任务，如待办事项）
+- `isTask = false` 或 `undefined`: **Calendar 事件**，startTime/endTime 必须有值（同步到 Outlook Calendar）
+
+**使用场景**:
 ```typescript
-function shouldShowTaskCheckbox(event: Event): boolean {
-  // 只有从 Plan 页面创建且用户没关闭 addTask 按钮的事件才显示
-  return event.isPlan === true && event.isTask !== false;
+// 判断是否需要时间验证
+function validateEventTime(event: Event): boolean {
+  if (event.isTask === true) {
+    // 任务类型：时间可选
+    return true;
+  }
+  
+  // Calendar 事件：必须有时间
+  return !!(event.startTime && event.endTime);
+}
+
+// 同步判断
+function shouldSyncToCalendar(event: Event): boolean {
+  // 只有 Calendar 事件（非 Task）且有时间才同步到 Outlook Calendar
+  return event.isTask !== true && !!(event.startTime || event.endTime);
+}
+
+function shouldSyncToTodoList(event: Event): boolean {
+  // Task 类型同步到 Microsoft To Do List
+  return event.isTask === true;
 }
 ```
 
@@ -1045,12 +1795,16 @@ function renderTaskProgress(event: Event): ReactNode {
 - [SYNC_MECHANISM_PRD.md](./SYNC_MECHANISM_PRD.md) - 同步机制文档
 - [EventEditModal v2 PRD](../PRD/EVENTEDITMODAL_V2_PRD.md) - EventEditModal v2 产品需求文档（包含新增字段的详细说明）
 - [TIMER_MODULE_PRD.md](../PRD/TIMER_MODULE_PRD.md) - Timer 模块文档
+- [naturalLanguageTimeDictionary.ts](../../src/utils/naturalLanguageTimeDictionary.ts) - 自然语言解析词典
+- [relativeDateFormatter.ts](../../src/utils/relativeDateFormatter.ts) - 相对时间动态显示
 
 ---
 
-**文档版本**: v1.1  
-**最后更新**: 2025-11-06  
+**文档版本**: v1.3  
+**最后更新**: 2025-11-14  
 **维护者**: GitHub Copilot  
 **变更记录**:
 - v1.0 (2025-11-06): 初始版本
 - v1.1 (2025-11-06): 添加 EventEditModal v2 新增字段（emoji, isTimeCalendar, isTask, isCompleted, parentTaskId, childTaskCount, childTaskCompletedCount）及任务关联功能实现指南
+- v1.2 (2025-11-14): 移除 displayHint 存储依赖，时间显示完全基于动态计算
+- v1.3 (2025-11-14): **支持 undefined 时间字段**，完善自然语言处理链路文档（从输入到显示的完整流程）

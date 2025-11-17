@@ -56,23 +56,11 @@ export function getTagColor(tagId: string | undefined, tags: any[]): string {
  * @returns 颜色值
  */
 export function getEventColor(event: Event, tags: any[]): string {
-  // 🔍 调试日志
-  const isRemote = event.source === 'outlook';
-  if (isRemote) {
-    console.log('🎨 [getEventColor] 远程事件:', {
-      title: event.title,
-      tags: event.tags,
-      calendarIds: event.calendarIds,
-      source: event.source
-    });
-  }
-
   // 优先级 1: 如果有 tags 数组，使用第一个标签的颜色
   if (event.tags && event.tags.length > 0) {
     const firstTagId = event.tags[0];
     const color = getTagColor(firstTagId, tags);
     if (color && color !== '#3788d8') {
-      if (isRemote) console.log('  ✅ 使用标签颜色:', color);
       return color;
     }
   }
@@ -80,12 +68,10 @@ export function getEventColor(event: Event, tags: any[]): string {
   // 优先级 2: 回退到事件关联的日历分组颜色
   if (event.calendarIds && event.calendarIds.length > 0) {
     const calendarColor = getCalendarGroupColor(event.calendarIds[0]);
-    if (isRemote) console.log('  📅 日历颜色查找:', { calendarId: event.calendarIds[0], color: calendarColor });
     if (calendarColor) return calendarColor;
   }
 
   // 优先级 3: 默认蓝色
-  if (isRemote) console.log('  ⚠️ 使用默认颜色');
   return '#3788d8';
 }
 

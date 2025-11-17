@@ -27,6 +27,7 @@ import TagManager from './components/TagManager';
 import TimeCalendar from './features/Calendar/TimeCalendar';
 import PlanManager from './components/PlanManager';
 import { AIDemo } from './components/AIDemo';
+import { EventEditModalV2Demo } from './components/EventEditModalV2Demo';
 
 import { logger } from './utils/logger';
 
@@ -304,7 +305,7 @@ function App() {
       window.electronAPI.debugLog('App page change', {
         from: currentPage,
         to: page,
-        timestamp: new Date().toISOString()
+        timestamp: formatTimeForStorage(new Date())
       });
     }
     
@@ -355,9 +356,99 @@ function App() {
 
   // 🔧 Issue #12: 支持从任何事件启动关联的计时器
   // 全局计时器管理函数
-  const handleTimerStart = (tagIds?: string | string[], parentEventId?: string) => {
+  /**
+   * 启动计时器
+   * 
+   * Timer 生命周期：
+   * 1. START: 立即创建 eventId 和初始事件 (syncStatus: 'local-only')
+   * 2. RUNNING: 每30秒自动保存，更新同一个事件 (syncStatus 保持 'local-only')
+   * 3. STOP: 计算最终时长，更新事件状态为 'pending' 以触发同步
+   * 
+   * 🆕 独立 Timer 二次计时自动升级机制：
+   * - 检测独立 Timer 事件（isTimer=true + 无 parentEventId + 有 timerLogs）
+   * - 自动创建父事件，继承所有元数据
+   * - 将原 Timer 转为子事件
+   * - 为父事件启动新 Timer
+   * 
+   * @param tagIds - 标签ID数组（可选，支持无标签计时）
+   * @param eventIdOrParentId - 事件ID或父事件ID（可选）
+   *   - 如果是已存在的独立 Timer → 自动升级为父子结构
+   *   - 如果是普通事件 → 作为 parentEventId 使用
+   */
+  const handleTimerStart = async (tagIds?: string | string[], eventIdOrParentId?: string) => {
     // 支持旧版单个 tagId 参数的兼容性，也支持空标签
     const tagIdArray = tagIds ? (Array.isArray(tagIds) ? tagIds : [tagIds]) : [];
+    
+    // 🆕 检测是否为独立 Timer 的二次计时（自动升级机制）
+    let parentEventId = eventIdOrParentId;
+    if (eventIdOrParentId) {
+      // 从 localStorage 读取所有事件
+      const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
+      const existingEvents: Event[] = saved ? JSON.parse(saved) : [];
+      const existingEvent = existingEvents.find((e: Event) => e.id === eventIdOrParentId);
+      
+      // 检测条件：isTimer=true + 无 parentEventId + 有 timerLogs（说明已完成至少一次计时）
+      if (existingEvent && 
+          existingEvent.isTimer === true && 
+          !existingEvent.parentEventId && 
+          existingEvent.timerLogs && 
+          existingEvent.timerLogs.length > 0) {
+        
+        AppLogger.log('🔄 [Timer] 检测到独立 Timer 二次计时，自动升级为父子结构', {
+          timerId: existingEvent.id,
+          timerLogsCount: existingEvent.timerLogs.length
+        });
+        
+        // Step 1: 创建父事件（继承原 Timer 的所有元数据）
+        const parentEvent: Event = {
+          id: `parent-${Date.now()}`,
+          title: existingEvent.title || '计时事件',
+          simpleTitle: existingEvent.simpleTitle,
+          fullTitle: existingEvent.fullTitle,
+          description: existingEvent.description,
+          emoji: existingEvent.emoji,
+          tags: existingEvent.tags || [],
+          color: existingEvent.color,
+          source: 'local',
+          isTimer: false,           // ✅ 不再是 Timer
+          isTimeCalendar: true,     // 标记为 TimeCalendar 创建
+          timerLogs: [existingEvent.id], // 将原 Timer 作为第一个子事件
+          createdAt: existingEvent.createdAt,
+          updatedAt: formatTimeForStorage(new Date()),
+          syncStatus: 'pending' as const,
+          remarkableSource: true,
+          // 继承其他元数据
+          calendarIds: existingEvent.calendarIds,
+          location: existingEvent.location,
+          organizer: existingEvent.organizer,
+          attendees: existingEvent.attendees,
+          notes: existingEvent.notes,
+          priority: existingEvent.priority,
+          eventlog: existingEvent.eventlog
+        };
+        
+        // Step 2: 将原 Timer 转为子事件
+        await EventService.updateEvent(existingEvent.id, {
+          parentEventId: parentEvent.id,
+          updatedAt: formatTimeForStorage(new Date())
+        } as Partial<Event>);
+        
+        // Step 3: 保存父事件
+        const createResult = await EventService.createEvent(parentEvent, true);
+        if (!createResult.success) {
+          AppLogger.error('❌ [Timer] 创建父事件失败:', createResult.error);
+          return;
+        }
+        
+        AppLogger.log('✅ [Timer] 升级完成，父事件已创建:', {
+          parentId: parentEvent.id,
+          originalTimerId: existingEvent.id
+        });
+        
+        // Step 4: 使用父事件 ID 作为新 Timer 的 parentEventId
+        parentEventId = parentEvent.id;
+      }
+    }
     
     // 🆕 支持无标签计时：如果没有标签，使用默认值
     let tag = null;
@@ -380,18 +471,52 @@ function App() {
     });
 
       const startTime = Date.now();
+      const startDate = new Date(startTime);
+      
+      // ✅ 立即生成固定 eventId（整个计时过程保持不变）
+      const timerEventId = `timer-${tagIdArray[0] || 'notag'}-${startTime}`;
+      
+      // ✅ 立即创建初始事件（syncStatus: 'local-only'，运行中不同步）
+      const initialEvent: Event = {
+        id: timerEventId,
+        title: '计时中的事件',
+        startTime: formatTimeForStorage(startDate),
+        endTime: formatTimeForStorage(startDate), // 结束时更新
+        tags: tagIdArray,
+        calendarIds: (tag as any)?.calendarId ? [(tag as any).calendarId] : [],
+        location: '',
+        description: '计时中的事件',
+        isAllDay: false,
+        createdAt: formatTimeForStorage(startDate),
+        updatedAt: formatTimeForStorage(startDate),
+        syncStatus: 'local-only', // ✅ 运行中不同步
+        remarkableSource: true,
+        isTimer: true,
+        parentEventId
+      };
+      
+      // 立即保存初始事件
+      EventService.createEvent(initialEvent, true).then(result => {
+        if (result.success) {
+          AppLogger.log('✅ [Timer Start] Initial event created:', timerEventId);
+        } else {
+          AppLogger.error('❌ [Timer Start] Failed to create initial event:', result.error);
+        }
+      });
+      
       const timerState = {
         isRunning: true,
-        tagId: tagIdArray[0] || '', // 🔧 向后兼容：第一个标签ID，无标签时为空字符串
-        tagIds: tagIdArray, // 🆕 完整的标签数组（可能为空）
+        tagId: tagIdArray[0] || '', // 向后兼容：第一个标签ID
+        tagIds: tagIdArray, // 完整的标签数组（可能为空）
         tagName: tag?.name || '未分类',
-        tagEmoji: tag?.emoji || '⏱️', // 无标签时使用默认emoji
-        tagColor: tag?.color || '#9CA3AF', // 无标签时使用灰色
+        tagEmoji: tag?.emoji || '⏱️',
+        tagColor: tag?.color || '#9CA3AF',
         startTime: startTime,
-        originalStartTime: startTime, // 保存真正的开始时间
+        originalStartTime: startTime,
         elapsedTime: 0,
         isPaused: false,
-        parentEventId // 🆕 保存关联的父事件 ID
+        parentEventId,
+        eventId: timerEventId // ✅ 保存固定 eventId
       };
       setGlobalTimer(timerState);
       // 💾 持久化到 localStorage，供 Widget 读取
@@ -564,17 +689,36 @@ function App() {
         }
       }
 
-      // 🔧 使用保存的事件ID（已在 handleTimerStart 或 handleTimerEditSave 中生成）
-      const timerEventId = globalTimer.eventId || `timer-${startTime.getTime()}-${Math.random().toString(36).substr(2, 9)}`;
+      // 🔧 [BUG FIX] 必须使用 globalTimer.eventId，否则会创建重复事件
+      if (!globalTimer.eventId) {
+        AppLogger.error('💾 [Timer Stop] globalTimer.eventId is missing! Cannot save event.');
+        return;
+      }
+      const timerEventId = globalTimer.eventId;
       
       // 🔧 [BUG FIX] 读取现有事件，保留用户的 description 和 location
       const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
       const existingEvents: Event[] = saved ? JSON.parse(saved) : [];
       const existingEvent = existingEvents.find((e: Event) => e.id === timerEventId);
       
-      // 创建或更新事件，使用用户自定义的标题和emoji（如果有）
-      const eventTitle = globalTimer.eventTitle || (tag?.emoji ? `${tag.emoji} ${tag.name}` : globalTimer.tagName);
-      const eventEmoji = globalTimer.eventEmoji || tag?.emoji || '⏱️';
+      // 🆕 [FEATURE] 自动生成标题：如果用户既没有标题也没有标签，生成默认标题
+      let eventTitle: string;
+      let eventEmoji: string;
+      
+      const hasUserTitle = globalTimer.eventTitle && globalTimer.eventTitle.trim();
+      const hasUserTags = globalTimer.tagIds && globalTimer.tagIds.length > 0;
+      
+      if (!hasUserTitle && !hasUserTags) {
+        // 用户没有输入任何内容 → 生成默认标题 "专注计时2025-11-16 13:35:44"
+        // 🔧 使用 formatTimeForStorage 确保时间格式一致
+        const timeStr = formatTimeForStorage(startTime); // "2025-11-16 13:35:44"
+        eventTitle = `专注计时${timeStr}`;
+        eventEmoji = '⏱️';
+      } else {
+        // 用户有输入 → 使用用户的标题或标签名称
+        eventTitle = globalTimer.eventTitle || (tag?.emoji ? `${tag.emoji} ${tag.name}` : globalTimer.tagName);
+        eventEmoji = globalTimer.eventEmoji || tag?.emoji || '⏱️';
+      }
       
       // 🔧 [BUG FIX] 生成计时签名，但不覆盖用户的 description
       const timerSignature = `[⏱️ 计时 ${Math.floor(totalElapsed / 60000)} 分钟]`;
@@ -592,20 +736,20 @@ function App() {
         finalDescription = timerSignature;
       }
       
+      // 🔧 复用同一个 eventId，更新状态为 pending 以触发同步
       const finalEvent: Event = {
-        id: timerEventId,
-        title: eventTitle, // 🔧 移除"[专注中]"标记
+        id: timerEventId, // ✅ 复用启动时创建的 ID
+        title: eventTitle,
         startTime: formatTimeForStorage(startTime),
         endTime: formatTimeForStorage(new Date(startTime.getTime() + totalElapsed)),
-        tags: globalTimer.tagIds || [], // 使用数组格式（可能为空）
-        calendarIds: (tag as any)?.calendarId ? [(tag as any).calendarId] : [], // 转换为数组格式
-        location: existingEvent?.location || '', // 🔧 保留location
-        description: finalDescription, // 🔧 保留用户内容 + 追加计时签名
+        tags: globalTimer.tagIds || [],
+        calendarIds: (tag as any)?.calendarId ? [(tag as any).calendarId] : [],
+        location: existingEvent?.location || '',
+        description: finalDescription,
         isAllDay: false,
-        remarkableSource: true, // 🔧 标记为本地创建的事件
-        syncStatus: 'pending' as const, // 🔧 标记为待同步
+        remarkableSource: true,
+        syncStatus: 'pending' as const, // ✅ Timer 停止后改为 pending，触发同步
         isTimer: true,
-        // 🆕 Issue #12: 关联父事件
         parentEventId: globalTimer.parentEventId,
         createdAt: existingEvent?.createdAt || formatTimeForStorage(startTime),
         updatedAt: formatTimeForStorage(new Date())
@@ -704,8 +848,12 @@ function App() {
     const endTime = new Date();
     const startTime = new Date(globalTimer.originalStartTime || globalTimer.startTime);
     
-    // 🔧 [BUG FIX] 使用独立的事件 ID，不依赖标签（支持多标签）
-    const timerEventId = globalTimer.eventId || `timer-${startTime.getTime()}-${Math.random().toString(36).substr(2, 9)}`;
+    // 🔧 [BUG FIX] 必须使用 globalTimer.eventId，否则会创建重复事件
+    if (!globalTimer.eventId) {
+      AppLogger.error('💾 [Timer Edit] globalTimer.eventId is missing! Cannot save event.');
+      return;
+    }
+    const timerEventId = globalTimer.eventId;
     
     // 🔧 [BUG FIX] 从 localStorage 读取现有事件，保留 description 和其他字段
     const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
@@ -759,7 +907,12 @@ function App() {
       // 确定计时起始时间
       // 🔧 [BUG FIX] 默认使用点击确定时的当前时间
       const confirmTime = new Date(); // 用户点击确定的时刻
-      const eventStartTime = new Date(updatedEvent.startTime);
+      
+      // ✅ v1.8: 处理 startTime 可能为 undefined
+      const eventStartTime = updatedEvent.startTime 
+        ? new Date(updatedEvent.startTime) 
+        : confirmTime;
+      
       const timeDiff = Math.abs(confirmTime.getTime() - eventStartTime.getTime());
       const useEventTime = timeDiff > 60000; // 超过1分钟认为用户手动修改了时间
       
@@ -768,11 +921,11 @@ function App() {
       const timerStartTime = finalStartTime.getTime();
 
       AppLogger.log('🔧 [Timer Init] Determining start time:', {
-        eventStartTime: eventStartTime.toISOString(),
-        confirmTime: confirmTime.toISOString(),
+        eventStartTime: formatTimeForStorage(eventStartTime),
+        confirmTime: formatTimeForStorage(confirmTime),
         timeDiff: `${(timeDiff / 1000).toFixed(1)}s`,
         useEventTime,
-        finalStartTime: finalStartTime.toISOString()
+        finalStartTime: formatTimeForStorage(finalStartTime)
       });
 
       // 🔧 [关键修复] 使用真实事件ID，与 useEffect 中的ID保持一致
@@ -898,16 +1051,14 @@ function App() {
     loadAvailableTagsForEdit();
   }, []);
 
-  // 🔧 [NEW] Timer 实时保存和显示更✅
+  // ✅ Timer 自动保存：运行中每30秒更新同一个事件（syncStatus: 'local-only'）
   useEffect(() => {
     if (!globalTimer || !globalTimer.isRunning || globalTimer.isPaused) {
       return;
     }
 
-    // 保存 Timer 事件✅localStorage 的函✅
     const saveTimerEvent = async () => {
       try {
-        // 🆕 支持无标签计时
         let tag = null;
         if (globalTimer.tagIds && globalTimer.tagIds.length > 0) {
           tag = TagService.getFlatTags().find(t => t.id === globalTimer.tagIds[0]);
@@ -918,47 +1069,51 @@ function App() {
         const startTime = new Date(globalTimer.originalStartTime || globalTimer.startTime);
         const endTime = new Date(startTime.getTime() + totalElapsed);
 
-        // 使用保存的事件ID
-        const timerEventId = globalTimer.eventId || `timer-${startTime.getTime()}-${Math.random().toString(36).substr(2, 9)}`;
+        // ✅ 使用固定的 eventId（handleTimerStart 时创建）
+        if (!globalTimer.eventId) {
+          AppLogger.error('💾 [Timer] globalTimer.eventId is missing! Cannot save event.');
+          return;
+        }
+        const timerEventId = globalTimer.eventId;
         
         const eventTitle = globalTimer.eventTitle || (tag?.emoji ? `${tag.emoji} ${tag.name}` : globalTimer.tagName);
         
-        // 🔧 [BUG FIX] 读取现有事件，保留用户的 description
+        // 读取现有事件，保留用户的 description 和 location
         const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
         const existingEvents: Event[] = saved ? JSON.parse(saved) : [];
         const existingEvent = existingEvents.find((e: Event) => e.id === timerEventId);
         
         const timerEvent: Event = {
-          id: timerEventId,
-          title: eventTitle, // 🔧 不添加"[专注中]"标记到localStorage，只在UI渲染时添加
+          id: timerEventId, // ✅ 固定 ID，整个运行过程不变
+          title: eventTitle,
           startTime: formatTimeForStorage(startTime),
           endTime: formatTimeForStorage(endTime),
-          location: existingEvent?.location || '', // 🔧 保留location
-          description: existingEvent?.description || '计时中的事件', // 🔧 保留用户输入的description
-          tags: globalTimer.tagIds, // 使用完整的标签数组，所有标签都能统计到时间
-          calendarIds: tag && (tag as any).calendarId ? [(tag as any).calendarId] : [], // 转换为数组格式，无标签时为空数组
+          location: existingEvent?.location || '',
+          description: existingEvent?.description || '计时中的事件',
+          tags: globalTimer.tagIds,
+          calendarIds: tag && (tag as any).calendarId ? [(tag as any).calendarId] : [],
           isAllDay: false,
           createdAt: existingEvent?.createdAt || formatTimeForStorage(startTime),
           updatedAt: formatTimeForStorage(new Date()),
-          syncStatus: 'local-only', // 🔧 运行中不同步，避免频繁通知
-          remarkableSource: true
+          syncStatus: 'local-only', // ✅ 运行中保持 local-only，不触发同步
+          remarkableSource: true,
+          isTimer: true
         };
 
-        // 🔧 使用 EventService，但跳过同步和事件通知（运行中静默保存✅
+        // ✅ 更新同一个事件（不创建新事件）
         const eventIndex = existingEvents.findIndex((e: Event) => e.id === timerEventId);
         
         if (eventIndex === -1) {
           existingEvents.push(timerEvent);
-          AppLogger.log('💾 [Timer] Created timer event:', timerEventId);
+          AppLogger.log('💾 [Timer Auto-save] Created timer event:', timerEventId);
         } else {
           existingEvents[eventIndex] = timerEvent;
-          AppLogger.log('🔄 [Timer] Updated timer event:', timerEventId);
+          AppLogger.log('🔄 [Timer Auto-save] Updated timer event:', timerEventId);
         }
         
         localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
         
-        // 🔇 不触✅eventsUpdated（避✅TimeCalendar ✅EditModal 频繁重渲染）
-        // Timer 运行中的更新不需要立即刷✅UI，停止时会触发刷✅
+        // 🔇 运行中静默保存，不触发 eventsUpdated（避免频繁重渲染）
       } catch (error) {
         AppLogger.error('💾 [Timer] Failed to save timer event:', error);
       }
@@ -992,7 +1147,13 @@ function App() {
           const totalElapsed = globalTimer.elapsedTime + (now - globalTimer.startTime);
           const startTime = new Date(globalTimer.originalStartTime || globalTimer.startTime);
           const endTime = new Date(startTime.getTime() + totalElapsed);
-          const timerEventId = globalTimer.eventId || `timer-${startTime.getTime()}-${Math.random().toString(36).substr(2, 9)}`;
+          
+          // 🔧 [BUG FIX] 必须使用 globalTimer.eventId，否则会创建重复事件
+          if (!globalTimer.eventId) {
+            AppLogger.error('💾 [Page Switch] globalTimer.eventId is missing! Cannot save event.');
+            return;
+          }
+          const timerEventId = globalTimer.eventId;
           
           const eventTitle = globalTimer.eventTitle || (tag?.emoji ? `${tag.emoji} ${tag.name}` : globalTimer.tagName);
           
@@ -1054,7 +1215,7 @@ function App() {
     const planEvent: Event = {
       ...item,
       isPlan: true,
-      updatedAt: new Date().toISOString(),
+      updatedAt: formatTimeForStorage(new Date()),
     };
     
     // 🔧 [BUG FIX] 空行（刚点击graytext创建的行）不保存到EventService
@@ -1568,6 +1729,21 @@ function App() {
         content = (
           <PageContainer title="AI Demo" subtitle="测试 AI 事件提取功能">
             <AIDemo />
+          </PageContainer>
+        );
+        break;
+
+      case 'eventmodal-v2-demo':
+        content = (
+          <PageContainer title="EventEditModal v2 Demo" subtitle="交互开发测试">
+            <EventEditModalV2Demo 
+              globalTimer={globalTimer}
+              onTimerStart={handleTimerStart}
+              onTimerPause={handleTimerPause}
+              onTimerResume={handleTimerResume}
+              onTimerStop={handleTimerStop}
+              onTimerCancel={handleTimerCancel}
+            />
           </PageContainer>
         );
         break;

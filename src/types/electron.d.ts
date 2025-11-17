@@ -110,6 +110,11 @@ export interface ElectronAPI {
   }>;
   widgetResize: (size: { width: number; height: number }) => Promise<{ success: boolean; size: { width: number; height: number } }>;
   widgetFullscreen: (isFullscreen: boolean) => Promise<{ success: boolean; isFullscreen: boolean }>;
+  
+  // 🎨 Widget 设置同步
+  widgetUpdateSettings: (settings: { bgOpacity?: number; bgColor?: string; isLocked?: boolean }) => Promise<{ success: boolean; settings: any }>;
+  onWidgetSettingsUpdate: (callback: (settings: { bgOpacity?: number; bgColor?: string; isLocked?: boolean }) => void) => () => void;
+  
   on: (channel: string, callback: (...args: any[]) => void) => void;
   send: (channel: string, data?: any) => void;
   

@@ -1,31 +1,45 @@
 # ReMarkable Timer 模块产品需求文档 (PRD)
 
 > **AI 生成时间**: 2025-11-05  
-> **最后更新**: 2025-11-11  
-> **关联代码版本**: v1.7.2  
+> **最后更新**: 2025-11-16  
+> **关联代码版本**: v1.8.0  
 > **文档类型**: 功能模块 PRD  
 > **依赖模块**: 同步机制, TagService, EventService  
-> **关联文档**: [同步机制 PRD](../architecture/SYNC_MECHANISM_PRD.md), [App 架构 PRD](../architecture/APP_ARCHITECTURE_PRD.md)
+> **关联文档**: [同步机制 PRD](../architecture/SYNC_MECHANISM_PRD.md), [App 架构 PRD](../architecture/APP_ARCHITECTURE_PRD.md), [Timer Bug 修复文档](../fixes/TIMER_EVENT_DUPLICATION_FIX.md)
 
+> **🔥 v1.8.0 重大更新** (2025-11-16):
+> - ✅ **零门槛启动**: 支持无标签、无标题启动 Timer（自动生成标题 "专注计时YYYY-MM-DD HH:mm:ss"）
+> - ✅ **固定 eventId**: Timer 启动时立即生成固定 ID，避免重复事件（修复 6000+ 重复事件 Bug）
+> - ✅ **统一生命周期**: START (local-only) → RUNNING (auto-save 30s) → STOP (pending)
+> - ✅ **时间格式统一**: 所有时间使用 `formatTimeForStorage()`，禁用 `toISOString()`
+> - ✅ **集中式管理**: 所有组件统一使用 `App.tsx` 的 Timer 函数（handleTimerStart/Stop/Pause/Resume/Cancel）
+> 
 > **💡 v1.7.2 更新**: 修复 Timer 创建时 startTime 计算问题（以点击确定时间为准）
 > 
 > **💡 v1.7.1 更新**: 完成旧计时器系统和死代码清理，App.tsx 状态从 21个减至 18个
 
 ---
 
-## ⚠️ 时间字段规范
+## ⚠️ 时间字段规范（CRITICAL）
 
-**严禁使用 ISO 8601 标准时间格式（带 Z 或时区偏移）！**
+**严禁使用 ISO 8601 标准时间格式！**
 
 所有时间字段必须使用 `timeUtils.ts` 中的工具函数处理：
-- ✅ **存储时间**: 使用 `formatTimeForStorage(date)` - 返回本地时间字符串（如 `2025-11-06T14:30:00`）
-- ✅ **解析时间**: 使用 `parseLocalTimeString(timeString)` - 将字符串解析为 Date 对象
-- ❌ **禁止**: 直接使用 `new Date().toISOString()` 或 `date.toISOString()`
-- ❌ **禁止**: 时间字符串包含 `Z` 后缀或 `+08:00` 等时区标记
+- ✅ **存储时间**: `formatTimeForStorage(date)` → `"YYYY-MM-DD HH:mm:ss"`（空格分隔，本地时间）
+- ✅ **解析时间**: `parseLocalTimeString(timeString)` → `Date` 对象
+- ❌ **禁止**: `new Date().toISOString()` - 会转为 UTC 时间
+- ❌ **禁止**: `toLocaleString()` - 格式不一致
+- ❌ **禁止**: 时间字符串包含 `Z` 后缀、`T` 分隔符或 `+08:00` 等时区标记
 
-**原因**: ISO 格式会导致时区转换问题，18:06 的事件可能在同步后显示为 10:06（UTC 时间）。
+**原因**: 
+1. ISO 格式会导致时区转换（18:06 → 10:06 UTC）
+2. 数据同步到 Outlook 会被误认为 UTC 时间，造成 8 小时偏移
+3. localStorage 中的所有事件必须使用统一的本地时间格式
 
-**参考文件**: `src/utils/timeUtils.ts`
+**参考文件**: 
+- `src/utils/timeUtils.ts` - 时间工具函数
+- `docs/TIME_ARCHITECTURE.md` - 时间架构文档
+- `docs/fixes/TIMER_EVENT_DUPLICATION_FIX.md` - Timer Bug 修复案例
 
 ---
 
@@ -81,6 +95,91 @@ graph LR
     E --> G[5秒后同步到 Outlook]
     F --> H[不同步]
 ```
+
+### 1.4 独立 Timer 二次计时自动升级机制
+
+**触发条件**:
+当用户对一个已完成的独立 Timer 事件再次启动计时时，系统会自动将其升级为父子结构。
+
+**检测条件**:
+```typescript
+// 满足以下所有条件时触发自动升级
+event.isTimer === true &&        // 是 Timer 事件
+event.parentEventId == null &&   // 无父事件（独立 Timer）
+event.timerLogs &&               // 已有计时记录
+event.timerLogs.length > 0       // 至少完成一次计时
+```
+
+**升级流程**:
+```mermaid
+graph TB
+    A[用户对独立 Timer 再次启动计时] --> B{检测是否满足升级条件}
+    B -->|是| C[Step 1: 创建父事件]
+    B -->|否| Z[直接启动 Timer]
+    C --> D[Step 2: 将原 Timer 转为子事件]
+    D --> E[Step 3: 保存父事件]
+    E --> F[Step 4: 为父事件启动新 Timer]
+    F --> G[Step 5: 新 Timer 成为第二个子事件]
+    G --> H[用户无感知，计时继续]
+```
+
+**数据示例**:
+```typescript
+// === 升级前 ===
+const timerBefore = {
+  id: 'timer-1',
+  title: '学习英语',
+  isTimer: true,
+  parentEventId: null,  // 独立 Timer
+  timerLogs: ['timer-1'] // 已完成一次计时
+};
+
+// === 升级后 ===
+const parentEvent = {
+  id: 'parent-1732000000000',
+  title: '学习英语',         // 继承原 Timer 标题
+  isTimer: false,           // 父事件不是 Timer
+  isTimeCalendar: true,     // 标记为 TimeCalendar 创建
+  timerLogs: ['timer-1', 'timer-2'] // 包含所有子 Timer
+};
+
+const timer1Updated = {
+  id: 'timer-1',
+  title: '学习英语',
+  isTimer: true,
+  parentEventId: 'parent-1732000000000', // ✅ 已挂载到父事件
+  timerLogs: ['timer-1']
+};
+
+const timer2New = {
+  id: 'timer-2',
+  title: '学习英语',
+  isTimer: true,
+  parentEventId: 'parent-1732000000000', // ✅ 挂载到父事件
+  timerLogs: ['timer-2']
+};
+```
+
+**继承的元数据**:
+父事件会继承原 Timer 的所有元数据，确保用户视角的一致性：
+- ✅ 标题 (title, simpleTitle, fullTitle)
+- ✅ 描述 (description)
+- ✅ Emoji
+- ✅ 标签 (tags[])
+- ✅ 颜色 (color)
+- ✅ 日历分组 (calendarIds)
+- ✅ 位置 (location)
+- ✅ 组织者/参会人 (organizer, attendees)
+- ✅ 备注和优先级 (notes, priority)
+- ✅ 日志内容 (eventlog)
+
+**用户体验保证**:
+- ✅ **完全无感知**: 用户只看到计时继续，不知道发生了升级
+- ✅ **数据完整**: 所有元数据（标题、标签、emoji、描述）完整保留
+- ✅ **视图一致**: EventEditModal 自动显示父事件，汇总所有计时
+- ✅ **可追溯**: TimeCalendar 上显示父事件 + 所有子事件色块
+
+**实现位置**: `App.tsx` → `handleTimerStart()` 函数
 
 ---
 
@@ -224,6 +323,70 @@ graph LR
   - 搜索性能优化
   - 同步时的差异检测（避免全量上传）
 
+#### 故事 5: 零门槛启动计时 (v1.8.0 新增)
+
+> **作为** 想要快速开始专注的用户  
+> **我希望** 能够无需选择标签、无需输入标题，直接开始计时  
+> **以便** 降低启动门槛，专注进入心流状态
+
+**流程**:
+1. 打开 ReMarkable 首页
+2. 点击 TimerCard 的"开始"按钮
+3. **直接点击"开始"，无需选择标签或输入标题**
+4. Timer 立即开始运行，显示默认 emoji ⏱️
+5. 工作完成后点击"停止"
+6. 自动创建日历事件，标题为 "专注计时2025-11-16 13:35:44"（自动生成）
+7. 标签为空，可事后补充
+
+**设计理念**: 
+- ✅ **零门槛启动**: 任何时候想专注都可以立即开始，无需思考"该打什么标签"
+- ✅ **自动命名**: 系统自动生成时间戳标题，确保事件可识别
+- ✅ **事后补充**: 用户可在事件创建后补充标签、标题、描述等元数据
+- ✅ **降低心理负担**: 不强制用户提前规划，支持"先做后整理"的工作方式
+
+**实现细节**:
+```typescript
+// handleTimerStart 支持空标签和空标题
+const handleTimerStart = (tagIds?: string | string[], parentEventId?: string) => {
+  const tagIdArray = tagIds ? (Array.isArray(tagIds) ? tagIds : [tagIds]) : [];  // 可为空数组
+  const startTime = Date.now();
+  
+  const initialEvent: Event = {
+    id: `timer-${tagIdArray[0] || 'notag'}-${startTime}`,
+    title: '计时中的事件',  // 临时标题
+    tags: tagIdArray,  // 可为空数组
+    // ...
+  };
+  EventService.createEvent(initialEvent, true);
+};
+
+// handleTimerStop 自动生成标题
+const handleTimerStop = async () => {
+  const hasUserTitle = globalTimer.eventTitle && globalTimer.eventTitle.trim();
+  const hasUserTags = globalTimer.tagIds && globalTimer.tagIds.length > 0;
+  
+  if (!hasUserTitle && !hasUserTags) {
+    // 无标题且无标签 → 自动生成标题
+    const timeStr = formatTimeForStorage(startTime);  // "2025-11-16 13:35:44"
+    eventTitle = `专注计时${timeStr}`;
+  }
+  
+  const finalEvent: Event = {
+    id: timerEventId,
+    title: eventTitle,  // 自动生成或用户输入
+    syncStatus: 'pending',  // 触发同步
+    // ...
+  };
+  EventService.updateEvent(timerEventId, finalEvent);
+};
+```
+
+**用户价值**:
+- 💡 **快速进入心流**: 不被标签选择打断思路
+- 💡 **减少决策疲劳**: 无需提前思考"这算什么任务"
+- 💡 **灵活补充**: 事后可根据实际情况补充元数据
+- 💡 **适应不同工作风格**: 既支持预先规划（选标签+写标题），也支持即兴专注（直接开始）
+
 ---
 
 ## 3. 功能架构
@@ -295,15 +458,20 @@ graph TB
 
 ## 4. 状态管理
 
-### 4.1 多 Timer 架构
+### 4.1 全局单 Timer 架构（v1.8.0）
 
-**核心理念**: 支持多个事件同时计时，Timer 状态独立于 UI 组件存在
+**核心理念**: 同一时间只允许一个 Timer 运行，保证用户专注
 
-**架构变更**:
-- ❌ ~~单一 `globalTimer` 对象~~
-- ✅ **`activeTimers: Map<eventId, TimerState>`** - 支持多个 Timer 同时运行
-- ✅ Timer 生命周期独立于 Modal 打开/关闭
-- ✅ 用户可以为不同事件同时计时，互不干扰
+**架构说明**:
+- ✅ **单一 `globalTimer` 对象** - 简化状态管理，避免多 Timer 冲突
+- ✅ Timer 状态独立于 UI 组件（Modal 关闭不影响 Timer）
+- ✅ 所有组件通过 `App.tsx` 统一管理 Timer（集中式控制）
+- ✅ 跨窗口同步：localStorage 持久化 + Widget 读取
+
+**为什么选择单 Timer**:
+1. **用户心流保护**: 同时运行多个 Timer 会分散注意力，违反专注原则
+2. **状态明确**: 单一活跃 Timer 让用户清楚"当前在做什么"
+3. **实现简单**: 避免多 Timer 间的冲突和复杂的优先级管理
 
 ### 4.2 TimerState 数据结构
 
@@ -311,78 +479,121 @@ graph TB
 
 ```typescript
 interface TimerState {
-  eventId: string;             // 关联的事件 ID（唯一标识）
   isRunning: boolean;          // 是否正在运行
   isPaused: boolean;           // 是否暂停
-  tagId: string;               // 关联的标签 ID
-  tagName: string;             // 标签名称
-  tagEmoji?: string;           // 标签 emoji
-  tagColor?: string;           // 标签颜色
+  tagId: string;               // 第一个标签 ID（向后兼容）
+  tagIds: string[];            // 完整的标签数组（可能为空）✨ v1.8.0
+  tagName: string;             // 标签名称（无标签时为"未分类"）
+  tagEmoji?: string;           // 标签 emoji（无标签时为 ⏱️）
+  tagColor?: string;           // 标签颜色（无标签时为灰色）
   startTime: number;           // 当前计时周期的开始时间戳（用于计算运行时长）
   originalStartTime: number;   // 用户设定的真实开始时间戳（可回溯修改）
   elapsedTime: number;         // 已累积的时长（毫秒），包含暂停前的时长
   eventEmoji?: string;         // 用户自定义事件 emoji（覆盖标签 emoji）
   eventTitle?: string;         // 用户自定义事件标题（覆盖标签名称）
-  segments: TimerSegment[];    // 时间片段数组
-}
-
-interface TimerSegment {
-  start: number;               // 片段开始时间戳
-  end: number;                 // 片段结束时间戳（暂停/停止时记录）
-  duration: number;            // 片段时长（毫秒）
+  eventId: string;             // 固定事件 ID（整个计时过程不变）✨ v1.8.0
+  parentEventId?: string;      // 关联的父事件 ID（可选）✨ v1.8.0
 }
 ```
 
-**存储位置**: 
-- 内存: `useState<Map<string, TimerState>>(new Map())`
-- 持久化: `localStorage['remarkable-active-timers']` - 存储为 `{ [eventId]: TimerState }`
+**v1.8.0 关键字段**:
+- `eventId`: Timer 启动时立即生成（`timer-{tagId||'notag'}-{timestamp}`），运行过程中保持不变
+- `tagIds`: 支持空数组（零门槛启动）
+- `parentEventId`: 支持从现有事件启动 Timer（事件关联）
 
-### 4.3 状态转换图
+**存储位置**: 
+- 内存: `useState<TimerState | null>(null)`
+- 持久化: `localStorage['remarkable-global-timer']` - 跨窗口同步
+
+### 4.3 状态转换图（v1.8.0 生命周期）
 
 ```mermaid
 stateDiagram-v2
     [*] --> Idle: 应用启动
-    Idle --> Running: 用户启动 Timer
-    Running --> Paused: 用户点击"暂停"
-    Paused --> Running: 用户点击"继续"
-    Running --> Stopped: 用户点击"停止"
-    Paused --> Stopped: 用户点击"停止"
-    Running --> Cancelled: 用户点击"取消"
-    Paused --> Cancelled: 用户点击"取消"
-    Stopped --> Idle: 从 Map 中移除
-    Cancelled --> Idle: 从 Map 中移除
+    Idle --> Creating: handleTimerStart()
+    Creating --> Running: 立即创建 eventId + 初始事件
+    Running --> Paused: handleTimerPause()
+    Paused --> Running: handleTimerResume()
+    Running --> Stopped: handleTimerStop()
+    Paused --> Stopped: handleTimerStop()
+    Running --> Cancelled: handleTimerCancel()
+    Paused --> Cancelled: handleTimerCancel()
+    Stopped --> Idle: 清除 globalTimer
+    Cancelled --> Idle: 清除 globalTimer + 删除事件
     
-    Idle: activeTimers.size = 0
-    Running: timer.isRunning=true, timer.isPaused=false
-    Paused: timer.isRunning=false, timer.isPaused=true
-    Stopped: 保存事件, syncStatus=pending, 移除 timer
-    Cancelled: 删除事件, skipSync=true, 移除 timer
+    Idle: globalTimer = null
+    Creating: 生成 eventId, 创建初始事件(local-only)
+    Running: isRunning=true, isPaused=false, 每30s自动保存
+    Paused: isRunning=false, isPaused=true
+    Stopped: 更新事件(syncStatus=pending), 触发同步
+    Cancelled: 删除事件(skipSync=true)
 ```
 
-**多 Timer 并发状态**:
-- ✅ 多个 Timer 可以同时处于 Running 状态
-- ✅ 每个 Timer 独立管理自己的状态（运行/暂停/停止）
-- ✅ Timer 状态与 UI 解耦，Modal 关闭不影响 Timer 运行
-- ✅ `activeTimers.get(eventId)` 查询特定 Timer 状态
+**关键生命周期阶段**:
+
+1. **START (Creating → Running)**:
+   ```tsx
+   const eventId = `timer-${tagId||'notag'}-${Date.now()}`;  // 固定 ID
+   const initialEvent = {
+     id: eventId,
+     syncStatus: 'local-only',  // 运行中不同步
+     title: '计时中的事件',
+     // ...
+   };
+   EventService.createEvent(initialEvent, true);  // 立即保存
+   setGlobalTimer({ eventId, isRunning: true, ... });
+   ```
+
+2. **RUNNING (Auto-save every 30s)**:
+   ```tsx
+   useEffect(() => {
+     const interval = setInterval(() => {
+       // 更新同一个事件（使用固定 eventId）
+       const timerEvent = {
+         id: globalTimer.eventId,  // 不变
+         syncStatus: 'local-only',  // 保持 local-only
+         endTime: formatTimeForStorage(new Date()),  // 更新结束时间
+       };
+       // 静默保存，不触发 eventsUpdated
+     }, 30000);
+   }, [globalTimer]);
+   ```
+
+3. **STOP (Finalize & Sync)**:
+   ```tsx
+   const finalEvent = {
+     id: globalTimer.eventId,  // 复用同一个 ID
+     syncStatus: 'pending',  // 改为 pending，触发同步
+     title: hasUserTitle ? userTitle : `专注计时${timeStr}`,  // 自动生成标题
+     endTime: formatTimeForStorage(endTime),  // 最终时间
+   };
+   EventService.updateEvent(eventId, finalEvent);  // 同步到 Outlook
+   setGlobalTimer(null);  // 清除状态
+   ```
 
 ### 4.4 时长计算逻辑
 
 **核心公式**: 
 
 ```typescript
-// 获取指定事件的 Timer 状态
-const timer = activeTimers.get(eventId);
-if (!timer) return 0;
-
 // 运行中
-if (timer.isRunning && !timer.isPaused) {
-  totalElapsed = timer.elapsedTime + (Date.now() - timer.startTime);
+if (globalTimer?.isRunning && !globalTimer.isPaused) {
+  totalElapsed = globalTimer.elapsedTime + (Date.now() - globalTimer.startTime);
 }
 
 // 暂停时
-if (timer.isPaused) {
-  totalElapsed = timer.elapsedTime;
+if (globalTimer?.isPaused) {
+  totalElapsed = globalTimer.elapsedTime;
 }
+
+// 格式化显示
+const totalSeconds = Math.floor(totalElapsed / 1000);
+const hours = Math.floor(totalSeconds / 3600);
+const minutes = Math.floor((totalSeconds % 3600) / 60);
+const seconds = totalSeconds % 60;
+const display = hours > 0 
+  ? `${hours}:${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')}`
+  : `${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')}`;
 ```
 
 **字段含义**:

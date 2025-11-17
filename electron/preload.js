@@ -47,6 +47,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   widgetFullscreen: (isFullscreen) => ipcRenderer.invoke('widget-fullscreen', isFullscreen),
   widgetForceResizable: () => ipcRenderer.invoke('widget-force-resizable'),
   
+  // 🎨 Widget 设置同步
+  widgetUpdateSettings: (settings) => ipcRenderer.invoke('widget-update-settings', settings),
+  onWidgetSettingsUpdate: (callback) => {
+    const listener = (event, settings) => callback(settings);
+    ipcRenderer.on('widget-settings-updated', listener);
+    return () => ipcRenderer.removeListener('widget-settings-updated', listener);
+  },
+  
   // 新版小组件API
   widget: {
     toggle: (type, enabled) => ipcRenderer.invoke('widget-toggle', type, enabled),

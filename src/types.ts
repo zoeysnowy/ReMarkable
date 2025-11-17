@@ -118,6 +118,8 @@ export interface Contact {
   avatarUrl?: string;
   /** 所属组织/公司 */
   organization?: string;
+  /** 职位 */
+  position?: string;
   /** 平台来源标识 */
   isReMarkable?: boolean;
   isOutlook?: boolean;
@@ -130,15 +132,26 @@ export interface Contact {
   externalId?: string;
   /** 备注信息 */
   notes?: string;
+  /** 时间戳 */
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Event {
   id: string;
-  title: string;
-  description?: string;
-  startTime: string;    // 🔧 修改：使用字符串存储本地时间
-  endTime: string;      // 🔧 修改：使用字符串存储本地时间
-  isAllDay: boolean;
+  // ========== 标题字段（双向同步） ==========
+  simpleTitle?: string;       // 纯文本标题（用于TimeCalendar周/日视图）
+  fullTitle?: string;         // 富文本标题HTML（用于Plan页面，支持高亮/加粗等）
+  // ⚠️ DEPRECATED: 兼容旧代码，逐步迁移到 simpleTitle
+  title: string;              // 别名，指向 simpleTitle（向后兼容）
+  description?: string;       // 纯文本描述（后台字段，仅用于Outlook同步）
+  // ========== 时间字段（由 TimeHub 管理） ==========
+  // ⚠️ v1.8 重要变更：时间字段允许 undefined
+  // - Task 类型（isTask=true）：时间可选，支持无时间待办事项
+  // - Calendar 事件（isTask=false/undefined）：时间必需，同步到 Outlook Calendar
+  startTime?: string;   // 开始时间（'YYYY-MM-DD HH:mm:ss' 格式 或 undefined）
+  endTime?: string;     // 结束时间（'YYYY-MM-DD HH:mm:ss' 格式 或 undefined）
+  isAllDay?: boolean;   // 是否全天事件（undefined 表示未设置）
   location?: string;
   organizer?: Contact;  // 🔧 修改：使用统一的 Contact 接口
   attendees?: Contact[]; // 🔧 修改：使用统一的 Contact 接口
@@ -176,7 +189,8 @@ export interface Event {
   fuzzyTimeName?: string; // 模糊时间段名称（用于显示，如"上午"）
   
   // 🔧 Plan 相关字段（从 PlanItem 合并）
-  content?: string;      // 文本内容（用于富文本编辑）
+  // ⚠️ DEPRECATED: content 字段已废弃，使用 fullTitle 代替
+  content?: string;      // 废弃：请使用 fullTitle
   emoji?: string;        // emoji 图标
   color?: string;        // 自定义颜色
   dueDate?: string;      // 截止日期（用于任务类型）
@@ -184,7 +198,7 @@ export interface Event {
   priority?: 'low' | 'medium' | 'high' | 'urgent'; // 优先级
   isCompleted?: boolean; // 是否完成
   level?: number;        // 层级缩进（用于 Plan 页面显示）
-  mode?: 'title' | 'description'; // 显示模式（title或description行）
+  mode?: 'title' | 'eventlog'; // 显示模式（title或eventlog行）
   type?: 'todo' | 'task' | 'event'; // 事件类型（向后兼容）
   
   // 🆕 v1.8: Rich-text description support

@@ -13,6 +13,9 @@ import { Event, EventLog } from '../types';
 import { STORAGE_KEYS } from '../constants/storage';
 import { formatTimeForStorage } from '../utils/timeUtils';
 import { logger } from '../utils/logger';
+import { validateEventTime } from '../utils/eventValidation';
+import { determineSyncTarget, shouldSync } from '../utils/syncRouter';
+import { ContactService } from './ContactService';
 
 const eventLogger = logger.module('EventService');
 
@@ -37,6 +40,85 @@ export class EventService {
     } catch (error) {
       eventLogger.warn('⚠️ [EventService] BroadcastChannel not supported:', error);
     }
+    
+    // 订阅 ContactService 事件，自动同步联系人变更到事件
+    this.subscribeToContactEvents();
+  }
+
+  /**
+   * 订阅 ContactService 事件
+   * 实现联系人变更自动同步到相关事件
+   */
+  private static subscribeToContactEvents(): void {
+    // 联系人更新时，同步到所有包含该联系人的事件
+    ContactService.addEventListener('contact.updated', (event) => {
+      const { id, after } = event.data;
+      eventLogger.log('📇 [EventService] Contact updated, syncing to related events:', id);
+      
+      const events = this.getAllEvents();
+      const relatedEvents = events.filter(e => 
+        e.attendees?.some(a => a.id === id) || e.organizer?.id === id
+      );
+      
+      if (relatedEvents.length === 0) {
+        eventLogger.log('ℹ️ [EventService] No events reference this contact');
+        return;
+      }
+      
+      relatedEvents.forEach(event => {
+        const updates: Partial<Event> = {};
+        
+        // 更新参会人
+        if (event.attendees?.some(a => a.id === id)) {
+          updates.attendees = event.attendees.map(a => 
+            a.id === id ? after : a
+          );
+        }
+        
+        // 更新发起人
+        if (event.organizer?.id === id) {
+          updates.organizer = after;
+        }
+        
+        this.updateEvent(event.id!, updates);
+      });
+      
+      eventLogger.log(`✅ [EventService] Updated ${relatedEvents.length} events with new contact info`);
+    });
+
+    // 联系人删除时，从所有事件中移除该联系人
+    ContactService.addEventListener('contact.deleted', (event) => {
+      const { id } = event.data;
+      eventLogger.log('🗑️ [EventService] Contact deleted, removing from events:', id);
+      
+      const events = this.getAllEvents();
+      const relatedEvents = events.filter(e => 
+        e.attendees?.some(a => a.id === id) || e.organizer?.id === id
+      );
+      
+      if (relatedEvents.length === 0) {
+        eventLogger.log('ℹ️ [EventService] No events reference this contact');
+        return;
+      }
+      
+      relatedEvents.forEach(event => {
+        const updates: Partial<Event> = {};
+        
+        // 从参会人中移除
+        if (event.attendees?.some(a => a.id === id)) {
+          updates.attendees = event.attendees.filter(a => a.id !== id);
+        }
+        
+        // 清除发起人（如果是被删除的联系人）
+        if (event.organizer?.id === id) {
+          updates.organizer = undefined;
+        }
+        
+        this.updateEvent(event.id!, updates);
+      });
+      
+      eventLogger.log(`✅ [EventService] Removed contact from ${relatedEvents.length} events`);
+    });
   }
 
   /**
@@ -145,12 +227,20 @@ export class EventService {
         description: event.description?.substring(0, 50) + '...'
       });
 
-      // 验证必填字段
-      // ✅ 修复：允许 startTime/endTime 为空字符串（表示无时间的 Task）
-      if (!event.id || !event.title || 
-          event.startTime === undefined || event.startTime === null ||
-          event.endTime === undefined || event.endTime === null) {
-        const error = 'Event missing required fields';
+      // ✅ v1.8: 验证时间字段（区分 Task 和 Calendar 事件）
+      const validation = validateEventTime(event);
+      if (!validation.valid) {
+        eventLogger.error('❌ [EventService] Event validation failed:', validation.error);
+        return { success: false, error: validation.error };
+      }
+      
+      if (validation.warnings && validation.warnings.length > 0) {
+        eventLogger.warn('⚠️ [EventService] Event warnings:', validation.warnings);
+      }
+
+      // 验证基本必填字段
+      if (!event.id || !event.title) {
+        const error = 'Event missing required fields (id or title)';
         eventLogger.error('❌ [EventService]', error, event);
         return { success: false, error };
       }
@@ -177,10 +267,30 @@ export class EventService {
         eventlogField = initialEventLog;
       }
       
+      // 🆕 v2.8: 双向同步 simpleTitle ↔ fullTitle
+      let simpleTitleField = event.simpleTitle || event.title;
+      let fullTitleField = event.fullTitle;
+      
+      if (!simpleTitleField && fullTitleField) {
+        // 场景1: 只有 fullTitle → 提取纯文本到 simpleTitle
+        simpleTitleField = this.stripHtml(fullTitleField);
+      } else if (!fullTitleField && simpleTitleField) {
+        // 场景2: 只有 simpleTitle → 将纯文本赋值到 fullTitle
+        fullTitleField = simpleTitleField;
+      }
+      // 场景3: 都有值 → 保持不变
+      // 场景4: 都没值 → 使用空字符串
+      if (!simpleTitleField) {
+        simpleTitleField = '';
+      }
+      
       // 确保必要字段
       // 🔧 [BUG FIX] skipSync=true时，强制设置syncStatus='local-only'，忽略event.syncStatus
       const finalEvent: Event = {
         ...event,
+        simpleTitle: simpleTitleField,
+        fullTitle: fullTitleField,
+        title: simpleTitleField, // 向后兼容
         remarkableSource: true,
         syncStatus: skipSync ? 'local-only' : (event.syncStatus || 'pending'), // skipSync优先级最高
         createdAt: event.createdAt || now,
@@ -211,6 +321,13 @@ export class EventService {
       // 保存到localStorage
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
       eventLogger.log('💾 [EventService] Event saved to localStorage');
+      
+      // ✨ 自动提取并保存联系人
+      if (finalEvent.organizer || finalEvent.attendees) {
+        ContactService.extractAndAddFromEvent(finalEvent.organizer, finalEvent.attendees);
+        eventLogger.log('👥 [EventService] Auto-extracted contacts from event');
+      }
+      
       eventLogger.log('✅ [EventService] 创建成功:', {
         eventId: finalEvent.id,
         title: finalEvent.title,
@@ -224,19 +341,28 @@ export class EventService {
 
       // 同步到Outlook（如果不跳过且有同步管理器）
       if (!skipSync && syncManagerInstance && finalEvent.syncStatus !== 'local-only') {
-        try {
-          console.log('[EventService.createEvent] ✅ 触发同步:', {
-            eventId: finalEvent.id,
-            title: finalEvent.title?.substring(0, 30),
-            syncStatus: finalEvent.syncStatus,
-            calendarIds: (finalEvent as any).calendarIds,
-            tags: finalEvent.tags
-          });
-          await syncManagerInstance.recordLocalAction('create', 'event', finalEvent.id, finalEvent);
-          eventLogger.log('🔄 [EventService] Event synced to Outlook');
-        } catch (syncError) {
-          eventLogger.error('❌ [EventService] Sync failed (non-blocking):', syncError);
-          // 同步失败不影响事件创建成功
+        // ✅ v1.8: 检查同步路由
+        const syncRoute = determineSyncTarget(finalEvent);
+        
+        if (syncRoute.target === 'none') {
+          eventLogger.log(`⏭️ [EventService] Skipping sync: ${syncRoute.reason}`);
+        } else {
+          try {
+            console.log('[EventService.createEvent] ✅ 触发同步:', {
+              eventId: finalEvent.id,
+              title: finalEvent.title?.substring(0, 30),
+              syncStatus: finalEvent.syncStatus,
+              syncTarget: syncRoute.target,
+              syncReason: syncRoute.reason,
+              calendarIds: (finalEvent as any).calendarIds,
+              tags: finalEvent.tags
+            });
+            await syncManagerInstance.recordLocalAction('create', 'event', finalEvent.id, finalEvent);
+            eventLogger.log('🔄 [EventService] Event synced to Outlook');
+          } catch (syncError) {
+            eventLogger.error('❌ [EventService] Sync failed (non-blocking):', syncError);
+            // 同步失败不影响事件创建成功
+          }
         }
       } else {
         if (skipSync) {
@@ -310,6 +436,7 @@ export class EventService {
 
       const originalEvent = existingEvents[eventIndex];
       
+      // 🆕 v2.8: 双向同步 simpleTitle ↔ fullTitle
       // 🆕 v1.8.1: 双向同步 description ↔ eventlog
       // 支持新旧格式兼容：
       // - 旧格式：eventlog 是字符串（HTML）
@@ -317,6 +444,34 @@ export class EventService {
       
       const updatesWithSync = { ...updates };
       
+      // ========== Title 双向同步 ==========
+      // 场景1: simpleTitle 有变化 → 同步到 fullTitle（如果未设置）
+      if ((updates as any).simpleTitle !== undefined && (updates as any).simpleTitle !== originalEvent.simpleTitle) {
+        if ((updates as any).fullTitle === undefined) {
+          (updatesWithSync as any).fullTitle = (updates as any).simpleTitle;
+          console.log('[EventService] simpleTitle 更新 → 同步到 fullTitle:', {
+            eventId,
+            simpleTitle: (updates as any).simpleTitle.substring(0, 50),
+          });
+        }
+        // 同步到 title（向后兼容）
+        (updatesWithSync as any).title = (updates as any).simpleTitle;
+      }
+      
+      // 场景2: fullTitle 有变化 → 同步到 simpleTitle（如果未设置）
+      if ((updates as any).fullTitle !== undefined && (updates as any).fullTitle !== originalEvent.fullTitle) {
+        if ((updates as any).simpleTitle === undefined) {
+          (updatesWithSync as any).simpleTitle = this.stripHtml((updates as any).fullTitle);
+          console.log('[EventService] fullTitle 更新 → 同步到 simpleTitle:', {
+            eventId,
+            fullTitle: (updates as any).fullTitle.substring(0, 50),
+          });
+        }
+        // 同步到 title（向后兼容）
+        (updatesWithSync as any).title = (updatesWithSync as any).simpleTitle || this.stripHtml((updates as any).fullTitle);
+      }
+      
+      // ========== Description 双向同步 ==========
       // 场景1: description 有变化 → 同步到 eventlog
       if (updates.description !== undefined && updates.description !== originalEvent.description) {
         if ((updates as any).eventlog === undefined) {
@@ -405,13 +560,37 @@ export class EventService {
         });
       }
       
-      // 🆕 v1.8: 只合并非 undefined 的字段，避免覆盖已有数据
-      const filteredUpdates: Partial<Event> = {};
-      for (const key in updatesWithSync) {
-        if (updatesWithSync[key as keyof Event] !== undefined) {
-          filteredUpdates[key as keyof Event] = updatesWithSync[key as keyof Event] as any;
-        }
+      // ✅ v1.8: 验证合并后的事件（在过滤前）
+      const mergedEvent = { ...originalEvent, ...updatesWithSync };
+      const validation = validateEventTime(mergedEvent);
+      if (!validation.valid) {
+        eventLogger.error('❌ [EventService] Update validation failed:', validation.error);
+        return { success: false, error: validation.error };
       }
+      
+      if (validation.warnings && validation.warnings.length > 0) {
+        eventLogger.warn('⚠️ [EventService] Update warnings:', validation.warnings);
+      }
+      
+      // 🆕 v1.8: 只合并非 undefined 的字段，避免覆盖已有数据
+      // 🔧 v2.9: 但对于时间字段，允许显式设为 undefined 以清除
+      const filteredUpdates: Partial<Event> = {};
+      
+      // 🔧 v2.9: 使用 Object.keys 遍历自有属性，避免原型链问题
+      Object.keys(updatesWithSync).forEach(key => {
+        const typedKey = key as keyof Event;
+        const value = updatesWithSync[typedKey];
+        
+        // 🔧 如果值不是 undefined，直接包含
+        // 🔧 如果值是 undefined 但 key 存在于 updatesWithSync（显式设置），也包含
+        if (value !== undefined) {
+          filteredUpdates[typedKey] = value as any;
+        } else if (Object.prototype.hasOwnProperty.call(updatesWithSync, key)) {
+          // 显式设置为 undefined（用于清除字段）
+          filteredUpdates[typedKey] = undefined as any;
+          console.log(`[EventService] 📝 显式清除字段: ${key}`);
+        }
+      });
       
       // 合并更新
       const updatedEvent: Event = {
@@ -427,6 +606,13 @@ export class EventService {
       // 保存到localStorage
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
       eventLogger.log('💾 [EventService] Event updated in localStorage');
+      
+      // ✨ 自动提取并保存联系人（如果 organizer 或 attendees 有更新）
+      if (updates.organizer !== undefined || updates.attendees !== undefined) {
+        ContactService.extractAndAddFromEvent(updatedEvent.organizer, updatedEvent.attendees);
+        eventLogger.log('👥 [EventService] Auto-extracted contacts from updated event');
+      }
+      
       eventLogger.log('✅ [EventService] 更新成功:', {
         eventId: updatedEvent.id,
         title: updatedEvent.title,
@@ -440,14 +626,22 @@ export class EventService {
 
       // 同步到Outlook
       if (!skipSync && syncManagerInstance && updatedEvent.syncStatus !== 'local-only') {
-        try {
-          eventLogger.log('🔍 [DEBUG-TIMER] 即将调用 recordLocalAction (update)');
-          eventLogger.log('🔍 [DEBUG-TIMER] updatedEvent.syncStatus:', updatedEvent.syncStatus);
-          eventLogger.log('🔍 [DEBUG-TIMER] originalEvent.syncStatus:', originalEvent.syncStatus);
-          await syncManagerInstance.recordLocalAction('update', 'event', eventId, updatedEvent, originalEvent);
-          eventLogger.log('🔄 [EventService] Event update synced to Outlook');
-        } catch (syncError) {
-          eventLogger.error('�?[EventService] Sync failed (non-blocking):', syncError);
+        // ✅ v1.8: 检查同步路由
+        const syncRoute = determineSyncTarget(updatedEvent);
+        
+        if (syncRoute.target === 'none') {
+          eventLogger.log(`⏭️ [EventService] Skipping sync: ${syncRoute.reason}`);
+        } else {
+          try {
+            eventLogger.log('🔍 [DEBUG-TIMER] 即将调用 recordLocalAction (update)');
+            eventLogger.log('🔍 [DEBUG-TIMER] syncTarget:', syncRoute.target);
+            eventLogger.log('🔍 [DEBUG-TIMER] updatedEvent.syncStatus:', updatedEvent.syncStatus);
+            eventLogger.log('🔍 [DEBUG-TIMER] originalEvent.syncStatus:', originalEvent.syncStatus);
+            await syncManagerInstance.recordLocalAction('update', 'event', eventId, updatedEvent, originalEvent);
+            eventLogger.log('🔄 [EventService] Event update synced to Outlook');
+          } catch (syncError) {
+            eventLogger.error('❌ [EventService] Sync failed (non-blocking):', syncError);
+          }
         }
       } else {
         if (skipSync) {
@@ -627,6 +821,91 @@ export class EventService {
       }
       return '';
     }).join('');
+  }
+
+  /**
+   * 搜索历史事件中的参会人
+   * 从所有事件的 organizer 和 attendees 字段提取联系人
+   */
+  static searchHistoricalParticipants(query: string): import('../types').Contact[] {
+    const allEvents = this.getAllEvents();
+    const contactsMap = new Map<string, import('../types').Contact>();
+    const lowerQuery = query.toLowerCase();
+
+    allEvents.forEach(event => {
+      // 提取 organizer
+      if (event.organizer) {
+        const key = event.organizer.email || event.organizer.name;
+        if (key && !contactsMap.has(key)) {
+          const matches = 
+            event.organizer.name?.toLowerCase().includes(lowerQuery) ||
+            event.organizer.email?.toLowerCase().includes(lowerQuery) ||
+            event.organizer.organization?.toLowerCase().includes(lowerQuery);
+          
+          if (matches) {
+            contactsMap.set(key, { ...event.organizer });
+          }
+        }
+      }
+
+      // 提取 attendees
+      if (event.attendees) {
+        event.attendees.forEach(attendee => {
+          const key = attendee.email || attendee.name;
+          if (key && !contactsMap.has(key)) {
+            const matches =
+              attendee.name?.toLowerCase().includes(lowerQuery) ||
+              attendee.email?.toLowerCase().includes(lowerQuery) ||
+              attendee.organization?.toLowerCase().includes(lowerQuery);
+            
+            if (matches) {
+              contactsMap.set(key, { ...attendee });
+            }
+          }
+        });
+      }
+    });
+
+    return Array.from(contactsMap.values());
+  }
+
+  /**
+   * 获取与特定联系人相关的事件
+   * @param identifier 联系人邮箱或姓名
+   * @param limit 返回数量限制
+   */
+  static getEventsByContact(identifier: string, limit: number = 5): Event[] {
+    const allEvents = this.getAllEvents();
+    const lowerIdentifier = identifier.toLowerCase();
+    
+    const relatedEvents = allEvents.filter(event => {
+      // 检查 organizer
+      if (event.organizer) {
+        if (event.organizer.email?.toLowerCase() === lowerIdentifier ||
+            event.organizer.name?.toLowerCase() === lowerIdentifier) {
+          return true;
+        }
+      }
+      
+      // 检查 attendees
+      if (event.attendees) {
+        return event.attendees.some(attendee =>
+          attendee.email?.toLowerCase() === lowerIdentifier ||
+          attendee.name?.toLowerCase() === lowerIdentifier
+        );
+      }
+      
+      return false;
+    });
+
+    // 按时间倒序排列，返回最近的 N 个
+    return relatedEvents
+      .sort((a, b) => {
+        const timeA = new Date(a.startTime || a.createdAt).getTime();
+        const timeB = new Date(b.startTime || b.createdAt).getTime();
+        return timeB - timeA;
+      })
+      .slice(0, limit);
   }
 }
 

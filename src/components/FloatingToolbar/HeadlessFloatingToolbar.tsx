@@ -22,6 +22,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
   position,
   config,
   mode = 'menu_floatingbar', // 🆕 默认为菜单模式
+  slateEditorRef, // 🆕 Slate Editor 引用
   onTextFormat,
   onTagSelect,
   onEmojiSelect,
@@ -42,32 +43,21 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [activePicker, setActivePicker] = useState<string | null>(null);
 
-  // 监听 activePickerIndex 变化，通过数字键激活对应的 picker
-  useEffect(() => {
-    if (activePickerIndex !== null && activePickerIndex !== undefined) {
-      const feature = config.features[activePickerIndex];
-      if (feature) {
-        setActivePicker(feature);
-      }
-    }
-  }, [activePickerIndex, config.features]);
-
-  // 监听 activePicker 变化
-  useEffect(() => {
-  }, [activePicker]);
-
-  if (!position.show) return null;
-
-  // 🆕 根据 mode 决定显示的功能集合
-  const menuFloatingbarFeatures: ToolbarFeatureType[] = ['tag', 'emoji', 'dateRange', 'priority', 'color', 'addTask'];
+  // 🆕 根据 mode 决定显示的功能集合（提前计算，供 useEffect 使用）
+  const menuFloatingbarFeaturesBase: ToolbarFeatureType[] = ['tag', 'emoji', 'dateRange', 'priority', 'color', 'addTask', 'bullet'];
   const textFloatingbarFeatures: ToolbarFeatureType[] = ['bold', 'italic', 'underline', 'strikethrough', 'clearFormat', 'bullet'];
+  
+  // 🔧 标题模式下隐藏 bullet 菜单（因为标题已有勾选框）
+  const menuFloatingbarFeatures = editorMode === 'title' 
+    ? menuFloatingbarFeaturesBase.filter(f => f !== 'bullet')
+    : menuFloatingbarFeaturesBase;
   
   // 根据 mode 覆盖 config.features（如果外层没有提供）
   const effectiveFeatures = mode === 'text_floatingbar' 
     ? (config.features.some(f => textFloatingbarFeatures.includes(f)) ? config.features : textFloatingbarFeatures)
     : (config.features.some(f => menuFloatingbarFeatures.includes(f)) ? config.features : menuFloatingbarFeatures);
 
-  // 功能按钮配置
+  // 功能按钮配置（提前定义，供 useEffect 使用）
   const textFeatureConfig = {
     bold: { icon: '𝐁', label: '粗体', command: 'bold' },
     italic: { icon: '𝑰', label: '斜体', command: 'italic' },
@@ -76,6 +66,44 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
     clearFormat: { icon: '✕', label: '清除格式', command: 'removeFormat' },
     bullet: { icon: 'bulletpoints-svg', label: '项目符号', command: 'toggleBulletList' },
   };
+
+  // 监听 activePickerIndex 变化，通过数字键激活对应的 picker
+  useEffect(() => {
+    if (activePickerIndex !== null && activePickerIndex !== undefined) {
+      const feature = effectiveFeatures[activePickerIndex]; // 🔧 使用 effectiveFeatures 而不是 config.features
+      if (feature) {
+        console.log('[HeadlessFloatingToolbar] 数字键激活功能:', { activePickerIndex, feature, mode });
+        
+        // 🔧 区分需要打开 Picker 的功能和直接执行的命令
+        const textFormatCommands = ['bold', 'italic', 'underline', 'strikethrough', 'clearFormat', 'bullet'];
+        
+        if (textFormatCommands.includes(feature)) {
+          // 文本格式化命令：直接执行，不打开 Picker
+          const btnConfig = textFeatureConfig[feature as keyof typeof textFeatureConfig];
+          if (btnConfig) {
+            onTextFormat?.(btnConfig.command);
+            onRequestClose?.(); // 执行完命令后关闭 FloatingBar
+          }
+        } else {
+          // 快捷操作功能：打开对应的 Picker
+          setActivePicker(feature);
+        }
+      }
+    }
+  }, [activePickerIndex, effectiveFeatures, mode, onTextFormat, onRequestClose]);
+
+  // 🆕 FloatingBar 重新打开时重置 activePicker（避免显示上次的 Picker 状态）
+  useEffect(() => {
+    if (position.show) {
+      setActivePicker(null); // 🔧 每次打开时重置
+    }
+  }, [position.show]);
+
+  // 监听 activePicker 变化
+  useEffect(() => {
+  }, [activePicker]);
+
+  if (!position.show) return null;
 
   const actionFeatureConfig = {
     tag: { icon: '#', label: '添加标签', color: '#3b82f6' },
@@ -100,6 +128,8 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
             onClick={(e) => {
               e.stopPropagation();
               onTextFormat?.(btnConfig.command);
+              // 🆕 执行完 bullet 命令后关闭 FloatingBar
+              onRequestClose?.();
             }}
           >
             <svg width="16" height="14" viewBox="0 0 16 14" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
@@ -285,6 +315,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
                 availableTags={availableTags}
                 selectedTags={currentTags}
                 editorMode={editorMode}
+                slateEditorRef={slateEditorRef}
                 onSelect={(tagIds) => {
                   // 标签选择是多选模式，不应该在每次选择后关闭
                   onTagSelect?.(tagIds);

@@ -14,16 +14,18 @@
  * 然后刷新页面或在编辑器中输入内容，查看详细的调试日志
  */
 
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { createEditor, Descendant, Editor, Transforms, Range, Point, Node, Element as SlateElement, Text as SlateText, Path } from 'slate';
 import { Slate, Editable, withReact, RenderElementProps, RenderLeafProps, ReactEditor } from 'slate-react';
 import { withHistory } from 'slate-history';
 import { EventLineNode, ParagraphNode, TagNode, DateMentionNode, TextNode, CustomEditor } from './types';
 import { EventLineElement } from './EventLineElement';
 import { TagElementComponent } from './elements/TagElement';
-import { DateMentionElementComponent } from './elements/DateMentionElement';
+import DateMentionElement from './elements/DateMentionElement';
+import UnifiedDateTimePicker from '../FloatingToolbar/pickers/UnifiedDateTimePicker';
 import { SlateErrorBoundary } from './ErrorBoundary';
 import { EventService } from '../../services/EventService';
+import { parseNaturalLanguage } from '../../utils/naturalLanguageTimeDictionary';
 import {
   planItemsToSlateNodes,
   slateNodesToPlanItems,
@@ -31,6 +33,8 @@ import {
   slateNodesToRichHtml,
   parseExternalHtml,
 } from './serialization';
+import { insertDateMention } from './helpers';
+import { formatTimeForStorage } from '../../utils/timeUtils';
 import {
   initDebug,
   isDebugEnabled,
@@ -108,8 +112,9 @@ export interface UnifiedSlateEditorProps {
   onFocus?: (lineId: string) => void;
   onEditorReady?: (editor: any) => void;  // 🆕 改为接收 editor 实例（含 syncFromExternal 方法）
   onDeleteRequest?: (lineId: string) => void;  // 🆕 删除请求回调（通知外部删除）
-  renderLinePrefix?: (element: EventLineNode) => React.ReactNode;
-  renderLineSuffix?: (element: EventLineNode) => React.ReactNode;
+  onSave?: (eventId: string, updates: any) => void;  // 🆕 保存事件回调
+  onTimeClick?: (eventId: string, anchor: HTMLElement) => void;  // 🆕 时间点击回调
+  onMoreClick?: (eventId: string) => void;  // 🆕 More 图标点击回调
   className?: string;
 }
 
@@ -117,6 +122,10 @@ export interface UnifiedSlateEditorProps {
 export interface UnifiedSlateEditorHandle {
   syncFromExternal: (items: any[]) => void;  // 从外部同步内容
   getEditor: () => Editor;  // 获取 Slate Editor 实例
+  insertTag: (tagId: string, tagName: string, color: string, emoji: string) => boolean; // 🆕 插入标签命令
+  insertEmoji: (emoji: string) => boolean; // 🆕 插入Emoji命令
+  insertDateMention: (startTime: string, endTime?: string, displayText?: string) => boolean; // 🆕 插入DateMention命令
+  flushPendingChanges: () => void; // 🆕 立即保存待处理的变更
 }
 
 // 自定义编辑器配置
@@ -285,6 +294,70 @@ const withCustom = (editor: CustomEditor) => {
       console.log('%c[normalizeNode] ✅ void 元素后已有空格，无需修复', 'background: #4CAF50; color: white;');
     }
 
+    // 🆕 v1.8.4: Bullet 层级规范化 - 确保层级连续
+    // 注意：这个检查在删除操作后也会自动触发
+    if (SlateElement.isElement(node) && node.type === 'event-line') {
+      const eventLine = node as EventLineNode;
+      
+      // 只处理 eventlog 模式的 bullet 行
+      if (eventLine.mode === 'eventlog') {
+        const paragraphs = eventLine.children || [];
+        const paragraph = paragraphs[0] as any;
+        
+        if (paragraph?.bullet) {
+          const currentLevel = eventLine.level || 0;
+          
+          // 查找前面最近的 bullet 行
+          const allLines = Array.from(Editor.nodes(editor, {
+            at: [],
+            match: n => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'event-line',
+          }));
+          
+          const currentIndex = allLines.findIndex(([, p]) => Path.equals(p, path));
+          let previousLevel = -1;
+          
+          for (let i = currentIndex - 1; i >= 0; i--) {
+            const [prevNode] = allLines[i];
+            const prevLine = prevNode as EventLineNode;
+            if (prevLine.mode === 'eventlog') {
+              const prevParas = prevLine.children || [];
+              const prevPara = prevParas[0] as any;
+              if (prevPara?.bullet) {
+                previousLevel = prevLine.level || 0;
+                break;
+              }
+            }
+          }
+          
+          // 规则 1: 第一个 bullet 行必须是 level 0
+          if (previousLevel === -1 && currentLevel > 0) {
+            console.log('%c[normalizeNode] 🔧 第一个 bullet 行降级为 level 0', 'background: #FF9800; color: white;', {
+              currentLevel,
+            });
+            
+            Transforms.setNodes(editor, { level: 0 }, { at: path });
+            Transforms.setNodes(editor, { bulletLevel: 0 } as any, { at: [...path, 0] });
+            return; // 修复一个问题后返回
+          }
+          
+          // 规则 2: 当前层级不能比前一个层级高出 1 以上
+          if (previousLevel >= 0 && currentLevel > previousLevel + 1) {
+            const normalizedLevel = previousLevel + 1;
+            
+            console.log('%c[normalizeNode] 🔧 修正 bullet 层级跳跃', 'background: #FF9800; color: white;', {
+              currentLevel,
+              previousLevel,
+              normalizedLevel,
+            });
+            
+            Transforms.setNodes(editor, { level: normalizedLevel }, { at: path });
+            Transforms.setNodes(editor, { bulletLevel: normalizedLevel } as any, { at: [...path, 0] });
+            return; // 修复一个问题后返回
+          }
+        }
+      }
+    }
+
     // 对于其他节点，执行默认的 normalize
     normalizeNode(entry);
   };
@@ -292,14 +365,131 @@ const withCustom = (editor: CustomEditor) => {
   return editor;
 };
 
+/**
+ * 🆕 v1.8.4: 删除行后自动调整后续 bullet 行的层级
+ * 规则：按 eventId 分组，每个 event 内部独立检查
+ * 1. 每个 event 的第一个 bullet 行必须是 level 0
+ * 2. 当前层级不能比前一个层级高出 1 以上
+ */
+function adjustBulletLevelsAfterDelete(editor: CustomEditor) {
+  // 延迟执行，确保删除操作完成
+  setTimeout(() => {
+    console.log('%c[删除后调整] 开始检查 bullet 层级', 'background: #9C27B0; color: white;');
+    
+    const allLines = Array.from(Editor.nodes(editor, {
+      at: [],
+      match: n => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'event-line',
+    }));
+    
+    // 按 eventId 分组收集 bullet 行
+    const eventGroups = new Map<string, Array<{
+      lineNode: EventLineNode;
+      linePath: number[];
+      currentLevel: number;
+      currentBulletLevel: number;
+    }>>();
+    
+    for (const [lineNode, linePath] of allLines) {
+      const line = lineNode as EventLineNode;
+      
+      // 只处理 eventlog 模式的 bullet 行
+      if (line.mode !== 'eventlog') continue;
+      
+      const paragraphs = line.children || [];
+      const paragraph = paragraphs[0] as any;
+      if (!paragraph?.bullet) continue;
+      
+      const eventId = line.eventId;
+      if (!eventGroups.has(eventId)) {
+        eventGroups.set(eventId, []);
+      }
+      
+      eventGroups.get(eventId)!.push({
+        lineNode: line,
+        linePath: linePath as number[],
+        currentLevel: line.level || 0,
+        currentBulletLevel: paragraph.bulletLevel || 0,
+      });
+    }
+    
+    console.log('%c[删除后调整] 按 event 分组', 'background: #2196F3; color: white;', {
+      eventCount: eventGroups.size,
+      groups: Array.from(eventGroups.entries()).map(([eventId, lines]) => ({
+        eventId: eventId.slice(-10),
+        bulletCount: lines.length,
+        levels: lines.map(l => l.currentLevel),
+      })),
+    });
+    
+    let totalAdjustments = 0;
+    
+    // 对每个 event 的 bullet 行独立检查
+    for (const [eventId, bulletLines] of eventGroups) {
+      if (bulletLines.length === 0) continue;
+      
+      let needsAdjustment = false;
+      
+      for (let i = 0; i < bulletLines.length; i++) {
+        const current = bulletLines[i];
+        const previous = i > 0 ? bulletLines[i - 1] : null;
+        
+        let newLevel: number | null = null;
+        
+        // 规则 1: 每个 event 的第一个 bullet 行必须是 level 0
+        if (i === 0 && current.currentLevel > 0) {
+          newLevel = 0;
+          console.log('%c[删除后调整] Event 第一行降级为 level 0', 'background: #FF9800; color: white;', {
+            eventId: eventId.slice(-10),
+            bulletIndex: i,
+            oldLevel: current.currentLevel,
+          });
+        }
+        // 规则 2: 当前层级不能比前一个层级高出 1 以上
+        else if (previous && current.currentLevel > previous.currentLevel + 1) {
+          newLevel = previous.currentLevel + 1;
+          console.log('%c[删除后调整] 修正层级跳跃', 'background: #FF9800; color: white;', {
+            eventId: eventId.slice(-10),
+            bulletIndex: i,
+            oldLevel: current.currentLevel,
+            previousLevel: previous.currentLevel,
+            newLevel,
+          });
+        }
+        
+        // 执行调整
+        if (newLevel !== null) {
+          needsAdjustment = true;
+          totalAdjustments++;
+          
+          // 同时更新 EventLine.level 和 paragraph.bulletLevel
+          Transforms.setNodes(editor, { level: newLevel }, { at: current.linePath });
+          Transforms.setNodes(editor, { bulletLevel: newLevel } as any, { at: [...current.linePath, 0] });
+          
+          // 更新当前记录，供后续行参考
+          current.currentLevel = newLevel;
+        }
+      }
+    }
+    
+    if (totalAdjustments > 0) {
+      console.log('%c[删除后调整] ✅ Bullet 层级已修正', 'background: #4CAF50; color: white;', {
+        调整次数: totalAdjustments,
+      });
+    } else {
+      console.log('%c[删除后调整] ℹ️ 无需调整', 'background: #607D8B; color: white;');
+    }
+  }, 0);
+}
+
 export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   items,
   onChange,
   onFocus,
   onEditorReady,
   onDeleteRequest,  // 🆕 删除请求回调
-  renderLinePrefix,
-  renderLineSuffix,
+  onSave,  // 🆕 保存回调
+  onTimeClick,  // 🆕 时间点击回调
+  onMoreClick,  // 🆕 More 图标点击回调
   className = '',
 }) => {
   // 🔍 组件挂载日志
@@ -313,6 +503,8 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     } else {
       window.console.log('%c💡 开启调试: 在控制台运行 window.SLATE_DEBUG = true 然后刷新（会自动保存）', 
         'color: #9E9E9E; font-style: italic;');
+      window.console.log('%c💡 开启 useEventTime 调试: window.USE_EVENT_TIME_DEBUG = true', 
+        'color: #9E9E9E; font-style: italic;');
     }
     
     return () => {
@@ -325,6 +517,14 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   
   // 创建编辑器实例
   const editor = useMemo(() => withCustom(withHistory(withReact(createEditor() as CustomEditor))), []);
+  
+  // 🆕 v2.3: 暴露编辑器实例到全局（供 DateMentionElement 使用）
+  useEffect(() => {
+    (window as any).__slateEditor = editor;
+    return () => {
+      delete (window as any).__slateEditor;
+    };
+  }, [editor]);
   
   // 🆕 增强的 value：始终在末尾添加一个 placeholder 提示行
   const enhancedValue = useMemo(() => {
@@ -440,6 +640,14 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
         eventId, isDeleted, isNewEvent
       });
       
+      // 🆕 v1.8.4: 跳过刚刚保存的事件，避免覆盖用户正在编辑的内容
+      if (recentlySavedEventsRef.current.has(eventId)) {
+        console.log('%c[⏭️ 跳过] 该事件刚被保存，避免重复更新', 'background: #FF9800; color: white;', {
+          eventId: eventId.slice(-10),
+        });
+        return;
+      }
+      
       // 🔥 增量处理新增/删除事件
       if (isDeleted) {
         console.log('[📡 eventsUpdated] 删除事件，增量移除节点');
@@ -461,6 +669,9 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
               Transforms.removeNodes(editor, { at: [index] });
             });
           });
+          
+          // 🆕 v1.8.4: 外部同步删除后，自动调整 bullet 层级
+          adjustBulletLevelsAfterDelete(editor);
         }
         
         return;
@@ -601,27 +812,31 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
                   endDate: dateMentionNode.endDate,
                 });
                 
-                if (dateMentionNode.eventId === eventId) {
-                  const dateMentionPath = [index, paragraphIndex, childIndex];
-                  const newDateMention = {
-                    startDate: updatedEvent.startTime || dateMentionNode.startDate,
-                    endDate: updatedEvent.endTime || dateMentionNode.endDate,
-                  };
-                  
-                  console.log(`%c[📅 更新 DateMention]`, 'background: #4CAF50; color: white; padding: 2px 6px;', {
-                    path: dateMentionPath,
-                    旧startDate: dateMentionNode.startDate,
-                    新startDate: newDateMention.startDate,
-                    旧endDate: dateMentionNode.endDate,
-                    新endDate: newDateMention.endDate,
-                  });
-                  
-                  Transforms.setNodes(
-                    editor,
-                    newDateMention as any,
-                    { at: dateMentionPath }
-                  );
-                }
+                // 🔥 移除自动同步逻辑：不再自动更新 DateMention 的时间
+                // DateMention 应该保持原始时间，让用户通过 hover popover 手动选择是否更新
+                // 只有用户点击"更新"按钮时，才同步到 TimeHub 的最新时间
+                
+                // if (dateMentionNode.eventId === eventId) {
+                //   const dateMentionPath = [index, paragraphIndex, childIndex];
+                //   const newDateMention = {
+                //     startDate: updatedEvent.startTime || dateMentionNode.startDate,
+                //     endDate: updatedEvent.endTime || dateMentionNode.endDate,
+                //   };
+                //   
+                //   console.log(`%c[📅 更新 DateMention]`, 'background: #4CAF50; color: white; padding: 2px 6px;', {
+                //     path: dateMentionPath,
+                //     旧startDate: dateMentionNode.startDate,
+                //     新startDate: newDateMention.startDate,
+                //     旧endDate: dateMentionNode.endDate,
+                //     新endDate: newDateMention.endDate,
+                //   });
+                //   
+                //   Transforms.setNodes(
+                //     editor,
+                //     newDateMention as any,
+                //     { at: dateMentionPath }
+                //   );
+                // }
               }
             });
           });
@@ -636,58 +851,18 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     return () => window.removeEventListener('eventsUpdated', handleEventUpdated);
   }, [items, value, editor, enhancedValue]);
   
-  // 通知编辑器就绪（传递带 syncFromExternal 方法的对象）
-  useEffect(() => {
-    // 暴露调试接口到全局
-    if (isDebugEnabled() && typeof window !== 'undefined') {
-      (window as any).slateEditorSnapshot = () => logEditorSnapshot(editor);
-      console.log('%c💡 调试命令可用: window.slateEditorSnapshot()', 'color: #4CAF50; font-weight: bold;');
-    }
-    
-    if (onEditorReady) {
-      onEditorReady({
-        // 🔥 全量替换（用于初始化或重置）
-        syncFromExternal: (newItems: any[]) => {
-          logOperation('外部全量同步', { itemCount: newItems.length });
-          
-          const baseNodes = planItemsToSlateNodes(newItems);
-          
-          // 🆕 v1.8: 添加 placeholder 行到末尾
-          const placeholderLine: EventLineNode = {
-            type: 'event-line',
-            eventId: '__placeholder__',
-            lineId: '__placeholder__',
-            level: 0,
-            mode: 'title',
-            children: [
-              {
-                type: 'paragraph',
-                children: [{ text: '' }],
-              },
-            ],
-            metadata: {
-              isPlaceholder: true,
-            } as any,
-          };
-          
-          const newNodes = [...baseNodes, placeholderLine];
-          
-          // 🔥 设置标志位，跳过 onChange
-          skipNextOnChangeRef.current = true;
-          setValue(newNodes);
-          setEditorKey(prev => prev + 1);
-        },
-        
-        getEditor: () => editor,
-      });
-    }
-  }, [editor, onEditorReady]);
-  
   // ==================== 内容变化处理 ====================
   
   // 🆕 自动保存定时器
   const autoSaveTimerRef = React.useRef<NodeJS.Timeout | null>(null);
   const pendingChangesRef = React.useRef<Descendant[] | null>(null);
+  
+  // 🆕 @提及状态
+  const [showMentionPicker, setShowMentionPicker] = useState(false);
+  const [mentionText, setMentionText] = useState('');
+  const mentionAnchorRef = useRef<HTMLElement | null>(null);
+  const [mentionInitialStart, setMentionInitialStart] = useState<Date | undefined>();
+  const [mentionInitialEnd, setMentionInitialEnd] = useState<Date | undefined>();
   
   // 🆕 v1.8: 跟踪最近保存的事件ID，避免增量更新覆盖
   const recentlySavedEventsRef = React.useRef<Set<string>>(new Set());
@@ -705,6 +880,18 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       } : null,
       operations: editor.operations.map(op => op.type)
     });
+    
+    // 🆕 v1.8.4: 检测是否有删除节点操作
+    const hasRemoveNode = editor.operations.some(op => op.type === 'remove_node');
+    
+    if (hasRemoveNode) {
+      console.log('%c[🔍 检测到删除操作]', 'background: #FF5722; color: white;', {
+        operations: editor.operations.filter(op => op.type === 'remove_node'),
+      });
+      
+      // 删除后自动调整 bullet 层级
+      adjustBulletLevelsAfterDelete(editor);
+    }
     
     // 🎯 跳过外部同步触发的 onChange
     if (skipNextOnChangeRef.current) {
@@ -733,12 +920,133 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     // 🔥 立即更新 UI（Slate 内部状态）
     setValue(newValue as unknown as EventLineNode[]);
     
+    // 🆕 检测@提及触发
+    if (editor.selection && Range.isCollapsed(editor.selection)) {
+      try {
+        const { anchor } = editor.selection;
+        const [node] = Editor.node(editor, anchor.path);
+        
+        if (SlateText.isText(node)) {
+          const textBeforeCursor = node.text.slice(0, anchor.offset);
+          const atMatch = textBeforeCursor.match(/@([^\s]*)$/);
+          
+          if (atMatch) {
+            const text = atMatch[1];
+            console.log('[@ Mention] 检测到@输入:', text);
+            
+            // 实时解析自然语言
+            if (text.length > 0) {
+              const parsed = parseNaturalLanguage(text);
+              console.log('[@ Mention] 解析结果:', { 
+                text, 
+                parsed,
+                hasDaterRange: !!parsed?.dateRange,
+                hasTimePeriod: !!parsed?.timePeriod,
+                hasPointInTime: !!parsed?.pointInTime,
+              });
+              
+              if (parsed && parsed.matched) {
+                console.log('[@ Mention] 解析成功 - 详细信息:', {
+                  dateRange: parsed.dateRange,
+                  timePeriod: parsed.timePeriod,
+                  pointInTime: parsed.pointInTime,
+                });
+                
+                // 提取开始和结束时间
+                let startTime: Date | undefined;
+                let endTime: Date | undefined;
+                
+                // 优先检查复合解析结果（日期+时间段组合）
+                if (parsed.dateRange && parsed.timePeriod) {
+                  // 情况1: "下周二下午3点" - dateRange提供日期，timePeriod提供时间
+                  const baseDate = parsed.dateRange.start.toDate();
+                  startTime = new Date(baseDate);
+                  startTime.setHours(parsed.timePeriod.startHour, parsed.timePeriod.startMinute, 0, 0);
+                  
+                  if (parsed.timePeriod.endHour > 0 || parsed.timePeriod.endMinute > 0) {
+                    endTime = new Date(baseDate);
+                    endTime.setHours(parsed.timePeriod.endHour, parsed.timePeriod.endMinute, 0, 0);
+                  }
+                  console.log('[@ Mention] 日期+时间段组合:', { baseDate, startTime, endTime });
+                } else if (parsed.dateRange) {
+                  // 情况2: 纯日期范围 "下周"
+                  startTime = parsed.dateRange.start.toDate();
+                  endTime = parsed.dateRange.end?.toDate();
+                } else if (parsed.pointInTime) {
+                  // 情况3: 精确时间点 "明天10点"
+                  startTime = parsed.pointInTime.date.toDate();
+                } else if (parsed.timePeriod) {
+                  // 情况4: 纯时间段 "下午3点"（今天）
+                  const period = parsed.timePeriod;
+                  const baseDate = new Date();
+                  baseDate.setHours(period.startHour, period.startMinute, 0, 0);
+                  startTime = baseDate;
+                  
+                  if (period.endHour > 0 || period.endMinute > 0) {
+                    const endDate = new Date();
+                    endDate.setHours(period.endHour, period.endMinute, 0, 0);
+                    endTime = endDate;
+                  }
+                }
+                
+                if (startTime) {
+                  // 创建虚拟 anchor 元素用于 Tippy 定位
+                  const domRange = ReactEditor.toDOMRange(editor, editor.selection);
+                  const rect = domRange.getBoundingClientRect();
+                  
+                  if (!mentionAnchorRef.current) {
+                    const anchor = document.createElement('span');
+                    anchor.style.position = 'absolute';
+                    anchor.style.width = '1px';
+                    anchor.style.height = '1px';
+                    document.body.appendChild(anchor);
+                    mentionAnchorRef.current = anchor;
+                  }
+                  
+                  mentionAnchorRef.current.style.top = `${rect.bottom}px`;
+                  mentionAnchorRef.current.style.left = `${rect.left}px`;
+                  
+                  setMentionText(text);
+                  setMentionInitialStart(startTime);
+                  setMentionInitialEnd(endTime);
+                  setShowMentionPicker(true);
+                } else {
+                  setShowMentionPicker(false);
+                }
+              } else {
+                setShowMentionPicker(false);
+              }
+            } else {
+              setShowMentionPicker(false);
+            }
+          } else {
+            if (showMentionPicker) {
+              console.log('[@ Mention] 不在@上下文，清除状态');
+              setShowMentionPicker(false);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[@ Mention] 检测失败:', err);
+      }
+    }
+    
     // 🔥 缓存待保存的变化，但不立即调用 onChange
     pendingChangesRef.current = newValue;
     
     // 🔥 清除之前的自动保存定时器
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
+    }
+    
+    // 🆕 v2.10.1: 当用户正在输入 @ 提及时，不触发自动保存
+    // 等用户确认 DateMention 后，会调用 flushPendingChanges() 手动保存
+    if (showMentionPicker) {
+      if (isDebugEnabled()) {
+        console.log(`%c[⏸️ ${timestamp}] @ 提及输入中，暂停自动保存`, 
+          'background: #FF9800; color: white; padding: 2px 6px; border-radius: 2px;');
+      }
+      return;
     }
     
     // 🔥 设置新的自动保存定时器（2秒后保存）
@@ -823,23 +1131,220 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
         }
       });
       
-      // 🆕 v1.8: 记录保存的事件ID，避免增量更新覆盖
+      // 🆕 v1.8.4: 记录保存的事件ID，避免增量更新覆盖
+      // 延长保护时间窗口到 3 秒，确保外部同步返回时不会覆盖
       planItems.forEach(item => {
         recentlySavedEventsRef.current.add(item.id);
+        console.log('%c[🛡️ 保护] 标记事件为刚保存', 'background: #4CAF50; color: white;', {
+          eventId: item.id.slice(-10),
+          保护时长: '3秒',
+        });
       });
-      // 1秒后清除（给 eventsUpdated 足够时间处理）
+      // 3秒后清除（给外部同步足够时间）
       setTimeout(() => {
         planItems.forEach(item => {
           recentlySavedEventsRef.current.delete(item.id);
+          console.log('%c[🛡️ 解除] 移除事件保护', 'background: #9E9E9E; color: white;', {
+            eventId: item.id.slice(-10),
+          });
         });
-      }, 1000);
+      }, 3000);
       
       onChange(planItems);
       pendingChangesRef.current = null;
     }
   }, [onChange]);
   
+  // 通知编辑器就绪（传递带 syncFromExternal 和 flushPendingChanges 方法的对象）
+  useEffect(() => {
+    // 暴露调试接口到全局
+    if (isDebugEnabled() && typeof window !== 'undefined') {
+      (window as any).slateEditorSnapshot = () => logEditorSnapshot(editor);
+      console.log('%c💡 调试命令可用: window.slateEditorSnapshot()', 'color: #4CAF50; font-weight: bold;');
+    }
+    
+    if (onEditorReady) {
+      onEditorReady({
+        // 🔥 全量替换（用于初始化或重置）
+        syncFromExternal: (newItems: any[]) => {
+          logOperation('外部全量同步', { itemCount: newItems.length });
+          
+          const baseNodes = planItemsToSlateNodes(newItems);
+          
+          // 🆕 v1.8: 添加 placeholder 行到末尾
+          const placeholderLine: EventLineNode = {
+            type: 'event-line',
+            eventId: '__placeholder__',
+            lineId: '__placeholder__',
+            level: 0,
+            mode: 'title',
+            children: [
+              {
+                type: 'paragraph',
+                children: [{ text: '' }],
+              },
+            ],
+            metadata: {
+              isPlaceholder: true,
+            } as any,
+          };
+          
+          const newNodes = [...baseNodes, placeholderLine];
+          
+          // 🔥 设置标志位，跳过 onChange
+          skipNextOnChangeRef.current = true;
+          setValue(newNodes);
+          setEditorKey(prev => prev + 1);
+        },
+        
+        getEditor: () => editor,
+        
+        // 🆕 暴露 flushPendingChanges 到外部
+        flushPendingChanges,
+      });
+    }
+  }, [editor, onEditorReady, flushPendingChanges]);
+  
   // ==================== 焦点变化处理 ====================
+  
+  // 🆕 @提及搜索框变化回调（实时更新解析结果）
+  const handleMentionSearchChange = useCallback((text: string, parsed: { start?: Date; end?: Date } | null) => {
+    setMentionText(text);
+    if (parsed && parsed.start) {
+      setMentionInitialStart(parsed.start);
+      setMentionInitialEnd(parsed.end);
+    }
+  }, []);
+  
+  // 🆕 @提及选择时间
+  const handleMentionSelect = useCallback(async (startStr: string, endStr?: string, allDay?: boolean, userInputText?: string) => {
+    if (!editor.selection) return;
+    
+    try {
+      // 🔧 使用 UnifiedDateTimePicker 传递的完整文本，回退到 mentionText
+      const finalUserText = userInputText || mentionText || '';
+      console.log('[@ Mention] 确认插入:', { startStr, endStr, mentionText, userInputText, finalUserText });
+      
+      // 找到@符号的位置
+      const { anchor } = editor.selection;
+      const [node, path] = Editor.node(editor, anchor.path);
+      
+      if (SlateText.isText(node)) {
+        const textBeforeCursor = node.text.slice(0, anchor.offset);
+        const atMatch = textBeforeCursor.match(/@([^\s]*)$/);
+        
+        if (atMatch) {
+          const atStartOffset = anchor.offset - atMatch[0].length;
+          // 🔧 不再使用 atMatch[1]，因为它只是 @ 后的文本，可能不完整
+          // const userInputText = atMatch[1]; // 旧代码
+          
+          // 删除整个 @xxx 文本（包括 @ 符号和用户输入）
+          Transforms.delete(editor, {
+            at: {
+              anchor: { path, offset: atStartOffset },
+              focus: { path, offset: anchor.offset }, // 删除到光标位置
+            },
+          });
+          
+          // 不需要移动光标，删除后光标已经在正确位置
+          
+          // 获取当前事件ID
+          const match = Editor.above(editor, {
+            match: n => (n as any).type === 'event-line',
+          });
+          
+          let eventId: string | undefined;
+          if (match) {
+            const [eventLineNode] = match;
+            eventId = (eventLineNode as EventLineNode).eventId;
+            console.log('[@ Mention] 找到父 event-line', { eventId });
+          } else {
+            console.warn('[@ Mention] 未找到父 event-line，eventId 为 undefined', {
+              selection: editor.selection,
+              currentPath: editor.selection ? Path.parent(editor.selection.anchor.path) : null,
+            });
+          }
+          
+          // 🔧 [架构修复] 新事件创建时，不调用 TimeHub.setEventTime()
+          // 原因：
+          // 1. 事件还不存在于 EventService，TimeHub.setEventTime() 会失败
+          // 2. serialization.ts 会从 DateMention 节点读取时间，传递给 EventService.createEvent()
+          // 3. EventService 创建成功后触发 eventsUpdated，TimeHub 自动更新缓存
+          
+          // 只有已存在的事件才需要调用 TimeHub.setEventTime()
+          if (eventId) {
+            const { EventService } = await import('../../services/EventService');
+            const existing = EventService.getEventById(eventId);
+            
+            if (existing) {
+              // 已存在的事件：通过 TimeHub 更新时间
+              const { TimeHub } = await import('../../services/TimeHub');
+              await TimeHub.setEventTime(eventId, {
+                start: startStr,
+                end: endStr,
+                kind: endStr ? 'range' : 'fixed',
+                source: 'mention',
+                rawText: finalUserText, // 🔧 使用完整的用户输入文本
+              });
+              console.log('[@ Mention] 已存在事件，TimeHub 写入成功:', { eventId, startStr, endStr });
+            } else {
+              // 新事件：由 serialization.ts 从 DateMention 读取时间
+              console.log('[@ Mention] 新事件，时间将由 DateMention 节点提供:', { eventId, startStr, endStr });
+            }
+          }
+          
+          // Step 2: 插入 DateMention UI 节点
+          insertDateMention(editor, startStr, endStr, false, eventId, finalUserText); // 🔧 使用完整文本
+          
+          console.log('[@ Mention] 插入成功, displayHint:', finalUserText);
+          
+          // 🔥 立即保存，触发事件创建/更新
+          flushPendingChanges();
+        }
+      }
+      
+      // 清除状态
+      setShowMentionPicker(false);
+    } catch (err) {
+      console.error('[@ Mention] 插入失败:', err);
+      setShowMentionPicker(false);
+    }
+  }, [editor, mentionText, flushPendingChanges]);
+  
+  // 🆕 @提及关闭
+  const handleMentionClose = useCallback(() => {
+    console.log('[@ Mention] 关闭');
+    setShowMentionPicker(false);
+    
+    // 🆕 v2.10.1: 关闭 Picker 时，删除 @xxx 文本（用户取消输入）
+    if (editor.selection && Range.isCollapsed(editor.selection)) {
+      try {
+        const { anchor } = editor.selection;
+        const [node, path] = Editor.node(editor, anchor.path);
+        
+        if (SlateText.isText(node)) {
+          const textBeforeCursor = node.text.slice(0, anchor.offset);
+          const atMatch = textBeforeCursor.match(/@([^\s]*)$/);
+          
+          if (atMatch) {
+            const atStartOffset = anchor.offset - atMatch[0].length;
+            
+            // 删除整个 @xxx 文本
+            Transforms.delete(editor, {
+              at: {
+                anchor: { path, offset: atStartOffset },
+                focus: { path, offset: anchor.offset },
+              },
+            });
+            
+            console.log('[@ Mention] 已删除未确认的 @xxx 文本');
+          }
+        }
+      } catch (err) {
+        console.error('[@ Mention] 清理文本失败:', err);
+      }
+    }
+  }, [editor]);
   
   const handleClick = useCallback((event: React.MouseEvent) => {
     // 🔧 防止在编辑器为空时处理点击
@@ -892,6 +1397,36 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     
     // IME 组字中，不处理快捷键
     if (event.nativeEvent?.isComposing) return;
+    
+    // 🆕 @提及激活时，拦截 Enter 和 Escape 键
+    console.log('[@ Mention DEBUG] handleKeyDown:', { 
+      key: event.key, 
+      showMentionPicker,
+      mentionInitialStart: mentionInitialStart ? formatTimeForStorage(mentionInitialStart) : undefined,
+      mentionInitialEnd: mentionInitialEnd ? formatTimeForStorage(mentionInitialEnd) : undefined
+    });
+    
+    if (showMentionPicker) {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        console.log('[@ Mention] Enter 键被拦截，触发选择');
+        // 直接调用 handleMentionSelect，使用当前解析的时间
+        if (mentionInitialStart) {
+          handleMentionSelect(
+            formatTimeForStorage(mentionInitialStart),
+            mentionInitialEnd ? formatTimeForStorage(mentionInitialEnd) : undefined
+          );
+        }
+        return;
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        handleMentionClose();
+        return;
+      }
+      // 其他键让用户继续输入，实时更新解析结果
+    }
     
     // 🆕 让数字键 1-9 和 Escape 冒泡到外层（用于 FloatingBar 交互）
     // 不 preventDefault，让这些键传递到 document 层的监听器
@@ -1010,27 +1545,44 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
           newLineId: newLine.lineId.slice(-10) + '...',
         }, 'background: #9C27B0; color: white; padding: 2px 8px; border-radius: 3px; font-weight: bold;');
       } else {
-        // Title 行：检查是否有 eventlog 行，如果有则在其后插入
-        const baseLineId = eventLine.lineId.replace('-desc', '');
-        const descLineId = `${baseLineId}-desc`;
+        // Title 行：查找所有属于同一个 eventId 的 eventlog 行，在最后一个之后插入
+        const baseEventId = eventLine.eventId;
         
-        // 查找 eventlog 行
+        // 查找所有 eventlog 行（lineId 包含 '-desc' 的都是同一个 event 的 eventlog）
+        let lastEventlogIndex = currentPath[0];
         try {
           for (let i = currentPath[0] + 1; i < value.length; i++) {
             const nextNode = value[i];
-            if (nextNode.type === 'event-line' && nextNode.lineId === descLineId) {
-              // 找到 eventlog 行，新行应该插入在 eventlog 行之后
-              insertIndex = i + 1;
-              break;
-            }
-            // 如果遇到其他 event 的 title 行，说明没有 description
-            if (nextNode.type === 'event-line' && nextNode.mode === 'title') {
-              break;
+            if (nextNode.type === 'event-line') {
+              // 检查是否属于同一个 event 的 eventlog 行
+              // eventlog 行的 eventId 格式: "abc" 或 lineId 格式: "abc-desc", "abc-desc-1234"
+              const isEventlogOfSameEvent = 
+                nextNode.mode === 'eventlog' && 
+                (nextNode.eventId === baseEventId || 
+                 nextNode.lineId?.startsWith(`${baseEventId}-desc`));
+              
+              if (isEventlogOfSameEvent) {
+                // 找到属于同一个 event 的 eventlog 行
+                lastEventlogIndex = i;
+              } else {
+                // 遇到其他 event 的行，停止查找
+                break;
+              }
             }
           }
         } catch (e) {
-          // 忽略错误
+          console.warn('[Enter] 查找 eventlog 行失败:', e);
         }
+        
+        // 新行插入在最后一个 eventlog 行之后
+        insertIndex = lastEventlogIndex + 1;
+        
+        logOperation('Enter (title) - 创建新 event', {
+          currentLine: currentPath[0],
+          lastEventlogIndex,
+          insertIndex,
+          eventId: baseEventId,
+        }, 'background: #2196F3; color: white; padding: 2px 8px; border-radius: 3px; font-weight: bold;');
         
         // 创建新的 title 行（新 event）
         newLine = createEmptyEventLine(eventLine.level);
@@ -1116,6 +1668,41 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     if (event.key === 'Tab' && !event.shiftKey) {
       event.preventDefault();
       
+      // 🔧 检查当前段落是否是 bullet
+      const [paragraphNode] = Editor.nodes(editor, {
+        match: n => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+      });
+      
+      if (paragraphNode) {
+        const [para] = paragraphNode;
+        const paragraph = para as any;
+        
+        // 如果是 bullet 段落，增加 bulletLevel 并同步 EventLine level
+        if (paragraph.bullet) {
+          const currentBulletLevel = paragraph.bulletLevel || 0;
+          const newBulletLevel = Math.min(currentBulletLevel + 1, 4); // 最多 5 层 (0-4)
+          
+          // 🔥 同时更新 paragraph 的 bulletLevel 和 EventLine 的 level
+          Editor.withoutNormalizing(editor, () => {
+            // 更新 paragraph
+            Transforms.setNodes(editor, { bulletLevel: newBulletLevel } as any, {
+              match: n => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+            });
+            
+            // 更新 EventLine 的 level（用于缩进）
+            const newEventLineLevel = eventLine.level + 1;
+            Transforms.setNodes(
+              editor,
+              { level: newEventLineLevel } as unknown as Partial<Node>,
+              { at: currentPath }
+            );
+          });
+          
+          return;
+        }
+      }
+      
+      // 否则增加 EventLine 的缩进
       // 计算最大允许缩进（上一行 level + 1）
       let maxLevel = 5; // 默认最大层级
       
@@ -1145,6 +1732,44 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     // Shift+Tab - 减少缩进 / 退出 Eventlog 模式
     if (event.key === 'Tab' && event.shiftKey) {
       event.preventDefault();
+      
+      // 🔧 检查当前段落是否是 bullet
+      const [paragraphNode] = Editor.nodes(editor, {
+        match: n => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+      });
+      
+      if (paragraphNode) {
+        const [para] = paragraphNode;
+        const paragraph = para as any;
+        
+        // 如果是 bullet 段落，减少 bulletLevel 并同步 EventLine level
+        if (paragraph.bullet) {
+          const currentBulletLevel = paragraph.bulletLevel || 0;
+          
+          if (currentBulletLevel > 0) {
+            // 🔥 同时更新 paragraph 和 EventLine
+            Editor.withoutNormalizing(editor, () => {
+              Transforms.setNodes(editor, { bulletLevel: currentBulletLevel - 1 } as any, {
+                match: n => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+              });
+              
+              const newEventLineLevel = Math.max(eventLine.level - 1, 0);
+              Transforms.setNodes(
+                editor,
+                { level: newEventLineLevel } as unknown as Partial<Node>,
+                { at: currentPath }
+              );
+            });
+          } else {
+            // Level 0 再按 Shift+Tab 就取消 bullet
+            Transforms.setNodes(editor, { bullet: undefined, bulletLevel: undefined } as any, {
+              match: n => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+            });
+          }
+          
+          return;
+        }
+      }
       
       // 🆕 如果是 eventlog 行，Shift+Tab 转换为 title 行
       if (eventLine.mode === 'eventlog') {
@@ -1233,6 +1858,9 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
             
             Transforms.removeNodes(editor, { at: currentPath });
             
+            // 🆕 v1.8.4: 删除后自动调整后续 bullet 层级
+            adjustBulletLevelsAfterDelete(editor);
+            
             // 🆕 v1.8: 如果删除后光标在 placeholder 行，移动到上一行
             setTimeout(() => {
               if (editor.selection) {
@@ -1308,7 +1936,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
         }
       }
     }
-  }, [editor, value]);
+  }, [editor, value, handleMentionSelect, handleMentionClose]);
   
   // ==================== 复制粘贴增强 ====================
   
@@ -1386,8 +2014,9 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
           <EventLineElement
             {...props}
             element={element as EventLineNode}
-            renderPrefix={renderLinePrefix}
-            renderSuffix={renderLineSuffix}
+            onSave={onSave}
+            onTimeClick={onTimeClick}
+            onMoreClick={onMoreClick}
             onPlaceholderClick={handlePlaceholderClick}
           />
         );
@@ -1395,6 +2024,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
         const para = element as any;
         if (para.bullet) {
           const level = para.bulletLevel || 0;
+          console.log('[renderElement] Bullet paragraph:', { bullet: para.bullet, bulletLevel: para.bulletLevel, calculatedLevel: level });
           return (
             <div className="slate-bullet-paragraph" data-level={level} {...props.attributes}>
               {props.children}
@@ -1405,15 +2035,60 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       case 'tag':
         return <TagElementComponent {...props} />;
       case 'dateMention':
-        return <DateMentionElementComponent {...props} />;
+        return <DateMentionElement {...props} />;
       default:
         return <div {...props.attributes}>{props.children}</div>;
     }
-  }, [renderLinePrefix, renderLineSuffix, handlePlaceholderClick]);
+  }, [onSave, onTimeClick, onMoreClick, handlePlaceholderClick]);
   
   const renderLeaf = useCallback((props: RenderLeafProps) => {
     let { children } = props;
     const leaf = props.leaf as TextNode;
+    
+    // 🆕 检查是否是 @ 提及文本（高亮显示）
+    if (showMentionPicker && editor.selection) {
+      try {
+        const { anchor } = editor.selection;
+        const [node] = Editor.node(editor, anchor.path);
+        
+        if (SlateText.isText(node) && node === leaf) {
+          const textBeforeCursor = node.text.slice(0, anchor.offset);
+          const atMatch = textBeforeCursor.match(/@([^\s]*)$/);
+          
+          if (atMatch) {
+            // 高亮 @ 和后面的文本
+            const atStart = anchor.offset - atMatch[0].length;
+            const atEnd = anchor.offset;
+            const leafText = (leaf as any).text || '';
+            
+            // 如果当前 leaf 包含 @ 提及部分
+            if (atStart >= 0 && atEnd <= leafText.length) {
+              const before = leafText.slice(0, atStart);
+              const mention = leafText.slice(atStart, atEnd);
+              const after = leafText.slice(atEnd);
+              
+              children = (
+                <>
+                  {before}
+                  <span style={{ 
+                    background: 'rgba(59, 130, 246, 0.1)',
+                    color: '#3b82f6',
+                    fontWeight: 500,
+                    borderRadius: '2px',
+                    padding: '0 2px',
+                  }}>
+                    {mention}
+                  </span>
+                  {after}
+                </>
+              );
+            }
+          }
+        }
+      } catch (err) {
+        // 忽略错误，使用默认渲染
+      }
+    }
     
     if (leaf.bold) {
       children = <strong>{children}</strong>;
@@ -1432,7 +2107,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     }
     
     return <span {...props.attributes}>{children}</span>;
-  }, []);
+  }, [showMentionPicker, editor]);
   
   // ==================== 渲染 ====================
   
@@ -1487,6 +2162,28 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
               spellCheck={false}
               className="unified-editable"
             />
+            
+            {/* 🆕 @提及选择器 - 直接使用 UnifiedDateTimePicker（绝对定位） */}
+            {showMentionPicker && mentionAnchorRef.current && (
+              <div
+                style={{
+                  position: 'fixed',
+                  top: `${mentionAnchorRef.current.style.top}`,
+                  left: `${mentionAnchorRef.current.style.left}`,
+                  zIndex: 10000,
+                }}
+              >
+                <UnifiedDateTimePicker
+                  useTimeHub={true} // 🔧 启用 TimeHub 模式，确保使用 onApplied 回调
+                  initialStart={mentionInitialStart}
+                  initialEnd={mentionInitialEnd}
+                  initialText={mentionText} // 🔧 传递用户在 @ 后输入的初始文本
+                  onSearchChange={handleMentionSearchChange} // 🆕 实时更新解析结果
+                  onApplied={handleMentionSelect}
+                  onClose={handleMentionClose}
+                />
+              </div>
+            )}
           </Slate>
         ) : (
           <div style={{ padding: '8px 16px', color: '#9ca3af' }}>

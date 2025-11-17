@@ -1,0 +1,100 @@
+.editable-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.editable-field-label {
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.editable-field-view-mode {
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-size: 14px;
+  border: 1px solid transparent;
+}
+
+.editable-field-view-mode:hover {
+  background: #f3f4f6;
+  border-color: #e5e7eb;
+}
+
+.editable-field-value {
+  color: #1f2937;
+}
+
+.editable-field-placeholder {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.editable-field-edit-mode {
+  display: flex;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.editable-field-input,
+.editable-field-textarea {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #3b82f6;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+
+.editable-field-input:focus,
+.editable-field-textarea:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.editable-field-textarea {
+  min-height: 60px;
+  resize: vertical;
+}
+
+.editable-field-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.editable-field-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.editable-field-btn-save {
+  background: #10b981;
+  color: white;
+}
+
+.editable-field-btn-save:hover {
+  background: #059669;
+}
+
+.editable-field-btn-cancel {
+  background: #ef4444;
+  color: white;
+}
+
+.editable-field-btn-cancel:hover {
+  background: #dc2626;
+}

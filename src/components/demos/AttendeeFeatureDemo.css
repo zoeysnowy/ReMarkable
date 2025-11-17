@@ -1,0 +1,159 @@
+/**
+ * AttendeeFeatureDemo Styles
+ */
+
+.attendee-feature-demo {
+  min-height: 100vh;
+  background: #f5f5f5;
+  padding: 40px 20px;
+}
+
+.demo-container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.demo-container h1 {
+  font-size: 32px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 32px;
+  text-align: center;
+}
+
+.demo-section {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.demo-section h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0 0 16px 0;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+/* 功能列表 */
+.feature-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.feature-list li {
+  padding: 8px 0;
+  font-size: 14px;
+  color: #595959;
+  line-height: 1.6;
+}
+
+.feature-list li strong {
+  color: #1a1a1a;
+  margin-right: 8px;
+}
+
+/* 事件卡片 */
+.event-card {
+  background: #fafafa;
+  border-radius: 8px;
+  padding: 20px;
+  border: 1px solid #e8e8e8;
+}
+
+.event-card h3 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.event-time {
+  margin: 0 0 16px 0;
+  font-size: 13px;
+  color: #8c8c8c;
+}
+
+/* 使用指南 */
+.usage-guide {
+  padding-left: 24px;
+  margin: 0;
+}
+
+.usage-guide li {
+  margin-bottom: 20px;
+  font-size: 14px;
+  color: #595959;
+  line-height: 1.6;
+}
+
+.usage-guide li:last-child {
+  margin-bottom: 0;
+}
+
+.usage-guide strong {
+  display: block;
+  color: #1a1a1a;
+  margin-bottom: 4px;
+  font-size: 15px;
+}
+
+.usage-guide p {
+  margin: 0;
+  color: #8c8c8c;
+}
+
+/* 数据来源图例 */
+.source-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.source-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: #595959;
+}
+
+.source-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  min-width: 100px;
+  justify-content: center;
+}
+
+.source-tag.outlook {
+  background: #e6f2ff;
+  color: #0078d4;
+}
+
+.source-tag.google {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+.source-tag.icloud {
+  background: #e8f5e9;
+  color: #388e3c;
+}
+
+.source-tag.remarkable {
+  background: #f3e5f5;
+  color: #7b1fa2;
+}
+
+.source-tag.default {
+  background: #f5f5f5;
+  color: #8c8c8c;
+}

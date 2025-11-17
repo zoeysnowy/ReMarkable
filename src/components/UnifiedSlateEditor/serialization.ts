@@ -5,6 +5,7 @@
  */
 
 import { Descendant, Text } from 'slate';
+import { formatTimeForStorage } from '../../utils/timeUtils';
 import { 
   EventLineNode, 
   ParagraphNode, 
@@ -15,6 +16,7 @@ import {
   EventLineData,
   EventMetadata,  // 🆕 导入 EventMetadata 类型
 } from './types';
+import { TimeHub } from '../../services/TimeHub';  // 🆕 导入 TimeHub
 
 // ==================== PlanItem → Slate 节点 ====================
 
@@ -50,10 +52,10 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
   items.forEach(item => {
     // 🆕 v1.6: 提取完整元数据（透传所有业务字段）
     const metadata: EventMetadata = {
-      // 时间字段
-      startTime: item.startTime ?? null,
-      endTime: item.endTime ?? null,
-      dueDate: item.dueDate ?? null,
+      // ✅ v1.8: 时间字段保留 undefined（不转换为 null）
+      startTime: item.startTime,
+      endTime: item.endTime,
+      dueDate: item.dueDate,
       isAllDay: item.isAllDay,
       timeSpec: item.timeSpec,
       
@@ -86,6 +88,7 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
     };
     
     // Title 行（始终创建，即使内容为空）
+    // ✅ v2.8: 使用 fullTitle（富文本）优先，回退到 simpleTitle/title
     const titleNode: EventLineNode = {
       type: 'event-line',
       eventId: item.eventId || item.id,
@@ -95,7 +98,7 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
       children: [
         {
           type: 'paragraph',
-          children: htmlToSlateFragment(item.content || item.title || ''),
+          children: htmlToSlateFragment(item.fullTitle || item.simpleTitle || item.title || ''),
         },
       ],
       metadata,  // 🆕 透传元数据
@@ -119,21 +122,23 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
     }
     
     if (descriptionContent) {
-      const descNode: EventLineNode = {
-        type: 'event-line',
-        eventId: item.eventId || item.id,
-        lineId: `${item.id}-desc`,
-        level: item.level || 0,
-        mode: 'description',
-        children: [
-          {
-            type: 'paragraph',
-            children: htmlToSlateFragment(descriptionContent),
-          },
-        ],
-        metadata,  // 🆕 透传元数据（description 行共享 metadata）
-      };
-      nodes.push(descNode);
+      // 🆕 v1.8.3: 解析 HTML，为每个不同 level 的段落创建独立的 EventLineNode
+      const paragraphsWithLevel = parseHtmlToParagraphsWithLevel(descriptionContent);
+      
+      // 为每个段落创建独立的 EventLineNode
+      let lineIndex = 0;
+      paragraphsWithLevel.forEach((pwl, index) => {
+        const descNode: EventLineNode = {
+          type: 'event-line',
+          eventId: item.eventId || item.id,
+          lineId: index === 0 ? `${item.id}-desc` : `${item.id}-desc-${Date.now()}-${lineIndex++}`,
+          level: pwl.level,
+          mode: 'eventlog',
+          children: [pwl.paragraph],
+          metadata,  // 🆕 透传元数据（eventlog 行共享 metadata）
+        };
+        nodes.push(descNode);
+      });
     }
   });
   
@@ -178,15 +183,28 @@ function htmlToSlateFragment(html: string): (TextNode | TagNode | DateMentionNod
           children: [{ text: '' }],
         });
       }
-      // DateMention 元素
-      else if (element.hasAttribute('data-start-date')) {
-        fragment.push({
-          type: 'dateMention',
-          startDate: element.getAttribute('data-start-date') || '',
-          endDate: element.getAttribute('data-end-date') || undefined,
-          mentionOnly: element.hasAttribute('data-mention-only'),
-          children: [{ text: '' }],
-        });
+      // DateMention 元素 - 🔧 同时检查 data-type 和 data-start-date
+      else if (element.getAttribute('data-type') === 'dateMention' || element.hasAttribute('data-start-date')) {
+        const startDate = element.getAttribute('data-start-date') || '';
+        if (startDate) {
+          fragment.push({
+            type: 'dateMention',
+            startDate: startDate,
+            endDate: element.getAttribute('data-end-date') || undefined,
+            eventId: element.getAttribute('data-event-id') || undefined,  // 🆕 恢复 eventId
+            originalText: element.getAttribute('data-original-text') || undefined,  // 🆕 恢复原始输入
+            isOutdated: element.getAttribute('data-is-outdated') === 'true',  // 🆕 恢复过期状态
+            mentionOnly: element.hasAttribute('data-mention-only'),
+            children: [{ text: '' }],
+          });
+        } else {
+          // data-type="dateMention" 但缺少 data-start-date，记录警告
+          console.warn('[htmlToSlateFragment] DateMention 缺少 data-start-date 属性', {
+            html: element.outerHTML
+          });
+          // 降级为普通文本
+          fragment.push({ text: element.textContent || '' });
+        }
       }
       // 格式化文本
       else if (element.tagName === 'STRONG' || element.tagName === 'B') {
@@ -204,6 +222,94 @@ function htmlToSlateFragment(html: string): (TextNode | TagNode | DateMentionNod
   tempDiv.childNodes.forEach(node => processNode(node));
   
   return fragment.length > 0 ? fragment : [{ text: '' }];
+}
+
+/**
+ * 🆕 v1.8.3: 解析 HTML 字符串，同时提取 paragraph 和 level 信息
+ */
+function parseHtmlToParagraphsWithLevel(html: string): Array<{ paragraph: ParagraphNode; level: number }> {
+  if (!html) return [];
+  
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = html;
+  
+  const result: Array<{ paragraph: ParagraphNode; level: number }> = [];
+  
+  // 查找所有 <p> 标签
+  const pElements = tempDiv.querySelectorAll('p');
+  
+  if (pElements.length === 0) {
+    // 如果没有 <p> 标签，整个内容作为一个段落，level = 0
+    return [{
+      paragraph: {
+        type: 'paragraph',
+        children: htmlToSlateFragment(html),
+      },
+      level: 0,
+    }];
+  }
+  
+  pElements.forEach(pElement => {
+    const bullet = pElement.getAttribute('data-bullet') === 'true';
+    const bulletLevel = parseInt(pElement.getAttribute('data-bullet-level') || '0', 10);
+    const level = parseInt(pElement.getAttribute('data-level') || '0', 10);
+    
+    const para: ParagraphNode = {
+      type: 'paragraph',
+      children: htmlToSlateFragment(pElement.innerHTML),
+    };
+    
+    if (bullet) {
+      (para as any).bullet = true;
+      (para as any).bulletLevel = bulletLevel;
+    }
+    
+    result.push({ paragraph: para, level });
+  });
+  
+  return result;
+}
+
+/**
+ * 🆕 将 HTML 转换为多个 Paragraph 节点（包括 bullet 属性）
+ */
+function parseHtmlToParagraphs(html: string): ParagraphNode[] {
+  if (!html) return [];
+  
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = html;
+  
+  const paragraphs: ParagraphNode[] = [];
+  
+  // 查找所有 <p> 标签
+  const pElements = tempDiv.querySelectorAll('p');
+  
+  if (pElements.length === 0) {
+    // 如果没有 <p> 标签，整个内容作为一个段落
+    return [{
+      type: 'paragraph',
+      children: htmlToSlateFragment(html),
+    }];
+  }
+  
+  pElements.forEach(pElement => {
+    const bullet = pElement.getAttribute('data-bullet') === 'true';
+    const bulletLevel = parseInt(pElement.getAttribute('data-bullet-level') || '0', 10);
+    
+    const para: ParagraphNode = {
+      type: 'paragraph',
+      children: htmlToSlateFragment(pElement.innerHTML),
+    };
+    
+    if (bullet) {
+      (para as any).bullet = true;
+      (para as any).bulletLevel = bulletLevel;
+    }
+    
+    paragraphs.push(para);
+  });
+  
+  return paragraphs;
 }
 
 /**
@@ -259,10 +365,10 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
         description: '',
         tags: [],
         
-        // 🆕 v1.6: 透传完整元数据（带默认值）
-        startTime: metadata.startTime ?? undefined,
-        endTime: metadata.endTime ?? undefined,
-        dueDate: metadata.dueDate ?? undefined,
+        // ✅ v1.8: 反序列化时保留 undefined（不使用 ?? undefined）
+        startTime: metadata.startTime,
+        endTime: metadata.endTime,
+        dueDate: metadata.dueDate,
         isAllDay: metadata.isAllDay ?? false,
         timeSpec: metadata.timeSpec,
         
@@ -293,35 +399,88 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
     const item = items.get(baseId)!;
     
     // 🔧 安全检查:确保节点结构正确，但不要跳过节点，只是使用安全的默认值
-    const fragment = node.children?.[0]?.children;
-    
-    // 如果没有有效的 fragment，使用空数组（不会崩溃，但会正确处理）
-    const html = fragment ? slateFragmentToHtml(fragment) : '';
+    const paragraphs = node.children || [];
     
     if (node.mode === 'title') {
-      item.content = html;
-      item.title = fragment ? extractPlainText(fragment) : '';
-      item.tags = fragment ? extractTags(fragment) : [];
+      // Title 模式：只取第一个 paragraph
+      const fragment = paragraphs[0]?.children;
+      const html = fragment ? slateFragmentToHtml(fragment) : '';
+      
+      // ✅ v2.8: 保存到 fullTitle（富文本）和 simpleTitle（纯文本）
+      item.fullTitle = html;
+      item.simpleTitle = fragment ? extractPlainText(fragment) : '';
+      item.title = item.simpleTitle; // 向后兼容
+      item.tags = fragment ? extractTags(fragment) : '';
+      
+      // 🆕 v2.9: 优先从 TimeHub 读取最新时间（DateMention 只是触发器）
+      const timeSnapshot = TimeHub.getSnapshot(baseId);
+      if (timeSnapshot.start || timeSnapshot.end !== undefined) {
+        // TimeHub 有数据，使用 TimeHub 的时间（最新）
+        item.startTime = timeSnapshot.start || undefined;
+        item.endTime = timeSnapshot.end !== undefined ? timeSnapshot.end : undefined;  // 🔧 保留空字符串
+        console.log('[🔄 时间优先级] TimeHub 提供时间:', {
+          eventId: baseId.slice(-10),
+          startTime: timeSnapshot.start,
+          endTime: timeSnapshot.end,
+        });
+      } else if (fragment) {
+        // TimeHub 无数据，尝试从 DateMention 读取（向后兼容）
+        const dateMention = fragment.find((n): n is DateMentionNode => 
+          'type' in n && n.type === 'dateMention'
+        );
+        if (dateMention) {
+          item.startTime = dateMention.startDate;
+          item.endTime = dateMention.endDate || undefined;
+          console.log('[🔄 时间优先级] DateMention 提供时间:', {
+            eventId: baseId.slice(-10),
+            startTime: dateMention.startDate,
+            endTime: dateMention.endDate,
+          });
+        }
+      }
     } else {
-      // 🆕 v1.8: 描述行保存到 eventlog (富文本) 和 description (纯文本)
-      // 双向同步策略：
-      // 1. 编辑器内容 → eventlog (富文本) + description (纯文本)
-      // 2. 如果 eventlog 为空但 description 有内容 → 从 description 初始化 eventlog
-      // 3. 保持两个字段始终同步（增量更新）
+      // 🆕 v1.8: Eventlog 模式：遍历所有 paragraph，保存为 HTML 数组
+      const paragraphsHtml = paragraphs.map(para => {
+        const fragment = para.children || [];
+        const html = slateFragmentToHtml(fragment);
+        
+        // 🔧 包括 bullet 属性和 level (缩进)
+        const bullet = (para as any).bullet;
+        const bulletLevel = (para as any).bulletLevel || 0;
+        // 🔥 使用 bulletLevel 作为 level（它们应该同步）
+        const level = bullet ? bulletLevel : (node.level || 0);
+        
+        console.log('[保存 HTML] bullet paragraph:', { 
+          bullet, 
+          bulletLevel, 
+          nodeLevel: node.level, 
+          finalLevel: level 
+        });
+        
+        if (bullet) {
+          return `<p data-bullet="true" data-bullet-level="${bulletLevel}" data-level="${level}">${html}</p>`;
+        } else {
+          return `<p data-level="${level}">${html}</p>`;
+        }
+      });
       
-      const newEventlog = html; // 当前编辑器的富文本内容
-      const newDescription = fragment ? extractPlainText(fragment) : ''; // 当前编辑器的纯文本内容
+      const lineHtml = paragraphsHtml.join('');
+      const linePlainText = paragraphs.map(para => {
+        const fragment = para.children || [];
+        return extractPlainText(fragment);
+      }).join('\n');
       
-      item.eventlog = newEventlog;
-      item.description = newDescription;
+      // 🔥 累积所有 eventlog 行的内容（不要覆盖）
+      item.eventlog = (item.eventlog || '') + lineHtml;
+      item.description = (item.description || '') + (item.description ? '\n' : '') + linePlainText;
       
       // 🔍 调试日志
-      console.log('[slateNodesToPlanItems] Description 保存 (双向同步):', {
+      console.log('[slateNodesToPlanItems] Eventlog 累积保存:', {
         eventId: baseId,
         lineId: node.lineId,
-        eventlog: item.eventlog,
-        description: item.description,
-        fragmentLength: fragment?.length || 0
+        paragraphsCount: paragraphs.length,
+        lineHtml,
+        totalEventlogLength: item.eventlog.length,
       });
     }
   });
@@ -384,6 +543,9 @@ function slateFragmentToHtml(fragment: (TextNode | TagNode | DateMentionNode)[])
         `data-type="dateMention"`,
         `data-start-date="${node.startDate}"`,
         node.endDate ? `data-end-date="${node.endDate}"` : '',
+        node.eventId ? `data-event-id="${node.eventId}"` : '',  // 🆕 保存 eventId
+        node.originalText ? `data-original-text="${node.originalText}"` : '',  // 🆕 保存原始输入
+        node.isOutdated ? `data-is-outdated="true"` : '',  // 🆕 保存过期状态
         node.mentionOnly ? `data-mention-only="true"` : '',
       ].filter(Boolean).join(' ');
       
@@ -465,7 +627,7 @@ export function slateNodesToRichHtml(nodes: EventLineNode[]): string {
     
     const indent = '  '.repeat(node.level);
     const content = slateFragmentToRichHtml(node.children[0].children);
-    const style = node.mode === 'description' ? ' style="color: #666; font-size: 0.9em;"' : '';
+    const style = node.mode === 'eventlog' ? ' style="color: #666; font-size: 0.9em;"' : '';
     
     html.push(`${indent}<li${style}>${content}</li>`);
   });
@@ -606,7 +768,7 @@ function parseHtmlFragment(html: string): (TextNode | TagNode | DateMentionNode)
           
           fragment.push({
             type: 'dateMention',
-            startDate: new Date(dateStr).toISOString(),
+            startDate: formatTimeForStorage(new Date(dateStr)),
             children: [{ text: '' }],
           });
           

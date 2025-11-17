@@ -1,9 +1,11 @@
 /**
  * ColorPicker - 颜色选择器
+ * 支持键盘导航：↑↓←→ 选择，Enter 确认，Esc 关闭
  */
 
 import React from 'react';
 import './ColorPicker.css';
+import { useKeyboardNavigation } from './useKeyboardNavigation';
 
 interface ColorPickerProps {
   onSelect: (color: string) => void;
@@ -25,6 +27,14 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
   onSelect,
   onClose,
 }) => {
+  const { hoveredIndex, setHoveredIndex, containerRef } = useKeyboardNavigation({
+    items: COLORS,
+    onSelect: (color) => onSelect(color.value),
+    onClose,
+    enabled: true,
+    gridColumns: 4, // 4 列网格布局
+  });
+
   return (
     <div className="color-picker-panel">
       <div className="picker-header">
@@ -34,12 +44,13 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
         </button>
       </div>
 
-      <div className="color-grid">
-        {COLORS.map((color) => (
+      <div className="color-grid" ref={containerRef}>
+        {COLORS.map((color, index) => (
           <button
             key={color.value}
-            className="color-item"
+            className={`color-item ${index === hoveredIndex ? 'keyboard-focused' : ''}`}
             onClick={() => onSelect(color.value)}
+            onMouseEnter={() => setHoveredIndex(index)}
             title={color.label}
             style={{
               backgroundColor: color.value,

@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>联系人自动提取测试</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 32px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 {
+      margin-top: 0;
+      color: #1a1a1a;
+      border-bottom: 3px solid #1890ff;
+      padding-bottom: 16px;
+    }
+    .section {
+      margin: 24px 0;
+      padding: 20px;
+      background: #fafafa;
+      border-radius: 8px;
+      border-left: 4px solid #1890ff;
+    }
+    .section h2 {
+      margin-top: 0;
+      font-size: 18px;
+      color: #1890ff;
+    }
+    .test-steps {
+      background: #f0f9ff;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 16px 0;
+    }
+    .test-steps ol {
+      margin: 0;
+      padding-left: 24px;
+    }
+    .test-steps li {
+      margin: 12px 0;
+      line-height: 1.6;
+    }
+    .code-block {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 16px;
+      border-radius: 6px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 13px;
+      overflow-x: auto;
+      margin: 12px 0;
+    }
+    .code-inline {
+      background: #f5f5f5;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 13px;
+      color: #c7254e;
+    }
+    .btn {
+      background: #1890ff;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-size: 15px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn:hover {
+      background: #40a9ff;
+    }
+    .btn:active {
+      background: #096dd9;
+    }
+    .alert {
+      padding: 16px;
+      border-radius: 6px;
+      margin: 16px 0;
+    }
+    .alert-info {
+      background: #e6f7ff;
+      border: 1px solid #91d5ff;
+      color: #0050b3;
+    }
+    .alert-success {
+      background: #f6ffed;
+      border: 1px solid #b7eb8f;
+      color: #389e0d;
+    }
+    .alert-warning {
+      background: #fffbe6;
+      border: 1px solid #ffe58f;
+      color: #d48806;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+    }
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #e8e8e8;
+    }
+    th {
+      background: #fafafa;
+      font-weight: 600;
+      color: #1a1a1a;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .status-success {
+      background: #f6ffed;
+      color: #52c41a;
+    }
+    .status-pending {
+      background: #fff7e6;
+      color: #fa8c16;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧪 联系人自动提取功能测试</h1>
+
+    <div class="section">
+      <h2>📋 测试目标</h2>
+      <p>验证以下功能是否正常工作：</p>
+      <ul>
+        <li>✅ 保存事件时，自动提取 organizer 和 attendees 到联系人库</li>
+        <li>✅ 只提取有邮箱的联系人</li>
+        <li>✅ 自动去重（同一邮箱不重复添加）</li>
+        <li>✅ 更新事件参会人时，自动提取新增的联系人</li>
+        <li>✅ 提取的联系人可以在搜索框中被搜索到</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>🚀 快速测试</h2>
+      <div class="test-steps">
+        <h3>方法 1: 使用 EventEditModalV2Demo（推荐）</h3>
+        <ol>
+          <li>打开 <code class="code-inline">EventEditModalV2Demo</code> 页面</li>
+          <li>点击任意参会人名字，打开搜索框</li>
+          <li>在搜索框中输入新的参会人名字和邮箱（例如: "Test User, test@example.com"）</li>
+          <li>选择或添加参会人</li>
+          <li><strong>保存事件</strong>（这一步很重要！）</li>
+          <li>再次点击参会人搜索框，输入 "Test"</li>
+          <li>验证是否能搜索到 "Test User"</li>
+        </ol>
+
+        <h3>方法 2: 使用浏览器控制台</h3>
+        <ol>
+          <li>打开浏览器控制台（F12）</li>
+          <li>执行以下命令查看当前联系人库：
+            <div class="code-block">JSON.parse(localStorage.getItem('remarkable-contacts'))</div>
+          </li>
+          <li>导入测试脚本：
+            <div class="code-block">// 在项目中引入测试文件
+import '../tests/contact-extraction.test.ts';</div>
+          </li>
+          <li>观察控制台输出的测试结果</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>🔍 手动验证步骤</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>步骤</th>
+            <th>操作</th>
+            <th>预期结果</th>
+            <th>状态</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>查看初始联系人数量</td>
+            <td>显示当前联系人库中的联系人数量</td>
+            <td><span class="status-badge status-pending">待测试</span></td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>在 EventEditModal 中添加新参会人</td>
+            <td>输入框允许输入参会人信息</td>
+            <td><span class="status-badge status-pending">待测试</span></td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>保存事件</td>
+            <td>控制台输出 "👥 Auto-extracted contacts from event"</td>
+            <td><span class="status-badge status-pending">待测试</span></td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td>查看更新后的联系人数量</td>
+            <td>联系人数量增加</td>
+            <td><span class="status-badge status-pending">待测试</span></td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td>在搜索框中搜索新添加的参会人</td>
+            <td>能够搜索到新添加的参会人</td>
+            <td><span class="status-badge status-pending">待测试</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>🐛 调试命令</h2>
+      <p>在浏览器控制台执行以下命令进行调试：</p>
+
+      <h3>查看所有联系人</h3>
+      <div class="code-block">const contacts = JSON.parse(localStorage.getItem('remarkable-contacts'));
+console.table(contacts.map(c => ({
+  姓名: c.name,
+  邮箱: c.email,
+  公司: c.organization,
+  来源: c.isOutlook ? 'Outlook' : c.isGoogle ? 'Google' : c.isiCloud ? 'iCloud' : 'ReMarkable'
+})));</div>
+
+      <h3>搜索特定联系人</h3>
+      <div class="code-block">const results = JSON.parse(localStorage.getItem('remarkable-contacts'))
+  .filter(c => c.name?.includes('关键词') || c.email?.includes('关键词'));
+console.table(results);</div>
+
+      <h3>清空所有联系人（重置测试）</h3>
+      <div class="code-block">localStorage.removeItem('remarkable-contacts');
+console.log('✅ 联系人库已清空');
+location.reload();</div>
+
+      <h3>手动添加测试联系人</h3>
+      <div class="code-block">const testContact = {
+  id: 'test-' + Date.now(),
+  name: '测试联系人',
+  email: 'test@example.com',
+  organization: '测试公司',
+  isReMarkable: true
+};
+
+const contacts = JSON.parse(localStorage.getItem('remarkable-contacts') || '[]');
+contacts.push(testContact);
+localStorage.setItem('remarkable-contacts', JSON.stringify(contacts));
+console.log('✅ 已添加测试联系人');
+location.reload();</div>
+    </div>
+
+    <div class="section">
+      <h2>📊 预期的控制台输出</h2>
+      <p>当功能正常工作时，保存事件后应该看到以下日志：</p>
+      <div class="code-block">💾 [EventService] Event saved to localStorage
+👥 [EventService] Auto-extracted contacts from event
+[ContactService] Added contact: Zoey Gong
+[ContactService] Added contact: Jenny Wong
+✅ [EventService] 创建成功: {...}</div>
+
+      <p>或者更新事件时：</p>
+      <div class="code-block">💾 [EventService] Event updated in localStorage
+👥 [EventService] Auto-extracted contacts from updated event
+[ContactService] Added contact: New Attendee
+✅ [EventService] 更新成功: {...}</div>
+    </div>
+
+    <div class="alert alert-info">
+      <strong>💡 提示</strong><br>
+      如果没有看到预期的日志输出，请检查：
+      <ul style="margin: 8px 0 0 0;">
+        <li>是否正确保存了事件（不是只更新了 UI 状态）</li>
+        <li>EventService 是否正确导入了 ContactService</li>
+        <li>浏览器控制台是否有错误信息</li>
+      </ul>
+    </div>
+
+    <div class="alert alert-success">
+      <strong>✅ 功能已实现</strong><br>
+      现在，每次保存或更新事件时，系统会自动：
+      <ul style="margin: 8px 0 0 0;">
+        <li>提取事件中的 organizer 和 attendees</li>
+        <li>检查每个联系人的邮箱是否已存在</li>
+        <li>如果不存在，自动添加到联系人库（标记为 isReMarkable: true）</li>
+        <li>保存到 localStorage</li>
+      </ul>
+      无需任何手动操作！
+    </div>
+
+    <div class="section">
+      <h2>📚 相关文档</h2>
+      <ul>
+        <li><a href="../docs/features/CONTACT_AUTO_EXTRACTION.md">联系人自动提取机制说明</a></li>
+        <li><a href="../docs/features/ATTENDEE_FEATURE_SUMMARY.md">参会人功能开发总结</a></li>
+        <li><a href="../docs/features/ATTENDEE_TROUBLESHOOTING.md">故障排除指南</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    // 提供一个简单的测试按钮
+    document.querySelectorAll('.status-pending').forEach(badge => {
+      badge.addEventListener('click', function() {
+        this.textContent = '✅ 通过';
+        this.classList.remove('status-pending');
+        this.classList.add('status-success');
+      });
+    });
+  </script>
+</body>
+</html>

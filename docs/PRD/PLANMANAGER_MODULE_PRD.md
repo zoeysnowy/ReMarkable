@@ -1,35 +1,209 @@
 # PlanManager 模块 PRD
 
 **模块路径**: `src/components/PlanManager.tsx`  
-**代码行数**: 2221 lines  
-**架构版本**: v1.9 (TimeHoverCard 集成)  
-**最后更新**: 2025-11-11  
+**代码行数**: ~2400 lines  
+**架构版本**: v1.9 (模块化重构)  
+**最后更新**: 2025-11-14  
 **编写框架**: Copilot PRD Reverse Engineering Framework v1.0
 
 ---
 
-## 🆕 v1.9 TimeHoverCard 时间悬浮卡片集成 (2025-11-11)
+## 🆕 v1.9 模块化重构 - 职责分离 (2025-11-14)
 
-### 新增功能
+### 重构目标
 
-**核心特性**:
-- 🎨 **时间悬浮卡片**: 鼠标悬停时间显示 0.5 秒后，显示完整时间详情卡片
-- 🎯 **精准定位**: 使用 Tippy.js 实现底部定位，右边缘与触发元素对齐
-- ⏱️ **实时倒计时**: 显示"距离开始还有 X 天/小时"或"已过期 X 天"
-- ✏️ **快速修改**: 卡片内置"修改"按钮，点击打开 UnifiedDateTimePicker
-- 🎨 **视觉优化**: 白色背景、圆角 20px、阴影效果、淡入动画
+**核心原则**：PlanManager 应当**只负责信息传输**，不直接操作编辑器
 
-**技术实现**:
-- TimeHoverCard 组件 (`src/components/TimeHoverCard/`)
-- Tippy.js 集成 (`placement="bottom-start"` + 动态 offset)
-- 4 种时间显示场景支持（任务/单日全天/多日全天/时间范围）
-- React.memo 性能优化，避免不必要的重渲染
+### 重构内容
 
-**详见**: [§ 4.3 TimeHoverCard 悬浮卡片](#43-timehovercard-悬浮卡片-)
+#### 1. 文本格式化逻辑迁移
+
+**之前**：PlanManager 直接操作 Slate API
+```typescript
+// ❌ PlanManager.tsx (~100 lines)
+import { Editor, Transforms, Element } from 'slate';
+import { ReactEditor } from 'slate-react';
+
+const handleTextFormat = (command: string) => {
+  const editor = unifiedEditorRef.current;
+  
+  switch (command) {
+    case 'bold':
+      Editor.addMark(editor, 'bold', true);  // 直接操作 Slate
+      break;
+    case 'toggleBulletList':
+      const [para] = Editor.nodes(editor, {...});
+      Transforms.setNodes(editor, { bullet: true });  // 直接修改节点
+      break;
+    // ... 更多格式化逻辑
+  }
+};
+```
+
+**现在**：封装到 `helpers.ts`
+```typescript
+// ✅ PlanManager.tsx (~10 lines)
+import { applyTextFormat } from './UnifiedSlateEditor/helpers';
+
+const handleTextFormat = (command: string) => {
+  const editor = unifiedEditorRef.current;
+  if (!editor) return;
+  
+  const success = applyTextFormat(editor, command);
+  if (success && command === 'toggleBulletList') {
+    floatingToolbar.hideToolbar();
+  }
+};
+
+// ✅ helpers.ts
+export function applyTextFormat(editor: Editor, command: string): boolean {
+  // 所有格式化逻辑统一在这里
+  switch (command) {
+    case 'bold': Editor.addMark(editor, 'bold', true); break;
+    case 'toggleBulletList': toggleBulletList(editor); break;
+    // ...
+  }
+  return true;
+}
+```
+
+#### 2. 标签提取逻辑迁移
+
+**之前**：PlanManager 直接扫描 Slate 节点
+```typescript
+// ❌ PlanManager.tsx (~40 lines)
+import { Node } from 'slate';
+
+const extractTags = () => {
+  const lineNode = editor.children.find(...);
+  const tagIds = new Set<string>();
+  const descendants = Array.from(Node.descendants(lineNode));
+  
+  descendants.forEach((entry) => {
+    const [node] = entry;
+    if (node.type === 'tag' && node.tagId) {
+      tagIds.add(node.tagId);
+    }
+  });
+  
+  return Array.from(tagIds);
+};
+```
+
+**现在**：封装到 `helpers.ts`
+```typescript
+// ✅ PlanManager.tsx (~3 lines)
+import { extractTagsFromLine } from './UnifiedSlateEditor/helpers';
+
+const tagIds = extractTagsFromLine(editor, currentFocusedLineId);
+
+// ✅ helpers.ts
+export function extractTagsFromLine(editor: Editor, lineId: string): string[] {
+  const lineNode = editor.children.find(...);
+  const descendants = Array.from(Node.descendants(lineNode));
+  // ... 扫描逻辑
+  return tagIds;
+}
+```
+
+#### 3. 焦点管理统一
+
+**之前**：PlanManager 中重复的焦点恢复代码
+```typescript
+// ❌ PlanManager.tsx (多处重复)
+if (success) {
+  setTimeout(() => {
+    if (!ReactEditor.isFocused(editor)) {
+      ReactEditor.focus(editor);
+    }
+  }, 0);
+}
+```
+
+**现在**：helpers 函数自动处理
+```typescript
+// ✅ helpers.ts
+export function insertTag(...): boolean {
+  // ... 插入逻辑
+  
+  // 🔧 自动恢复焦点
+  setTimeout(() => {
+    if (!ReactEditor.isFocused(editor as ReactEditor)) {
+      ReactEditor.focus(editor as ReactEditor);
+    }
+  }, 0);
+  
+  return true;
+}
+
+// ✅ PlanManager.tsx - 无需手动恢复焦点
+const success = insertTag(editor, tagId, tagName, ...);
+// 焦点已自动恢复，无需额外代码
+```
+
+### 重构成果
+
+#### 依赖清理
+
+```typescript
+// ❌ 之前
+import { Editor, Transforms, Element, Node } from 'slate';
+import { ReactEditor } from 'slate-react';
+
+// ✅ 现在
+// PlanManager 不再导入任何 Slate API
+```
+
+#### 代码行数减少
+
+| 功能模块 | 之前 (PlanManager) | 现在 (PlanManager) | 迁移到 |
+|---------|-------------------|-------------------|--------|
+| 文本格式化 | ~100 lines | ~10 lines | helpers.ts |
+| 标签提取 | ~40 lines | ~3 lines | helpers.ts |
+| 焦点管理 | ~20 lines (重复) | 0 lines | helpers.ts |
+| **总计** | **~160 lines** | **~13 lines** | **helpers.ts** |
+
+#### 架构优势
+
+1. **职责分离**
+   - PlanManager：数据传输、业务逻辑
+   - helpers.ts：编辑器操作、格式化、元素插入
+
+2. **可复用性**
+   - EditModal、TimeLog 等组件可直接使用 helpers
+   - 避免重复实现相同的编辑器操作
+
+3. **易维护性**
+   - Slate API 变更只需修改 helpers.ts
+   - PlanManager 无需任何改动
+
+4. **单向依赖**
+   ```
+   ✅ PlanManager → helpers.ts → Slate
+   ❌ PlanManager → Slate (直接依赖)
+   ```
+
+### helpers.ts API 一览
+
+```typescript
+// 📌 插入元素（自动恢复焦点）
+insertTag(editor, tagId, tagName, tagColor?, tagEmoji?, mentionOnly?): boolean
+insertEmoji(editor, emoji): boolean
+insertDateMention(editor, startDate, endDate?, ...): boolean
+
+// 📌 文本格式化
+applyTextFormat(editor, command): boolean
+  // 支持: 'bold', 'italic', 'underline', 'strikeThrough', 'removeFormat'
+  //      'toggleBulletList', 'increaseBulletLevel', 'decreaseBulletLevel'
+
+// 📌 数据提取
+extractTagsFromLine(editor, lineId): string[]  // 提取标签（无需扫描节点）
+getEditorHTML(editor): string                   // 获取当前行 HTML
+```
 
 ---
 
-## 🆕 v1.8 渲染性能优化 + 勾选框即时显示 (2025-11-08)
+## v1.8 渲染性能优化 + 勾选框即时显示 (2025-11-08)
 
 ### 问题诊断
 
@@ -1048,201 +1222,6 @@ return (
   </div>
 );
 ```
-
----
-
-### 4.3 TimeHoverCard 悬浮卡片 ✨
-
-**位置**: L80-318 (✅ v1.9 新增)
-
-**功能**: 为 PlanItemTimeDisplay 添加悬浮详情卡片，显示完整日期、倒计时和修改按钮
-
-#### 4.3.1 组件集成
-
-**Tippy 配置** (L138-155, L177-194, L214-231, L269-286):
-```typescript
-<Tippy
-  content={
-    <TimeHoverCard
-      startTime={startTime?.toISOString() ?? null}
-      endTime={endTime?.toISOString() ?? null}
-      dueDate={dueDate?.toISOString() ?? null}
-      isAllDay={isAllDay ?? false}
-      onEditClick={handleEditClick}
-    />
-  }
-  visible={showHoverCard}
-  placement="bottom-start"
-  offset={({ reference, popper }) => {
-    // 动态计算偏移量，使卡片右边缘与触发元素右边缘对齐
-    return [reference.width - popper.width, 8];
-  }}
-  interactive={true}
-  arrow={false}
-  appendTo={() => document.body}
-  onClickOutside={() => setShowHoverCard(false)}
->
-  <div 
-    ref={containerRef}
-    style={{ display: 'inline-block' }}
-    onMouseEnter={handleMouseEnter}
-    onMouseLeave={handleMouseLeave}
-  >
-    {/* 时间显示内容 */}
-  </div>
-</Tippy>
-```
-
-**关键参数**:
-- `placement="bottom-start"`: 卡片在触发元素正下方，左边缘对齐
-- `offset`: 动态函数计算 `reference.width - popper.width`，实现右对齐
-- `interactive={true}`: 允许鼠标悬停在卡片上
-- `arrow={false}`: 禁用 Tippy 默认箭头
-- `appendTo={() => document.body}`: 挂载到 body，避免 overflow 裁剪
-
-#### 4.3.2 交互逻辑
-
-**鼠标悬停延迟** (L80-103):
-```typescript
-const [showHoverCard, setShowHoverCard] = useState(false);
-const hoverTimerRef = useRef<number | null>(null);
-
-const handleMouseEnter = () => {
-  if (hoverTimerRef.current !== null) {
-    window.clearTimeout(hoverTimerRef.current);
-  }
-  
-  // 0.5秒延迟显示悬浮卡片
-  hoverTimerRef.current = window.setTimeout(() => {
-    setShowHoverCard(true);
-  }, 500);
-};
-
-const handleMouseLeave = () => {
-  if (hoverTimerRef.current !== null) {
-    window.clearTimeout(hoverTimerRef.current);
-    hoverTimerRef.current = null;
-  }
-  // 延迟关闭，给用户时间移动到悬浮卡片
-  hoverTimerRef.current = window.setTimeout(() => {
-    setShowHoverCard(false);
-  }, 200);
-};
-```
-
-**修改按钮点击** (L105-119):
-```typescript
-const handleEditClick = (e?: React.MouseEvent<HTMLElement>) => {
-  if (e) {
-    e.stopPropagation();
-  }
-  setShowHoverCard(false);
-  if (hoverTimerRef.current !== null) {
-    window.clearTimeout(hoverTimerRef.current);
-    hoverTimerRef.current = null;
-  }
-  // 使用容器元素作为锚点打开 UnifiedDateTimePicker
-  if (containerRef.current) {
-    onEditClick(containerRef.current);
-  }
-};
-```
-
-#### 4.3.3 卡片显示内容
-
-**第一行: 完整日期**
-- 格式: `2025-11-10（周一）`
-- 工具函数: `formatFullDate(date: Date)` (`relativeDateFormatter.ts`)
-
-**第二行: 倒计时/修改按钮**
-- **未来事件**: 渐变色文字 "距离开始还有 2 天"
-- **已过期**: 红色文字 "已过期 1 天"
-- **修改按钮**: 青色文字 "修改"，悬停变深青色
-- 工具函数: `formatCountdown(targetDate, now)` (`relativeDateFormatter.ts`)
-
-#### 4.3.4 样式覆盖
-
-**全局 Tippy 样式** (`PlanManager.css` L16-28):
-```css
-/* 移除所有 Tippy 默认背景和样式 */
-.tippy-box {
-  background-color: transparent !important;
-  box-shadow: none !important;
-}
-
-.tippy-content {
-  padding: 0 !important;
-  background: transparent !important;
-}
-```
-
-**说明**: 强制移除 Tippy 容器的默认黑色背景和阴影，让 TimeHoverCard 组件自己的白色背景和阴影生效。
-
-#### 4.3.5 支持的场景
-
-**场景 1: 仅截止日期（任务）** (L138-165)
-```tsx
-<TimeHoverCard
-  startTime={null}
-  endTime={null}
-  dueDate={dueDate.toISOString()}
-  isAllDay={isAllDay ?? false}
-  onEditClick={handleEditClick}
-/>
-```
-
-**场景 2: 单日全天事件** (L177-210)
-```tsx
-<TimeHoverCard
-  startTime={startTime.toISOString()}
-  endTime={endTime.toISOString()}
-  dueDate={dueDate?.toISOString() ?? null}
-  isAllDay={true}
-  onEditClick={handleEditClick}
-/>
-```
-
-**场景 3: 多日全天事件** (L214-247)
-```tsx
-<TimeHoverCard
-  startTime={startTime.toISOString()}
-  endTime={endTime.toISOString()}
-  dueDate={dueDate?.toISOString() ?? null}
-  isAllDay={true}
-  onEditClick={handleEditClick}
-/>
-```
-
-**场景 4: 时间范围事件** (L269-318)
-```tsx
-<TimeHoverCard
-  startTime={startTime.toISOString()}
-  endTime={endTime.toISOString()}
-  dueDate={dueDate?.toISOString() ?? null}
-  isAllDay={false}
-  onEditClick={handleEditClick}
-/>
-```
-
-#### 4.3.6 性能优化
-
-1. **React.memo 包裹 PlanItemTimeDisplay**: 只在时间相关属性变化时重渲染
-2. **useRef 管理定时器**: 避免内存泄漏
-3. **Tippy appendTo body**: 避免父容器 overflow 裁剪
-4. **动态 offset 计算**: 自适应不同宽度的触发元素
-
-#### 4.3.7 相关文件
-
-| 文件路径 | 说明 |
-|---------|------|
-| `src/components/TimeHoverCard/TimeHoverCard.tsx` | 卡片组件 |
-| `src/components/TimeHoverCard/TimeHoverCard.css` | 卡片样式 |
-| `src/components/PlanManager.tsx` L80-318 | Tippy 集成 |
-| `src/components/PlanManager.css` L16-28 | Tippy 样式覆盖 |
-| `src/utils/relativeDateFormatter.ts` | 格式化工具函数 |
-| `docs/PRD/TIME_PICKER_AND_DISPLAY_PRD.md` § 0.10 | 完整技术文档 |
-
----
 
 **特点**：
 - 显示开始时间、持续时长、结束时间

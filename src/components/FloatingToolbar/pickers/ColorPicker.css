@@ -10,24 +10,41 @@
   padding: 8px;
 }
 
-.color-option {
+.color-item {
   width: 50px;
   height: 50px;
   border-radius: 8px;
   cursor: pointer;
-  border: 2px solid transparent;
+  border: 3px solid transparent; /* 为键盘焦点预留边框空间 */
   transition: all 0.2s;
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.color-option:hover {
+.color-item:hover {
   transform: scale(1.1);
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
-.color-option.selected {
+/* 键盘导航焦点样式 */
+.color-item.keyboard-focused {
   border-color: #1e293b;
   box-shadow: 0 0 0 2px white, 0 0 0 4px #1e293b;
+  transform: scale(1.15);
+}
+
+.color-checkmark {
+  display: none;
+  color: white;
+  font-size: 20px;
+  font-weight: bold;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.color-item.keyboard-focused .color-checkmark {
+  display: block;
 }
 
 /* 颜色变体 */

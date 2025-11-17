@@ -4,6 +4,17 @@ const http = require('http');
 const url = require('url');
 const { spawn } = require('child_process');
 
+// 本地时间格式化函数
+const formatTimeForStorage = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const h = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  const s = String(date.getSeconds()).padStart(2, '0');
+  return `${y}-${m}-${d} ${h}:${min}:${s}`;
+};
+
 // 简化环境检测
 const isDev = process.env.NODE_ENV === 'development' || process.defaultApp || /[\\/]electron-prebuilt[\\/]/.test(process.execPath) || /[\\/]electron[\\/]/.test(process.execPath);
 
@@ -416,7 +427,7 @@ ipcMain.handle('get-active-window', async () => {
     return { 
       title: 'Example Window', 
       process: 'example.exe',
-      timestamp: new Date().toISOString()
+      timestamp: formatTimeForStorage(new Date())
     };
   } catch (error) {
     console.error('Failed to get active window:', error);
@@ -685,6 +696,12 @@ ipcMain.handle('widget-lock', (event, isLocked) => {
     
     widgetWindow.setAlwaysOnTop(isLocked, 'screen-saver');
     
+    // 🔗 同步设置窗口的置顶状态
+    if (widgetSettingsWindow && !widgetSettingsWindow.isDestroyed()) {
+      widgetSettingsWindow.setAlwaysOnTop(isLocked, 'screen-saver');
+      console.log(`🔗 Settings window synced: alwaysOnTop = ${isLocked}`);
+    }
+    
     // 确保窗口始终可以移动（修复之前版本可能设置的限制）
     widgetWindow.setMovable(true);
     
@@ -702,6 +719,45 @@ ipcMain.handle('widget-opacity', (event, opacity) => {
     widgetWindow.setOpacity(opacity);
   }
   return { success: true, opacity };
+});
+
+// 🎨 Widget 设置更新：从设置窗口广播Widget窗口
+ipcMain.handle('widget-update-settings', (event, settings) => {
+  console.log('🎨 [Main] 收到设置更新:', settings);
+  
+  // 广播给Widget窗口
+  if (widgetWindow && !widgetWindow.isDestroyed()) {
+    widgetWindow.webContents.send('widget-settings-updated', settings);
+    console.log('✅ [Main] 广播设置到Widget窗口');
+    
+    // ❌ 不要设置窗口级别的opacity，应该在CSS中通过rgba控制
+    // 窗口级opacity会影响所有内容（包括文字和控件），导致100%也看起来透明
+    
+    // 同步锁定状态
+    if (settings.isLocked !== undefined) {
+      widgetWindow.setAlwaysOnTop(settings.isLocked, 'screen-saver');
+      // 同步设置窗口
+      if (widgetSettingsWindow && !widgetSettingsWindow.isDestroyed()) {
+        widgetSettingsWindow.setAlwaysOnTop(settings.isLocked, 'screen-saver');
+      }
+    }
+  }
+  
+  return { success: true, settings };
+});
+
+// 🎯 Widget 设置窗口拖曳
+ipcMain.on('widget-settings-drag', (event, { deltaX, deltaY }) => {
+  if (widgetSettingsWindow && !widgetSettingsWindow.isDestroyed()) {
+    const [currentX, currentY] = widgetSettingsWindow.getPosition();
+    widgetSettingsWindow.setPosition(currentX + deltaX, currentY + deltaY);
+  }
+});
+
+// 🎯 Widget 设置窗口拖曳结束
+ipcMain.on('widget-settings-drag-end', () => {
+  // 可以在这里添加任何拖曳结束后的清理逻辑
+  // 目前不需要特殊处理
 });
 
 // 🔧 强制恢复 Widget 窗口的 resize 能力（应急恢复功能）
@@ -950,6 +1006,9 @@ function createWidgetWindow() {
       width: 772, // 🎯 调整初始宽度为 772px，防止 controller 按多行显示
       height: 525, // 按比例增加高度 (700/400 * 300 = 525)
       frame: false, // 无边框
+      titleBarStyle: 'hidden', // 🎨 隐藏标题栏（macOS）
+      titleBarOverlay: false, // 🎨 禁用标题栏覆盖（Windows 11）
+      thickFrame: false, // 🎨 Windows：禁用粗边框
       movable: true, // 明确设置为可移动
       alwaysOnTop: false, // 🔧 不置顶，允许其他窗口覆盖
       transparent: true, // 透明背景
@@ -974,6 +1033,22 @@ function createWidgetWindow() {
     
     console.log('Loading widget URL (v3):', widgetUrl);
     widgetWindow.loadURL(widgetUrl);
+
+    // 🎨 Windows 系统特殊处理：强制移除边框
+    if (process.platform === 'win32') {
+      // 等待窗口显示后再次确保无边框
+      widgetWindow.once('ready-to-show', () => {
+        try {
+          // 使用 Windows 原生 API 移除边框样式
+          const hwnd = widgetWindow.getNativeWindowHandle();
+          if (hwnd) {
+            console.log('🎨 [Windows] 应用无边框样式到窗口句柄:', hwnd);
+          }
+        } catch (e) {
+          console.warn('⚠️ [Windows] 无法应用原生样式:', e.message);
+        }
+      });
+    }
 
     // 确保窗口可移动和可调整大小（覆盖任何之前的设置）
     widgetWindow.setMovable(true);
@@ -1032,6 +1107,10 @@ function createWidgetWindow() {
 
     // 窗口关闭时清理引用
     widgetWindow.on('closed', () => {
+      // 🔗 关闭关联的设置窗口
+      if (widgetSettingsWindow && !widgetSettingsWindow.isDestroyed()) {
+        widgetSettingsWindow.close();
+      }
       widgetWindow = null;
     });
 
@@ -1094,21 +1173,21 @@ function createWidgetSettingsWindow() {
       height: settingsHeight,
       x: settingsX,
       y: settingsY,
-      frame: true, // ✅ 启用系统边框和标题栏（可拖动）
-      transparent: false,
-      backgroundColor: '#ffffff', // 🎨 使用白色背景（匹配 Settings 页面）
-      resizable: true, // ✅ 允许调整大小
-      minimizable: true, // ✅ 允许最小化
-      maximizable: false, // ❌ 禁止最大化（避免全屏覆盖）
-      minWidth: 350,
-      minHeight: 500,
-      maxWidth: 500,
-      alwaysOnTop: false, // ❌ 不置顶（允许被其他窗口遮挡）
-      skipTaskbar: false, // ✅ 在任务栏显示（方便切换）
-      parent: widgetWindow, // 设置父窗口关联
+      frame: false, // 🎨 无边框（桌面卡片样式）
+      titleBarStyle: 'hidden', // 🎨 隐藏标题栏（macOS）
+      titleBarOverlay: false, // 🎨 禁用标题栏覆盖（Windows 11）
+      thickFrame: false, // 🎨 Windows：禁用粗边框
+      transparent: true, // 🎨 透明窗口
+      backgroundColor: '#00000000', // 🎨 完全透明背景
+      resizable: false, // ❌ 禁止调整大小（卡片样式）
+      minimizable: false, // ❌ 禁止最小化
+      maximizable: false, // ❌ 禁止最大化
+      hasShadow: false, // 🎨 禁用阴影
+      alwaysOnTop: false, // 🎨 默认不置顶，跟随Widget状态
+      skipTaskbar: true, // ✅ 不在任务栏显示（桌面组件样式）
+      parent: widgetWindow, // ✅ 关联Widget窗口
       modal: false, // ❌ 非模态（不阻止 Widget 交互）
       show: false,
-      title: '⚙️ Widget 日历设置',
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
@@ -1127,17 +1206,58 @@ function createWidgetSettingsWindow() {
 
     // 窗口准备好后显示
     widgetSettingsWindow.once('ready-to-show', () => {
+      // 🔗 同步Widget的置顶状态
+      const isWidgetOnTop = widgetWindow.isAlwaysOnTop();
+      widgetSettingsWindow.setAlwaysOnTop(isWidgetOnTop);
       widgetSettingsWindow.show();
-      console.log('✅ Widget Settings window shown at', { x: settingsX, y: settingsY, mountToLeft });
+      console.log('✅ Widget Settings window shown at', { x: settingsX, y: settingsY, mountToLeft, alwaysOnTop: isWidgetOnTop });
     });
+
+    // 🔗 监听Widget移动，设置窗口跟随
+    const updateSettingsPosition = () => {
+      if (widgetSettingsWindow && !widgetSettingsWindow.isDestroyed() && widgetWindow && !widgetWindow.isDestroyed()) {
+        const { screen } = require('electron');
+        const widgetBounds = widgetWindow.getBounds();
+        const primaryDisplay = screen.getPrimaryDisplay();
+        const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+        
+        const settingsWidth = 380;
+        const settingsHeight = 700;
+        const margin = 10;
+        
+        // 判断挂载位置
+        const distanceToRight = screenWidth - (widgetBounds.x + widgetBounds.width);
+        const mountToLeft = distanceToRight < 400;
+        
+        let settingsX, settingsY;
+        if (mountToLeft) {
+          settingsX = widgetBounds.x - settingsWidth - margin;
+        } else {
+          settingsX = widgetBounds.x + widgetBounds.width + margin;
+        }
+        settingsY = widgetBounds.y;
+        
+        // 确保不超出屏幕
+        settingsX = Math.max(0, Math.min(settingsX, screenWidth - settingsWidth));
+        settingsY = Math.max(0, Math.min(settingsY, screenHeight - settingsHeight));
+        
+        widgetSettingsWindow.setPosition(settingsX, settingsY);
+      }
+    };
+
+    // Widget移动时更新设置窗口位置
+    widgetWindow.on('move', updateSettingsPosition);
 
     // 开发环境下打开开发工具
     if (isDev) {
       widgetSettingsWindow.webContents.openDevTools({ mode: 'detach' });
     }
 
-    // 窗口关闭时清理引用
+    // 窗口关闭时清理引用和监听器
     widgetSettingsWindow.on('closed', () => {
+      if (widgetWindow && !widgetWindow.isDestroyed()) {
+        widgetWindow.removeListener('move', updateSettingsPosition);
+      }
       widgetSettingsWindow = null;
       console.log('🚪 Widget Settings window closed');
     });

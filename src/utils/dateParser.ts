@@ -1,9 +1,9 @@
 /**
  * 自然语言日期解析工具
- * 使用 chrono-node 解析中英文日期表达
+ * 🆕 v2.8: 使用本地词典替代 chrono-node
  */
 
-import * as chrono from 'chrono-node';
+import { parseNaturalLanguage, POINT_IN_TIME_DICTIONARY } from './naturalLanguageTimeDictionary';
 
 export interface ParsedDate {
   start: Date;
@@ -230,44 +230,70 @@ function parseChineseDate(text: string, refDate: Date): ParsedDate | null {
  * 解析自然语言日期
  * @param text 自然语言文本，如 "明天下午3点"、"next Monday at 2pm"
  * @returns 解析结果
+ * 🆕 v2.8: 完全使用本地词典，不再依赖 chrono-node
  */
 export function parseNaturalDate(text: string): ParsedDate | null {
   const refDate = new Date();
   
-  // 先尝试中文解析
+  // 🆕 v2.8: 使用本地 naturalLanguageTimeDictionary
+  const localResult = parseNaturalLanguage(text, refDate);
+  
+  // 如果本地词典解析成功，转换为 ParsedDate 格式
+  if (localResult.matched) {
+    const result: ParsedDate = {
+      start: new Date(refDate),
+      text: text.trim(),
+    };
+    
+    // 处理精确时间点（今天、明天、后天等）
+    if (localResult.pointInTime) {
+      result.start = localResult.pointInTime.date.toDate();
+      result.displayText = localResult.pointInTime.displayHint;
+      return result;
+    }
+    
+    // 处理日期范围 + 时间段组合（如"明天下午"）
+    if (localResult.dateRange) {
+      result.start = localResult.dateRange.start.toDate();
+      
+      // 如果有时间段，应用时间段的时间
+      if (localResult.timePeriod) {
+        result.start.setHours(localResult.timePeriod.startHour, localResult.timePeriod.startMinute, 0, 0);
+        result.timePeriod = localResult.timePeriod.name;
+        
+        // 如果有结束时间，设置 end
+        if (localResult.timePeriod.endHour > 0 || localResult.timePeriod.endMinute > 0) {
+          result.end = new Date(result.start);
+          result.end.setHours(localResult.timePeriod.endHour, localResult.timePeriod.endMinute, 0, 0);
+        }
+      }
+      
+      result.displayText = localResult.dateRange.displayHint;
+      return result;
+    }
+    
+    // 仅时间段（应用到今天）
+    if (localResult.timePeriod) {
+      result.start.setHours(localResult.timePeriod.startHour, localResult.timePeriod.startMinute, 0, 0);
+      result.timePeriod = localResult.timePeriod.name;
+      
+      if (localResult.timePeriod.endHour > 0 || localResult.timePeriod.endMinute > 0) {
+        result.end = new Date(result.start);
+        result.end.setHours(localResult.timePeriod.endHour, localResult.timePeriod.endMinute, 0, 0);
+      }
+      
+      return result;
+    }
+  }
+  
+  // 🔧 如果本地词典无法解析，尝试旧的 parseChineseDate 作为兜底
   const chineseResult = parseChineseDate(text, refDate);
   if (chineseResult) {
     return chineseResult;
   }
-  // 优先尝试 chrono 的中文语料（若可用），否则回退英文 casual
-  let results: any[] = [];
-  try {
-    const anyChrono: any = chrono as any;
-    // 兼容不同版本字段：zh 或 zh.hans
-    const zh = anyChrono.zh || (anyChrono.zh && anyChrono.zh.hans) || anyChrono['zh.hans'] || undefined;
-    if (zh) {
-      if (typeof zh.parse === 'function') {
-        results = zh.parse(text, refDate, { forwardDate: true }) || [];
-      } else if (zh.casual && typeof zh.casual.parse === 'function') {
-        results = zh.casual.parse(text, refDate, { forwardDate: true }) || [];
-      }
-    }
-  } catch {}
-
-  // 若中文解析仍无果，则使用英文 casual 作为最终回退
-  if (!results || results.length === 0) {
-    results = chrono.casual.parse(text, refDate, { forwardDate: true });
-  }
   
-  if (results.length === 0) return null;
-  
-  const result = results[0];
-  
-  return {
-    start: result.start.date(),
-    end: result.end?.date(),
-    text: result.text,
-  };
+  // 无法解析
+  return null;
 }
 
 /**
@@ -324,15 +350,18 @@ export function formatDateDisplay(date: Date, hasTime?: boolean, timePeriod?: st
 
 /**
  * 常用的日期示例（用于提示）
+ * 🆕 v2.8: 更新示例，反映本地词典支持的表达
  */
 export const DATE_EXAMPLES = [
+  '今天',
   '明天',
   '后天',
   '下周一',
   '明天下午3点',
+  '后天下午2点',
   '今天晚上8点',
   '下周五上午10点',
+  'today',
   'tomorrow',
   'next Monday',
-  'in 2 hours',
 ];

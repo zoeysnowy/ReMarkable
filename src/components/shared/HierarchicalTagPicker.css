@@ -201,6 +201,17 @@
   background: #e3f2fd;
 }
 
+/* 🆕 键盘导航焦点样式 */
+.tag-option.keyboard-focused {
+  background: #e0f2fe;
+  border-left: 3px solid #3b82f6;
+  padding-left: 9px; /* 补偿边框宽度 */
+}
+
+.tag-option.keyboard-focused.selected {
+  background: #bfdbfe;
+}
+
 .tag-option input[type="checkbox"] {
   cursor: pointer;
   width: 16px;

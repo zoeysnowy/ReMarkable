@@ -1,0 +1,1285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>EventEditModal v2 测试页面 - v20251116</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Microsoft YaHei', Arial;
+      background: #f3f4f6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
+
+    .header {
+      text-align: center;
+      color: white;
+      margin-bottom: 40px;
+    }
+
+    .header h1 {
+      font-size: 36px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .header p {
+      font-size: 18px;
+      opacity: 0.9;
+    }
+
+    .controls {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 30px;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      font-size: 16px;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .btn-primary {
+      background: white;
+      color: #667eea;
+    }
+
+    .btn-primary:hover {
+      background: #f3f4f6;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      border: 2px solid white;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: translateY(-2px);
+    }
+
+    .info-card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 800px;
+      width: 100%;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      margin-bottom: 30px;
+    }
+
+    .info-card h2 {
+      font-size: 24px;
+      color: #1f2937;
+      margin-bottom: 16px;
+    }
+
+    .info-card p {
+      font-size: 16px;
+      color: #6b7280;
+      line-height: 1.6;
+      margin-bottom: 12px;
+    }
+
+    .feature-list {
+      list-style: none;
+      margin-top: 16px;
+    }
+
+    .feature-list li {
+      padding: 8px 0;
+      padding-left: 32px;
+      position: relative;
+      color: #374151;
+      font-size: 15px;
+    }
+
+    .feature-list li::before {
+      content: "✅";
+      position: absolute;
+      left: 0;
+      font-size: 18px;
+    }
+
+    .screenshot-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      max-width: 1200px;
+      width: 100%;
+    }
+
+    .screenshot-card {
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      transition: transform 0.3s;
+    }
+
+    .screenshot-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .screenshot-card h3 {
+      font-size: 18px;
+      color: #1f2937;
+      margin-bottom: 12px;
+    }
+
+    .screenshot-placeholder {
+      background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+      border-radius: 8px;
+      height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #9ca3af;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+
+    .screenshot-desc {
+      font-size: 14px;
+      color: #6b7280;
+      line-height: 1.5;
+    }
+
+    .code-block {
+      background: #1f2937;
+      color: #f9fafb;
+      padding: 16px;
+      border-radius: 8px;
+      font-family: 'Courier New', 'Microsoft YaHei', Arial;
+      font-size: 14px;
+      overflow-x: auto;
+      margin-top: 16px;
+    }
+
+    .code-block code {
+      color: #10b981;
+    }
+
+    /* EventEditModal v2 样式（内嵌） */
+    .event-edit-modal-v2-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .event-edit-modal-v2 {
+      background: #FFF;
+      display: flex;
+      flex-direction: column;
+      max-height: 90vh;
+      overflow: hidden;
+      box-shadow: 0 10px 10px 0 rgba(0, 0, 0, 0.10);
+      transition: all 0.3s ease;
+    }
+
+    .event-edit-modal-v2.detail-view {
+      border-radius: 45px;
+      width: 1071px;
+      height: 800px;
+      border: 1px solid #E5E7EB;
+    }
+
+    .event-edit-modal-v2.compact-view {
+      border-radius: 45px;
+      width: 383px;
+      height: 730px;
+    }
+
+    .modal-content {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .event-overview {
+      width: 400px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 24px 48px 24px 48px;
+      overflow-y: visible;
+    }
+
+    /* 上 Section - 事件标识区 */
+    .section-identity {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px 20px;
+      align-items: center;
+    }
+
+    .emoji-large {
+      font-size: 42px;
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 8px;
+      transition: background 0.2s;
+      text-align: center;
+      user-select: none;
+    }
+
+    .emoji-large:hover {
+      background: #f3f4f6;
+    }
+
+    .title-checkbox-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .custom-checkbox {
+      width: 20px;
+      height: 20px;
+      min-width: 20px;
+      border: 2px solid #d1d5db;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .custom-checkbox:hover {
+      border-color: #3b82f6;
+    }
+
+    .custom-checkbox.checked {
+      border-color: #3b82f6;
+      background: #3b82f6;
+      position: relative;
+    }
+
+    .custom-checkbox.checked::after {
+      content: '✓';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    .title-input {
+      font-size: 18px;
+      font-weight: 400;
+      border: none;
+      outline: none;
+      padding: 0;
+      color: #1f2937;
+      line-height: 1.5;
+      text-align: left;
+      width: 1px;
+    }
+
+    .title-input::placeholder {
+      color: #d1d5db;
+    }
+
+    .tags-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      max-width: 280px;
+      cursor: pointer;
+      padding: 6px;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+
+    .tags-row:hover {
+      background: #f9fafb;
+    }
+
+    .tag-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      font-size: 13px;
+      color: #374151;
+    }
+
+    .tag-separator {
+      color: #d1d5db;
+      margin: 0 2px;
+    }
+
+    .tag-etc {
+      color: #9ca3af;
+      cursor: pointer;
+    }
+
+    .timer-button-start {
+      background: transparent !important;
+      background-color: transparent !important;
+      border: 0 !important;
+      border-style: none !important;
+      padding: 0;
+      color: #1f2937;
+      font-size: 14px;
+      font-weight: 400;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+      margin: 24px 0;
+      outline: none;
+    }
+
+    .timer-button-start:hover {
+      opacity: 0.8;
+    }
+
+    .timer-button-start img {
+      width: 20px;
+      height: 20px;
+    }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #1f2937;
+      margin: 20px 0 12px 0;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 24px 0 12px 0;
+    }
+
+    .section-header-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #1f2937;
+    }
+
+    .section-header-buttons {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .header-text-btn {
+      padding: 2px 8px;
+      border: none;
+      background: transparent;
+      color: #93c5fd;
+      font-size: 13px;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+
+    .header-text-btn:hover {
+      color: #3b82f6;
+    }
+
+    .header-icon-btn {
+      width: 20px;
+      height: 20px;
+      padding: 0;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+    }
+
+    .header-icon-btn:hover {
+      opacity: 1;
+    }
+
+    .header-icon-btn img {
+      width: 16px;
+      height: 16px;
+    }
+
+    .plan-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 12px;
+      font-size: 14px;
+      color: #1f2937;
+    }
+
+    .time-arrow-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0px;
+      margin: 0 4px;
+    }
+
+    .duration-text {
+      font-size: 10px;
+      font-weight: 600;
+      background: linear-gradient(135deg, #22d3ee, #3b82f6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1;
+      display: inline-block;
+      white-space: nowrap;
+    }
+
+    .arrow-icon {
+      width: 51px;
+      height: auto;
+      flex-shrink: 0;
+    }
+
+    .plan-icon {
+      width: 16px;
+      height: 16px;
+      margin-top: 2px;
+      flex-shrink: 0;
+    }
+
+    /* 实际进展 - 总时长 */
+    .total-duration {
+      font-size: 14px;
+      font-weight: 500;
+      color: #6b7280;
+      white-space: nowrap;
+    }
+
+    /* 时间片段列表 */
+    .timer-segments-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    /* 实际进展滚动容器 */
+    .progress-section-wrapper {
+      max-height: 280px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-width: none; /* Firefox */
+      -ms-overflow-style: none; /* IE/Edge */
+      margin-bottom: 12px;
+    }
+
+    .progress-section-wrapper::-webkit-scrollbar {
+      display: none; /* Chrome/Safari/Opera */
+    }
+
+    .timer-segment {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      color: #1f2937;
+      overflow: visible;
+      flex-wrap: nowrap;
+      white-space: nowrap;
+    }
+
+    .timer-check-icon {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+
+    /* ddl完成状态 */
+    .ddl-completion {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 12px;
+      font-size: 14px;
+      color: #6b7280;
+    }
+
+    .ddl-completion img {
+      width: 16px;
+      height: 16px;
+    }
+
+    .plan-content {
+      flex: 1;
+      line-height: 1.5;
+    }
+
+    .time-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 12px 0;
+    }
+
+    .time-row input {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .event-log {
+      flex: 1;
+      min-width: 360px;
+      display: flex;
+      flex-direction: column;
+      padding: 24px 40px 24px 0;
+      background: #ffffff;
+      overflow-y: auto;
+    }
+
+    .back-button {
+      background: none;
+      border: none;
+      color: #6b7280;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 0;
+      margin-bottom: 20px;
+      align-self: flex-end;
+    }
+
+    /* 标签区域 */
+    .tags-area {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .tag-mention {
+      padding: 0;
+      border-radius: 0;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      background: transparent;
+    }
+
+    .tag-work {
+      color: #10b981;
+    }
+
+    .tag-client {
+      color: #ea580c;
+    }
+
+    .detail-footer {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 48px 40px 48px;
+      width: 100%;
+      flex-shrink: 0;
+      margin-top: 0;
+    }
+
+    .footer-btn {
+      font-size: 15px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      border-radius: 6px;
+    }
+
+    .footer-btn-cancel {
+      color: #6b7280;
+    }
+
+    .footer-btn-save {
+      color: #3b82f6;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📋 EventEditModal v2</h1>
+    <p>双视图事件编辑器 - 测试页面</p>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-primary" onclick="openDetailView()">
+      🎯 打开详情视图
+    </button>
+    <button class="btn btn-primary" onclick="openCompactView()">
+      📱 打开收缩视图
+    </button>
+    <button class="btn btn-secondary" onclick="location.href='src/components/EventEditModal/EventEditModalV2.tsx'">
+      📝 查看源代码
+    </button>
+  </div>
+
+  <div class="info-card">
+    <h2>🎨 功能特性</h2>
+    <p>EventEditModal v2 是一个现代化的双视图事件编辑器，专为 ReMarkable 日历应用设计。</p>
+    <ul class="feature-list">
+      <li><strong>双视图切换</strong>：详情视图（720px+）和收缩视图（383px）</li>
+      <li><strong>智能表单</strong>：Emoji 选择、标签管理、时间选择器</li>
+      <li><strong>Timer 集成</strong>：开始/暂停/停止/取消计时</li>
+      <li><strong>计划安排</strong>：组织者、参与者、地点、日历同步</li>
+      <li><strong>实际进展</strong>：计时片段显示、总时长计算</li>
+      <li><strong>Event Log</strong>：富文本日志编辑（Slate 编辑器集成中）</li>
+    </ul>
+
+    <div class="code-block">
+      <strong>📂 文件位置：</strong><br>
+      <code>src/components/EventEditModal/EventEditModalV2.tsx</code> (790 行)<br>
+      <code>src/components/EventEditModal/EventEditModalV2.css</code> (完整样式)<br>
+      <code>docs/EVENTEDITMODAL_V2_IMPLEMENTATION.md</code> (实现文档)
+    </div>
+  </div>
+
+  <div class="screenshot-grid">
+    <div class="screenshot-card">
+      <h3>📋 详情视图</h3>
+      <div class="screenshot-placeholder">
+        点击上方 "打开详情视图" 查看实际效果
+      </div>
+      <p class="screenshot-desc">
+        左右分栏布局，左侧显示事件概览（标题、标签、计时、计划），右侧显示 Event Log（日志编辑区）
+      </p>
+    </div>
+
+    <div class="screenshot-card">
+      <h3>📱 收缩视图</h3>
+      <div class="screenshot-placeholder">
+        点击上方 "打开收缩视图" 查看实际效果
+      </div>
+      <p class="screenshot-desc">
+        卡片样式布局（383px × 730px），仅显示事件概览，专注于快速编辑和计时操作
+      </p>
+    </div>
+
+    <div class="screenshot-card">
+      <h3>⚡ 视图切换</h3>
+      <div class="screenshot-placeholder">
+        详情视图 ↔ 收缩视图
+      </div>
+      <p class="screenshot-desc">
+        详情视图中点击 Event Log 头部的 "back" 按钮切换到收缩视图；收缩视图底部点击 "📝 展开日志" 返回详情视图
+      </p>
+    </div>
+
+    <div class="screenshot-card">
+      <h3>🎯 Section 组件</h3>
+      <div class="screenshot-placeholder">
+        4 个核心 Section 已实现
+      </div>
+      <p class="screenshot-desc">
+        <strong>1.</strong> EventIdentitySection - 事件标识<br>
+        <strong>2.</strong> TimerButtonSection - 计时按钮<br>
+        <strong>3.</strong> PlannedScheduleSection - 计划安排<br>
+        <strong>4.</strong> ActualProgressSection - 实际进展
+      </p>
+    </div>
+  </div>
+
+  <!-- 模态框 HTML（通过 JS 动态插入） -->
+  <div id="modalContainer"></div>
+
+  <script>
+    // ==================== 数据模拟 ====================
+    const mockEvent = {
+      id: 'event-1',
+      title: '',
+      tags: [],
+      isTask: true,
+      isTimer: false,
+      parentEventId: null
+    };
+    
+    console.log('🚀 页面加载 - mockEvent:', mockEvent);
+    console.log('🚀 页面加载时间:', new Date().toISOString());
+
+    const mockTags = {
+      'tag-work': { id: 'tag-work', name: '工作', emoji: '🚀', color: '#10b981', parentId: null },
+      'tag-doc-edit': { id: 'tag-doc-edit', name: '文档编辑', emoji: '📝', color: '#3b82f6', parentId: 'tag-work' },
+      'tag-client': { id: 'tag-client', name: '重点客户', emoji: '📮', color: '#ea580c', parentId: null },
+      'tag-tencent': { id: 'tag-tencent', name: '腾讯', emoji: '🏢', color: '#f59e0b', parentId: 'tag-client' }
+    };
+
+    let formData = { ...mockEvent };
+    let emojiPickerVisible = false;
+    let tagPickerVisible = false;
+
+    // ==================== Emoji 处理函数 ====================
+    
+    /**
+     * 从字符串中提取第一个 emoji
+     */
+    function extractFirstEmoji(text) {
+      if (!text) return null;
+      const emojiRegex = /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu;
+      const match = text.match(emojiRegex);
+      return match ? match[0] : null;
+    }
+
+    /**
+     * 获取显示的 emoji（优先级：标题 > 首个标签 > 默认）
+     */
+    function getDisplayEmoji(event) {
+      // 优先级 1: 标题中的 emoji
+      const titleEmoji = extractFirstEmoji(event.title);
+      if (titleEmoji) return titleEmoji;
+      
+      // 优先级 2: 首个标签的 emoji
+      if (event.tags && event.tags.length > 0) {
+        const firstTag = mockTags[event.tags[0]];
+        if (firstTag?.emoji) return firstTag.emoji;
+      }
+      
+      // 优先级 3: 默认图标
+      return '📌';
+    }
+
+    /**
+     * 选择 emoji
+     */
+    function handleEmojiSelect(selectedEmoji) {
+      // 1. 移除标题中现有的 emoji
+      let newTitle = formData.title;
+      const existingEmoji = extractFirstEmoji(newTitle);
+      if (existingEmoji) {
+        newTitle = newTitle.replace(existingEmoji, '').trim();
+      }
+      
+      // 2. 将新 emoji 添加到标题开头
+      newTitle = `${selectedEmoji} ${newTitle}`;
+      
+      // 3. 更新表单数据
+      formData.title = newTitle;
+      
+      // 4. 更新 UI
+      updateEmojiDisplay();
+      updateTitleInput();
+      
+      // 5. 关闭 Picker
+      emojiPickerVisible = false;
+      closeEmojiPicker();
+    }
+
+    function updateEmojiDisplay() {
+      const emojiElement = document.querySelector('.emoji-large');
+      if (emojiElement) {
+        emojiElement.textContent = getDisplayEmoji(formData);
+      }
+    }
+
+    function updateTitleInput() {
+      const titleInput = document.querySelector('.title-input');
+      if (titleInput) {
+        titleInput.value = formData.title;
+        autoResizeInput(titleInput);
+      }
+    }
+
+    function openEmojiPicker() {
+      emojiPickerVisible = true;
+      
+      // 在实际React项目中，这里会使用 @emoji-mart/react 的 Picker 组件
+      // 参考: src/components/FloatingToolbar/HeadlessFloatingToolbar.tsx
+      
+      alert('💡 Emoji选择器集成说明：\n\n' +
+            '在实际项目中，这里会使用已安装的 @emoji-mart/react 库：\n\n' +
+            'import Picker from \'@emoji-mart/react\';\n' +
+            'import data from \'@emoji-mart/data\';\n\n' +
+            '<Picker\n' +
+            '  data={data}\n' +
+            '  onEmojiSelect={(emoji) => handleEmojiSelect(emoji.native)}\n' +
+            '  theme="light"\n' +
+            '  locale="zh"\n' +
+            '/>\n\n' +
+            '参考已有实现：\n' +
+            '- FloatingToolbar/HeadlessFloatingToolbar.tsx\n' +
+            '- PlanManager.tsx\n' +
+            '- TagManager.tsx');
+      
+      emojiPickerVisible = false;
+    }
+
+    function closeEmojiPicker() {
+      const overlay = document.querySelector('.emoji-picker-overlay');
+      if (overlay) {
+        overlay.remove();
+      }
+      emojiPickerVisible = false;
+    }
+
+    // ==================== 标题处理函数 ====================
+    
+    function getTitlePlaceholder(tags) {
+      if (!tags || tags.length === 0) return '事件标题';
+      const firstTag = mockTags[tags[0]];
+      return firstTag?.name ? `${firstTag.name}事项` : '事件标题';
+    }
+
+    function handleTitleChange(newTitle) {
+      formData.title = newTitle;
+      updateEmojiDisplay(); // 标题改变可能影响 emoji 显示
+    }
+
+    // ==================== 标签处理函数 ====================
+    
+    /**
+     * 构建标签层级路径
+     */
+    function buildTagPath(tagId) {
+      const parts = [];
+      let currentTag = mockTags[tagId];
+      
+      while (currentTag) {
+        parts.unshift(`${currentTag.emoji || ''}${currentTag.name}`);
+        currentTag = currentTag.parentId ? mockTags[currentTag.parentId] : null;
+      }
+      
+      return parts.join('/');
+    }
+
+    /**
+     * 获取标签显示文本
+     */
+    function getTagsDisplayText(tags) {
+      if (!tags || tags.length === 0) return '选择标签...';
+      
+      const firstPath = buildTagPath(tags[0]);
+      
+      if (tags.length > 1) {
+        return `#${firstPath} 等`;
+      }
+      return `#${firstPath}`;
+    }
+
+    /**
+     * 渲染标签行
+     */
+    function renderTagsRow() {
+      const tagsRow = document.querySelector('.tags-row');
+      if (!tagsRow || !formData.tags || formData.tags.length === 0) return;
+
+      const tagChips = formData.tags.map((tagId, index) => {
+        const tag = mockTags[tagId];
+        if (!tag) return '';
+        
+        const separator = index > 0 ? '<span class="tag-separator">/</span>' : '';
+        return `${separator}<span class="tag-chip">${tag.emoji || ''}${tag.name}</span>`;
+      }).join('');
+
+      const etc = formData.tags.length > 2 ? '<span class="tag-etc">等</span>' : '';
+      
+      tagsRow.innerHTML = tagChips + etc;
+    }
+
+    function openTagPicker() {
+      tagPickerVisible = true;
+      
+      // 在实际React项目中，这里会使用 HierarchicalTagPicker 组件
+      // 参考: src/components/HierarchicalTagPicker/
+      
+      alert('💡 标签选择器集成说明：\n\n' +
+            '在实际项目中，这里会使用 HierarchicalTagPicker 组件：\n\n' +
+            '<HierarchicalTagPicker\n' +
+            '  availableTags={hierarchicalTags}\n' +
+            '  selectedTagIds={formData.tags}\n' +
+            '  onSelectionChange={(tags) => {\n' +
+            '    formData.tags = tags;\n' +
+            '    renderTagsRow();\n' +
+            '  }}\n' +
+            '  mode="popup"\n' +
+            '  multiSelect={true}\n' +
+            '/>\n\n' +
+            '参考已有实现：\n' +
+            '- HierarchicalTagPicker/README.md\n' +
+            '- FloatingToolbar/pickers/TagPicker.tsx');
+      
+      tagPickerVisible = false;
+    }
+
+    // ==================== Checkbox 处理 ====================
+    
+    function handleTaskCheckboxChange(checked) {
+      formData.isTask = checked;
+    }
+
+    // ==================== 模态框函数 ====================
+    function openDetailView() {
+      showModal(true);
+    }
+
+    function openCompactView() {
+      showModal(false);
+    }
+
+    function showModal(isDetailView) {
+      const container = document.getElementById('modalContainer');
+      
+      console.log('🔍 showModal - formData:', formData);
+      console.log('🔍 showModal - mockEvent:', mockEvent);
+      
+      const html = `
+        <div class="event-edit-modal-v2-overlay" onclick="closeModal(event)">
+          <div class="event-edit-modal-v2 ${isDetailView ? 'detail-view' : 'compact-view'}" onclick="event.stopPropagation()">
+            <div class="modal-content">
+            <!-- 左侧：Event Overview -->
+            <div class="event-overview">
+              <!-- 上 Section - 事件标识区 -->
+              <div class="section-identity">
+                <!-- Emoji (大图标) -->
+                <div class="emoji-large" onclick="openEmojiPicker()">${getDisplayEmoji(formData)}</div>
+
+                <!-- Checkbox + 标题行 -->
+                <div class="title-checkbox-row">
+                  <div class="custom-checkbox ${formData.isTask ? 'checked' : ''}" 
+                       onclick="this.classList.toggle('checked'); handleTaskCheckboxChange(this.classList.contains('checked'))"></div>
+                  <input type="text" 
+                         class="title-input" 
+                         value="${formData.title}"
+                         placeholder="${getTitlePlaceholder(formData.tags)}"
+                         oninput="handleTitleChange(this.value)">
+                </div>
+
+                <!-- 标签行 -->
+                <div class="tags-row" onclick="openTagPicker()">
+                  ${formData.tags.map((tagId, index) => {
+                    const tag = mockTags[tagId];
+                    if (!tag) return '';
+                    const separator = index > 0 ? '<span class="tag-separator">/</span>' : '';
+                    return `${separator}<span class="tag-chip">${tag.emoji || ''}${tag.name}</span>`;
+                  }).join('')}
+                  ${formData.tags.length > 2 ? '<span class="tag-etc">等</span>' : ''}
+                </div>
+              </div>
+
+              <!-- Timer 按钮 -->
+              <button class="timer-button-start">
+                <img src="../src/assets/icons/timer_start.svg" alt="">
+                开始专注
+              </button>
+
+              <!-- 中 Section - 计划安排 -->
+              <div class="section-header">
+                <div class="section-header-title">计划安排</div>
+                <div class="section-header-buttons">
+                  <button class="header-text-btn">每周</button>
+                  <button class="header-icon-btn">
+                    <img src="../src/assets/icons/rotation_color.svg" alt="">
+                  </button>
+                  <button class="header-icon-btn">
+                    <img src="../src/assets/icons/Add_task_color.svg" alt="">
+                  </button>
+                  <button class="header-icon-btn">
+                    <img src="../src/assets/icons/ddl_add.svg" alt="">
+                  </button>
+                </div>
+              </div>
+              
+              <!-- 组织者和参与者 -->
+              <div class="plan-row">
+                <img src="../src/assets/icons/Attendee.svg" alt="" class="plan-icon">
+                <div class="plan-content">Zoey Gong; Jenny Wong; Cindy Cai</div>
+              </div>
+
+              <!-- 时间显示 -->
+              <div class="plan-row">
+                <img src="../src/assets/icons/datetime.svg" alt="" class="plan-icon">
+                <div class="plan-content" style="display: flex; align-items: center; gap: 4px;">
+                  <span>2025-10-18 (周六) 10:00</span>
+                  <div class="time-arrow-section">
+                    <span class="duration-text">2h30min</span>
+                    <img src="../src/assets/icons/Arrow_blue.svg" alt="" class="arrow-icon">
+                  </div>
+                  <span>12:00</span>
+                </div>
+              </div>
+
+              <!-- 地点 -->
+              <div class="plan-row">
+                <img src="../src/assets/icons/Location.svg" alt="" class="plan-icon">
+                <div class="plan-content">静安嘉里中心2F环球, RM工作室, 5号会议室</div>
+              </div>
+
+              <!-- 日历来源和同步模式 -->
+              <div class="plan-row" style="margin-top: 4px;">
+                <span style="flex-shrink: 0; color: #6b7280;">来自</span>
+                <div class="plan-content" style="display: flex; align-items: center; justify-content: space-between;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="display: inline-flex; align-items: center; gap: 4px;">
+                      <span style="width: 8px; height: 8px; background: #ef4444; border-radius: 50%;"></span>
+                      <strong style="color: #1f2937;">Outlook</strong>
+                    </span>
+                    <span style="color: #6b7280;">: 默认</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 6px; color: #6b7280; font-size: 13px;">
+                    <span>📥</span>
+                    <span>只接收同步</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 下 Section - 实际进展 -->
+              <div class="section-header" style="margin-top: 20px;">
+                <div class="section-header-title">实际进展</div>
+                <span class="total-duration">总时长: 3小时</span>
+              </div>
+
+              <!-- 实际进展滚动容器 -->
+              <div class="progress-section-wrapper">
+                <!-- 时间片段列表 -->
+                <div class="timer-segments-list">
+                <!-- 片段 1 -->
+                <div class="timer-segment">
+                  <img src="../src/assets/icons/timer_check.svg" alt="" class="timer-check-icon">
+                  <span>2025-10-18 (周六) 10:00</span>
+                  <div class="time-arrow-section">
+                    <span class="duration-text">2h30min</span>
+                    <img src="../src/assets/icons/Arrow_blue.svg" alt="" class="arrow-icon">
+                  </div>
+                  <span>12:00</span>
+                </div>
+                
+                <!-- 片段 2 (跨天) -->
+                <div class="timer-segment">
+                  <img src="../src/assets/icons/timer_check.svg" alt="" class="timer-check-icon">
+                  <span>2025-10-18 (周六) 23:00</span>
+                  <div class="time-arrow-section">
+                    <span class="duration-text">2h</span>
+                    <img src="../src/assets/icons/Arrow_blue.svg" alt="" class="arrow-icon">
+                  </div>
+                  <span>01:00<sup style="color: #3b82f6; font-size: 10px; margin-left: 2px;">+1</sup></span>
+                </div>
+              </div>
+
+              <!-- 同步状态 -->
+              <div class="plan-row" style="margin-top: 12px;">
+                <span style="flex-shrink: 0; color: #6b7280;">同步</span>
+                <div class="plan-content" style="display: flex; align-items: center; justify-content: space-between;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="display: inline-flex; align-items: center; gap: 4px;">
+                      <span style="width: 8px; height: 8px; background: #ef4444; border-radius: 50%;"></span>
+                      <strong style="color: #1f2937;">Outlook</strong>
+                    </span>
+                    <span style="color: #6b7280;">: 工作等</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 6px; color: #6b7280; font-size: 13px;">
+                    <span>🔄</span>
+                    <span>双向同步</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ddl完成状态 -->
+              <div class="ddl-completion">
+                <img src="../src/assets/icons/ddl_checked.svg" alt="">
+                <span>ddl提前3h完成于2025-10-19 13:16</span>
+              </div>
+              </div>
+              <!-- 结束实际进展滚动容器 -->
+
+              ${!isDetailView ? `
+                <div style="display: flex; justify-content: space-between; padding: 16px 0 0 0; margin-top: auto;">
+                  <button class="footer-btn footer-btn-cancel" onclick="closeModal()">取消</button>
+                  <button class="footer-btn" style="color: #3b82f6; font-weight: 600;" onclick="toggleView()">📝 展开日志</button>
+                  <button class="footer-btn footer-btn-save">保存</button>
+                </div>
+              ` : ''}
+            </div>
+
+            ${isDetailView ? `
+              <!-- 右侧：Event Log -->
+              <div class="event-log">
+                <button class="back-button" onclick="toggleView()">← back</button>
+                
+                <!-- 标签区域 -->
+                <div class="tags-area">
+                  <span class="tag-mention tag-work">#🔗工作/#📝文档编辑</span>
+                  <span class="tag-mention tag-client">#📮重点客户/#📮腾讯</span>
+                </div>
+
+                <!-- Plan 提示区域 -->
+                <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: #6b7280; margin-bottom: 12px; line-height: 26px;">
+                  <img src="../src/assets/icons/task_gray.svg" style="width: 16px; height: 16px;" alt="">
+                  <img src="../src/assets/icons/ddl_warn.svg" style="width: 20px; height: 20px;" alt="">
+                  <span>创建于 12h前，ddl 还有 2h30min</span>
+                </div>
+
+                <!-- 关联区域 -->
+                <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: #6b7280; margin-bottom: 16px; line-height: 26px;">
+                  <img src="../src/assets/icons/link_color.svg" style="width: 20px; height: 20px;" alt="">
+                  <span>上级任务：Project Ace (5/7)</span>
+                </div>
+
+                <!-- Slate 编辑区 -->
+                <div style="flex: 1; background: white; display: flex; flex-direction: column;">
+                  
+                  <!-- 第一条日志 -->
+                  <div style="position: relative; padding-left: 8px; margin-bottom: 24px;">
+                    <!-- 左侧竖线 -->
+                    <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: #e5e7eb;"></div>
+                    
+                    <!-- 时间戳 -->
+                    <p style="font-size: 16px; color: #e5e7eb; line-height: 1; margin: 0 0 8px 0; padding: 0; font-family: 'Microsoft YaHei', Arial;">
+                      2025-10-19 10:21:18
+                    </p>
+
+                    <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 0; font-family: 'Inter', 'Microsoft YaHei', Arial;">
+                      处理完了一些出差的logistics，还有报销整理，现在终于可以开干了！<br>
+                      准备先一个提纲丢给GPT，看看情况
+                    </p>
+                  </div>
+
+                  <!-- 第二条日志 -->
+                  <div style="position: relative; padding-left: 8px; margin-bottom: 24px;">
+                    <!-- 左侧竖线 -->
+                    <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: #e5e7eb;"></div>
+                    
+                    <!-- 时间戳 -->
+                    <p style="font-size: 16px; color: #e5e7eb; line-height: 1; margin: 0 0 8px 0; padding: 0; font-family: 'Microsoft YaHei', Arial;">
+                      2025-10-19 10:35:18 | 16min later
+                    </p>
+
+                    <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 0; font-family: 'Inter', 'Microsoft YaHei', Arial;">
+                      太强了！居然直接成稿了，那现在就只要做些检查了<br>
+                      感觉主要是一些流程和逻辑错误，语言上没有太多可以修缮的，文采比我好太多了QUQ
+                    </p>
+                  </div>
+
+                  <!-- 第三条日志 -->
+                  <div style="position: relative; padding-left: 8px; margin-bottom: 24px;">
+                    <!-- 左侧竖线 -->
+                    <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: #e5e7eb;"></div>
+                    
+                    <!-- 时间戳 -->
+                    <p style="font-size: 16px; color: #e5e7eb; line-height: 1; margin: 0 0 8px 0; padding: 0; font-family: 'Microsoft YaHei', Arial;">
+                      2025-10-19 10:35:18 | 16min later
+                    </p>
+
+                    <!-- 可编辑区域提示文字 -->
+                    <p style="color: #9ca3af; font-size: 14px; line-height: 1.6; margin: 0; font-family: 'Inter', 'Microsoft YaHei', Arial;">
+                      双击"Alt"召唤表情、格式等，点击右下方问号浮窗查看更多高效快捷键哦
+                    </p>
+                  </div>
+
+                  <!-- FloatingBar 组件将在这里引入 -->
+                </div>
+              </div>
+            ` : ''}
+          </div>
+
+          ${isDetailView ? `
+          <!-- 底部按钮（整个模态框底部） -->
+          <div class="detail-footer">
+            <button class="footer-btn footer-btn-cancel" onclick="closeModal()">取消</button>
+            <button class="footer-btn footer-btn-save">保存</button>
+          </div>
+          ` : ''}
+          </div>
+        </div>
+      `;
+
+      container.innerHTML = html;
+      
+      // 初始化所有 title-input 的自适应宽度
+      setTimeout(() => {
+        document.querySelectorAll('.title-input').forEach(input => {
+          autoResizeInput(input);
+        });
+      }, 0);
+    }
+
+    function closeModal(event) {
+      if (event) {
+        event.stopPropagation();
+      }
+      document.getElementById('modalContainer').innerHTML = '';
+    }
+
+    function toggleView() {
+      const modal = document.querySelector('.event-edit-modal-v2');
+      if (!modal) return;
+
+      const isDetailView = modal.classList.contains('detail-view');
+      closeModal();
+      setTimeout(() => showModal(!isDetailView), 100);
+    }
+
+    // ESC 键关闭模态框
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeModal();
+      }
+    });
+
+    // 自适应 input 宽度
+    function autoResizeInput(input) {
+      const span = document.createElement('span');
+      span.style.visibility = 'hidden';
+      span.style.position = 'absolute';
+      span.style.whiteSpace = 'pre';
+      span.style.font = window.getComputedStyle(input).font;
+      span.textContent = input.value || input.placeholder || '';
+      document.body.appendChild(span);
+      input.style.width = (span.offsetWidth + 10) + 'px';
+      document.body.removeChild(span);
+    }
+
+    // 监听所有 title-input 的输入事件
+    document.addEventListener('input', (e) => {
+      if (e.target.classList.contains('title-input')) {
+        autoResizeInput(e.target);
+      }
+    });
+
+    // 页面加载后初始化所有 title-input 的宽度
+    window.addEventListener('load', () => {
+      document.querySelectorAll('.title-input').forEach(input => {
+        autoResizeInput(input);
+      });
+    });
+  </script>
+</body>
+</html>

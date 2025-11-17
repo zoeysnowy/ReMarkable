@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { icons } from '../assets/icons';
+import { formatTimeForStorage } from '../utils/timeUtils';
 import './TimerCard.css';
 
 interface TimerCardProps {
@@ -99,8 +100,8 @@ export const TimerCard: React.FC<TimerCardProps> = ({
       now,
       计算差值: now - safeStartTime,
       totalElapsed,
-      startTimeDate: safeStartTime ? new Date(safeStartTime).toISOString() : 'invalid',
-      nowDate: new Date(now).toISOString(),
+      startTimeDate: safeStartTime ? formatTimeForStorage(new Date(safeStartTime)) : 'invalid',
+      nowDate: formatTimeForStorage(new Date(now)),
       isRunning,
       isIdle
     });

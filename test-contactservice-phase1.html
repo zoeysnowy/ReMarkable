@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ContactService Phase 1 测试</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .panel {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    h2 {
+      margin-top: 0;
+      border-bottom: 2px solid #3b82f6;
+      padding-bottom: 8px;
+    }
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 4px;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+    .log {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 4px;
+      padding: 12px;
+      height: 300px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+    }
+    .log-entry {
+      margin-bottom: 4px;
+    }
+    .log-created { color: #16a34a; }
+    .log-updated { color: #ea580c; }
+    .log-deleted { color: #dc2626; }
+    .log-synced { color: #8b5cf6; }
+    input {
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin: 4px;
+    }
+    .contact-list {
+      margin-top: 12px;
+    }
+    .contact-item {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      padding: 8px;
+      margin: 4px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>📇 ContactService Phase 1 事件机制测试</h1>
+  
+  <div class="container">
+    <div class="panel">
+      <h2>操作面板</h2>
+      
+      <div>
+        <h3>创建联系人</h3>
+        <input type="text" id="createName" placeholder="姓名" value="张三">
+        <input type="text" id="createEmail" placeholder="邮箱" value="zhangsan@example.com">
+        <br>
+        <button onclick="createContact()">创建联系人</button>
+      </div>
+      
+      <div style="margin-top: 20px;">
+        <h3>更新联系人</h3>
+        <input type="text" id="updateId" placeholder="联系人 ID">
+        <input type="text" id="updatePhone" placeholder="新电话" value="13800138000">
+        <br>
+        <button onclick="updateContact()">更新联系人</button>
+      </div>
+      
+      <div style="margin-top: 20px;">
+        <h3>删除联系人</h3>
+        <input type="text" id="deleteId" placeholder="联系人 ID">
+        <br>
+        <button onclick="deleteContact()">删除联系人</button>
+      </div>
+      
+      <div style="margin-top: 20px;">
+        <button onclick="clearLog()">清空日志</button>
+        <button onclick="clearStorage()">清空存储</button>
+      </div>
+      
+      <div class="contact-list">
+        <h3>联系人列表 (<span id="contactCount">0</span>)</h3>
+        <div id="contactListContainer"></div>
+      </div>
+    </div>
+    
+    <div class="panel">
+      <h2>事件日志</h2>
+      <div class="log" id="eventLog"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { ContactService } from './src/services/ContactService.ts';
+    
+    // 订阅所有事件
+    ContactService.addEventListener('contact.created', (event) => {
+      logEvent('created', `创建联系人: ${event.data.contact.name} (${event.data.contact.id})`);
+      refreshContactList();
+    });
+    
+    ContactService.addEventListener('contact.updated', (event) => {
+      logEvent('updated', `更新联系人: ${event.data.after.name} (${event.data.id})`);
+      refreshContactList();
+    });
+    
+    ContactService.addEventListener('contact.deleted', (event) => {
+      logEvent('deleted', `删除联系人: ${event.data.contact.name} (${event.data.id})`);
+      refreshContactList();
+    });
+    
+    ContactService.addEventListener('contacts.synced', (event) => {
+      logEvent('synced', `批量同步: ${event.data.count} 个联系人`);
+      refreshContactList();
+    });
+    
+    // 全局函数
+    window.createContact = () => {
+      const name = document.getElementById('createName').value;
+      const email = document.getElementById('createEmail').value;
+      
+      const contact = ContactService.addContact({ name, email });
+      document.getElementById('updateId').value = contact.id;
+      document.getElementById('deleteId').value = contact.id;
+      
+      console.log('Created:', contact);
+    };
+    
+    window.updateContact = () => {
+      const id = document.getElementById('updateId').value;
+      const phone = document.getElementById('updatePhone').value;
+      
+      const result = ContactService.updateContact(id, { phone });
+      console.log('Updated:', result);
+    };
+    
+    window.deleteContact = () => {
+      const id = document.getElementById('deleteId').value;
+      const result = ContactService.deleteContact(id);
+      console.log('Deleted:', result);
+    };
+    
+    window.clearLog = () => {
+      document.getElementById('eventLog').innerHTML = '';
+    };
+    
+    window.clearStorage = () => {
+      localStorage.clear();
+      location.reload();
+    };
+    
+    function logEvent(type, message) {
+      const log = document.getElementById('eventLog');
+      const entry = document.createElement('div');
+      entry.className = `log-entry log-${type}`;
+      const time = new Date().toLocaleTimeString();
+      entry.textContent = `[${time}] ${message}`;
+      log.appendChild(entry);
+      log.scrollTop = log.scrollHeight;
+    }
+    
+    function refreshContactList() {
+      const contacts = ContactService.getAllContacts();
+      document.getElementById('contactCount').textContent = contacts.length;
+      
+      const container = document.getElementById('contactListContainer');
+      container.innerHTML = contacts.map(c => `
+        <div class="contact-item">
+          <div>
+            <strong>${c.name || '无名'}</strong><br>
+            <small>${c.email || '无邮箱'} | ${c.id}</small>
+          </div>
+          <div>
+            <button onclick="document.getElementById('updateId').value='${c.id}'">编辑</button>
+            <button onclick="document.getElementById('deleteId').value='${c.id}'">删除</button>
+          </div>
+        </div>
+      `).join('');
+    }
+    
+    // 初始化
+    logEvent('synced', 'ContactService 已初始化');
+    refreshContactList();
+  </script>
+</body>
+</html>

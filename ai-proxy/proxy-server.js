@@ -13,6 +13,17 @@
  */
 
 const express = require('express');
+
+// 本地时间格式化函数
+const formatTimeForStorage = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const h = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  const s = String(date.getSeconds()).padStart(2, '0');
+  return `${y}-${m}-${d} ${h}:${min}:${s}`;
+};
 const cors = require('cors');
 const crypto = require('crypto');
 require('dotenv').config();
@@ -52,7 +63,7 @@ function generateSignature(secretId, secretKey, payload, timestamp) {
   
   // 2. 拼接待签名字符串
   const algorithm = 'TC3-HMAC-SHA256';
-  const date = new Date(timestamp * 1000).toISOString().split('T')[0];
+  const date = formatTimeForStorage(new Date(timestamp * 1000)).split(' ')[0];
   const credentialScope = `${date}/${service}/tc3_request`;
   const hashedCanonicalRequest = crypto.createHash('sha256').update(canonicalRequest).digest('hex');
   
@@ -82,7 +93,7 @@ function generateSignature(secretId, secretKey, payload, timestamp) {
  * 代理端点：转发请求到腾讯混元 API
  */
 app.post('/api/hunyuan', async (req, res) => {
-  console.log('[Proxy] 收到请求:', new Date().toISOString());
+  console.log('[Proxy] 收到请求:', formatTimeForStorage(new Date()));
   
   try {
     // 从请求体获取配置（或使用环境变量）
@@ -159,7 +170,7 @@ app.post('/api/hunyuan', async (req, res) => {
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
-    timestamp: new Date().toISOString(),
+    timestamp: formatTimeForStorage(new Date()),
     service: '腾讯混元 API 代理'
   });
 });

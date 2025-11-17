@@ -71,9 +71,9 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
       return null;
     }
 
-    // 工具栏显示在选区上方，水平居中
-    const TOOLBAR_OFFSET = 8; // 距离选区顶部的偏移
-    const top = rect.top + window.scrollY - TOOLBAR_OFFSET;
+    // 工具栏显示在选区下方，水平居中
+    const TOOLBAR_OFFSET = 8; // 距离选区底部的偏移
+    const top = rect.bottom + window.scrollY + TOOLBAR_OFFSET;
     const left = rect.left + window.scrollX + rect.width / 2;
 
     return { top, left };
@@ -109,6 +109,7 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
       if (selectedText) {
         showToolbar();
         setMode('text_floatingbar'); // 🆕 选中文字时切换为文本格式模式
+        setToolbarActive(true); // 🆕 激活工具栏，支持数字键选择
         FloatingToolbarLogger.log('📝 [FloatingToolbar] 文本选中，切换为 text_floatingbar 模式');
       } else {
         // 只有在不是 menu_floatingbar 模式时才隐藏
@@ -120,6 +121,42 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
       }
     }, 10);
   }, [enabled, showToolbar, hideToolbar, mode]);
+
+  // 🆕 监听选区变化 - 支持键盘选中（Shift + 方向键）+ 光标移动时关闭 FloatingBar
+  const handleSelectionChange = useCallback(() => {
+    if (!enabled) return;
+
+    // 延迟检查，确保选区已更新
+    setTimeout(() => {
+      const selection = window.getSelection();
+      const selectedText = selection?.toString().trim();
+      
+      // 检查选区是否在编辑器内
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        const container = range.commonAncestorContainer;
+        const element = container.nodeType === Node.TEXT_NODE ? container.parentElement : container as HTMLElement;
+        const isInEditor = editorRef.current?.contains(element);
+        
+        if (!isInEditor) return;
+      }
+
+      if (selectedText) {
+        showToolbar();
+        setMode('text_floatingbar');
+        setToolbarActive(true); // 🆕 激活工具栏，支持数字键选择
+        FloatingToolbarLogger.log('⌨️ [FloatingToolbar] 键盘选中文本，切换为 text_floatingbar 模式');
+      } else {
+        // 🔧 光标位置变化（无选中文字）时，关闭所有类型的 FloatingBar
+        if (mode !== 'hidden') {
+          hideToolbar();
+          setMode('hidden');
+          setToolbarActive(false);
+          FloatingToolbarLogger.log('🔄 [FloatingToolbar] 光标位置变化，关闭 FloatingBar');
+        }
+      }
+    }, 10);
+  }, [enabled, editorRef, showToolbar, hideToolbar, mode]);
 
   // 监听快捷键：双击 Alt 呼出工具栏，按数字键 1-9 选择菜单
   const handleKeyDown = useCallback(
@@ -228,15 +265,16 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
         return;
       }
 
-      // 2. 如果工具栏已激活或处于菜单模式，监听数字键 1-9
-      if ((toolbarActive || mode === 'menu_floatingbar') && /^[1-9]$/.test(event.key)) {
+      // 2. 如果工具栏已激活或处于菜单模式或文本模式，监听数字键 1-9
+      if ((toolbarActive || mode === 'menu_floatingbar' || mode === 'text_floatingbar') && /^[1-9]$/.test(event.key)) {
         event.preventDefault();
+        event.stopPropagation(); // 🔧 阻止事件冒泡到 Slate 编辑器
         
         const menuIndex = parseInt(event.key) - 1;
         
         // 检查是否在菜单范围内
         if (menuIndex < menuItemCount) {
-          FloatingToolbarLogger.log(`🎯 [FloatingToolbar] 选择菜单项 ${event.key} (索引 ${menuIndex})`);
+          FloatingToolbarLogger.log(`🎯 [FloatingToolbar] 选择菜单项 ${event.key} (索引 ${menuIndex}, 模式: ${mode})`);
           
           // 触发菜单选择回调
           if (onMenuSelect) {
@@ -297,15 +335,17 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
     const editor = editorRef.current;
 
     editor.addEventListener('mouseup', handleMouseUp);
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', handleKeyDown, true); // 🔧 使用捕获阶段，优先于 Slate 编辑器
     document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('selectionchange', handleSelectionChange); // 🆕 监听选区变化（支持键盘选中）
 
     return () => {
       editor.removeEventListener('mouseup', handleMouseUp);
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keydown', handleKeyDown, true); // 🔧 对应移除
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('selectionchange', handleSelectionChange); // 🆕 清理
     };
-  }, [enabled, editorRef, handleMouseUp, handleKeyDown, handleClickOutside]);
+  }, [enabled, editorRef, handleMouseUp, handleKeyDown, handleClickOutside, handleSelectionChange]);
 
   // 获取当前选区的文本
   const getSelectedText = useCallback(() => {

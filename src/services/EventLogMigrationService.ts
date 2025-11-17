@@ -1,5 +1,6 @@
 import { Event, EventLog, EventLogSyncState } from '../types';
 import { EventService } from './EventService';
+import { formatTimeForStorage } from '../utils/timeUtils';
 
 /**
  * EventLog 字段迁移服务
@@ -24,7 +25,7 @@ export class EventLogMigrationService {
     
     // 旧格式（string）或无 eventlog
     const oldEventlog = event.eventlog || '';
-    const now = new Date().toISOString();
+    const now = formatTimeForStorage(new Date());
     
     // 创建新的 EventLog 对象
     const newEventlog: EventLog = {
@@ -92,9 +93,7 @@ export class EventLogMigrationService {
         // 更新到 localStorage（不触发同步）
         await EventService.updateEvent(event.id, {
           eventlog: migrated.eventlog,
-        }, {
-          skipSync: true,
-        });
+        }, true); // skipSync = true
         
         stats.migrated++;
       } catch (error) {

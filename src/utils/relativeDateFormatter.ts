@@ -65,13 +65,15 @@ function formatDate(date: Date, format: string): string {
 /**
  * 智能相对日期格式化引擎
  * 
+ * 🔄 v2.8.2: 完全基于动态计算，移除 displayHint 存储依赖
+ * - 远程同步的事件也能正确显示相对时间
+ * - 时间显示随着当前日期自动更新（今天 → 昨天 → 2天前）
+ * 
  * @param targetDate 目标日期（要格式化的日期）
  * @param today 基准日期（默认为当前日期）
- * @param displayHint 🆕 v1.1: 用户原始输入的模糊时间表述（如"本周"、"下周"）
  * @returns 相对时间描述字符串
  * 
  * @example
- * formatRelativeDate(new Date('2025-11-11'), new Date('2025-11-10'), "本周") // "本周"
  * formatRelativeDate(new Date('2025-11-11'), new Date('2025-11-10')) // "明天"
  * formatRelativeDate(new Date('2025-11-09'), new Date('2025-11-10')) // "昨天"
  * formatRelativeDate(new Date('2025-11-12'), new Date('2025-11-10')) // "后天"
@@ -81,13 +83,8 @@ function formatDate(date: Date, format: string): string {
  */
 export function formatRelativeDate(
   targetDate: Date, 
-  today: Date = new Date(), 
-  displayHint?: string | null
+  today: Date = new Date()
 ): string {
-  // 🎯 优先级 0: displayHint 优先（v1.1 模糊时间保留机制）
-  if (displayHint) {
-    return displayHint;
-  }
   
   // 确保只比较日期部分，忽略时间
   const startOfTarget = getStartOfDay(targetDate);
@@ -106,6 +103,7 @@ export function formatRelativeDate(
   
   // --- 优先级 2: 本周范围 ---
   if (daysDiff === 2) return "后天";
+  if (daysDiff === 3) return "大后天";
   
   // 计算本周日距离今天的天数（周日=0，需要特殊处理）
   const daysUntilSunday = todayDayOfWeek === 0 ? 0 : 7 - todayDayOfWeek;
@@ -227,11 +225,14 @@ export function formatCountdown(targetDate: Date, now: Date = new Date()): {
 /**
  * 格式化相对时间显示（用于 PlanManager 右侧）
  * 
+ * 🔄 v2.8.2: 移除 displayHint 参数，完全基于动态计算
+ * - 远程同步的事件也能正确显示相对时间
+ * - 时间显示随着当前日期自动更新
+ * 
  * @param startTime 开始时间（可选）
  * @param endTime 结束时间（可选）
  * @param isAllDay 是否全天事件
  * @param dueDate 截止日期（可选）
- * @param displayHint 🆕 v1.1: 用户原始输入的模糊时间表述
  * @returns 格式化的时间显示字符串
  * 
  * @example
@@ -246,46 +247,13 @@ export function formatCountdown(targetDate: Date, now: Date = new Date()): {
  * // 只有截止日期
  * formatRelativeTimeDisplay(null, null, false, "2025-11-15")
  * // => "周五"
- * 
- * // 带 displayHint
- * formatRelativeTimeDisplay("2025-11-11T00:00:00", "2025-11-17T23:59:59", true, null, "本周")
- * // => "本周 全天"
  */
 export function formatRelativeTimeDisplay(
   startTime?: string | null,
   endTime?: string | null,
   isAllDay?: boolean,
-  dueDate?: string | null,
-  displayHint?: string | null
+  dueDate?: string | null
 ): string {
-  // 🎯 优先级 0: displayHint 优先（v1.1 模糊时间保留机制）
-  if (displayHint) {
-    // 🆕 v1.2: 如果有 displayHint，检查是否有非零点的具体时间
-    const hasSpecificTime = startTime && (() => {
-      const date = parseLocalTimeString(startTime);
-      return date.getHours() !== 0 || date.getMinutes() !== 0;
-    })();
-    
-    if (!hasSpecificTime) {
-      // 模糊日期 + 无具体时间 → 只显示 displayHint
-      return displayHint;
-    }
-    
-    // 模糊日期 + 有具体时间 → displayHint + 时间
-    const startDate = parseLocalTimeString(startTime!);
-    const startTimeStr = formatTime(startDate);
-    
-    if (endTime) {
-      const endDate = parseLocalTimeString(endTime);
-      const hasSpecificEndTime = endDate.getHours() !== 0 || endDate.getMinutes() !== 0;
-      if (hasSpecificEndTime) {
-        const endTimeStr = formatTime(endDate);
-        return `${displayHint} ${startTimeStr} - ${endTimeStr}`;
-      }
-    }
-    return `${displayHint} ${startTimeStr}`;
-  }
-  
   const now = new Date();
   
   // 优先使用开始时间，其次是截止日期

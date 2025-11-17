@@ -16,7 +16,7 @@
  * 3. CalendarSettingsPanel - 标签筛选
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import './HierarchicalTagPicker.css';
 
 export interface HierarchicalTag {
@@ -59,6 +59,9 @@ export interface HierarchicalTagPickerProps {
   /** 关闭回调（用于弹出模式） */
   onClose?: () => void;
   
+  /** Enter键确认插入单个标签（绕过去重逻辑） */
+  onConfirm?: (confirmedId: string) => void;
+  
   /** 自定义类名 */
   className?: string;
   
@@ -70,6 +73,7 @@ export const HierarchicalTagPicker: React.FC<HierarchicalTagPickerProps> = ({
   availableTags,
   selectedTagIds,
   onSelectionChange,
+  onConfirm, // 🆕 Enter键确认回调
   multiple = true,
   searchable = true,
   showSelectedChips = true,
@@ -82,7 +86,11 @@ export const HierarchicalTagPicker: React.FC<HierarchicalTagPickerProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isOpen, setIsOpen] = useState(mode === 'inline');
+  const [hoveredIndex, setHoveredIndex] = useState(0); // 🆕 键盘导航索引
+  const [isSearchFocused, setIsSearchFocused] = useState(false); // 🆕 搜索框焦点状态
   const containerRef = useRef<HTMLDivElement>(null);
+  const tagListRef = useRef<HTMLDivElement>(null); // 🆕 标签列表引用
+  const searchInputRef = useRef<HTMLInputElement>(null); // 🆕 搜索框引用
 
   // 调试：检查接收到的标签数据
   useEffect(() => {
@@ -119,6 +127,116 @@ export const HierarchicalTagPicker: React.FC<HierarchicalTagPickerProps> = ({
       }
     }
   };
+
+  // 🆕 键盘导航处理
+  const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    // 🆕 按 `/` 激活搜索框
+    if (event.key === '/' && !isSearchFocused && searchable) {
+      event.preventDefault();
+      event.stopPropagation();
+      searchInputRef.current?.focus();
+      return;
+    }
+
+    // 如果搜索框获得焦点，不拦截键盘事件（允许输入）
+    if (isSearchFocused || filteredTags.length === 0) return;
+
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        event.stopPropagation(); // 🔧 阻止传播到 Slate
+        setHoveredIndex((prev) => Math.min(prev + 1, filteredTags.length - 1));
+        break;
+
+      case 'ArrowUp':
+        event.preventDefault();
+        event.stopPropagation(); // 🔧 阻止传播到 Slate
+        setHoveredIndex((prev) => Math.max(prev - 1, 0));
+        break;
+
+      case ' ': // 🆕 空格键：切换选中状态（多选模式下）
+        if (multiple) {
+          event.preventDefault();
+          event.stopPropagation();
+          if (filteredTags[hoveredIndex]) {
+            toggleTag(filteredTags[hoveredIndex].id);
+          }
+        }
+        break;
+
+      case 'Enter':
+        event.preventDefault();
+        event.stopPropagation(); // 🔧 阻止换行
+        if (filteredTags[hoveredIndex]) {
+          const currentTag = filteredTags[hoveredIndex];
+          
+          console.log('[HierarchicalTagPicker] Enter键按下', {
+            tagId: currentTag.id,
+            tagName: currentTag.name,
+            hasOnConfirm: !!onConfirm,
+            isSelected: selectedTagIds.includes(currentTag.id),
+          });
+          
+          // 🆕 Enter 键逻辑：
+          // 1. 调用 onConfirm 强制插入当前 hover 的标签（绕过去重逻辑）
+          // 2. 同时更新选中状态（UI 反馈）
+          // 3. 延迟关闭 Picker
+          
+          if (onConfirm) {
+            // 优先使用 onConfirm（强制插入）
+            console.log('[HierarchicalTagPicker] 调用 onConfirm', currentTag.id);
+            onConfirm(currentTag.id);
+          } else if (!selectedTagIds.includes(currentTag.id)) {
+            // 降级：未选中时才调用 toggleTag
+            console.log('[HierarchicalTagPicker] 调用 toggleTag', currentTag.id);
+            toggleTag(currentTag.id);
+          }
+          
+          // 延迟关闭
+          setTimeout(() => {
+            console.log('[HierarchicalTagPicker] 延迟关闭 Picker');
+            setIsOpen(false);
+            onClose?.();
+          }, 50);
+        }
+        break;
+
+      case 'Escape':
+        event.preventDefault();
+        event.stopPropagation(); // 🔧 阻止传播
+        setIsOpen(false);
+        onClose?.();
+        break;
+
+      default:
+        break;
+    }
+  }, [isSearchFocused, filteredTags, hoveredIndex, toggleTag, onClose, searchable]);
+
+  // 🆕 监听键盘事件（使用捕获阶段）
+  useEffect(() => {
+    if (!isOpen) return;
+
+    document.addEventListener('keydown', handleKeyDown, true); // 🔧 capture: true
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [isOpen, handleKeyDown]);
+
+  // 🆕 自动滚动到 hover 的项
+  useEffect(() => {
+    if (tagListRef.current && filteredTags.length > 0) {
+      const hoveredElement = tagListRef.current.children[hoveredIndex] as HTMLElement;
+      if (hoveredElement) {
+        hoveredElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    }
+  }, [hoveredIndex, filteredTags.length]);
+
+  // 🆕 当过滤结果改变时，重置 hover 索引
+  useEffect(() => {
+    setHoveredIndex(0);
+  }, [searchQuery]);
 
   // 全选
   const handleSelectAll = () => {
@@ -205,13 +323,15 @@ export const HierarchicalTagPicker: React.FC<HierarchicalTagPickerProps> = ({
           <div className="tag-picker-header">
             {searchable && (
               <input
+                ref={searchInputRef}
                 type="text"
                 className="tag-search-input"
-                placeholder="搜索标签..."
+                placeholder="搜索标签...（按 / 激活）"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => setIsSearchFocused(true)}
+                onBlur={() => setIsSearchFocused(false)}
                 onClick={(e) => e.stopPropagation()}
-                autoFocus
               />
             )}
             
@@ -253,17 +373,19 @@ export const HierarchicalTagPicker: React.FC<HierarchicalTagPickerProps> = ({
           </div>
 
           {/* 标签列表（层级展示） */}
-          <div className="tag-picker-list">
+          <div className="tag-picker-list" ref={tagListRef}>
             {filteredTags.length > 0 ? (
-              filteredTags.map(tag => {
+              filteredTags.map((tag, index) => {
                 const isSelected = selectedTagIds.includes(tag.id);
+                const isHovered = index === hoveredIndex; // 🆕 键盘导航高亮
                 const paddingLeft = `${(tag.level || 0) * 16}px`;
                 
                 return (
                   <label
                     key={tag.id}
-                    className={`tag-option ${isSelected ? 'selected' : ''}`}
+                    className={`tag-option ${isSelected ? 'selected' : ''} ${isHovered ? 'keyboard-focused' : ''}`}
                     onClick={() => toggleTag(tag.id)}
+                    onMouseEnter={() => setHoveredIndex(index)}
                   >
                     {multiple && (
                       <input

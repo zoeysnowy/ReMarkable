@@ -16,13 +16,18 @@
   color: #666;
   font-size: 0.9em;
   font-style: italic;
-  line-height: 1.4; /* 🔧 紧凑行距，仅用于 eventlog */
+  line-height: 1.3; /* 🔧 紧凑行距，仅用于 eventlog */
   padding: 1px 0; /* 🔧 eventlog 模式的紧凑间距，覆盖默认的 4px */
 }
 
 /* 🆕 eventlog 模式下的段落间距更紧凑 */
 .unified-event-line.eventlog-mode .event-line-content > div {
-  margin: 2px 0; /* 段落间距紧凑 */
+  margin: 0; /* 段落间距极紧凑 */
+}
+
+/* 🔧 eventlog 模式下非 bullet 段落也要紧凑 */
+.unified-event-line.eventlog-mode .event-line-content div:not(.slate-bullet-paragraph) {
+  line-height: 1.3;
 }
 
 .event-line-prefix {

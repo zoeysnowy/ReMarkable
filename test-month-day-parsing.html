@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>月份+日期号解析测试 - v2.10.1</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      border-bottom: 3px solid #4CAF50;
+      padding-bottom: 10px;
+    }
+    .version {
+      color: #666;
+      font-size: 14px;
+      margin-top: -10px;
+      margin-bottom: 20px;
+    }
+    .test-section {
+      margin: 20px 0;
+      padding: 20px;
+      background: #f9f9f9;
+      border-radius: 8px;
+      border-left: 4px solid #2196F3;
+    }
+    .test-input {
+      margin: 15px 0;
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #555;
+    }
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 6px;
+      font-size: 16px;
+      box-sizing: border-box;
+    }
+    input:focus {
+      outline: none;
+      border-color: #4CAF50;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-top: 10px;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    .result {
+      margin-top: 20px;
+      padding: 15px;
+      background: white;
+      border-radius: 6px;
+      border: 2px solid #4CAF50;
+    }
+    .result-item {
+      margin: 8px 0;
+      padding: 8px;
+      background: #f0f7ff;
+      border-radius: 4px;
+    }
+    .result-label {
+      font-weight: 600;
+      color: #1976D2;
+      display: inline-block;
+      width: 150px;
+    }
+    .result-value {
+      color: #333;
+      font-family: 'Courier New', monospace;
+    }
+    .success {
+      color: #4CAF50;
+      font-weight: bold;
+    }
+    .error {
+      color: #f44336;
+      font-weight: bold;
+    }
+    .examples {
+      background: #fff3cd;
+      padding: 15px;
+      border-radius: 6px;
+      border-left: 4px solid #ffc107;
+      margin-top: 20px;
+    }
+    .examples h3 {
+      margin-top: 0;
+      color: #856404;
+    }
+    .example-list {
+      list-style: none;
+      padding: 0;
+    }
+    .example-list li {
+      padding: 8px;
+      margin: 5px 0;
+      background: white;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .example-list li:hover {
+      background: #ffe69c;
+    }
+    .info-box {
+      background: #e3f2fd;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      border-left: 4px solid #2196F3;
+    }
+    .info-box strong {
+      color: #1565C0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🗓️ 月份+日期号解析测试</h1>
+    <p class="version">v2.10.1 - 2025-11-17</p>
+
+    <div class="info-box">
+      <strong>测试目标：</strong>验证"下个月3号"、"本月15号"等月份+日期号模式的正则解析功能<br>
+      <strong>参考日期：</strong><span id="referenceDate"></span>
+    </div>
+
+    <div class="test-section">
+      <h2>📝 手动测试</h2>
+      <div class="test-input">
+        <label for="testInput">输入自然语言时间表达：</label>
+        <input 
+          type="text" 
+          id="testInput" 
+          placeholder="例如：下个月3号下午5点"
+          autocomplete="off"
+        >
+        <button onclick="parseInput()">解析</button>
+      </div>
+
+      <div id="result"></div>
+    </div>
+
+    <div class="examples">
+      <h3>💡 快速测试示例（点击测试）</h3>
+      <ul class="example-list">
+        <li onclick="testExample('下个月3号')">下个月3号</li>
+        <li onclick="testExample('下个月3号下午5点')">下个月3号下午5点</li>
+        <li onclick="testExample('本月15号')">本月15号</li>
+        <li onclick="testExample('本月15号上午10点')">本月15号上午10点</li>
+        <li onclick="testExample('下月20号晚上8点半')">下月20号晚上8点半</li>
+        <li onclick="testExample('上个月10号')">上个月10号</li>
+        <li onclick="testExample('这个月25号中午12点')">这个月25号中午12点</li>
+        <li onclick="testExample('下个月三号')">下个月三号（中文数字）</li>
+        <li onclick="testExample('本月十五号')">本月十五号（中文数字）</li>
+        <li onclick="testExample('下月二十八号下午三点半')">下月二十八号下午三点半（全中文）</li>
+      </ul>
+    </div>
+
+    <div class="test-section">
+      <h2>🧪 自动化测试套件</h2>
+      <button onclick="runAllTests()">运行所有测试</button>
+      <div id="autoTestResults"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { parseNaturalLanguage } from './src/utils/naturalLanguageTimeDictionary.ts';
+    import dayjs from 'dayjs';
+
+    // 将函数暴露到全局作用域
+    window.parseNaturalLanguage = parseNaturalLanguage;
+    window.dayjs = dayjs;
+
+    // 显示参考日期
+    document.getElementById('referenceDate').textContent = dayjs().format('YYYY-MM-DD (dddd)');
+
+    // 解析输入
+    window.parseInput = function() {
+      const input = document.getElementById('testInput').value;
+      if (!input.trim()) {
+        alert('请输入要测试的文本');
+        return;
+      }
+
+      const result = parseNaturalLanguage(input);
+      displayResult(input, result);
+    };
+
+    // 测试示例
+    window.testExample = function(text) {
+      document.getElementById('testInput').value = text;
+      parseInput();
+    };
+
+    // 显示结果
+    function displayResult(input, result) {
+      const resultDiv = document.getElementById('result');
+      
+      if (!result.matched) {
+        resultDiv.innerHTML = `
+          <div class="result">
+            <h3 class="error">❌ 未匹配</h3>
+            <p>输入"${input}"无法解析</p>
+          </div>
+        `;
+        return;
+      }
+
+      let html = `
+        <div class="result">
+          <h3 class="success">✅ 解析成功</h3>
+          <div class="result-item">
+            <span class="result-label">输入文本：</span>
+            <span class="result-value">${input}</span>
+          </div>
+      `;
+
+      if (result.pointInTime) {
+        html += `
+          <div class="result-item">
+            <span class="result-label">类型：</span>
+            <span class="result-value">精确时间点 (PointInTime)</span>
+          </div>
+          <div class="result-item">
+            <span class="result-label">日期：</span>
+            <span class="result-value">${result.pointInTime.date.format('YYYY-MM-DD HH:mm:ss')}</span>
+          </div>
+          <div class="result-item">
+            <span class="result-label">显示提示：</span>
+            <span class="result-value">${result.pointInTime.displayHint}</span>
+          </div>
+          <div class="result-item">
+            <span class="result-label">模糊日期：</span>
+            <span class="result-value">${result.pointInTime.isFuzzyDate ? '是' : '否'}</span>
+          </div>
+        `;
+      }
+
+      if (result.dateRange) {
+        html += `
+          <div class="result-item">
+            <span class="result-label">类型：</span>
+            <span class="result-value">日期范围 (DateRange)</span>
+          </div>
+          <div class="result-item">
+            <span class="result-label">开始：</span>
+            <span class="result-value">${result.dateRange.start.format('YYYY-MM-DD HH:mm:ss')}</span>
+          </div>
+          <div class="result-item">
+            <span class="result-label">结束：</span>
+            <span class="result-value">${result.dateRange.end.format('YYYY-MM-DD HH:mm:ss')}</span>
+          </div>
+        `;
+      }
+
+      if (result.timePeriod) {
+        html += `
+          <div class="result-item">
+            <span class="result-label">时间段名称：</span>
+            <span class="result-value">${result.timePeriod.name}</span>
+          </div>
+          <div class="result-item">
+            <span class="result-label">开始时间：</span>
+            <span class="result-value">${String(result.timePeriod.startHour).padStart(2, '0')}:${String(result.timePeriod.startMinute).padStart(2, '0')}</span>
+          </div>
+          <div class="result-item">
+            <span class="result-label">结束时间：</span>
+            <span class="result-value">${String(result.timePeriod.endHour).padStart(2, '0')}:${String(result.timePeriod.endMinute).padStart(2, '0')}</span>
+          </div>
+          <div class="result-item">
+            <span class="result-label">时间类型：</span>
+            <span class="result-value">${result.timePeriod.timeType || 'none'}</span>
+          </div>
+        `;
+      }
+
+      html += '</div>';
+      resultDiv.innerHTML = html;
+    }
+
+    // 自动化测试
+    window.runAllTests = function() {
+      const today = dayjs();
+      const tests = [
+        {
+          input: '下个月3号',
+          expect: {
+            hasPointInTime: true,
+            displayHint: '下月3号',
+            date: today.add(1, 'month').date(3).format('YYYY-MM-DD')
+          }
+        },
+        {
+          input: '下个月3号下午5点',
+          expect: {
+            hasPointInTime: true,
+            hasTimePeriod: true,
+            displayHint: '下月3号下午5点',
+            startHour: 17,
+            startMinute: 0
+          }
+        },
+        {
+          input: '本月15号',
+          expect: {
+            hasPointInTime: true,
+            displayHint: '本月15号',
+            date: today.date(15).format('YYYY-MM-DD')
+          }
+        },
+        {
+          input: '上月10号',
+          expect: {
+            hasPointInTime: true,
+            displayHint: '上月10号',
+            date: today.subtract(1, 'month').date(10).format('YYYY-MM-DD')
+          }
+        }
+      ];
+
+      let html = '<div style="margin-top: 20px;">';
+      let passCount = 0;
+
+      tests.forEach((test, index) => {
+        const result = parseNaturalLanguage(test.input);
+        const pass = validateResult(result, test.expect);
+        
+        if (pass) passCount++;
+
+        html += `
+          <div class="result-item" style="background: ${pass ? '#e8f5e9' : '#ffebee'};">
+            <span class="result-label">测试 ${index + 1}:</span>
+            <span class="result-value">"${test.input}"</span>
+            <span style="float: right; font-weight: bold; color: ${pass ? '#4CAF50' : '#f44336'};">
+              ${pass ? '✅ PASS' : '❌ FAIL'}
+            </span>
+          </div>
+        `;
+      });
+
+      html += `
+        <div class="result" style="margin-top: 20px;">
+          <h3>测试结果汇总</h3>
+          <p>通过: <strong class="success">${passCount}</strong> / ${tests.length}</p>
+        </div>
+      `;
+
+      document.getElementById('autoTestResults').innerHTML = html;
+    };
+
+    function validateResult(result, expect) {
+      if (!result.matched) return false;
+      
+      if (expect.hasPointInTime && !result.pointInTime) return false;
+      if (expect.hasTimePeriod && !result.timePeriod) return false;
+      
+      if (expect.displayHint && result.pointInTime?.displayHint !== expect.displayHint) return false;
+      if (expect.date && result.pointInTime?.date.format('YYYY-MM-DD') !== expect.date) return false;
+      if (expect.startHour !== undefined && result.timePeriod?.startHour !== expect.startHour) return false;
+      if (expect.startMinute !== undefined && result.timePeriod?.startMinute !== expect.startMinute) return false;
+      
+      return true;
+    }
+  </script>
+</body>
+</html>

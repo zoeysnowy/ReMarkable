@@ -8,6 +8,17 @@
  * @file scripts/buildHolidayData.js
  */
 
+// 本地时间格式化函数
+const formatTimeForStorage = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const h = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  const s = String(date.getSeconds()).padStart(2, '0');
+  return `${y}-${m}-${d} ${h}:${min}:${s}`;
+};
+
 const fs = require('fs');
 const path = require('path');
 
@@ -31,7 +42,7 @@ if (!fs.existsSync(dataFile)) {
 // 简化版：手动定义数据（实际应从 TS 文件解析）
 const holidayData = {
   version: year,
-  publishDate: new Date().toISOString().split('T')[0],
+  publishDate: formatTimeForStorage(new Date()).split(' ')[0],
   source: "国务院办公厅",
   sourceUrl: "http://www.gov.cn/zhengce/",
   data: {

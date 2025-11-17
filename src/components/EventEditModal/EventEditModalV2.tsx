@@ -13,6 +13,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Event } from '../../types';
+import { formatTimeForStorage } from '../../utils/timeUtils';
 import './EventEditModalV2.css';
 
 interface EventEditModalV2Props {
@@ -97,7 +98,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     const updatedEvent: Event = {
       ...event,
       ...formData,
-      updatedAt: new Date().toISOString(),
+      updatedAt: formatTimeForStorage(new Date()),
     };
     
     onSave(updatedEvent);
@@ -540,13 +541,13 @@ const PlannedScheduleSection: React.FC<any> = ({
         <input
           type="datetime-local"
           value={formatDateTimeLocal(startTime)}
-          onChange={(e) => onChange({ startTime: e.target.value ? new Date(e.target.value).toISOString() : null })}
+          onChange={(e) => onChange({ startTime: e.target.value ? formatTimeForStorage(new Date(e.target.value)) : null })}
         />
         <span className="arrow">→</span>
         <input
           type="datetime-local"
           value={formatDateTimeLocal(endTime)}
-          onChange={(e) => onChange({ endTime: e.target.value ? new Date(e.target.value).toISOString() : null })}
+          onChange={(e) => onChange({ endTime: e.target.value ? formatTimeForStorage(new Date(e.target.value)) : null })}
         />
       </div>
       

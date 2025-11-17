@@ -197,6 +197,18 @@ export const TIME_PERIOD_DICTIONARY: Record<string, TimePeriod> = {
   
   // 整点（非模糊）
   '零点': { name: '零点', startHour: 0, startMinute: 0, endHour: 0, endMinute: 0, isFuzzyTime: false },
+  
+  // 🆕 v2.8: 更多英文时间段表达
+  'tonight': { name: 'tonight', startHour: 18, startMinute: 0, endHour: 22, endMinute: 0, isFuzzyTime: true },
+  'this morning': { name: 'this morning', startHour: 6, startMinute: 0, endHour: 12, endMinute: 0, isFuzzyTime: true },
+  'this afternoon': { name: 'this afternoon', startHour: 12, startMinute: 0, endHour: 18, endMinute: 0, isFuzzyTime: true },
+  'this evening': { name: 'this evening', startHour: 18, startMinute: 0, endHour: 22, endMinute: 0, isFuzzyTime: true },
+  'tomorrow morning': { name: 'tomorrow morning', startHour: 6, startMinute: 0, endHour: 12, endMinute: 0, isFuzzyTime: true },
+  'tomorrow afternoon': { name: 'tomorrow afternoon', startHour: 12, startMinute: 0, endHour: 18, endMinute: 0, isFuzzyTime: true },
+  'tomorrow evening': { name: 'tomorrow evening', startHour: 18, startMinute: 0, endHour: 22, endMinute: 0, isFuzzyTime: true },
+  'tomorrow night': { name: 'tomorrow night', startHour: 18, startMinute: 0, endHour: 22, endMinute: 0, isFuzzyTime: true },
+  'noon': { name: 'noon', startHour: 12, startMinute: 0, endHour: 13, endMinute: 0, isFuzzyTime: true },
+  'midnight': { name: 'midnight', startHour: 0, startMinute: 0, endHour: 0, endMinute: 0, isFuzzyTime: false },
 };
 
 /**
@@ -457,14 +469,118 @@ export const DATE_RANGE_DICTIONARY: Record<string, (referenceDate?: Date) => Dat
     const result = DATE_RANGE_DICTIONARY['三天内'](ref);
     return { ...result, displayHint: 'within 3 days' };
   },
+  
+  // 🆕 v2.8: 更多英文日期范围表达
+  'last week': (ref = new Date()) => {
+    const now = dayjs(ref);
+    return {
+      start: now.subtract(1, 'week').startOf('week'),
+      end: now.subtract(1, 'week').endOf('week'),
+      displayHint: 'last week',
+      isFuzzyDate: true
+    };
+  },
+  
+  'last month': (ref = new Date()) => {
+    const now = dayjs(ref);
+    return {
+      start: now.subtract(1, 'month').startOf('month'),
+      end: now.subtract(1, 'month').endOf('month'),
+      displayHint: 'last month',
+      isFuzzyDate: true
+    };
+  },
+  
+  'next 7 days': (ref = new Date()) => {
+    const now = dayjs(ref);
+    return {
+      start: now.startOf('day'),
+      end: now.add(6, 'day').endOf('day'),
+      displayHint: 'next 7 days',
+      isFuzzyDate: true
+    };
+  },
+  
+  'weekday': (ref = new Date()) => DATE_RANGE_DICTIONARY['工作日'](ref),
+  'next weekday': (ref = new Date()) => DATE_RANGE_DICTIONARY['工作日'](ref),
 };
 
 /**
  * 精确时间点词典
  * 支持"大后天"、"月底"等精确日期表达
+ * 🆕 v2.8: 替代 chrono-node，内置所有基础相对日期词汇
  */
 export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => PointInTime> = {
-  // 相对天数
+  // ========== 基础相对日期（替代 chrono-node）==========
+  
+  // 今天
+  '今天': (ref = new Date()) => {
+    const target = new Date(ref);
+    target.setHours(0, 0, 0, 0);
+    return {
+      date: dateToDayjs(target),
+      displayHint: '今天',
+      isFuzzyDate: false
+    };
+  },
+  '今日': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['今天'](ref);
+    return { ...result, displayHint: '今日' };
+  },
+  'today': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['今天'](ref);
+    return { ...result, displayHint: 'today' };
+  },
+  
+  // 明天
+  '明天': (ref = new Date()) => {
+    const target = new Date(ref);
+    target.setDate(target.getDate() + 1);
+    target.setHours(0, 0, 0, 0);
+    return {
+      date: dateToDayjs(target),
+      displayHint: '明天',
+      isFuzzyDate: false
+    };
+  },
+  '明日': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['明天'](ref);
+    return { ...result, displayHint: '明日' };
+  },
+  'tomorrow': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['明天'](ref);
+    return { ...result, displayHint: 'tomorrow' };
+  },
+  '1 day later': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['明天'](ref);
+    return { ...result, displayHint: '1 day later' };
+  },
+  
+  // 后天
+  '后天': (ref = new Date()) => {
+    const target = new Date(ref);
+    target.setDate(target.getDate() + 2);
+    target.setHours(0, 0, 0, 0);
+    return {
+      date: dateToDayjs(target),
+      displayHint: '后天',
+      isFuzzyDate: false
+    };
+  },
+  '後天': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['后天'](ref);
+    return { ...result, displayHint: '後天' };
+  },
+  'day after tomorrow': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['后天'](ref);
+    return { ...result, displayHint: 'day after tomorrow' };
+  },
+  '2 days later': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['后天'](ref);
+    return { ...result, displayHint: '2 days later' };
+  },
+  
+  // 大后天
   '大后天': (ref = new Date()) => {
     const target = new Date(ref);
     target.setDate(target.getDate() + 3);
@@ -475,12 +591,56 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
       isFuzzyDate: false
     };
   },
-  
   '3 days later': (ref = new Date()) => {
     const result = POINT_IN_TIME_DICTIONARY['大后天'](ref);
     return { ...result, displayHint: '3 days later' };
   },
   
+  // 昨天
+  '昨天': (ref = new Date()) => {
+    const target = new Date(ref);
+    target.setDate(target.getDate() - 1);
+    target.setHours(0, 0, 0, 0);
+    return {
+      date: dateToDayjs(target),
+      displayHint: '昨天',
+      isFuzzyDate: false
+    };
+  },
+  '昨日': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['昨天'](ref);
+    return { ...result, displayHint: '昨日' };
+  },
+  'yesterday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['昨天'](ref);
+    return { ...result, displayHint: 'yesterday' };
+  },
+  '1 day ago': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['昨天'](ref);
+    return { ...result, displayHint: '1 day ago' };
+  },
+  
+  // 前天
+  '前天': (ref = new Date()) => {
+    const target = new Date(ref);
+    target.setDate(target.getDate() - 2);
+    target.setHours(0, 0, 0, 0);
+    return {
+      date: dateToDayjs(target),
+      displayHint: '前天',
+      isFuzzyDate: false
+    };
+  },
+  'day before yesterday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['前天'](ref);
+    return { ...result, displayHint: 'day before yesterday' };
+  },
+  '2 days ago': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['前天'](ref);
+    return { ...result, displayHint: '2 days ago' };
+  },
+  
+  // 大前天
   '大前天': (ref = new Date()) => {
     const target = new Date(ref);
     target.setDate(target.getDate() - 3);
@@ -491,7 +651,6 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
       isFuzzyDate: false
     };
   },
-  
   '3 days ago': (ref = new Date()) => {
     const result = POINT_IN_TIME_DICTIONARY['大前天'](ref);
     return { ...result, displayHint: '3 days ago' };
@@ -856,6 +1015,169 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
     };
   },
   
+  // 🆕 v2.8: 本周系列英文表达
+  'this monday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['本周一'](ref);
+    return { ...result, displayHint: 'this monday' };
+  },
+  'this mon': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['本周一'](ref);
+    return { ...result, displayHint: 'this mon' };
+  },
+  'monday': (ref = new Date()) => {
+    const now = dayjs(ref);
+    const currentDay = now.day();
+    // 如果今天是周一，返回今天；否则返回下一个周一
+    const monday = currentDay === 1 ? now : (currentDay === 0 ? now.add(1, 'day') : now.day(1 + 7));
+    return {
+      date: monday.startOf('day'),
+      displayHint: monday.isSame(now, 'day') ? '今天' : '周一',
+      isFuzzyDate: false
+    };
+  },
+  'mon': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['monday'](ref);
+    return { ...result, displayHint: 'mon' };
+  },
+  
+  'this tuesday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['本周二'](ref);
+    return { ...result, displayHint: 'this tuesday' };
+  },
+  'this tue': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['本周二'](ref);
+    return { ...result, displayHint: 'this tue' };
+  },
+  'tuesday': (ref = new Date()) => {
+    const now = dayjs(ref);
+    const currentDay = now.day();
+    const tuesday = currentDay === 2 ? now : (currentDay < 2 ? now.day(2) : now.add(1, 'week').day(2));
+    return {
+      date: tuesday.startOf('day'),
+      displayHint: tuesday.isSame(now, 'day') ? '今天' : '周二',
+      isFuzzyDate: false
+    };
+  },
+  'tue': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['tuesday'](ref);
+    return { ...result, displayHint: 'tue' };
+  },
+  
+  'this wednesday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['本周三'](ref);
+    return { ...result, displayHint: 'this wednesday' };
+  },
+  'this wed': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['本周三'](ref);
+    return { ...result, displayHint: 'this wed' };
+  },
+  'wednesday': (ref = new Date()) => {
+    const now = dayjs(ref);
+    const currentDay = now.day();
+    const wednesday = currentDay === 3 ? now : (currentDay < 3 ? now.day(3) : now.add(1, 'week').day(3));
+    return {
+      date: wednesday.startOf('day'),
+      displayHint: wednesday.isSame(now, 'day') ? '今天' : '周三',
+      isFuzzyDate: false
+    };
+  },
+  'wed': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['wednesday'](ref);
+    return { ...result, displayHint: 'wed' };
+  },
+  
+  'this thursday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['本周四'](ref);
+    return { ...result, displayHint: 'this thursday' };
+  },
+  'this thu': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['本周四'](ref);
+    return { ...result, displayHint: 'this thu' };
+  },
+  'thursday': (ref = new Date()) => {
+    const now = dayjs(ref);
+    const currentDay = now.day();
+    const thursday = currentDay === 4 ? now : (currentDay < 4 ? now.day(4) : now.add(1, 'week').day(4));
+    return {
+      date: thursday.startOf('day'),
+      displayHint: thursday.isSame(now, 'day') ? '今天' : '周四',
+      isFuzzyDate: false
+    };
+  },
+  'thu': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['thursday'](ref);
+    return { ...result, displayHint: 'thu' };
+  },
+  
+  'this friday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['本周五'](ref);
+    return { ...result, displayHint: 'this friday' };
+  },
+  'this fri': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['本周五'](ref);
+    return { ...result, displayHint: 'this fri' };
+  },
+  'friday': (ref = new Date()) => {
+    const now = dayjs(ref);
+    const currentDay = now.day();
+    const friday = currentDay === 5 ? now : (currentDay < 5 ? now.day(5) : now.add(1, 'week').day(5));
+    return {
+      date: friday.startOf('day'),
+      displayHint: friday.isSame(now, 'day') ? '今天' : '周五',
+      isFuzzyDate: false
+    };
+  },
+  'fri': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['friday'](ref);
+    return { ...result, displayHint: 'fri' };
+  },
+  
+  'this saturday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['本周六'](ref);
+    return { ...result, displayHint: 'this saturday' };
+  },
+  'this sat': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['本周六'](ref);
+    return { ...result, displayHint: 'this sat' };
+  },
+  'saturday': (ref = new Date()) => {
+    const now = dayjs(ref);
+    const currentDay = now.day();
+    const saturday = currentDay === 6 ? now : (currentDay < 6 ? now.day(6) : now.add(1, 'week').day(6));
+    return {
+      date: saturday.startOf('day'),
+      displayHint: saturday.isSame(now, 'day') ? '今天' : '周六',
+      isFuzzyDate: false
+    };
+  },
+  'sat': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['saturday'](ref);
+    return { ...result, displayHint: 'sat' };
+  },
+  
+  'this sunday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['本周日'](ref);
+    return { ...result, displayHint: 'this sunday' };
+  },
+  'this sun': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['本周日'](ref);
+    return { ...result, displayHint: 'this sun' };
+  },
+  'sunday': (ref = new Date()) => {
+    const now = dayjs(ref);
+    const currentDay = now.day();
+    const sunday = currentDay === 0 ? now : now.add(1, 'week').day(0);
+    return {
+      date: sunday.startOf('day'),
+      displayHint: sunday.isSame(now, 'day') ? '今天' : '周日',
+      isFuzzyDate: false
+    };
+  },
+  'sun': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['sunday'](ref);
+    return { ...result, displayHint: 'sun' };
+  },
+  
   // 🆕 上周系列（上周一到上周日）
   '上周一': (ref = new Date()) => {
     const target = dayjs(ref).subtract(1, 'week').day(1).startOf('day');
@@ -918,6 +1240,70 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
       displayHint: '上周日',
       isFuzzyDate: false
     };
+  },
+  
+  // 🆕 v2.8: 上周系列英文表达
+  'last monday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['上周一'](ref);
+    return { ...result, displayHint: 'last monday' };
+  },
+  'last mon': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['上周一'](ref);
+    return { ...result, displayHint: 'last mon' };
+  },
+  
+  'last tuesday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['上周二'](ref);
+    return { ...result, displayHint: 'last tuesday' };
+  },
+  'last tue': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['上周二'](ref);
+    return { ...result, displayHint: 'last tue' };
+  },
+  
+  'last wednesday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['上周三'](ref);
+    return { ...result, displayHint: 'last wednesday' };
+  },
+  'last wed': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['上周三'](ref);
+    return { ...result, displayHint: 'last wed' };
+  },
+  
+  'last thursday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['上周四'](ref);
+    return { ...result, displayHint: 'last thursday' };
+  },
+  'last thu': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['上周四'](ref);
+    return { ...result, displayHint: 'last thu' };
+  },
+  
+  'last friday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['上周五'](ref);
+    return { ...result, displayHint: 'last friday' };
+  },
+  'last fri': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['上周五'](ref);
+    return { ...result, displayHint: 'last fri' };
+  },
+  
+  'last saturday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['上周六'](ref);
+    return { ...result, displayHint: 'last saturday' };
+  },
+  'last sat': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['上周六'](ref);
+    return { ...result, displayHint: 'last sat' };
+  },
+  
+  'last sunday': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['上周日'](ref);
+    return { ...result, displayHint: 'last sunday' };
+  },
+  'last sun': (ref = new Date()) => {
+    const result = POINT_IN_TIME_DICTIONARY['上周日'](ref);
+    return { ...result, displayHint: 'last sun' };
   },
   
   // 季度相关
@@ -1131,6 +1517,136 @@ export function parseNaturalLanguage(input: string, referenceDate: Date = new Da
   
   dbg('dict', '🔍 检测截止关键词', { isDueTime, hasDueKeyword, hasBeforePattern, input: trimmedInput });
   
+  // 🆕 v2.10.1: 优先检测"月份+日期号"组合（如"下个月3号"、"本月15号"）
+  // 模式：(本月|这个月|下月|下个月|上月|上个月) + (数字) + (号|日)
+  const monthDayPattern = /(本月|这个月|下月|下个月|上月|上个月)\s*([0-9零一二两三四五六七八九十百千万]+)\s*[号日]/;
+  const monthDayMatch = trimmedInput.match(monthDayPattern);
+  
+  if (monthDayMatch) {
+    const [fullMatch, monthPrefix, dayStr] = monthDayMatch;
+    const day = parseChineseNumber(dayStr);
+    
+    // 验证日期有效性（1-31）
+    if (day >= 1 && day <= 31) {
+      const now = dayjs(referenceDate);
+      let targetMonth = now;
+      let displayHint = '';
+      
+      // 根据月份前缀计算目标月份
+      if (monthPrefix === '本月' || monthPrefix === '这个月') {
+        targetMonth = now;
+        displayHint = `本月${day}号`;
+      } else if (monthPrefix === '下月' || monthPrefix === '下个月') {
+        targetMonth = now.add(1, 'month');
+        displayHint = `下月${day}号`;
+      } else if (monthPrefix === '上月' || monthPrefix === '上个月') {
+        targetMonth = now.subtract(1, 'month');
+        displayHint = `上月${day}号`;
+      }
+      
+      // 创建目标日期（设置为该月的指定日期）
+      const targetDate = targetMonth.date(day).startOf('day');
+      
+      dbg('dict', '🎯 检测到月份+日期号组合', { 
+        monthPrefix, 
+        day,
+        targetDate: targetDate.format('YYYY-MM-DD'),
+        input: trimmedInput 
+      });
+      
+      // 检查是否还包含时间（如"下午5点"）
+      const fuzzyTimePlusExactPattern = /(上午|中午|下午|晚上|凌晨|早上|傍晚|深夜)\s*([0-9零一二两三四五六七八九十百千万]+)(?:[：:]([0-9零一二两三四五六七八九十百千万]+)|点(?:半|一刻|三刻|([0-9零一二两三四五六七八九十百千万]+)分)?)/;
+      const timeMatch = trimmedInput.match(fuzzyTimePlusExactPattern);
+      
+      if (timeMatch) {
+        const [timeFullMatch, fuzzyPeriod, hourStr, colonMinute, dotMinute] = timeMatch;
+        
+        // 转换中文数字到阿拉伯数字
+        let hour = parseChineseNumber(hourStr);
+        let minute = 0;
+        
+        // 解析分钟
+        if (timeFullMatch.includes('点半')) {
+          minute = 30;
+        } else if (timeFullMatch.includes('一刻')) {
+          minute = 15;
+        } else if (timeFullMatch.includes('三刻')) {
+          minute = 45;
+        } else if (colonMinute) {
+          minute = parseChineseNumber(colonMinute);
+        } else if (dotMinute) {
+          minute = parseChineseNumber(dotMinute);
+        }
+        
+        // 根据时间段上下文自动转换小时（处理12小时制）
+        if (hour >= 1 && hour <= 12) {
+          if (fuzzyPeriod === '下午' || fuzzyPeriod === 'afternoon') {
+            if (hour !== 12) hour += 12;
+          } else if (fuzzyPeriod === '晚上' || fuzzyPeriod === '深夜') {
+            if (hour !== 12) hour += 12;
+          } else if (fuzzyPeriod === '凌晨' || fuzzyPeriod === '早上') {
+            if (hour === 12) hour = 0;
+          } else if (fuzzyPeriod === '上午' || fuzzyPeriod === 'morning') {
+            if (hour === 12) hour = 0;
+          }
+        }
+        
+        // 验证时间有效性
+        if (hour >= 0 && hour < 24 && minute >= 0 && minute < 60) {
+          // 生成友好的时间名称
+          let timeName = `${fuzzyPeriod}${parseChineseNumber(hourStr)}点`;
+          if (timeFullMatch.includes('点半')) {
+            timeName += '半';
+          } else if (timeFullMatch.includes('一刻')) {
+            timeName += '一刻';
+          } else if (timeFullMatch.includes('三刻')) {
+            timeName += '三刻';
+          } else if (minute > 0) {
+            timeName += `${minute}分`;
+          }
+          
+          // 返回带时间的日期
+          return {
+            matched: true,
+            pointInTime: {
+              date: targetDate,
+              displayHint: `${displayHint}${timeName}`,
+              isFuzzyDate: false
+            },
+            timePeriod: isDueTime ? {
+              name: timeName,
+              startHour: 0,
+              startMinute: 0,
+              endHour: hour,
+              endMinute: minute,
+              isFuzzyTime: false,
+              timeType: 'due'
+            } : {
+              name: timeName,
+              startHour: hour,
+              startMinute: minute,
+              endHour: 0,
+              endMinute: 0,
+              isFuzzyTime: false,
+              timeType: 'start'
+            },
+            timeType: isDueTime ? 'due' : 'start'
+          };
+        }
+      }
+      
+      // 只有日期，没有具体时间
+      return {
+        matched: true,
+        pointInTime: {
+          date: targetDate,
+          displayHint,
+          isFuzzyDate: false
+        }
+      };
+    }
+  }
+  
   // 🆕 v2.7.1: 优先检测"模糊时间段+精确时间"组合
   // 如："中午12点"、"下午3点"、"晚上8:30"、"截止下周二中午12点"、"下午三点半"
   // 支持：点/半/一刻/三刻/分、冒号分隔
@@ -1318,6 +1834,7 @@ export function parseNaturalLanguage(input: string, referenceDate: Date = new Da
 
 /**
  * 获取所有支持的关键词（用于文档和提示）
+ * 🆕 v2.8: 更新示例，包含新增的基础相对日期
  */
 export function getSupportedKeywords(): {
   dateRanges: string[];
@@ -1330,6 +1847,15 @@ export function getSupportedKeywords(): {
     timePeriods: Object.keys(TIME_PERIOD_DICTIONARY),
     pointInTime: Object.keys(POINT_IN_TIME_DICTIONARY),
     examples: [
+      // 🆕 基础相对日期（替代 chrono-node）
+      '今天',
+      '明天',
+      '后天',
+      '昨天',
+      '前天',
+      'today',
+      'tomorrow',
+      'yesterday',
       // 日期范围
       '周末',
       '周中',
@@ -1351,10 +1877,13 @@ export function getSupportedKeywords(): {
       'ddl',
       '周报日',
       // 组合表达
+      '明天下午',
+      '后天上午',
       '周末上午',
       '下周中下午',
       '本周末晚上',
       '工作日中午',
+      '后天下午2点',
     ]
   };
 }

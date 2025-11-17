@@ -57,6 +57,9 @@ export interface FloatingToolbarProps {
   
   config: ToolbarConfig;
   
+  // 🆕 Slate Editor 引用（用于直接操作编辑器）
+  slateEditorRef?: React.RefObject<any>; // Slate Editor 实例
+  
   // 回调函数
   onTextFormat?: (command: string, value?: string) => void;
   onTagSelect?: (tagIds: string[]) => void; // 改为数组（支持多选）
@@ -88,7 +91,7 @@ export interface FloatingToolbarProps {
   useTimeHub?: boolean;   // 是否启用 TimeHub 模式
   
   // 🆕 编辑器模式（用于 TagPicker 显示控制）
-  editorMode?: 'title' | 'description'; // description 模式下隐藏勾选框
+  editorMode?: 'title' | 'eventlog'; // eventlog 模式下隐藏勾选框
 }
 
 export interface ToolbarPosition {

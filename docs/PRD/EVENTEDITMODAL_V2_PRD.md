@@ -2,15 +2,39 @@
 
 > **版本**: v2.0.0  
 > **创建时间**: 2025-11-06  
+> **最后更新**: 2025-11-16  
 > **Figma 设计稿**: [EventEditModal v2 设计稿](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=201-630&m=dev)  
 > **基于**: EventEditModal v1 + Figma 设计稿  
-> **依赖模块**: EventHub, TimeHub, UnifiedSlateEditor, HeadlessFloatingToolbar  
+> **依赖模块**: EventHub, TimeHub, UnifiedSlateEditor, HeadlessFloatingToolbar, Timer Module  
 > **关联文档**: 
 > - [EventEditModal v1 PRD](./EVENTEDITMODAL_MODULE_PRD.md)
 > - [Timer 模块 PRD](./TIMER_MODULE_PRD.md)
 > - [TimeCalendar 模块 PRD](./TIMECALENDAR_MODULE_PRD.md)
 > - [TIME_ARCHITECTURE.md](../TIME_ARCHITECTURE.md)
 > - [SLATE_DEVELOPMENT_GUIDE.md](../SLATE_DEVELOPMENT_GUIDE.md)
+
+> **🔥 v2.0.0 最新更新** (2025-11-16):
+> - ✅ **Timer 集成完成**: 支持零门槛启动（无标签/无标题）
+> - ✅ **统一 Timer 接口**: 所有组件使用 `App.tsx` 的 Timer 函数（handleTimerStart/Stop/Pause/Resume/Cancel）
+> - ✅ **实时计时显示**: 每秒更新已计时时长，支持暂停/继续/停止/取消
+> - ✅ **时间格式统一**: 所有时间使用 `formatTimeForStorage()`，严格遵循 Time Architecture
+> - ✅ **左侧区域完成**: Emoji + 标题 + 标签 + Checkbox + Timer 按钮（含已计时时长显示）
+
+---
+
+## ⚠️ 时间字段规范（CRITICAL）
+
+**严禁使用 ISO 8601 格式！所有时间必须遵循 Time Architecture 文档！**
+
+- ✅ **存储时间**: `formatTimeForStorage(date)` → `"YYYY-MM-DD HH:mm:ss"`（空格分隔，本地时间）
+- ✅ **解析时间**: `parseLocalTimeString(timeString)` → `Date` 对象
+- ❌ **禁止**: `new Date().toISOString()` - 会转为 UTC 时间
+- ❌ **禁止**: `toLocaleString()` - 格式不一致
+- ❌ **禁止**: 包含 `Z` 后缀、`T` 分隔符或 `+08:00` 等时区标记
+
+**参考**: 
+- `src/utils/timeUtils.ts` - 时间工具函数
+- `docs/TIME_ARCHITECTURE.md` - 时间架构文档
 
 ---
 
@@ -314,7 +338,7 @@ function getDisplayEmoji(event: Event, globalTimer: any): string {
   
   // 优先级 3: Placeholder（根据 Timer 状态）
   const isTimerActive = globalTimer?.eventId === event.id;
-  return isTimerActive ? '⏳' : '�';
+  return isTimerActive ? '⏳' : '📝';
 }
 
 /**

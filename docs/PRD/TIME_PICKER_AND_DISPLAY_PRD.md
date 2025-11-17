@@ -1,6 +1,6 @@
 # Time Picker and Display 时间选择与显示模块 PRD
 
-> **文档版本**: v2.8.0  
+> **文档版本**: v2.8.3  
 > **创建日期**: 2025-01-15  
 > **最后更新**: 2025-11-14  
 > **文档状态**: ✅ 完整版本  
@@ -9,6 +9,7 @@
 > - `src/utils/relativeDateFormatter.ts` (时间显示)
 > - `src/components/PlanManager.tsx` (计划时间显示)
 > - `src/utils/naturalLanguageTimeDictionary.ts` (自然语言词典) 🆕
+> - `src/services/TimeHub.ts` (时间状态管理)
 
 ---
 
@@ -134,7 +135,346 @@ TimeHoverCard({ startTime: startTimeStr })  // ✅ 使用已有的字符串变�
 
 ---
 
+## 📊 完整数据链路
+
+### 用户输入 → 持久化 → 显示
+
+```mermaid
+graph TB
+    A[用户输入] --> B{输入方式}
+    B -->|自然语言| C[@明天下午1点]
+    B -->|快捷按钮| D[点击"下午"]
+    B -->|手动选择| E[时间选择器]
+    
+    C --> F[parseNaturalLanguage]
+    D --> F
+    E --> F
+    
+    F --> G[TimeHub.setEventTime]
+    G --> H[EventService.updateEvent]
+    H --> I[localStorage]
+    H --> J[TimeHub.cache + emit]
+    
+    J --> K[useEventTime 订阅者]
+    K --> L[PlanItemTimeDisplay]
+    K --> M[DateMentionElement]
+    K --> N[TimeCalendar]
+    
+    I --> O[应用重启]
+    O --> P[EventService.getAllEvents]
+    P --> Q[TimeHub.getSnapshot 缓存加载]
+```
+
+### 关键路径说明
+
+1. **输入路径**: 
+   - 自然语言 → `parseNaturalLanguage()` → TimeHub
+   - 快捷按钮 → 预设值 → TimeHub
+   - 手动选择 → 滚动选择器 → TimeHub
+
+2. **持久化路径**:
+   - TimeHub → EventService → localStorage
+   - TimeHub 同时更新内存缓存并通知订阅者
+
+3. **显示路径**:
+   - 所有显示组件通过 `useEventTime(eventId)` 订阅
+   - TimeHub 优先返回缓存,缓存未命中则从 EventService 加载
+
+4. **Slate 保存路径**:
+   - Slate onBlur → `slateNodesToPlanItems()` → `TimeHub.getSnapshot()` → EventService
+   - 确保 Slate 序列化时读取最新时间
+
+### Slate 时间相关模块清单
+
+| 模块 | 文件路径 | 职责 | 时间数据源 |
+|------|---------|------|----------|
+| **DateMentionElement** | `elements/DateMentionElement.tsx` | 渲染 @ 提及,显示时间,过期检测 | `useEventTime(eventId)` |
+| **MentionPreview** | `MentionPreview.tsx` | @ 输入时实时预览解析结果 | `parseNaturalLanguage()` |
+| **slateNodesToPlanItems** | `serialization.ts` | Slate → Event 序列化,读取时间 | `TimeHub.getSnapshot()` |
+| **planItemsToSlateNodes** | `serialization.ts` | Event → Slate 反序列化 | `item.startTime/endTime` (metadata) |
+| **UnifiedSlateEditor** | `UnifiedSlateEditor.tsx` | 编辑器主组件,处理 @ 输入 | 触发 TimeHub 更新 |
+| **helpers.insertDateMention** | `helpers.ts` | 插入 DateMention 节点 | 无(仅插入节点) |
+
+**重要**: 所有显示时间的模块必须通过 `useEventTime(eventId)` 订阅 TimeHub,不应直接读取 Slate node 中的时间字段!
+
+---
+
 ## 📝 更新日志
+
+### v2.8.3 (2025-11-14) - 🔥 Undefined Time 完整支持 + 时间选择器优化
+
+**核心功能**:
+
+1. **✅ Undefined Time 字段完整支持**:
+   - **问题**: "@明天下午2点" 时间选择器显示 14:00→14:00（错误）
+   - **预期**: 应显示 14:00→--（只有开始时间，无结束时间）
+   - **根本原因**: UnifiedDateTimePicker 初始化时错误地将 `undefined` 的 `end` 回退到 `start`
+   
+   - **修复代码**:
+     ```typescript
+     // ❌ 修复前 (Line 320)
+     const end = eventTime.end ? dayjs(parseLocalTimeString(eventTime.end)) : start;
+     //                                                                        ^^^^^ 错误！
+     
+     // ✅ 修复后
+     const end = eventTime.end ? dayjs(parseLocalTimeString(eventTime.end)) : null;
+     //                                                                        ^^^^ 正确！
+     
+     // ❌ 修复前 (Line 372)
+     const end = initialEnd
+       ? dayjs(typeof initialEnd === 'string' ? parseLocalTimeString(initialEnd) : initialEnd)
+       : start;  // 错误！
+     
+     // ✅ 修复后
+     const end = initialEnd
+       ? dayjs(typeof initialEnd === 'string' ? parseLocalTimeString(initialEnd) : initialEnd)
+       : null;  // 正确！
+     ```
+   
+   - **数据流验证**:
+     ```
+     用户输入 "@明天下午2点"
+     ↓
+     词典解析: { startHour: 14, startMinute: 0, endHour: 0, endMinute: 0 }
+     ↓
+     编辑器逻辑: if (endHour > 0 || endMinute > 0) { endTime = ... }  // ✅ 不设置 endTime
+     ↓
+     Picker 初始化: initialEnd = undefined  // ✅ 传递 undefined
+     ↓
+     Picker 状态: end = null, setEndTime(null)  // ✅ 正确设置为 null
+     ↓
+     UI 显示: 14:00 → --  // ✅ 正确显示
+     ```
+
+2. **🎯 模糊时间段显示一致性修复**:
+   - **问题**: 快捷按钮 "下午" vs 自然语言 "@下午" 显示不一致
+     - 快捷按钮 → 显示 "下午" ✅
+     - 自然语言 → 显示 "12:00 → 18:00" ❌
+   
+   - **根本原因**: `formatDateTime` 只检查 `selectedQuickBtn`，没有检查 `fuzzyTimeName`
+   
+   - **修复代码**:
+     ```typescript
+     // ❌ 修复前 (Line 814)
+     if (isQuickBtnSelection && (selectedQuickBtn === 'morning' || ...)) {
+       const timeLabel = selectedQuickBtn === 'morning' ? '上午' : ...;
+       return { endDateTime: timeLabel, ... };
+     }
+     
+     // ✅ 修复后 (Line 813-828)
+     const isFuzzyTimeSelection = isQuickBtnSelection && 
+       (selectedQuickBtn === 'morning' || selectedQuickBtn === 'afternoon' || selectedQuickBtn === 'evening');
+     const hasFuzzyTimeName = fuzzyTimeName && 
+       (fuzzyTimeName === '上午' || fuzzyTimeName === '下午' || fuzzyTimeName === '晚上' || 
+        fuzzyTimeName === 'morning' || fuzzyTimeName === 'afternoon' || fuzzyTimeName === 'evening');
+     
+     if (isFuzzyTimeSelection || hasFuzzyTimeName) {
+       // 优先使用 fuzzyTimeName，其次使用 selectedQuickBtn
+       const timeLabel = fuzzyTimeName || 
+         (selectedQuickBtn === 'morning' ? '上午' : selectedQuickBtn === 'afternoon' ? '下午' : '晚上');
+       return { endDateTime: timeLabel, ... };
+     }
+     ```
+   
+   - **对比表**:
+     | 输入方式 | `startTime` | `endTime` | `fuzzyTimeName` | 显示效果 | 一致性 |
+     |---------|------------|-----------|-----------------|---------|--------|
+     | **快捷按钮 "下午"** | `12:00` | `18:00` | `'下午'` | `2025-11-15（周五）下午` | ✅ |
+     | **自然语言 "@下午"** | `12:00` | `18:00` | `'下午'` | `2025-11-15（周五）下午` | ✅ |
+     | **自然语言 "@下午2点"** | `14:00` | `null` | `null` | `2025-11-15（周五）14:00后` | ✅ |
+
+3. **🌅 全天切换逻辑优化**:
+   - **设计原则**: `isAllDay` 与时间字段完全解耦
+     - 全天 ≠ 无时间（`isAllDay` 只是一个标记字段）
+     - 是否有时间由 `startTime`/`endTime` 决定
+     - 用户可以自由组合：全天+无时间、全天+有时间、非全天+无时间、非全天+有时间
+   
+   - **修复逻辑**:
+     ```typescript
+     // ❌ 修复前 (v2.8.2)
+     toggleAllDay = () => {
+       if (newAllDay) {
+         setStartTime(null);
+         setEndTime(null);
+       } else {
+         setStartTime({ hour: 9, minute: 0 });  // ❌ 强制设置时间
+         setEndTime({ hour: 10, minute: 0 });   // ❌ 强制设置结束时间
+       }
+     }
+     
+     // ✅ 修复后 (v2.8.3)
+     toggleAllDay = () => {
+       if (newAllDay) {
+         setStartTime(null);
+         setEndTime(null);
+         setAllDay(true);
+       } else {
+         setAllDay(false);
+         // 不修改 startTime 和 endTime，保持原状态
+         // 用户可以手动设置时间或保持无时间
+       }
+     }
+     ```
+   
+   - **用户场景**:
+     | 操作序列 | `isAllDay` | `startTime` | `endTime` | 显示效果 |
+     |---------|-----------|------------|-----------|---------|
+     | 1. 选择"明天" | `false` | `null` | `null` | `2025-11-15（周五）全天` |
+     | 2. 勾选全天 | `true` | `null` | `null` | `2025-11-15（周五）全天` |
+     | 3. 取消全天 | `false` | `null` | `null` | `2025-11-15（周五）全天` |
+     | 4. 输入"@下午2点" | `false` | `14:00` | `null` | `2025-11-15（周五）14:00后` |
+     | 5. 勾选全天 | `true` | `14:00` | `null` | `2025-11-15（周五）全天` |
+
+**修复文件**:
+- `src/components/FloatingToolbar/pickers/UnifiedDateTimePicker.tsx`
+  - Line 320: 初始化逻辑（TimeHub 快照路径）
+  - Line 372: 初始化逻辑（initialProps 路径）
+  - Line 384: `setEndTime` 使用 `end && hasSpecificEnd` 避免 null 访问
+  - Line 813-828: 模糊时间段显示逻辑
+  - Line 1199-1214: 全天切换逻辑
+
+**测试验证**:
+- ✅ "@明天下午2点" → 时间选择器显示 14:00 → --
+- ✅ "@下午" → 显示 "下午"（不显示 12:00 → 18:00）
+- ✅ 快捷按钮 "下午" → 显示 "下午"
+- ✅ 全天勾选/取消不影响时间字段
+- ✅ TimeHub 正确存储 `{ start: "...", end: undefined }`
+
+**技术架构图**:
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 用户输入层                                                    │
+│ ┌─────────────┐  ┌─────────────┐  ┌──────────────┐          │
+│ │ 自然语言输入 │  │ 快捷按钮点击 │  │  时间选择器  │          │
+│ │  @明天下午2点│  │   点击"下午" │  │  手动滑动选择 │          │
+│ └──────┬──────┘  └──────┬──────┘  └──────┬───────┘          │
+└────────┼─────────────────┼─────────────────┼─────────────────┘
+         │                 │                 │
+         ▼                 ▼                 ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 解析层 (naturalLanguageTimeDictionary.ts)                    │
+│ ┌───────────────────────────────────────────────────────┐   │
+│ │ parseNaturalLanguage("明天下午2点")                     │   │
+│ │ ↓                                                       │   │
+│ │ { timePeriod: {                                        │   │
+│ │     name: "下午2点",                                   │   │
+│ │     startHour: 14, startMinute: 0,                    │   │
+│ │     endHour: 0, endMinute: 0,  ← 表示无结束时间        │   │
+│ │     isFuzzyTime: false,                               │   │
+│ │     timeType: 'start'                                 │   │
+│ │   }                                                    │   │
+│ │ }                                                      │   │
+│ └───────────────────────────────────────────────────────┘   │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 状态管理层 (UnifiedDateTimePicker.tsx)                       │
+│ ┌───────────────────────────────────────────────────────┐   │
+│ │ 逻辑判断:                                               │   │
+│ │   if (timePeriod.endHour > 0 || timePeriod.endMinute > 0) {│
+│ │     setEndTime({ hour: endHour, minute: endMinute }); │   │
+│ │   }                                                    │   │
+│ │   // endHour=0 时，不设置 endTime，保持 undefined      │   │
+│ │                                                        │   │
+│ │ 初始化修复 (v2.8.3):                                   │   │
+│ │   ✅ const end = eventTime.end ? dayjs(...) : null;   │   │
+│ │   ❌ const end = eventTime.end ? dayjs(...) : start;  │   │
+│ │                                                        │   │
+│ │ 状态:                                                  │   │
+│ │   startTime = { hour: 14, minute: 0 }                │   │
+│ │   endTime = null  ← 正确！                            │   │
+│ │   fuzzyTimeName = null                                │   │
+│ └───────────────────────────────────────────────────────┘   │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 存储层 (TimeHub.ts)                                          │
+│ ┌───────────────────────────────────────────────────────┐   │
+│ │ setEventTime({                                        │   │
+│ │   eventId,                                            │   │
+│ │   start: "2025-11-15 14:00:00",                      │   │
+│ │   end: undefined,  ← 正确存储为 undefined              │   │
+│ │   allDay: false                                       │   │
+│ │ })                                                    │   │
+│ └───────────────────────────────────────────────────────┘   │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 显示层 (formatDateTime / relativeDateFormatter)              │
+│ ┌───────────────────────────────────────────────────────┐   │
+│ │ 情况3: 结束时间为 null（只选择了开始时间）              │   │
+│ │   if (startTime && !endTime) {                        │   │
+│ │     return {                                          │   │
+│ │       startDateTime: "2025-11-15（周五）",           │   │
+│ │       endDateTime: "14:00后",  ← 正确显示             │   │
+│ │     };                                                │   │
+│ │   }                                                   │   │
+│ └───────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### v2.8.2 (2025-11-14) - 🔥 移除 displayHint 存储依赖，完全动态计算
+
+**核心架构重构**:
+
+1. **🎯 问题**: displayHint 存储导致远程事件无法显示
+   - Picker 生成 displayHint ("下周三下午1点") 并保存到数据库
+   - 远程同步的 Event **没有** displayHint 字段
+   - 导致远程事件只能显示原始时间字符串
+   - displayHint 不会随时间更新（"下周三" 永远是 "下周三"）
+
+2. **🔥 解决方案**: 移除 displayHint 存储，完全基于动态计算
+   ```typescript
+   // ❌ 旧架构 v2.8.1
+   displayHint: string | null  // 保存在数据库
+   formatRelativeDate(date, today, displayHint) {
+     if (displayHint) return displayHint;  // 直接返回存储值
+   }
+   
+   // ✅ 新架构 v2.8.2
+   // displayHint 字段完全移除
+   formatRelativeDate(date, today) {  // 只接收日期参数
+     const daysDiff = calculateDaysDiff(date, today);
+     if (daysDiff === 0) return "今天";  // 动态计算
+     if (daysDiff === 1) return "明天";
+     // ... 完整逻辑见 relativeDateFormatter.ts
+   }
+   ```
+
+3. **✅ 核心改进**:
+   - **移除字段**:
+     - `SetEventTimeInput.displayHint` ❌ 删除
+     - `TimeGetResult.displayHint` ❌ 删除
+     - `formatRelativeDate(displayHint)` ❌ 删除参数
+     - `formatRelativeTimeDisplay(displayHint)` ❌ 删除参数
+   
+   - **新数据流**:
+     ```
+     📝 写入: 自然语言 → 词典解析 → TimeHub.setEventTime()
+                      → 只保存 startTime/endTime → Event 数据库
+     
+     📖 读取: Event (startTime/endTime) → formatRelativeTimeDisplay()
+                      → formatRelativeDate(startTime, now) → 动态计算 → UI显示
+     ```
+   
+   - **优势**:
+     - ✅ 远程同步事件自动显示友好相对时间
+     - ✅ 时间显示随当前日期自动更新（今天 → 昨天 → 2天前）
+     - ✅ 所有事件显示逻辑统一，无需特殊处理
+     - ✅ 无需维护可能不存在的 displayHint 字段
+
+4. **📝 修改文件**:
+   - `src/utils/relativeDateFormatter.ts` - 移除 displayHint 参数和优先返回逻辑
+   - `src/services/TimeHub.ts` - 移除 SetEventTimeInput.displayHint
+   - `src/components/FloatingToolbar/pickers/UnifiedDateTimePicker.tsx` - 移除 setDisplayHint 调用
+   - `src/components/PlanManager.tsx` - 移除 displayHint 读取和传递
+
+---
 
 ### v2.8.0 (2025-11-14) - 🚨 彻底移除 dayjs 日期计算依赖
 
@@ -197,6 +537,48 @@ TimeHoverCard({ startTime: startTimeStr })  // ✅ 使用已有的字符串变�
 - ✅ "下周二下午3点" → 2025-11-18（周二）15:00
 - ✅ 日历 18号 显示在"二"（周二）列
 - ✅ 所有词条计算正确
+
+3. **🆕 formatRelativeDate 大后天支持** (v2.9):
+   - **位置**: `src/utils/relativeDateFormatter.ts` L102-103
+   - **功能**: 扩展相对日期格式化以支持"大后天"
+   - **实现**:
+     ```typescript
+     // 相对日期判断
+     if (daysDiff === 0) return "今天";
+     if (daysDiff === 1) return "明天";
+     if (daysDiff === 2) return "后天";
+     if (daysDiff === 3) return "大后天"; // 🆕 v2.9
+     ```
+   - **应用场景**:
+     - DateMention 元素显示: `📅 大后天`
+     - PlanManager 时间列: `大后天 14:00`
+     - 悬浮卡片时间差提示: `当前时间已延后 3 天`
+   - **详见**: [DATEMENTION_V2.9_UPDATE.md](../features/DATEMENTION_V2.9_UPDATE.md)
+
+4. **🆕 EventLineSuffix 时间类型标识** (v2.9):
+   - **位置**: `src/components/Slate/EventLineSuffix.tsx` L44-63, L118-122
+   - **功能**: 在事件时间显示后添加彩色标签（开始/结束/截止）
+   - **标签规则**:
+     ```typescript
+     if (startTimeStr && endTimeStr && startTimeStr !== endTimeStr) {
+       timeLabel = '结束';  // 深灰色 #4b5563
+       timeLabelColor = '#4b5563';
+     } else if (startTimeStr && (!endTimeStr || startTimeStr === endTimeStr)) {
+       if (isDeadline) {
+         timeLabel = '截止';  // 深红色 #dc2626
+         timeLabelColor = '#dc2626';
+       } else {
+         timeLabel = '开始';  // 绿色 #10b981
+         timeLabelColor = '#10b981';
+       }
+     }
+     ```
+   - **显示效果**:
+     - 单一开始时间: `明天 14:00 开始` (绿色)
+     - 时间段: `明天 14:00-16:00 结束` (深灰)
+     - 任务截止: `周五 18:00 截止` (红色)
+   - **数据源**: 通过 `EventService.getEventById()` 获取 `isDeadline` 字段
+   - **详见**: [DATEMENTION_V2.9_UPDATE.md](../features/DATEMENTION_V2.9_UPDATE.md#%E6%97%B6%E9%97%B4%E7%B1%BB%E5%9E%8B%E6%A0%87%E8%AF%86)
 
 ### v2.7.4 (2025-11-13) - 截止时间关键词支持 + timeFieldState 优化 ⏰
 
@@ -1258,6 +1640,82 @@ docs/
 - ✅ 快捷按钮（明天/本周/下周等）
 - ✅ 实时预览显示
 - ✅ TimeHub 集成
+- ✅ @ 提及模式支持（v2.10 🆕）
+
+### 0.1.5 @ 提及模式 (v2.10 🆕)
+
+**使用场景**: 在 UnifiedSlateEditor 中输入 `@明天下午3点` 时弹出的 Picker
+
+**核心特点**:
+1. **累积式输入**: 用户先输入 `@明天`，Picker 弹出后继续输入 "下午3点"
+2. **实时解析**: `onSearchChange` 回调实时更新父组件的 `mentionText` 和解析结果
+3. **完整文本回传**: `onApplied` 回调传递完整的 `userInputText`（如 "明天下午3点"）
+4. **两次 Enter 确认**: 第一次解析预览，第二次插入 DateMention 节点
+
+**数据流**:
+```
+用户输入 @明天
+  ↓
+UnifiedSlateEditor 检测 @ → parseNaturalLanguage("明天")
+  ↓
+弹出 UnifiedDateTimePicker
+  - useTimeHub=true
+  - initialText="明天"
+  - initialStart=Date(明天 00:00)
+  - onSearchChange={handleMentionSearchChange}
+  ↓
+用户继续输入 "下午3点"
+  ↓
+searchInput = "明天下午3点"
+  ↓
+onChange → parseNaturalLanguage("明天下午3点")
+  ↓
+onSearchChange(text, { start: Date(明天 15:00), end: undefined })
+  ↓
+UnifiedSlateEditor 更新 mentionText 和 mentionInitialStart
+  ↓
+第一次 Enter → blur → 显示预览
+  ↓
+第二次 Enter → handleApply
+  ↓
+onApplied(startIso, endIso, allDay, "明天下午3点")
+  ↓
+handleMentionSelect(startStr, endStr, allDay, userInputText)
+  ↓
+插入 DateMention(displayHint="明天下午3点")
+```
+
+**关键代码**:
+```tsx
+// UnifiedSlateEditor.tsx - 使用配置
+<UnifiedDateTimePicker
+  useTimeHub={true}  // 🔧 必须为 true
+  initialText={mentionText}  // 🆕 传递初始文本
+  initialStart={mentionInitialStart}
+  initialEnd={mentionInitialEnd}
+  onSearchChange={handleMentionSearchChange}  // 🆕 实时更新
+  onApplied={handleMentionSelect}
+  onClose={handleMentionClose}
+/>
+
+// UnifiedSlateEditor.tsx - 实时更新回调
+const handleMentionSearchChange = useCallback((text: string, parsed: { start?: Date; end?: Date } | null) => {
+  setMentionText(text);
+  if (parsed && parsed.start) {
+    setMentionInitialStart(parsed.start);
+    setMentionInitialEnd(parsed.end);
+  }
+}, []);
+
+// UnifiedSlateEditor.tsx - 确认回调
+const handleMentionSelect = useCallback(async (startStr: string, endStr?: string, allDay?: boolean, userInputText?: string) => {
+  const finalUserText = userInputText || mentionText || '';
+  // ... 删除 @xxx 文本
+  // ... 插入 DateMention 节点，使用 finalUserText 作为 displayHint
+}, [mentionText]);
+```
+
+**详见**: [SLATE_EDITOR_PRD.md § 时间系统集成](./SLATE_EDITOR_PRD.md#时间系统集成-v22)
 
 ### 0.2 组件结构
 
@@ -1282,7 +1740,12 @@ docs/
       <input 
         className="search-input"
         placeholder="输入'明天下午3点'试试"
-        onKeyDown={(e) => e.key === 'Enter' && handleSearchBlur()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            handleSearchBlur(); // 第一次 Enter: 解析并预览
+            e.currentTarget.blur(); // 失焦以便第二次 Enter 确认
+          }
+        }}
       />
     </div>
     <button className="all-day-button">
@@ -1324,30 +1787,39 @@ docs/
 </div>
 ```
 
+**键盘操作** (v2.10 🆕):
+- **第一次 Enter**: 解析自然语言输入并显示预览
+- **第二次 Enter**: 确认并插入 DateMention 节点
+- **ESC**: 取消输入，关闭 Picker
+
 ---
 
 ### 0.2.5 初始化与数据映射 🔄
 
 #### 0.2.5.1 组件接口
 
-**Props 定义** (`UnifiedDateTimePicker.tsx` L20-29):
+**Props 定义** (`UnifiedDateTimePicker.tsx` L20-31):
 ```typescript
 interface UnifiedDateTimePickerProps {
   onSelect?: (start: string | null, end: string | null) => void;
   onClose?: () => void;
-  onApplied?: (startIso: string, endIso?: string, allDay?: boolean) => void;
+  onApplied?: (startIso: string, endIso?: string, allDay?: boolean, userInputText?: string) => void; // 🆕 v2.10
   eventId?: string;         // 可选：绑定事件ID时，将通过 TimeHub 读写
   useTimeHub?: boolean;     // 可选：默认 false，置为 true 时启用 TimeHub
   initialStart?: string | Date; // 当没有 eventId 或 TimeHub 尚未返回时的初始值
   initialEnd?: string | Date;
+  initialText?: string;     // 🆕 v2.10: 用户在 @ 后输入的初始文本（如 "明天"）
+  onSearchChange?: (text: string, parsed: { start?: Date; end?: Date } | null) => void; // 🆕 v2.10
 }
 ```
 
 **参数说明**:
 - **eventId**: 事件 ID，用于从 TimeHub 读取已保存的时间数据
-- **useTimeHub**: 是否启用 TimeHub 模式（默认 false）
+- **useTimeHub**: 是否启用 TimeHub 模式（默认 false），**@ 提及模式必须设为 true**
 - **initialStart/initialEnd**: 初始时间，作为 fallback（当 TimeHub 无数据时）
-- **onApplied**: 用户点击 Apply 后的回调函数
+- **initialText** 🆕: 用户在 @ 后输入的初始文本，作为 `searchInput` 的初始值
+- **onSearchChange** 🆕: 搜索框变化时的回调，用于实时更新父组件的解析结果
+- **onApplied**: 用户点击 Apply 后的回调函数，**第四个参数 `userInputText` 为完整的用户输入文本** 🆕
 
 #### 0.2.5.2 初始化数据源优先级
 
@@ -7804,6 +8276,777 @@ events.forEach(event => {
 localStorage.setItem('events', JSON.stringify(events));
 console.log('✅ 迁移完成');
 ```
+
+---
+
+## 附录 B: DateMention 与时间系统交互链路
+
+> **极其重要**: 本节详细说明 DateMention、TimeHub、UnifiedPicker、EditModal 等组件之间的数据流转机制。这是系统中最复杂的部分，必须严格遵守链路规则。
+
+### B.1 核心问题：链路断裂导致的时间丢失
+
+**问题现象**:
+- 用户输入 `@明天下午1点`，DateMention 显示正确 ✅
+- TimeHub 成功保存时间 `{startTime: '2025-11-16 13:00:00', endTime: ''}` ✅
+- **但 PlanItemTimeDisplay 不显示时间** ❌
+
+**根本原因**:
+DateMention 写入 TimeHub 后，Slate 保存时从 **DateMention 节点本身** 读取时间，而不是从 TimeHub 读取。DateMention 节点在插入时保存的是 `{startDate, endDate: undefined}`，TimeHub 更新后节点数据未同步。
+
+### B.2 链路 1: DateMention → TimeHub → Display 闭环
+
+#### B.2.1 数据流向
+
+```
+用户输入 @明天下午1点
+    ↓
+[1] UnifiedSlateEditor.tsx 解析
+    parseDaterDict() → {dateRange, timePeriod}
+    ↓
+[2] DateMention 节点插入
+    insertDateMention({
+      startDate: '2025-11-16 13:00:00',
+      endDate: undefined,  // ⚠️ 单时间点无 endDate
+      eventId: 'line-xxx'
+    })
+    ↓
+[3] handleConfirmMentionInsertion() 
+    调用 TimeHub.setEventTime()
+    ↓
+[4] TimeHub 处理
+    type = 'fixed' (因为 endDate 为 undefined)
+    timeSpec = {type: 'fixed', start: '...', end: undefined}
+    调用 EventService.updateEvent({
+      startTime: '2025-11-16 13:00:00',
+      endTime: '',  // ✅ 转换为空字符串
+    })
+    ↓
+[5] TimeHub.emit('timeUpdated')
+    通知所有订阅者
+    ↓
+[6] useEventTime Hook 接收通知
+    调用 getSnapshot(eventId)
+    ↓
+[7] PlanItemTimeDisplay 重新渲染
+    显示 "明天 13:00" ✅
+    ↓
+[8] DateMentionElement 重新渲染
+    useEventTime(eventId) 接收 TimeHub 更新
+    检测时间是否过期 (isOutdated)
+    ✅ 显示 originalText: "明天下午1点"
+    ⚠️ 如果过期: hover 显示浮窗
+       - 保留原样: 关闭浮窗
+       - 删除提及: Transforms.removeNodes()
+       - 更新时间: setNodes({startDate: start, endDate: end})
+```
+
+#### B.2.2 关键代码位置
+
+**[1] 解析时间**:
+```typescript
+// UnifiedSlateEditor.tsx:970
+const parsed = parseDaterDict(inputText);
+// → {dateRange: {...}, timePeriod: {hour: 13, minute: 0}}
+
+// 计算实际时间
+const startTime = new Date(baseDate);
+startTime.setHours(13, 0, 0, 0);
+// → Sun Nov 16 2025 13:00:00
+```
+
+**[2] 插入 DateMention 节点**:
+```typescript
+// helpers.ts:112
+const dateMentionNode: DateMentionNode = {
+  type: 'dateMention',
+  startDate: '2025-11-16 13:00:00',  // ✅ 本地时间字符串
+  endDate: undefined,  // ⚠️ 单时间点为 undefined
+  eventId: 'line-xxx',
+  originalText: '明天下午1点',
+  children: [{ text: '' }],
+};
+```
+
+**[3] 写入 TimeHub**:
+```typescript
+// UnifiedSlateEditor.tsx:1237
+await TimeHub.setEventTime(
+  parentEventId,
+  startStr,  // '2025-11-16 13:00:00'
+  endStr     // undefined
+);
+```
+
+**[4] TimeHub 处理**:
+```typescript
+// TimeHub.ts:181-207
+const timeSpec: TimeSpec = type === 'fixed' 
+  ? { type: 'fixed', start: normalizedStart, end: undefined }
+  : { type: 'range', start: normalizedStart, end: normalizedEnd };
+
+await EventService.updateEvent(eventId, {
+  startTime: timeSpec.start,
+  endTime: timeSpec.end ?? '',  // ✅ undefined → ''
+  isAllDay: timeSpec.allDay
+});
+```
+
+**[5-7] 响应式更新**:
+```typescript
+// useEventTime.ts:22
+TimeHub.subscribe(eventId, () => {
+  console.log('[useEventTime 收到通知]', { eventId });
+});
+
+// PlanManager.tsx:74
+const eventTime = useEventTime(item.id);
+const startTime = eventTime.start ? new Date(eventTime.start) : null;
+// → startTime: Sun Nov 16 2025 13:00:00 ✅
+```
+
+#### B.2.3 DateMentionElement 过期检测与用户交互
+
+**过期检测逻辑**:
+```typescript
+// DateMentionElement.tsx:70-106
+const isOutdated = useMemo(() => {
+  // 1. 节点已标记过期，直接使用
+  if (dateMentionElement.isOutdated) return true;
+  
+  // 2. 实时计算: TimeHub 时间 ≠ DateMention 节点时间
+  if (!start || !dateMentionElement.startDate) return false;
+  
+  return isDateMentionOutdated(
+    dateMentionElement.startDate,  // Mention 节点时间
+    start  // TimeHub 最新时间
+  );
+}, [start, dateMentionElement.startDate, dateMentionElement.isOutdated]);
+```
+
+**过期原因**:
+- 用户在 TimePicker 修改了时间 → TimeHub 更新 → DateMention 节点未更新
+- 用户在 EditModal 修改了时间 → TimeHub 监听 eventsUpdated → DateMention 节点未更新
+
+**用户交互 (Hover 触发浮窗)**:
+
+```
+用户 hover 过期的 DateMention
+    ↓
+显示浮窗 (Popover)
+┌─────────────────────────────┐
+│ ⚠️ 时间已更新                │
+│                             │
+│ 📅 明天 13:00               │
+│    11-16 周六 13:00         │
+│                             │
+│ [保留原样] [删除提及] [更新时间] │
+└─────────────────────────────┘
+    │           │           │
+    ▼           ▼           ▼
+  关闭浮窗    删除节点   更新节点时间
+              (remove)   (setNodes)
+```
+
+**三个操作的代码实现**:
+
+**[1] 保留原样**:
+```typescript
+// 关闭浮窗，不做任何修改
+setShowOutdatedPopover(false);
+// DateMention 继续显示 originalText: "明天下午1点"
+// TimeHub 保持: {start: '2025-11-16 13:00:00', end: ''}
+```
+
+**[2] 删除提及**:
+```typescript
+const handleRemove = async () => {
+  const editor = (window as any).__slateEditor;
+  const path = ReactEditor.findPath(editor, element);
+  Transforms.removeNodes(editor, { at: path });
+  // ✅ DateMention 节点被删除
+  // ✅ TimeHub 数据保留 (其他地方可能还在用)
+};
+```
+
+**[3] 更新时间**:
+```typescript
+const handleUpdateToCurrentTime = async () => {
+  const path = ReactEditor.findPath(editor, element);
+  Transforms.setNodes(
+    editor,
+    {
+      startDate: start,  // 使用 TimeHub 的最新时间
+      endDate: end || start,
+      isOutdated: false,  // 标记为不过期
+    } as Partial<DateMentionNode>,
+    { at: path }
+  );
+  // ✅ DateMention 节点同步到 TimeHub 时间
+  // ✅ 显示文本变为格式化后的时间 (如 "明天 13:00")
+};
+```
+
+#### B.2.4 ⚠️ 链路断裂点：Slate 保存覆盖 TimeHub 数据
+
+**问题代码 (已修复)**:
+```typescript
+// serialization.ts:397-411 (旧版本)
+const dateMention = fragment.find(n => n.type === 'dateMention');
+if (dateMention) {
+  item.startTime = dateMention.startDate;  // '2025-11-16 13:00:00'
+  item.endTime = dateMention.endDate || undefined;  // ❌ undefined!
+}
+// → EventService 保存: {startTime: '...', endTime: undefined}
+// → TimeHub 数据被覆盖，时间丢失！
+```
+
+**修复后的代码**:
+```typescript
+// serialization.ts:398-427 (v2.9)
+// ✅ 优先从 TimeHub 读取最新时间
+const timeSnapshot = TimeHub.getSnapshot(baseId);
+if (timeSnapshot.start || timeSnapshot.end) {
+  // TimeHub 有数据，使用 TimeHub 的时间（最新）
+  item.startTime = timeSnapshot.start || undefined;
+  item.endTime = timeSnapshot.end || undefined;
+  console.log('[TimeHub 提供时间]', {
+    eventId: baseId.slice(-10),
+    startTime: timeSnapshot.start,  // '2025-11-16 13:00:00'
+    endTime: timeSnapshot.end,       // ''
+  });
+} else if (fragment) {
+  // TimeHub 无数据，尝试从 DateMention 读取（向后兼容）
+  const dateMention = fragment.find(n => n.type === 'dateMention');
+  if (dateMention) {
+    item.startTime = dateMention.startDate;
+    item.endTime = dateMention.endDate || undefined;
+  }
+}
+```
+
+**修复原理**:
+- **DateMention 节点**: 只是触发器，存储的是**插入时的初始时间**
+- **TimeHub**: 存储**最新的确认时间**（用户可能在 Picker 中修改）
+- **优先级**: TimeHub > DateMention 节点
+
+---
+
+### B.3 链路 2: UnifiedPicker → TimeHub → Display 闭环
+
+#### B.3.1 数据流向
+
+```
+用户点击时间图标
+    ↓
+[1] FloatingToolbar 打开 UnifiedDateTimePicker
+    initialStart = eventTime.start || item.startTime
+    initialEnd = eventTime.end || item.endTime
+    ↓
+[2] UnifiedPicker 初始化
+    使用 TimeHub.getSnapshot(eventId) 优先
+    fallback 到 initialStart/initialEnd
+    ↓
+[3] 用户修改时间
+    startDate/endDate state 更新
+    ↓
+[4] handleConfirm()
+    调用 onConfirm(startStr, endStr)
+    ↓
+[5] FloatingToolbar.handleTimeConfirm()
+    调用 TimeHub.setEventTime(eventId, start, end)
+    ↓
+[6] TimeHub 处理
+    与 DateMention 链路相同（见 B.2.1 [4-7]）
+    ↓
+[7] Display 更新
+    PlanItemTimeDisplay、DateMentionElement 同步刷新 ✅
+```
+
+#### B.3.2 关键代码位置
+
+**[1] 打开 Picker**:
+```typescript
+// FloatingToolbar.tsx:450
+<UnifiedDateTimePicker
+  isOpen={showTimePicker}
+  onConfirm={handleTimeConfirm}
+  eventId={currentEventId}
+  initialStart={eventTime.start || item.startTime}
+  initialEnd={eventTime.end || item.endTime}
+  // ✅ initialStart/End 只是 fallback
+/>
+```
+
+**[2] Picker 初始化**:
+```typescript
+// UnifiedDateTimePicker.tsx:150
+useEffect(() => {
+  if (!isOpen || !eventId) return;
+  
+  // ✅ 优先从 TimeHub 读取
+  const timeSnapshot = TimeHub.getSnapshot(eventId);
+  
+  if (timeSnapshot.start || timeSnapshot.end) {
+    // TimeHub 有数据，使用 TimeHub
+    setStartDate(timeSnapshot.start ? new Date(timeSnapshot.start) : null);
+    setEndDate(timeSnapshot.end ? new Date(timeSnapshot.end) : null);
+  } else if (initialStart || initialEnd) {
+    // TimeHub 无数据，使用 initialStart/End
+    setStartDate(initialStart ? new Date(initialStart) : null);
+    setEndDate(initialEnd ? new Date(initialEnd) : null);
+  }
+}, [isOpen, eventId, initialStart, initialEnd]);
+```
+
+**[5] 确认时间**:
+```typescript
+// FloatingToolbar.tsx:360
+const handleTimeConfirm = async (startStr?: string, endStr?: string) => {
+  if (!currentEventId) return;
+  
+  await TimeHub.setEventTime(currentEventId, startStr, endStr);
+  setShowTimePicker(false);
+};
+```
+
+#### B.3.3 时间格式处理
+
+**输入格式** (用户选择):
+```typescript
+// UnifiedDateTimePicker 内部 state
+startDate: Date | null  // Sun Nov 16 2025 13:00:00
+endDate: Date | null    // Sun Nov 16 2025 15:00:00
+```
+
+**转换为字符串**:
+```typescript
+// UnifiedDateTimePicker.tsx:handleConfirm()
+const startStr = startDate 
+  ? formatTimeForStorage(startDate, false, isAllDay)
+  : undefined;
+// → '2025-11-16 13:00:00'
+
+const endStr = endDate 
+  ? formatTimeForStorage(endDate, false, isAllDay)
+  : undefined;
+// → '2025-11-16 15:00:00' 或 undefined
+```
+
+**TimeHub 存储**:
+```typescript
+// TimeHub.setEventTime()
+await EventService.updateEvent(eventId, {
+  startTime: startStr,        // '2025-11-16 13:00:00'
+  endTime: endStr ?? '',      // '2025-11-16 15:00:00' 或 ''
+  isAllDay: isAllDay
+});
+```
+
+---
+
+### B.4 链路 3: EditModal → TimeHub → Display 闭环
+
+#### B.4.1 数据流向
+
+```
+用户在 EditModal 修改时间
+    ↓
+[1] EditModal 内部 UnifiedDateTimePicker
+    initialStart = event.startTime
+    initialEnd = event.endTime
+    ↓
+[2] 用户修改时间
+    ↓
+[3] handleTimeChange()
+    setEditedEvent({ 
+      ...event, 
+      startTime: newStart, 
+      endTime: newEnd 
+    })
+    ↓
+[4] 用户点击保存
+    ↓
+[5] handleSaveEdit()
+    调用 EventService.updateEvent()
+    ↓
+[6] EventService 触发 eventsUpdated
+    ↓
+[7] TimeHub 监听 eventsUpdated
+    更新内部缓存
+    调用 emit(eventId)
+    ↓
+[8] Display 更新
+    与前述链路相同 ✅
+```
+
+#### B.4.2 关键差异
+
+**EditModal 不直接调用 TimeHub.setEventTime()**:
+```typescript
+// EditModal.tsx
+const handleTimeChange = (startStr?: string, endStr?: string) => {
+  setEditedEvent({
+    ...editedEvent,
+    startTime: startStr || undefined,
+    endTime: endStr || undefined,
+  });
+};
+
+// 保存时直接更新 EventService
+const handleSaveEdit = async () => {
+  await EventService.updateEvent(editedEvent.id, {
+    title: editedEvent.title,
+    startTime: editedEvent.startTime,
+    endTime: editedEvent.endTime,
+    // ... 其他字段
+  });
+};
+```
+
+**TimeHub 自动同步**:
+```typescript
+// TimeHub.ts:构造函数
+window.addEventListener('eventsUpdated', (e: any) => {
+  const { eventId, updates } = e.detail;
+  
+  if (updates.startTime !== undefined || updates.endTime !== undefined) {
+    // 更新缓存
+    this.timeCache.set(eventId, {
+      start: updates.startTime || '',
+      end: updates.endTime || '',
+      allDay: updates.isAllDay || false
+    });
+    
+    // 通知订阅者
+    this.emit(eventId);
+  }
+});
+```
+
+---
+
+### B.5 时间数据优先级规则
+
+**所有读取操作的优先级**:
+
+```
+1. TimeHub.getSnapshot(eventId)     [最高优先级]
+   └─ 用户最近一次确认的时间
+   
+2. EventService.getEvent(eventId)   [中等优先级]
+   └─ 持久化存储的时间
+   
+3. DateMention 节点数据            [最低优先级，仅作 fallback]
+   └─ 插入时的初始时间（可能已过期）
+```
+
+**示例场景**:
+
+```typescript
+// ❌ 错误：直接从 DateMention 读取
+const dateMention = fragment.find(n => n.type === 'dateMention');
+item.startTime = dateMention.startDate;  // 可能是旧数据！
+
+// ✅ 正确：优先从 TimeHub 读取
+const timeSnapshot = TimeHub.getSnapshot(eventId);
+if (timeSnapshot.start) {
+  item.startTime = timeSnapshot.start;  // 最新数据
+} else if (dateMention) {
+  item.startTime = dateMention.startDate;  // fallback
+}
+```
+
+---
+
+### B.6 调试清单
+
+当时间显示不正确时，按以下顺序排查：
+
+#### ✅ 检查点 1: TimeHub 是否成功写入
+
+```typescript
+// 打开浏览器控制台，输入：
+TimeHub.getSnapshot('line-xxx')
+// 期望输出: {start: '2025-11-16 13:00:00', end: '', allDay: false}
+```
+
+#### ✅ 检查点 2: EventService 是否保存
+
+```typescript
+// 控制台搜索日志：
+[EventService] ✅ 更新成功: {startTime: '...', endTime: '...'}
+```
+
+#### ✅ 检查点 3: useEventTime Hook 是否接收通知
+
+```typescript
+// 控制台搜索日志：
+[useEventTime 收到通知] {eventId: 'line-xxx'}
+[useEventTime.getSnapshot] {snapshot: {start: '...', end: '...'}}
+```
+
+#### ✅ 检查点 4: PlanItemTimeDisplay 是否收到数据
+
+```typescript
+// 控制台搜索日志：
+[PlanItemTimeDisplay] 时间数据 {
+  eventTime.start: '2025-11-16 13:00:00',
+  startTime: Sun Nov 16 2025 13:00:00,
+  是否显示: true  // ✅ 必须为 true
+}
+```
+
+#### ❌ 常见错误：是否显示: false
+
+**原因**:
+```typescript
+// PlanManager.tsx:74
+const shouldDisplay = !!(startTime || dueDate);
+// startTime 为 null → shouldDisplay = false
+```
+
+**排查**:
+1. `eventTime.start` 是否为空？→ TimeHub 未写入
+2. `item.startTime` 是否为空？→ EventService 未保存
+3. `new Date(eventTime.start)` 是否为 Invalid Date？→ 时间格式错误
+
+---
+
+### B.7 时间格式标准化
+
+**所有时间字符串必须使用空格分隔符**:
+
+```typescript
+// ✅ 正确
+'2025-11-16 13:00:00'  // formatTimeForStorage() 输出
+'2025-11-16 00:00:00'  // 全天事件开始时间
+
+// ❌ 错误
+'2025-11-16T13:00:00.000Z'     // ISO 8601 (禁止)
+'2025-11-16T13:00:00+08:00'    // 包含时区 (禁止)
+new Date().toISOString()       // 会生成 T 分隔符 (禁止)
+```
+
+**转换函数**:
+```typescript
+// 标准转换函数
+function formatTimeForStorage(
+  date: Date, 
+  useEndOfDay: boolean = false, 
+  isAllDay: boolean = false
+): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  
+  if (isAllDay || useEndOfDay) {
+    const h = useEndOfDay ? '23' : '00';
+    const min = useEndOfDay ? '59' : '00';
+    const s = useEndOfDay ? '59' : '00';
+    return `${y}-${m}-${d} ${h}:${min}:${s}`;
+  }
+  
+  const h = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  const s = String(date.getSeconds()).padStart(2, '0');
+  return `${y}-${m}-${d} ${h}:${min}:${s}`;
+}
+```
+
+---
+
+### B.8 空字符串 vs undefined 规则
+
+**TimeHub 内部处理**:
+```typescript
+// TimeHub.setEventTime()
+const timeSpec: TimeSpec = type === 'fixed' 
+  ? { type: 'fixed', start: normalizedStart, end: undefined }
+  : { type: 'range', start: normalizedStart, end: normalizedEnd };
+
+// 保存到 EventService 时转换
+await EventService.updateEvent(eventId, {
+  startTime: timeSpec.start,
+  endTime: timeSpec.end ?? '',  // ✅ undefined → ''
+});
+```
+
+**存储规则**:
+- **EventService 保存**: `endTime: ''` (空字符串)
+- **TimeHub 缓存**: `end: ''` (空字符串)
+- **useEventTime 返回**: `end: ''` (空字符串)
+
+**验证规则**:
+```typescript
+// eventValidation.ts:38-46
+const hasStartTime = event.startTime !== undefined && event.startTime !== '';
+const hasEndTime = event.endTime !== undefined && event.endTime !== '';
+
+if ((hasStartTime && !hasEndTime && event.endTime !== '') || 
+    (!hasStartTime && hasEndTime)) {
+  errors.push('Time must have both start and end, or neither');
+}
+// ✅ 允许: {startTime: '...', endTime: ''}
+// ❌ 拒绝: {startTime: '...', endTime: undefined}
+```
+
+---
+
+### B.9 DateMention 显示与同步策略
+
+#### B.9.1 显示优先级
+
+**DateMention 节点显示逻辑** (DateMentionElement.tsx:138-188):
+
+```typescript
+// 优先级 1: 用户原始输入文本
+if (dateMentionElement.originalText) {
+  return dateMentionElement.originalText;  // "明天下午1点"
+}
+
+// 优先级 2: children 文本 (旧数据兼容)
+const childrenText = element.children?.[0]?.text;
+if (childrenText) return childrenText;
+
+// 优先级 3: TimeHub 格式化时间
+if (start) {
+  return formatRelativeDate(new Date(start));  // "明天 13:00"
+}
+
+// 优先级 4: DateMention 节点自身数据
+if (dateMentionElement.startDate) {
+  return formatRelativeDate(new Date(dateMentionElement.startDate));
+}
+
+return '未知日期';
+```
+
+**设计原则**:
+- ✅ **保持用户输入的语义**: "明天下午1点" 比 "11-16 13:00" 更易读
+- ✅ **提供可见性**: 通过 emoji 和颜色区分状态
+  - 📅 绿色边框: 正常同步
+  - ⚠️ 红色背景: 时间过期,需要用户确认
+- ✅ **提供可控性**: Hover 浮窗让用户选择处理方式
+
+#### B.9.2 同步策略对比
+
+| 场景 | DateMention 显示 | TimeHub 数据 | 是否过期 | 用户操作 |
+|------|-----------------|-------------|---------|----------|
+| 刚插入 @明天下午1点 | "明天下午1点" | `{start: '2025-11-16 13:00:00', end: ''}` | ❌ | 无 |
+| 在 Picker 改为 14:00 | "明天下午1点" | `{start: '2025-11-16 14:00:00', end: ''}` | ✅ | Hover 选择 |
+| 点击"更新时间" | "明天 14:00" | `{start: '2025-11-16 14:00:00', end: ''}` | ❌ | 无 |
+| 点击"保留原样" | "明天下午1点" | `{start: '2025-11-16 14:00:00', end: ''}` | ✅ | Hover 选择 |
+| 点击"删除提及" | (节点已删除) | `{start: '2025-11-16 14:00:00', end: ''}` | - | 无 |
+
+**关键点**:
+- DateMention 和 TimeHub **可以不同步** (允许显示与实际时间不一致)
+- 用户**明确选择**后才同步 (点击"更新时间")
+- TimeHub 是**事件的真实时间**, DateMention 只是**显示提示**
+
+---
+
+### B.10 完整数据流图
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                      用户操作入口                              │
+├─────────────┬─────────────┬──────────────┬──────────────────┤
+│ DateMention │ UnifiedPicker│  EditModal   │  其他来源         │
+│ @明天下午1点 │ 时间选择器    │ 编辑弹窗      │ (Outlook同步等)   │
+└──────┬──────┴──────┬──────┴──────┬───────┴──────────┬───────┘
+       │             │             │                  │
+       │ [1] 解析    │ [2] 用户选择 │ [3] 直接修改      │ [4] 同步导入
+       │             │             │                  │
+       ▼             ▼             ▼                  ▼
+   ┌────────────────────────────────────────────────────────┐
+   │             TimeHub.setEventTime()                     │
+   │  - 规范化时间格式 (本地时间字符串)                        │
+   │  - 判断 type: 'fixed' | 'range'                       │
+   │  - 构建 TimeSpec                                       │
+   └─────────────────────┬──────────────────────────────────┘
+                         │
+                         ▼
+   ┌────────────────────────────────────────────────────────┐
+   │         EventService.updateEvent()                     │
+   │  - 验证时间字段 (允许 endTime = '')                     │
+   │  - 保存到 localStorage                                 │
+   │  - 触发 'eventsUpdated' 事件                           │
+   └─────────────────────┬──────────────────────────────────┘
+                         │
+         ┌───────────────┴───────────────┐
+         │                               │
+         ▼                               ▼
+   ┌──────────────┐              ┌──────────────┐
+   │ TimeHub.emit │              │ TimeHub 监听  │
+   │   (主动通知)  │              │ eventsUpdated │
+   └──────┬───────┘              └──────┬────────┘
+          │                             │
+          │                             ▼
+          │                      ┌──────────────┐
+          │                      │ 更新内部缓存  │
+          │                      └──────┬────────┘
+          │                             │
+          └─────────────┬───────────────┘
+                        │
+                        ▼
+   ┌────────────────────────────────────────────────────────┐
+   │         TimeHub.emit(eventId) 通知订阅者                │
+   └─────────────────────┬──────────────────────────────────┘
+                         │
+         ┌───────────────┼───────────────┐
+         │               │               │
+         ▼               ▼               ▼
+   ┌─────────┐    ┌─────────┐    ┌─────────────┐
+   │useEvent │    │DateMen- │    │UnifiedPicker│
+   │Time Hook│    │tionElem │    │ (重新初始化) │
+   └────┬────┘    └────┬────┘    └─────────────┘
+        │              │
+        ▼              ▼
+   ┌─────────┐    ┌─────────┐
+   │PlanItem │    │DateMen- │
+   │TimeDis- │    │tion显示  │
+   │play     │    │更新      │
+   └─────────┘    └─────────┘
+        │              │
+        └──────┬───────┘
+               │
+               ▼
+         ✅ 用户看到
+         正确的时间显示
+```
+
+---
+
+### B.11 关键原则总结
+
+1. **TimeHub 是单一真相来源 (Single Source of Truth)**
+   - 所有时间读取优先从 TimeHub.getSnapshot()
+   - DateMention 节点只是触发器和显示提示
+   - **允许 DateMention 显示与 TimeHub 不一致** (用户未确认更新时)
+
+2. **时间格式统一**
+   - 存储: 本地时间字符串 `'YYYY-MM-DD HH:mm:ss'`
+   - 禁止: ISO 8601 格式 `'YYYY-MM-DDTHH:mm:ss.sssZ'`
+
+3. **空值处理**
+   - 单时间点: `{startTime: '...', endTime: ''}`
+   - 无时间: `{startTime: undefined, endTime: undefined}`
+   - 禁止: `{startTime: '...', endTime: undefined}` (验证失败)
+
+4. **响应式更新**
+   - TimeHub.emit() → useEventTime → 组件自动刷新
+   - 不需要手动触发 React state 更新
+   - **DateMentionElement 通过 useEventTime 监听,但显示 originalText**
+
+5. **优先级规则**
+   - **读取数据**: TimeHub > EventService > DateMention 节点
+   - **显示文本**: originalText > TimeHub 格式化 > 节点数据
+   - **过期检测**: TimeHub.start ≠ DateMention.startDate
+
+6. **用户交互原则**
+   - **非侵入性**: 过期时不自动更新,用 Hover 提示
+   - **可控性**: 用户选择"保留原样"/"更新时间"/"删除提及"
+   - **可见性**: 🟢正常 / 🔴过期,清晰的视觉反馈
 
 ---
 

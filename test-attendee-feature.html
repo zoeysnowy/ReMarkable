@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>参会人功能测试</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      padding: 40px;
+      background: #f5f5f5;
+    }
+    .test-container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 {
+      margin-top: 0;
+      color: #1a1a1a;
+    }
+    .instructions {
+      background: #f0f9ff;
+      border-left: 4px solid #1890ff;
+      padding: 16px;
+      margin: 20px 0;
+    }
+    .instructions h2 {
+      margin-top: 0;
+      font-size: 16px;
+      color: #1890ff;
+    }
+    .test-section {
+      margin: 30px 0;
+      padding: 20px;
+      background: #fafafa;
+      border-radius: 6px;
+    }
+    .console-output {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 16px;
+      border-radius: 4px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 13px;
+      max-height: 300px;
+      overflow-y: auto;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="test-container">
+    <h1>🧪 参会人功能测试页面</h1>
+    
+    <div class="instructions">
+      <h2>📋 测试步骤</h2>
+      <ol>
+        <li>在您的项目中临时替换 AttendeeDisplay 为 AttendeeDisplayDebug</li>
+        <li>打开浏览器控制台（F12）</li>
+        <li>点击任意参会人名字</li>
+        <li>观察控制台输出和页面变化</li>
+      </ol>
+    </div>
+
+    <div class="test-section">
+      <h3>预期行为</h3>
+      <ul>
+        <li>✅ 参会人名字应该有<span style="color: blue; border: 1px solid blue; padding: 2px;">蓝色边框</span></li>
+        <li>✅ 整个组件应该有<span style="color: red; border: 2px solid red; padding: 2px;">红色边框</span></li>
+        <li>✅ 鼠标悬浮时，控制台输出 "Mouse entered"</li>
+        <li>✅ 点击时，控制台输出 "CLICK EVENT TRIGGERED"</li>
+        <li>✅ 点击后，下方显示黄色背景的 "搜索模式已激活！" 面板</li>
+      </ul>
+    </div>
+
+    <div class="test-section">
+      <h3>如何临时替换为调试版本</h3>
+      <p>在 <code>EventEditModalV2Demo.tsx</code> 中：</p>
+      <pre style="background: #f5f5f5; padding: 12px; border-radius: 4px; overflow-x: auto;"><code>// 将这一行：
+import { AttendeeDisplay } from './common/AttendeeDisplay';
+
+// 临时改为：
+import { AttendeeDisplayDebug as AttendeeDisplay } from './common/AttendeeDisplayDebug';
+
+// 使用时保持不变：
+&lt;AttendeeDisplay
+  event={formData as any}
+  currentUserEmail="current.user@company.com"
+  onChange={...}
+/&gt;</code></pre>
+    </div>
+
+    <div class="test-section">
+      <h3>可能的问题诊断</h3>
+      
+      <h4>问题 1: 完全没有渲染（看不到红色边框）</h4>
+      <ul>
+        <li>❌ 组件导入失败</li>
+        <li>❌ formData 数据格式错误</li>
+        <li>❌ React 渲染错误</li>
+        <li>🔧 检查控制台是否有红色错误信息</li>
+      </ul>
+
+      <h4>问题 2: 渲染了但点击无反应</h4>
+      <ul>
+        <li>❌ onClick 事件被父元素拦截</li>
+        <li>❌ CSS z-index 问题</li>
+        <li>❌ pointer-events 被禁用</li>
+        <li>🔧 查看控制台是否有 "onClick handler called" 输出</li>
+      </ul>
+
+      <h4>问题 3: 点击有输出但搜索框不显示</h4>
+      <ul>
+        <li>❌ 搜索框被父容器遮挡（overflow: hidden）</li>
+        <li>❌ z-index 太低</li>
+        <li>❌ position 样式问题</li>
+        <li>🔧 调试版本使用 absolute + 黄色背景 + z-index: 9999，应该能看到</li>
+      </ul>
+
+      <h4>问题 4: 悬浮无反应</h4>
+      <ul>
+        <li>❌ Tippy.js 未加载</li>
+        <li>❌ ContactPreviewCard 组件有错误</li>
+        <li>🔧 调试版本暂时移除了 Tippy，只测试基础点击功能</li>
+      </ul>
+    </div>
+
+    <div class="test-section">
+      <h3>控制台输出示例</h3>
+      <div class="console-output" id="console-example">
+[AttendeeDisplay] Component mounted/updated {event: {...}, currentUserEmail: "..."}
+[AttendeeDisplay] Initializing participants from event: {...}
+[AttendeeDisplay] Adding organizer: {name: "Zoey Gong", ...}
+[AttendeeDisplay] Adding attendees: [{...}, {...}]
+[AttendeeDisplay] Final participants: [3]
+[AttendeeDisplay] Rendering with participants: [...]
+
+<span style="color: #4ec9b0;">// 鼠标悬浮时：</span>
+[AttendeeDisplay] Mouse entered: Zoey Gong
+
+<span style="color: #4ec9b0;">// 点击时：</span>
+[AttendeeDisplay] ===== CLICK EVENT TRIGGERED =====
+[AttendeeDisplay] Clicked participant index: 0
+[AttendeeDisplay] Clicked participant: {name: "Zoey Gong", ...}
+[AttendeeDisplay] onClick handler called for index: 0
+[AttendeeDisplay] Event object: MouseEvent {...}
+[AttendeeDisplay] Search mode set to true
+      </div>
+    </div>
+
+    <div class="test-section" style="background: #fff7e6; border: 1px solid #ffa940;">
+      <h3>⚠️ 重要提示</h3>
+      <p>测试完成后，记得将导入改回正式版本：</p>
+      <pre style="background: #f5f5f5; padding: 12px; border-radius: 4px;"><code>import { AttendeeDisplay } from './common/AttendeeDisplay';</code></pre>
+    </div>
+  </div>
+
+  <script>
+    // 自动滚动控制台输出示例
+    const consoleExample = document.getElementById('console-example');
+    let scrollPos = 0;
+    setInterval(() => {
+      if (scrollPos < consoleExample.scrollHeight - consoleExample.clientHeight) {
+        scrollPos += 20;
+        consoleExample.scrollTop = scrollPos;
+      } else {
+        scrollPos = 0;
+      }
+    }, 3000);
+  </script>
+</body>
+</html>

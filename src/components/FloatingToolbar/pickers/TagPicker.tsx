@@ -4,14 +4,18 @@
  */
 
 import React, { useRef, useCallback } from 'react';
+import { Editor } from 'slate';
 import { HierarchicalTagPicker, HierarchicalTag } from '../../shared';
+import { insertTag } from '../../UnifiedSlateEditor/helpers';
+import { TagService } from '../../../services/TagService';
 
 interface TagPickerProps {
   availableTags: HierarchicalTag[];
   selectedTags: string[];
   onSelect: (tagIds: string[]) => void;
   onClose: () => void;
-  editorMode?: 'title' | 'description'; // 🆕 编辑器模式
+  editorMode?: 'title' | 'eventlog' | 'description'; // 🆕 编辑器模式
+  slateEditorRef?: React.RefObject<Editor>; // 🆕 Slate Editor 引用
 }
 
 export const TagPicker: React.FC<TagPickerProps> = ({
@@ -20,26 +24,108 @@ export const TagPicker: React.FC<TagPickerProps> = ({
   onSelect,
   onClose,
   editorMode,
+  slateEditorRef,
 }) => {
-  // 源头去抖：在极短时间内，若选择结果未变化，则不重复触发
-  const lastEmitRef = useRef<{ key: string; time: number }>({ key: '', time: 0 });
-
+  const prevSelectedTagsRef = React.useRef<string[]>(selectedTags);
+  
+  // 🔧 多选模式：检测新增标签并插入
   const handleSelectionChange = useCallback((ids: string[]) => {
-    const key = ids.slice().sort().join(',');
-    const now = Date.now();
-    if (lastEmitRef.current.key === key && now - lastEmitRef.current.time < 300) {
+    onSelect(ids); // 更新状态
+    
+    const editor = slateEditorRef?.current;
+    if (!editor) {
+      console.warn('[TagPicker] handleSelectionChange: 缺少 Slate Editor 引用');
       return;
     }
-    lastEmitRef.current = { key, time: now };
-    onSelect(ids);
-  }, [onSelect]);
+    
+    // 计算新增标签
+    const addedIds = ids.filter(id => !prevSelectedTagsRef.current.includes(id));
+    prevSelectedTagsRef.current = ids;
+    
+    if (addedIds.length === 0) return;
+    
+    // 插入最新新增的标签
+    const insertId = addedIds[addedIds.length - 1];
+    const tag = TagService.getTagById(insertId);
+    if (!tag) {
+      console.warn('[TagPicker] 找不到标签', insertId);
+      return;
+    }
+    
+    const isDescriptionMode = editorMode === 'description' || editorMode === 'eventlog';
+    
+    console.log('[TagPicker] 多选插入标签', {
+      tagId: insertId,
+      tagName: tag.name,
+      isDescriptionMode,
+    });
+    
+    // 插入到 Slate editor
+    insertTag(
+      editor,
+      insertId,
+      tag.name,
+      tag.color || '#666',
+      tag.emoji || '',
+      isDescriptionMode
+    );
+  }, [onSelect, slateEditorRef, editorMode]);
+  
+  // 同步外部 selectedTags 变化
+  React.useEffect(() => {
+    prevSelectedTagsRef.current = selectedTags;
+  }, [selectedTags]);
+  
+  // 🆕 Enter 键确认：直接插入单个标签到 Slate editor
+  const handleConfirm = useCallback((tagId: string) => {
+    console.log('[TagPicker] handleConfirm 被调用', tagId);
+    
+    const editor = slateEditorRef?.current;
+    if (!editor) {
+      console.warn('[TagPicker] 缺少 Slate Editor 引用');
+      return;
+    }
+    
+    const tag = TagService.getTagById(tagId);
+    if (!tag) {
+      console.warn('[TagPicker] 找不到标签', tagId);
+      return;
+    }
+    
+    const isDescriptionMode = editorMode === 'description' || editorMode === 'eventlog';
+    
+    console.log('[TagPicker] 准备插入标签', {
+      tagId,
+      tagName: tag.name,
+      isDescriptionMode,
+    });
+    
+    // 直接调用 insertTag 插入到 Slate editor
+    const success = insertTag(
+      editor,
+      tagId,
+      tag.name,
+      tag.color || '#666',
+      tag.emoji || '',
+      isDescriptionMode
+    );
+    
+    console.log('[TagPicker] insertTag 结果', { success });
+    
+    if (success) {
+      // Slate 会自动触发 onChange → UnifiedSlateEditor.onChange → PlanManager.onChange
+      // 无需手动调用 onSelect
+      onClose(); // 关闭 Picker
+    }
+  }, [slateEditorRef, editorMode, onClose]);
 
   return (
-    <div className={`floating-toolbar-tag-picker ${editorMode === 'description' ? 'description-mode' : ''}`}>
+    <div className={`floating-toolbar-tag-picker ${editorMode === 'eventlog' ? 'eventlog-mode' : ''}`}>
       <HierarchicalTagPicker
         availableTags={availableTags}
         selectedTagIds={selectedTags}
         onSelectionChange={handleSelectionChange}
+        onConfirm={handleConfirm}
         multiple={true}
         searchable={true}
         showSelectedChips={false}

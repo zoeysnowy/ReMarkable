@@ -2785,6 +2785,7 @@ private getUserSettings(): any {
               ...newEvent,
               id: existingEvent.id,  // 保留本地 ID（如 timer-tag-...）
               tagId: existingEvent.tagId || newEvent.tagId,  // 保留 tagId
+              eventlog: existingEvent.eventlog || newEvent.eventlog,  // 🆕 保留本地的 eventlog 字段（富文本）
               syncStatus: 'synced',  // 标记为已同步
             };
             
@@ -2831,6 +2832,7 @@ private getUserSettings(): any {
             ...events[eventIndex], // 🔧 保留所有原有字段（包括source和calendarId）
             title: action.data.subject || '',
             description: cleanDescription, // 直接使用清理后的内容，不添加同步备注
+            // eventlog: 🆕 不更新 eventlog，保留本地的富文本内容
             startTime: this.safeFormatDateTime(action.data.start?.dateTime || action.data.start),
             endTime: this.safeFormatDateTime(action.data.end?.dateTime || action.data.end),
             location: action.data.location?.displayName || '',
@@ -2838,7 +2840,7 @@ private getUserSettings(): any {
             updatedAt: new Date(),
             lastSyncTime: new Date(),
             syncStatus: 'synced'
-            // 🔧 不覆盖 source, calendarId, externalId 等字段
+            // 🔧 不覆盖 source, calendarId, externalId, eventlog 等字段
           };
           
           events[eventIndex] = updatedEvent;
