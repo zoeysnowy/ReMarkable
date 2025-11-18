@@ -2758,44 +2758,77 @@ const renderTaskNode = (node: TaskNode, depth: number) => (
 
 ### 10.3 右侧边栏 - 即将到来面板 (Upcoming Events Panel)
 
-#### 10.3.1 面板结构
+#### 10.3.1 面板结构 ✅ 已实现
+
+**文件路径**: `src/components/UpcomingEventsPanel.tsx` & `UpcomingEventsPanel.css`
 
 **容器样式**：
 - **宽度**: 317px
+- **高度**: 829px
 - **背景**: 白色 (`#FFFFFF`)
 - **圆角**: 20px
-- **阴影**: `0px 4px 10px 0px rgba(0,0,0,0.25)`
-- **内边距**: 上下 8px，左右 16px
+- **阴影**: `5px 5px 10px 0px rgba(0, 0, 0, 0.05)` (匹配系统标准)
+- **边框**: `1px solid #e5e7eb`
+- **内边距**: 20px (匹配系统标准)
+- **字体**: 'Microsoft YaHei', Arial, sans-serif
 
-#### 10.3.2 标题栏区域
+#### 10.3.2 标题栏区域 ✅ 已实现
 
 **组件结构**：
 ```tsx
-<div className="header">
-  <div className="title-border">
-    <div className="gradient-indicator" /> {/* 4px 宽渐变条 */}
-    <h3>即将到来</h3>
-    <IconButton icon="hide" /> {/* 隐藏/显示图标 */}
-  </div>
+<div className="section-header">
+  <div className="title-indicator" />
+  <h3>即将到来</h3>
+  <button className="panel-toggle-btn" onClick={toggleVisibility}>
+    <HideIcon />
+  </button>
 </div>
 ```
 
-**元素列表**：
-1. **渐变指示器**
-   - 宽度: 4px
-   - 高度: 20px
-   - 位置: 左侧，垂直居中对齐标题
-   - 颜色: 渐变色（与左侧边栏一致）
+**样式规范** (完全匹配 section-header):
+```css
+.upcoming-events-panel .section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-shrink: 0;
+  justify-content: flex-start;
+}
 
-2. **标题文本** "即将到来"
-   - 字体大小: 18px
-   - 字重: Semi-bold
+.upcoming-events-panel .section-header .title-indicator {
+  width: 4px;
+  height: 20px;
+  background: linear-gradient(135deg, #a855f7 0%, #3b82f6 75%);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.upcoming-events-panel .section-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+  line-height: 1.4;
+  font-family: 'Microsoft YaHei', Arial, sans-serif;
+  text-align: left;
+}
+```
+
+**元素列表**：
+1. **渐变指示器** ✅
+   - 规格: 4px × 20px, 圆角 2px
+   - 渐变: `linear-gradient(135deg, #a855f7 0%, #3b82f6 75%)`
+   - 与左侧面板完全一致
+
+2. **标题文本** "即将到来" ✅
+   - 字体: Microsoft YaHei, 18px, weight 600
    - 颜色: `#111827`
 
-3. **隐藏图标**
-   - 尺寸: 20x20px
-   - 功能: 点击收起/展开右侧边栏
-   - 位置: 标题栏右侧
+3. **隐藏图标** ✅
+   - 使用: `src/assets/icons/hide.svg`
+   - 尺寸: 20x20px, opacity: 0.6
+   - 功能: 切换面板显示状态
 
 #### 10.3.3 时间筛选按钮组
 
@@ -4959,3 +4992,89 @@ const handleChange = useCallback((newValue: Descendant[]) => {
 - `src/components/UnifiedSlateEditor/serialization.ts` (L23-69, L169-200): 元数据透传
 - `src/utils/timeUtils.ts`: 时间格式化工具
 - `docs/TIMEHUB_EMPTY_FIELDS_AND_REDUX_CRDT_ANALYSIS.md`: Redux + CRDT 长期方案
+
+---
+
+## 🆕 v2.0 左右侧边栏实现 (2025-11-18)
+
+### 新增功能
+
+#### 左侧面板 - 内容选取面板 ✅ 完全实现
+**文件**: `src/components/ContentSelectionPanel.tsx` & `ContentSelectionPanel.css`
+
+1. **系统一致性设计**
+   - Section Header: 完全匹配 `PlanManager.css .section-header` 样式
+   - 容器样式: 20px padding, 系统标准阴影和边框
+   - 渐变指示器: `linear-gradient(135deg, #a855f7 0%, #3b82f6 75%)`
+   - 字体系统: Microsoft YaHei 统一字体
+
+2. **搜索框 - 渐变边框设计**
+   - 复制 `UnifiedDateTimePicker` 渐变边框实现
+   - 渐变效果: `linear-gradient(90deg, #A855F7 0%, #3B82F6 75.48%)`
+   - 图标: `src/assets/icons/Search.svg` (20×20px)
+   - Focus效果: 紫色阴影 `rgba(168, 85, 247, 0.1)`
+
+3. **紧凑日历视图**
+   - 标题优化: 19.2px → **16px**
+   - 单元格优化: 16.8px → **14px**, 限制高度 28px
+   - 边距压缩: 各种 padding 和 margin 减半
+   - 渐变选中状态: `linear-gradient(to right, #22d3ee, #3b82f6)`
+
+4. **任务树交互**
+   - 展开图标: `src/assets/icons/down.svg` + CSS transform
+   - 无边框按钮: `border: none`, 12×12px
+   - 层级缩进: `marginLeft: depth * 16px`
+   - 状态图标: Hide/Unhide/Favorite (⭐)
+   - 统计显示: 进度条 + 完成度 + 时间
+
+#### 右侧面板 - 即将到来面板 ✅ 标准化实现
+**文件**: `src/components/UpcomingEventsPanel.tsx` & `UpcomingEventsPanel.css`
+
+1. **样式标准化**
+   - 完全复制左侧面板的 section-header 实现
+   - 容器规格: 317×829px, 匹配系统标准
+   - 渐变指示器: 与左侧面板完全一致
+
+2. **组件集成**
+   - 时间筛选按钮组
+   - 事件卡片列表
+   - ActionIndicator 系统
+   - 参与者和位置图标显示
+
+### 技术实现亮点
+
+1. **Figma 设计一致性**
+   - 完全按照 Figma 节点 `290:2646` 规格实现
+   - 像素级精准复现设计稿尺寸和样式
+
+2. **系统样式复用**
+   - 复用 `App.css .section-header` 和 `PlanManager.css` 样式
+   - 渐变边框技术从 `UnifiedDateTimePicker` 迁移
+   - 本地 SVG 图标系统统一使用
+
+3. **性能优化**
+   - CSS 选择器特异性优化
+   - 组件懒加载和条件渲染
+   - 紧凑布局减少DOM层级
+
+### 代码文件变更
+
+**新增文件**:
+- `src/components/ContentSelectionPanel.tsx` (~345 lines)
+- `src/components/ContentSelectionPanel.css` (~440 lines)  
+- `src/components/UpcomingEventsPanel.tsx` (~267 lines)
+- `src/components/UpcomingEventsPanel.css` (~331 lines)
+
+**修改文件**:
+- `src/components/PlanManager.tsx`: 集成左右面板组件
+- `docs/PRD/PLANMANAGER_MODULE_PRD.md`: 更新完整实现文档
+
+**使用图标资源**:
+- `src/assets/icons/Search.svg`
+- `src/assets/icons/hide.svg` & `unhide.svg`
+- `src/assets/icons/down.svg`
+- `src/assets/icons/piechart.svg`
+- `src/assets/icons/timer_start.svg`
+- `src/assets/icons/task_gray.svg`
+- `src/assets/icons/Attendee.svg` & `Location.svg`
+- `src/assets/icons/right.svg`
