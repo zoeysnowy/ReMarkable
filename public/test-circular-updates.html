@@ -410,20 +410,52 @@
 
     // 页面加载时检查环境
     window.addEventListener('load', () => {
-      if (!checkEventService()) {
-        document.body.innerHTML = `
-          <div class="test-card">
-            <div class="status error">
-              ❌ EventService未找到
-              <br><br>
-              请按以下步骤操作：
-              <br>1. 打开ReMarkable应用
-              <br>2. 导航到Plan页面
-              <br>3. 在浏览器开发者工具中加载此测试文件
+      // 等待应用加载完成
+      let checkCount = 0;
+      const maxChecks = 20; // 最多等待10秒
+      
+      const waitForEventService = () => {
+        checkCount++;
+        
+        if (checkEventService()) {
+          // EventService已可用，显示正常界面
+          return;
+        }
+        
+        if (checkCount < maxChecks) {
+          // 继续等待
+          setTimeout(waitForEventService, 500);
+          const statusDiv = document.querySelector('.test-card .status') || document.createElement('div');
+          statusDiv.className = 'status';
+          statusDiv.innerHTML = `🔄 等待ReMarkable应用加载中... (${checkCount}/${maxChecks})`;
+          if (!statusDiv.parentElement) {
+            const firstCard = document.querySelector('.test-card');
+            if (firstCard) {
+              firstCard.appendChild(statusDiv);
+            }
+          }
+        } else {
+          // 超时，显示错误提示
+          document.body.innerHTML = `
+            <div class="test-card">
+              <div class="status error">
+                ❌ EventService未找到 - 应用可能还在启动中
+                <br><br>
+                <strong>解决方案：</strong>
+                <br>1. 等待ReMarkable应用完全加载
+                <br>2. 确保已导航到Plan页面
+                <br>3. 刷新此测试页面
+                <br><br>
+                <button onclick="location.reload()" style="padding: 8px 16px; background: #007acc; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                  🔄 重新检测
+                </button>
+              </div>
             </div>
-          </div>
-        `;
-      }
+          `;
+        }
+      };
+      
+      waitForEventService();
     });
   </script>
 </body>

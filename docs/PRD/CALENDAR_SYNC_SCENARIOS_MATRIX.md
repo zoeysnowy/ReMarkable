@@ -6,6 +6,72 @@
 
 ---
 
+## 🎉 架构更新 (2025-11-19)
+
+### 循环更新防护集成
+
+基于刚完成的循环更新防护机制，日历同步现在具备更强的稳定性：
+
+#### EventService 层面增强
+```typescript
+// 支持多事件同步时的循环防护
+class EventService {
+  static createTimerSubEvent(parentEvent: Event, timerData: TimerLog): Event {
+    const subEventId = `${parentEvent.id}-timer-${Date.now()}`;
+    const updateId = this.generateUpdateId();
+    
+    // 创建Timer子事件，继承父事件的同步配置
+    const timerEvent = {
+      id: subEventId,
+      parentEventId: parentEvent.id,
+      type: 'timer',
+      title: `${parentEvent.title} - 实际进展`,
+      startTime: timerData.startTime,
+      endTime: timerData.endTime,
+      eventlog: timerData.description,
+      // 继承父事件的Actual同步配置
+      actualCalendarIds: parentEvent.actualCalendarIds,
+      actualSyncConfig: parentEvent.actualSyncConfig
+    };
+    
+    // 记录更新来源，防止循环
+    this.recordPendingUpdate(subEventId, updateId);
+    
+    return this.createEvent(timerEvent, false, {
+      originComponent: 'EventService',
+      updateId,
+      source: 'timer-creation'
+    });
+  }
+}
+```
+
+#### A2场景循环防护
+场景A2（Plan只接收 + Actual只发送）现在具备完整的循环防护：
+
+```typescript
+// Plan接收外部事件时，自动忽略本地Timer创建的远程事件
+function onPlanReceiveEvent(remoteEvent: OutlookEvent, localEvent: Event) {
+  // ✅ 检查是否是本地Timer子事件创建的远程事件
+  if (remoteEvent.extendedProperties?.remarkableType === 'timer-sub-event' &&
+      remoteEvent.extendedProperties?.remarkableParentId === localEvent.id) {
+    console.log('[🛡️ 日历同步] 跳过Timer子事件，防止循环');
+    return;
+  }
+  
+  // ✅ 接收外部创建的真实事件
+  updateLocalPlan(remoteEvent);
+}
+```
+
+### Event Tree 稳定性保障
+- **Timer子事件创建**: 具备完整的来源追踪和循环防护
+- **多事件同步**: 每个Timer→独立Outlook事件，无循环风险
+- **跨Tab同步**: BroadcastChannel过滤机制确保多Tab稳定性
+- **测试保护**: 日历同步测试事件不会被意外删除
+
+---
+
 ## 📋 场景矩阵
 
 ### 维度说明
@@ -80,7 +146,9 @@ Plan (startTime/endTime)
 
 ---
 
-### A2. Plan 只接收 + Actual 只发送
+### A2. Plan 只接收 + Actual 只发送 ⭐ 核心场景
+
+> **典型用例**: 用户从 Outlook 接收外部日程（如会议邀请），不想修改原日程，但想记录自己的实际工作进展（计时、日志、会议纪要等）
 
 **用户配置**:
 ```typescript
@@ -93,62 +161,467 @@ Plan (startTime/endTime)
 ```
 
 **同步行为**:
-- 📥 **Plan 接收**: Outlook → Plan (startTime/endTime)
-- 📤 **Actual 发送**: 在 Outlook 创建事件，同步 Actual 的合并时间段
-- ⚠️ **冲突可能性**: Plan 和 Actual 共享同一个远程日历，可能产生时间冲突
+- 📥 **Plan 接收**: Outlook → Plan (startTime/endTime) - **只读**，不修改外部日程
+- 📤 **Actual 发送**: 每个 Timer 子事件 → Outlook 创建**独立的新事件**
+- ✅ **Event Tree 结构**: ReMarkable 内部维护 ParentEventID 关联，但 Outlook 看到的是多个独立事件
 
-**数据流向**:
+---
+
+#### 💡 场景示例：接收会议邀请并记录工作进展
+
+**步骤 1: 接收外部会议**
 ```
-本地 Actual (segments: 9:00-10:00, 14:00-15:00)
-    ↓ 📤 发送（合并为 9:00-15:00）
-Outlook "工作" 日历（新建事件）
-    ↓ 📥 接收
-本地 Plan (startTime: 9:00, endTime: 15:00)
+Outlook "工作" 日历
+  └─ 📅 "产品评审会" (9:00-10:00, 由项目经理创建)
+      ↓ 📥 接收
+ReMarkable 本地
+  └─ Event #1234 (ParentEvent)
+      ├─ Plan: 9:00-10:00 (只读)
+      └─ Actual: 空（尚未开始计时）
 ```
 
-**关键问题**: 
-- ❓ Actual 发送的事件会被 Plan 接收回来吗？
-- ✅ **答案**: 会！需要**去重逻辑**（通过 ReMarkable ID 标识）
+**步骤 2: 用户开始第一次计时**
+```
+用户操作: 点击 Timer 按钮 → 开始计时 9:05-9:45
+ReMarkable 本地
+  └─ Event #1234 (ParentEvent)
+      ├─ Plan: 9:00-10:00 (只读)
+      └─ Actual: 
+          └─ Timer 子事件 #1234-1 (9:05-9:45)
+              ├─ 时间片段: 9:05-9:45
+              ├─ TimerLog: "讨论了新功能需求"
+              └─ 📤 发送到 Outlook
 
-**SyncConfig 合并逻辑**:
+Outlook "工作" 日历（新增事件）
+  ├─ 📅 "产品评审会" (9:00-10:00, 原始事件)
+  └─ 📅 "产品评审会 - 实际进展 1" (9:05-9:45, 由 ReMarkable 创建)
+      └─ 描述: "讨论了新功能需求"
+```
+
+**步骤 3: 用户第二次计时（同一天下午继续工作）**
+```
+用户操作: 再次点击 Timer → 14:00-15:30
+ReMarkable 本地
+  └─ Event #1234 (ParentEvent)
+      ├─ Plan: 9:00-10:00 (只读)
+      └─ Actual: 
+          ├─ Timer 子事件 #1234-1 (9:05-9:45)
+          └─ Timer 子事件 #1234-2 (14:00-15:30) ← 新增
+              ├─ 时间片段: 14:00-15:30
+              ├─ TimerLog: "实现了需求文档"
+              └─ 📤 发送到 Outlook
+
+Outlook "工作" 日历（再次新增事件）
+  ├─ 📅 "产品评审会" (9:00-10:00, 原始事件)
+  ├─ 📅 "产品评审会 - 实际进展 1" (9:05-9:45)
+  └─ 📅 "产品评审会 - 实际进展 2" (14:00-15:30, 新增) ← 新创建
+      └─ 描述: "实现了需求文档"
+```
+
+**步骤 4: 用户查看 ReMarkable**
+```
+ReMarkable Event Tree 视图（用户不需要知道这个架构）
+  └─ "产品评审会" (ParentEvent #1234)
+      ├─ Plan: 9:00-10:00 (来自 Outlook)
+      ├─ Actual 总时长: 2h 10min (9:05-9:45 + 14:00-15:30)
+      ├─ Timer 子事件 1: 9:05-9:45 (40 min)
+      │   └─ 日志: "讨论了新功能需求"
+      └─ Timer 子事件 2: 14:00-15:30 (1h 30min)
+          └─ 日志: "实现了需求文档"
+```
+
+**步骤 5: Outlook 用户视角**
+```
+Outlook "工作" 日历视图
+  11月19日
+    ├─ 9:00-10:00  📅 "产品评审会" (原始会议)
+    ├─ 9:05-9:45   📅 "产品评审会 - 实际进展 1" (Zoey 做了什么)
+    └─ 14:00-15:30 📅 "产品评审会 - 实际进展 2" (Zoey 继续工作)
+```
+
+---
+
+#### 🔑 核心设计原则
+
+**0. Event Tree 中的两种子事件 + 两层同步系统**
+
+ReMarkable 的 Event Tree 支持两种类型的子事件，关键理解：**每个事件都有独立的同步系统**
+
+| 类型 | 创建方式 | 同步配置 | EditModal | ParentEvent 的 Plan 是否忽略子事件创建的远程事件 |
+|------|----------|----------|-----------|---------------------------------------------|
+| **Timer 子事件** | 系统自动创建（停止 Timer） | ❌ 继承 ParentEvent 的 Actual 配置 | ❌ 无独立 EditModal | ✅ 忽略（子事件与父事件无关） |
+| **用户手动子事件** | 用户手动添加（Event/Task） | ✅ 有独立的 planSyncConfig/actualSyncConfig | ✅ 有独立 EditModal | ✅ 忽略（子事件与父事件无关） |
+
+**关键理解 - 两层同步系统**:
+
 ```typescript
+// ParentEvent "产品评审会" - 第一层同步系统
 {
-  mergedMode: 'mixed-bidirectional',  // ⚠️ 实际上形成了双向循环
-  remoteEventCount: 1,
-  syncStrategy: {
-    plan: {
-      shouldSync: true,
-      direction: 'receive-only',
-      targetCalendar: 'outlook-calendar-work',
-      deduplication: {
-        enabled: true,
-        strategy: 'ignore-self-created',  // 忽略 Actual 创建的事件
-        identifyBy: 'remarkableEventId'
-      }
+  id: '1234',
+  title: '产品评审会',
+  plannedCalendarIds: ['outlook-work'],
+  planSyncConfig: { mode: 'receive-only' },  // ← ParentEvent 的 Plan 同步
+  actualSyncConfig: { mode: 'send-only' },
+  
+  childEvents: [
+    // Timer 子事件（继承 ParentEvent 的 Actual 配置）
+    { 
+      id: '1234-timer-1',
+      type: 'timer', 
+      planSyncConfig: undefined,  // 继承 ParentEvent
+      actualSyncConfig: undefined 
+      // ⚠️ 当 Timer 子事件同步到 Outlook 创建远程事件时：
+      // ParentEvent 的 Plan 接收会忽略这个远程事件（因为是自己的子事件创建的）
     },
-    actual: {
-      shouldSync: true,
-      direction: 'send-only',
-      targetCalendar: 'outlook-calendar-work',
-      mergeSegments: true,
-      metadata: {
-        addRemarkableId: true  // ✅ 在远程事件添加 ReMarkable ID
+    
+    // 用户手动子事件 - 第二层独立同步系统
+    { 
+      id: '1234-manual-1',
+      type: 'event', 
+      title: '准备演示 Demo',
+      plannedCalendarIds: ['outlook-work'],
+      planSyncConfig: { mode: 'bidirectional' },  // ← 子事件的 Plan 同步（独立）
+      actualSyncConfig: { mode: 'send-only' }
+      // ⚠️ 当子事件同步到 Outlook 创建远程事件时：
+      // 1. ParentEvent 的 Plan 接收会忽略这个远程事件（因为是子事件创建的）
+      // 2. 子事件自己的 Plan 接收会正常处理（独立的同步系统）
+    }
+  ]
+}
+```
+
+**两层逻辑**:
+
+1️⃣ **ParentEvent (id: 1234) 的 Plan 接收**:
+```typescript
+function onParentEventPlanReceive(remoteEvent: OutlookEvent) {
+  // ✅ 忽略所有子事件创建的远程事件（无论 Timer 还是手动）
+  if (remoteEvent.extendedProperties?.remarkableParentId === '1234') {
+    console.log('忽略：这是子事件创建的，与 ParentEvent 无关');
+    return;
+  }
+  
+  // 只接收外部创建的事件
+  updateLocalPlan(remoteEvent);
+}
+```
+
+2️⃣ **子事件 (id: 1234-manual-1) 自己的 Plan 接收**:
+```typescript
+function onChildEventPlanReceive(remoteEvent: OutlookEvent) {
+  // ✅ 子事件有独立的 planSyncConfig，正常处理自己的同步
+  if (remoteEvent.extendedProperties?.remarkableEventId === '1234-manual-1') {
+    updateLocalPlan(remoteEvent);  // 正常同步
+  }
+}
+```
+
+---
+
+**1. 每个 Timer 子事件 = 一个独立的 Outlook 事件**
+```typescript
+// 当用户创建新的 Timer 子事件时
+function onTimerStop(parentEvent: Event, timerSubEvent: Event) {
+  if (parentEvent.actualSyncConfig?.mode === 'send-only') {
+    // 创建独立的远程事件
+    const remoteEvent = {
+      id: `${parentEvent.id}-timer-${timerSubEvent.id}`,  // ✅ 独立 ID
+      title: `${parentEvent.title} - 实际进展 ${getTimerIndex(timerSubEvent)}`,
+      start: timerSubEvent.startTime,
+      end: timerSubEvent.endTime,
+      description: timerSubEvent.eventlog || '',
+      extendedProperties: {
+        remarkableParentId: parentEvent.id,  // ✅ 关联 ParentEvent
+        remarkableTimerId: timerSubEvent.id,
+        remarkableType: 'timer-sub-event'
       }
+    };
+    
+    // 发送到 Outlook
+    syncToOutlook(parentEvent.actualCalendarIds[0], remoteEvent);
+  }
+}
+```
+
+**2. ParentEvent 的 Plan 接收时忽略所有子事件创建的远程事件**
+```typescript
+// 当 ParentEvent 的 Plan 接收 Outlook 事件时
+function onParentEventPlanReceive(remoteEvent: OutlookEvent, parentEvent: Event) {
+  // ✅ 检查是否是本地子事件（无论 Timer 还是手动）创建的远程事件
+  if (remoteEvent.extendedProperties?.remarkableParentId === parentEvent.id) {
+    console.log('跳过同步：这是子事件创建的远程事件，与 ParentEvent 无关');
+    return;  // 不覆盖 ParentEvent 的 Plan
+  }
+  
+  // ✅ 只接收外部创建的事件
+  updateParentEventPlan(remoteEvent);  // 更新 ParentEvent 的 startTime/endTime
+}
+
+// 用户手动子事件有自己独立的 Plan 接收逻辑
+function onChildEventPlanReceive(remoteEvent: OutlookEvent, childEvent: Event) {
+  // ✅ 子事件自己的同步系统，正常处理
+  if (childEvent.planSyncConfig?.mode === 'receive-only' || 
+      childEvent.planSyncConfig?.mode === 'bidirectional') {
+    updateChildEventPlan(remoteEvent);  // 子事件正常同步
+  }
+}
+```
+
+**重要说明**:
+- ✅ **ParentEvent 的 Plan 接收**：忽略所有子事件（Timer + 手动）创建的远程事件
+  - 原因：子事件与 ParentEvent 本身无关
+  
+- ✅ **子事件自己的 Plan 接收**：用户手动子事件有独立的 `planSyncConfig`
+  - 这是两个独立的同步系统
+  - 子事件正常处理自己的同步逻辑
+
+---
+
+#### 📊 两层同步系统的完整示例
+
+**场景**: ParentEvent "产品评审会" + Timer 子事件 + 用户手动子事件 "准备演示 Demo"
+
+**Outlook "工作" 日历的最终状态**:
+```
+Outlook "工作" 日历
+  ├─ 📅 "产品评审会" (9:00-10:00, 外部创建)
+  │   └─ 由 ParentEvent 的 Plan 接收
+  │
+  ├─ 📅 "产品评审会 - 实际进展 1" (9:05-9:45, ReMarkable 创建)
+  │   └─ 由 Timer 子事件的 Actual 发送
+  │   └─ extendedProperties: { remarkableParentId: '1234' }
+  │
+  ├─ 📅 "产品评审会 - 实际进展 2" (14:00-15:30, ReMarkable 创建)
+  │   └─ 由 Timer 子事件的 Actual 发送
+  │
+  └─ 📅 "准备演示 Demo" (16:00-17:00, ReMarkable 创建)
+      └─ 由用户手动子事件自己的同步系统创建
+      └─ extendedProperties: { remarkableEventId: '1234-manual-1', remarkableParentId: '1234' }
+```
+
+**同步逻辑分层**:
+
+```typescript
+// 🔄 当 Outlook "工作" 日历有更新时，ReMarkable 接收同步
+
+// 第 1 层：ParentEvent #1234 的 Plan 接收
+function syncParentEvent1234() {
+  const remoteEvents = fetchOutlookEvents('outlook-work');
+  
+  for (const remoteEvent of remoteEvents) {
+    // ✅ 忽略所有子事件创建的远程事件
+    if (remoteEvent.extendedProperties?.remarkableParentId === '1234') {
+      console.log(`跳过：这是子事件创建的，与 ParentEvent #1234 无关`);
+      continue;  // ← "实际进展 1/2" 和 "准备演示 Demo" 被忽略
+    }
+    
+    // ✅ 只接收外部创建的 "产品评审会"
+    if (remoteEvent.title === '产品评审会' && !remoteEvent.extendedProperties?.remarkableParentId) {
+      updateParentEventPlan('1234', {
+        startTime: remoteEvent.start,
+        endTime: remoteEvent.end
+      });
+    }
+  }
+}
+
+// 第 2 层：用户手动子事件 #1234-manual-1 自己的 Plan 接收
+function syncChildEvent1234Manual1() {
+  const remoteEvents = fetchOutlookEvents('outlook-work');
+  
+  for (const remoteEvent of remoteEvents) {
+    // ✅ 子事件只关心自己创建的远程事件
+    if (remoteEvent.extendedProperties?.remarkableEventId === '1234-manual-1') {
+      updateChildEventPlan('1234-manual-1', {
+        startTime: remoteEvent.start,
+        endTime: remoteEvent.end
+      });
+      console.log('子事件 "准备演示 Demo" 同步成功');
     }
   }
 }
 ```
 
-**远程事件数量**: **1 个**（Actual 创建）
+**关键点**:
+1. ✅ ParentEvent 的 Plan 接收：**只接收外部创建的事件，忽略所有子事件创建的远程事件**
+2. ✅ 子事件自己的 Plan 接收：**独立的同步系统，正常处理自己创建的远程事件**
+3. ✅ Timer 子事件：**没有 Plan 配置，只通过 Actual 发送**
 
-**去重策略**: 
+---
+
+**3. Event Tree 内部关联（用户无感知）**
 ```typescript
-// 在 Plan 接收时，检查远程事件是否由 Actual 创建
-if (remoteEvent.extendedProperties?.remarkableEventId === localEvent.id) {
-  console.log('跳过同步：此事件由本地 Actual 创建');
-  return;
+// ReMarkable 内部数据结构
+{
+  id: '1234',  // ParentEvent
+  title: '产品评审会',
+  source: 'outlook',
+  type: 'parent',  // ✅ ParentEvent 类型
+  
+  // Plan 部分（只读）
+  startTime: '2025-11-19T09:00:00',
+  endTime: '2025-11-19T10:00:00',
+  plannedCalendarIds: ['outlook-calendar-work'],
+  planSyncConfig: { mode: 'receive-only' },
+  
+  // Actual 部分（可写）
+  actualCalendarIds: ['outlook-calendar-work'],
+  actualSyncConfig: { mode: 'send-only' },
+  
+  // 子事件列表（Event Tree）
+  childEvents: [
+    // ============================================================
+    // 类型 1: Timer 子事件（系统自动创建，无独立同步配置）
+    // ============================================================
+    {
+      id: '1234-timer-1',
+      parentEventId: '1234',  // ✅ 关联 ParentEvent
+      type: 'timer',  // ✅ Timer 类型
+      startTime: '2025-11-19T09:05:00',
+      endTime: '2025-11-19T09:45:00',
+      eventlog: '讨论了新功能需求',
+      
+      // ❌ Timer 子事件继承 ParentEvent 的 Actual 配置，没有独立配置
+      plannedCalendarIds: undefined,
+      actualCalendarIds: undefined,
+      planSyncConfig: undefined,
+      actualSyncConfig: undefined,
+      
+      // ✅ 同步状态
+      syncedToOutlook: true,
+      outlookEventId: 'outlook-event-xyz-1'
+    },
+    
+    {
+      id: '1234-timer-2',
+      parentEventId: '1234',
+      type: 'timer',
+      startTime: '2025-11-19T14:00:00',
+      endTime: '2025-11-19T15:30:00',
+      eventlog: '实现了需求文档',
+      syncedToOutlook: true,
+      outlookEventId: 'outlook-event-xyz-2'
+    },
+    
+    // ============================================================
+    // 类型 2: 用户手动创建的子事件（有独立同步配置和 EditModal）
+    // ============================================================
+    {
+      id: '1234-manual-1',
+      parentEventId: '1234',  // ✅ 关联 ParentEvent（可选）
+      type: 'event',  // ✅ 用户创建的事件类型
+      title: '准备演示 Demo',
+      startTime: '2025-11-19T16:00:00',
+      endTime: '2025-11-19T17:00:00',
+      
+      // ✅ 有自己独立的同步配置
+      plannedCalendarIds: ['outlook-calendar-work'],
+      actualCalendarIds: ['outlook-calendar-personal'],  // 可以选择不同的日历
+      planSyncConfig: { mode: 'bidirectional' },  // 独立的 Plan 配置
+      actualSyncConfig: { mode: 'send-only' },  // 独立的 Actual 配置
+      
+      // ✅ 有自己独立的同步状态
+      syncedToOutlook: true,
+      outlookEventId: 'outlook-event-xyz-3'
+    },
+    
+    {
+      id: '1234-manual-2',
+      parentEventId: '1234',
+      type: 'task',  // ✅ 用户创建的任务类型（时间缺省）
+      title: '整理会议纪要',
+      
+      // ✅ 任务也有独立的同步配置
+      plannedCalendarIds: ['outlook-calendar-work'],
+      planSyncConfig: { mode: 'send-only' },
+      
+      syncedToOutlook: true,
+      outlookEventId: 'outlook-event-xyz-4'
+    }
+  ]
 }
 ```
+
+---
+
+#### 📊 SyncConfig 合并逻辑
+
+```typescript
+{
+  mergedMode: 'plan-receive-actual-send-multi-events',  // ✅ 新模式
+  remoteEventCount: 'dynamic',  // ❗ 动态数量（取决于 Timer 子事件数量）
+  
+  syncStrategy: {
+    plan: {
+      shouldSync: true,
+      direction: 'receive-only',
+      targetCalendar: 'outlook-calendar-work',
+      
+      // ✅ 去重逻辑：ParentEvent 忽略所有子事件创建的远程事件
+      deduplication: {
+        enabled: true,
+        strategy: 'ignore-child-events',  // ParentEvent 忽略所有子事件
+        filter: (remoteEvent, parentEvent) => {
+          // ParentEvent 只忽略自己子事件创建的远程事件
+          return remoteEvent.extendedProperties?.remarkableParentId === parentEvent.id;
+        },
+        note: '子事件有独立的同步系统，ParentEvent 不处理子事件创建的远程事件'
+      }
+    },
+    
+    actual: {
+      shouldSync: true,
+      direction: 'send-only',
+      targetCalendar: 'outlook-calendar-work',
+      
+      // ✅ 多事件策略：每个 Timer 子事件创建独立的远程事件
+      multiEventSync: {
+        enabled: true,
+        strategy: 'one-timer-one-event',  // 一个 Timer → 一个 Outlook 事件
+        titleTemplate: '{{parentTitle}} - 实际进展 {{timerIndex}}',
+        includeTimerLog: true,  // 包含 TimerLog 作为事件描述
+        linkToParent: true  // 通过 extendedProperties 关联 ParentEvent
+      }
+    }
+  },
+  
+  uiWarning: {
+    show: true,
+    level: 'info',
+    message: 'ℹ️ 每次计时或写日志都会在 Outlook 创建新事件，方便外部查看你的工作进展'
+  }
+}
+```
+
+---
+
+#### 🎯 用户价值
+
+**对于 ReMarkable 用户**:
+- ✅ 接收外部日程，不修改原始计划
+- ✅ 自由记录实际工作进展（计时、日志、会议纪要）
+- ✅ Event Tree 自动关联，无需手动管理
+- ✅ 一目了然查看总时长和详细时间片段
+
+**对于 Outlook 用户（同事、项目经理）**:
+- ✅ 看到原始会议（9:00-10:00）
+- ✅ 看到 Zoey 的实际工作时间（9:05-9:45, 14:00-15:30）
+- ✅ 看到 Zoey 的工作内容（"讨论了新功能需求"，"实现了需求文档"）
+- ✅ 无需了解 ReMarkable 的 Event Tree 架构
+
+---
+
+#### 远程事件数量
+
+**动态数量**: **N 个** (N = Timer 子事件数量)
+
+- 原始会议事件：**不创建**（Plan 只接收）
+- Timer 子事件 1：**1 个** Outlook 事件
+- Timer 子事件 2：**1 个** Outlook 事件
+- ...
+- Timer 子事件 N：**1 个** Outlook 事件
+
+**总计**: Plan 接收 1 个外部事件，Actual 发送 N 个子事件
 
 ---
 
@@ -600,22 +1073,28 @@ Outlook "工作" 日历（事件 9:00-17:00）
 
 ## 📊 相同日历场景总结表
 
-| 场景 | Plan 模式 | Actual 模式 | 远程事件 | Plan 同步 | Actual 同步 | 关键逻辑 | UI 警告 |
-|------|-----------|-------------|----------|-----------|-------------|----------|---------|
-| **A1** | 只接收 | 只接收 | 0 个 | ✅ 接收 | ❌ 禁用 | Plan 优先接收 | - |
-| **A2** | 只接收 | 只发送 | 1 个 | ✅ 接收（去重） | ✅ 发送 | 形成循环，需去重 | ⚠️ 提示去重逻辑 |
-| **A3** | 只接收 | 双向 | 1 个 | ❌ 禁用 | ✅ 双向 | Actual 优先 | ⚠️ 配置冲突 |
-| **B1** | 只发送 | 只接收 | 1 个 | ✅ 发送 | ✅ 接收（智能合并） | Plan → Outlook → Actual | - |
-| **B2** | 只发送 | 只发送 | 1 个 | ✅ 发送 | ❌ 禁用 | Plan 优先发送 | ⚠️ 禁止重复发送 |
-| **B3** | 只发送 | 双向 | 1 个 | ❌ 禁用 | ✅ 双向 | Actual 优先 | ℹ️ Actual 优先级高 |
-| **C1** | 双向 | 只接收 | 1 个 | ✅ 双向 | ✅ 接收（跟随 Plan） | Plan 主导，Actual 跟随 | - |
-| **C2** | 双向 | 只发送 | 1 个 | ✅ 双向 | ❌ 禁用 | Plan 优先 | ℹ️ Plan 优先级高 |
-| **C3** | 双向 | 双向 | 1 个 | ✅ 双向 | ❌ 禁用 | Plan 优先 | ⚠️ 禁止双双向 |
+| 场景 | Plan 模式 | Actual 模式 | 远程事件 | Plan 同步 | Actual 同步 | 关键逻辑 | UI 警告 | 典型用例 |
+|------|-----------|-------------|----------|-----------|-------------|----------|---------|----------|
+| **A1** | 只接收 | 只接收 | 0 个 | ✅ 接收 | ❌ 禁用 | Plan 优先接收 | - | 只读外部日程 |
+| **A2** ⭐ | 只接收 | 只发送 | N 个 | ✅ 接收（忽略子事件） | ✅ 每个 Timer → 1 个事件 | Event Tree 多事件同步 | ℹ️ 多事件提示 | 接收会议 + 记录工作进展 |
+| **A3** | 只接收 | 双向 | 1 个 | ❌ 禁用 | ✅ 双向 | Actual 优先 | ⚠️ 配置冲突 | 不推荐 |
+| **B1** | 只发送 | 只接收 | 1 个 | ✅ 发送 | ✅ 接收（智能合并） | Plan → Outlook → Actual | - | Plan 主导 + Actual 跟随 |
+| **B2** | 只发送 | 只发送 | 1 个 | ✅ 发送 | ❌ 禁用 | Plan 优先发送 | ⚠️ 禁止重复发送 | 不推荐 |
+| **B3** | 只发送 | 双向 | 1 个 | ❌ 禁用 | ✅ 双向 | Actual 优先 | ℹ️ Actual 优先级高 | Actual 主导同步 |
+| **C1** | 双向 | 只接收 | 1 个 | ✅ 双向 | ✅ 接收（跟随 Plan） | Plan 主导，Actual 跟随 | - | Plan 完全控制 |
+| **C2** | 双向 | 只发送 | 1 个 | ✅ 双向 | ❌ 禁用 | Plan 优先 | ℹ️ Plan 优先级高 | Plan 完全控制 |
+| **C3** | 双向 | 双向 | 1 个 | ✅ 双向 | ❌ 禁用 | Plan 优先 | ⚠️ 禁止双双向 | 不推荐 |
 
 **优先级规则**:
 1. **双向 > 只发送 > 只接收**
 2. **Plan 优先** 当优先级相同时
-3. **相同日历只创建 1 个远程事件**
+3. **A2 场景特殊**: 每个 Timer 子事件创建独立的远程事件（N 个）
+4. **其他场景**: 相同日历只创建 1 个远程事件
+
+**⭐ 推荐场景**:
+- **A2**: 接收外部日程，记录自己的工作进展（最常见）
+- **B1**: 自己创建日程，实际进展自动跟随计划
+- **C1**: 完全控制日程，实际进展只读跟随
 
 ---
 
@@ -1076,7 +1555,24 @@ export interface Event {
   
   /** 合并后的同步配置（运行时计算，不持久化） */
   _mergedSyncConfig?: MergedSyncConfig;
+  
+  // ============================================================
+  // ✅ Event Tree 相关字段
+  // ============================================================
+  
+  /** 父事件 ID（Timer 子事件关联到 ParentEvent） */
+  parentEventId?: string | null;
+  
+  /** 子事件列表（ParentEvent 包含的所有 Timer 子事件） */
+  childEvents?: Event[];
+  
+  /** 事件类型 */
+  type?: 'parent' | 'timer' | 'plan';
+  
+  /** 已同步到 Outlook 的事件 ID（仅 Timer 子事件） */
+  syncedOutlookEventId?: string | null;
 }
+
 
 // ============================================================
 // 3. 合并同步配置（运行时）
@@ -1137,6 +1633,15 @@ export interface MergedSyncConfig {
         conflictResolution: 'last-write-wins' | 'first-write-wins';
       };
       
+      /** ✅ 多事件同步配置（A2 场景专用） */
+      multiEventSync?: {
+        enabled: boolean;
+        strategy: 'one-timer-one-event';  // 每个 Timer 子事件创建一个独立的远程事件
+        titleTemplate: string;  // 事件标题模板，如 "{{parentTitle}} - 实际进展 {{timerIndex}}"
+        includeTimerLog: boolean;  // 是否包含 TimerLog 作为事件描述
+        linkToParent: boolean;  // 是否通过 extendedProperties 关联 ParentEvent
+      };
+      
       /** 去重配置 */
       deduplication?: {
         enabled: boolean;
@@ -1151,6 +1656,7 @@ export interface MergedSyncConfig {
       warning?: string;
     };
   };
+
   
   /** UI 警告 */
   uiWarning?: {
@@ -1193,7 +1699,7 @@ function handleSameCalendarScenarios(event: Event, overlappingCalendars: string[
   // 场景 A: Plan 只接收
   if (planMode === 'receive-only') {
     if (actualMode === 'receive-only') return scenarioA1(event);
-    if (actualMode === 'send-only') return scenarioA2(event);
+    if (actualMode === 'send-only') return scenarioA2(event);  // ⭐ 多事件同步
     if (actualMode === 'bidirectional') return scenarioA3(event);  // ⚠️ 冲突
   }
   
@@ -1213,6 +1719,51 @@ function handleSameCalendarScenarios(event: Event, overlappingCalendars: string[
   
   throw new Error('未知的同步模式组合');
 }
+
+/**
+ * 场景 A2 的具体实现（多事件同步）
+ * 
+ * @description Plan 只接收 + Actual 只发送，每个 Timer 子事件创建独立的远程事件
+ */
+function scenarioA2(event: Event): MergedSyncConfig {
+  return {
+    mergedMode: 'plan-receive-actual-send-multi-events',
+    remoteEventCount: event.childEvents?.length || 0,  // 动态数量
+    allTargetCalendars: event.plannedCalendarIds || [],
+    
+    syncStrategy: {
+      plan: {
+        shouldSync: true,
+        direction: 'receive-only',
+        targetCalendars: event.plannedCalendarIds,
+        deduplication: {
+          enabled: true,
+          strategy: 'ignore-child-events',  // ✅ ParentEvent 忽略所有子事件
+          identifyBy: 'remarkableParentId'
+        }
+      },
+      actual: {
+        shouldSync: true,
+        direction: 'send-only',
+        targetCalendars: event.actualCalendarIds,
+        multiEventSync: {
+          enabled: true,
+          strategy: 'one-timer-one-event',
+          titleTemplate: '{{parentTitle}} - 实际进展 {{timerIndex}}',
+          includeTimerLog: true,
+          linkToParent: true
+        }
+      }
+    },
+    
+    uiWarning: {
+      show: true,
+      level: 'info',
+      message: 'ℹ️ 每次计时或写日志都会在 Outlook 创建新事件，方便外部查看你的工作进展'
+    }
+  };
+}
+
 
 /**
  * 处理不同日历场景

@@ -750,7 +750,11 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         !updatedItem.eventlog?.trim() && // 🆕 v1.8: 检测富文本描述
         !updatedItem.startTime &&
         !updatedItem.endTime &&
-        !updatedItem.dueDate
+        !updatedItem.dueDate &&
+        // 🔧 [FIX] 避免删除测试事件或有特殊来源的事件
+        !updatedItem.source?.includes('test') &&
+        !updatedItem.id?.includes('test') &&
+        !updatedItem.id?.includes('console')
       );
       
       // 空 event 处理

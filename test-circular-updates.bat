@@ -9,6 +9,7 @@ echo 4. 打开测试页面进行验证
 echo.
 
 REM 启动测试页面
+echo 🚀 启动测试页面...
 start "" "http://localhost:3000/test-circular-updates.html"
 
 echo ✅ 测试页面已启动

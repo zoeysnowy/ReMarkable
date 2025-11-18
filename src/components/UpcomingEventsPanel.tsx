@@ -36,11 +36,11 @@ interface EventItem {
 }
 
 interface UpcomingEventsPanelProps {
-  onTimeFilterChange?: (filter: 'today' | 'tomorrow' | 'week' | 'nextWeek') => void;
+  onTimeFilterChange?: (filter: 'today' | 'tomorrow' | 'week' | 'nextWeek' | 'all') => void;
 }
 
 const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({ onTimeFilterChange }) => {
-  const [activeFilter, setActiveFilter] = useState<'today' | 'tomorrow' | 'week' | 'nextWeek'>('today');
+  const [activeFilter, setActiveFilter] = useState<'today' | 'tomorrow' | 'week' | 'nextWeek' | 'all'>('today');
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isVisible, setIsVisible] = useState(true);
 
@@ -88,7 +88,7 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({ onTimeFilterC
     },
   ]);
 
-  const handleFilterChange = (filter: 'today' | 'tomorrow' | 'week' | 'nextWeek') => {
+  const handleFilterChange = (filter: 'today' | 'tomorrow' | 'week' | 'nextWeek' | 'all') => {
     setActiveFilter(filter);
     onTimeFilterChange?.(filter);
   };
@@ -247,6 +247,12 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({ onTimeFilterC
           onClick={() => handleFilterChange('nextWeek')}
         >
           下周
+        </button>
+        <button
+          className={`filter-btn ${activeFilter === 'all' ? 'filter-btn-active' : ''}`}
+          onClick={() => handleFilterChange('all')}
+        >
+          全部
         </button>
       </div>
 
