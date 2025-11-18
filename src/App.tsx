@@ -1227,10 +1227,16 @@ function App() {
     }
     
     // 🔧 [BUG FIX] 检查事件是否已存在，新事件用 createEvent，已有事件用 updateEvent
+    // 🆕 传递来源信息，防止循环更新
     const existingEvent = EventService.getEventById(item.id);
+    const sourceOptions = {
+      originComponent: 'PlanManager' as const,
+      source: 'user-edit' as const
+    };
+    
     const result = existingEvent 
-      ? await EventService.updateEvent(item.id, planEvent)
-      : await EventService.createEvent(planEvent);
+      ? await EventService.updateEvent(item.id, planEvent, false, sourceOptions)
+      : await EventService.createEvent(planEvent, false, sourceOptions);
     
     if (result.success) {
       // ✅ 不需要手动刷新 - EventService 已触发 eventsUpdated 事件

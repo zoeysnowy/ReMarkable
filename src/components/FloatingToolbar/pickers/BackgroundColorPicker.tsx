@@ -56,7 +56,6 @@ export const BackgroundColorPicker: React.FC<BackgroundColorPickerProps> = ({
       className="color-picker-panel"
       onMouseDown={(e) => {
         e.preventDefault();
-        console.log('[BackgroundColorPicker] 🔒 阻止默认事件，保持编辑器选区');
       }}
     >
       <div className="picker-header">
@@ -84,7 +83,6 @@ export const BackgroundColorPicker: React.FC<BackgroundColorPickerProps> = ({
                   className={`bg-color-item ${active ? 'bg-color-item-active' : ''} ${!color.value ? 'no-bg' : ''}`}
                   style={{ backgroundColor: color.value || 'transparent' }}
                   onMouseEnter={() => {
-                    console.log('[BackgroundColorPicker] 🖍 预览背景色:', color);
                     onPreview?.(color.value);
                   }}
                   onMouseDown={(e) => e.preventDefault()}

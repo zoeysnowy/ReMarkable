@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>循环更新防护测试</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .test-card {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .test-button {
+      background: #007acc;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin: 8px;
+      font-size: 14px;
+    }
+    .test-button:hover {
+      background: #005c99;
+    }
+    .test-button.danger {
+      background: #dc3545;
+    }
+    .test-button.danger:hover {
+      background: #c82333;
+    }
+    .status {
+      padding: 12px;
+      border-radius: 6px;
+      margin: 10px 0;
+    }
+    .status.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .status.warning {
+      background: #fff3cd;
+      color: #856404;
+      border: 1px solid #ffeaa7;
+    }
+    .status.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    .log-container {
+      background: #2d3748;
+      color: #e2e8f0;
+      padding: 16px;
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      max-height: 400px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    .metric {
+      display: inline-block;
+      background: #e9ecef;
+      padding: 8px 12px;
+      border-radius: 4px;
+      margin: 4px;
+      font-weight: bold;
+    }
+    .metric.good {
+      background: #d4edda;
+      color: #155724;
+    }
+    .metric.bad {
+      background: #f8d7da;
+      color: #721c24;
+    }
+  </style>
+</head>
+<body>
+  <h1>🛡️ 循环更新防护测试工具</h1>
+  
+  <div class="test-card">
+    <h2>🧪 基础功能测试</h2>
+    <p>测试EventService的更新来源跟踪和循环防护机制</p>
+    
+    <button class="test-button" onclick="runBasicTest()">
+      🚀 运行基础测试
+    </button>
+    
+    <button class="test-button" onclick="runLoadTest()">
+      📊 负载测试 (100次更新)
+    </button>
+    
+    <button class="test-button danger" onclick="runCircularTest()">
+      🔄 循环攻击测试
+    </button>
+    
+    <div id="basicTestResult"></div>
+  </div>
+  
+  <div class="test-card">
+    <h2>📡 实时监控</h2>
+    <p>监控eventsUpdated事件，检查循环更新模式</p>
+    
+    <button class="test-button" onclick="startMonitoring()">
+      🔍 开始监控 (30秒)
+    </button>
+    
+    <button class="test-button" onclick="stopMonitoring()">
+      ⏹️ 停止监控
+    </button>
+    
+    <div id="monitoringStatus"></div>
+    <div id="monitoringLog" class="log-container" style="display:none;"></div>
+  </div>
+  
+  <div class="test-card">
+    <h2>📈 性能指标</h2>
+    <div id="performanceMetrics">
+      <div class="metric">等待测试结果...</div>
+    </div>
+  </div>
+
+  <script>
+    let monitoringActive = false;
+    let updateCount = 0;
+    let testResults = {
+      basic: null,
+      load: null,
+      circular: null
+    };
+
+    // 检查EventService是否可用
+    function checkEventService() {
+      if (typeof window.EventService === 'undefined') {
+        return false;
+      }
+      return true;
+    }
+
+    // 基础功能测试
+    async function runBasicTest() {
+      const resultDiv = document.getElementById('basicTestResult');
+      resultDiv.innerHTML = '<div class="status">🔄 运行基础测试...</div>';
+      
+      if (!checkEventService()) {
+        resultDiv.innerHTML = '<div class="status error">❌ EventService未找到，请确保已加载ReMarkable应用</div>';
+        return;
+      }
+
+      try {
+        const testEventId = `test-${Date.now()}`;
+        let updateCount = 0;
+        
+        // 监听更新事件
+        const updateListener = (e) => {
+          const { eventId, originComponent, isLocalUpdate } = e.detail || {};
+          if (eventId === testEventId) {
+            updateCount++;
+            console.log(`✅ 收到更新 #${updateCount}:`, { originComponent, isLocalUpdate });
+          }
+        };
+        
+        window.addEventListener('eventsUpdated', updateListener);
+        
+        // 创建测试事件
+        const result = await EventService.createEvent({
+          id: testEventId,
+          title: 'Basic Test Event',
+          description: 'Testing circular update prevention',
+          isPlan: true,
+          isTask: true,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }, false, {
+          originComponent: 'PlanManager',
+          source: 'user-edit'
+        });
+        
+        // 等待事件传播
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // 清理
+        window.removeEventListener('eventsUpdated', updateListener);
+        await EventService.deleteEvent(testEventId);
+        
+        // 显示结果
+        const status = updateCount <= 3 ? 'success' : 'warning';
+        const statusText = updateCount <= 3 ? '✅ 测试通过' : '⚠️ 更新次数较多';
+        
+        resultDiv.innerHTML = `
+          <div class="status ${status}">
+            ${statusText} - 事件更新次数: ${updateCount}
+          </div>
+        `;
+        
+        testResults.basic = { updateCount, passed: updateCount <= 3 };
+        updateMetrics();
+        
+      } catch (error) {
+        resultDiv.innerHTML = `<div class="status error">❌ 测试失败: ${error.message}</div>`;
+      }
+    }
+
+    // 负载测试
+    async function runLoadTest() {
+      const resultDiv = document.getElementById('basicTestResult');
+      resultDiv.innerHTML = '<div class="status">📊 运行负载测试 (100次更新)...</div>';
+      
+      try {
+        const testEvents = [];
+        const startTime = performance.now();
+        
+        // 创建100个事件
+        for (let i = 0; i < 100; i++) {
+          const eventId = `load-test-${i}-${Date.now()}`;
+          testEvents.push(eventId);
+          
+          await EventService.createEvent({
+            id: eventId,
+            title: `Load Test Event ${i}`,
+            isPlan: true,
+            isTask: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          }, false, {
+            originComponent: 'PlanManager',
+            source: 'user-edit'
+          });
+          
+          // 每10个事件暂停一下
+          if (i % 10 === 9) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+        
+        const endTime = performance.now();
+        const duration = endTime - startTime;
+        
+        // 清理事件
+        for (const eventId of testEvents) {
+          await EventService.deleteEvent(eventId);
+        }
+        
+        resultDiv.innerHTML = `
+          <div class="status success">
+            ✅ 负载测试完成 - 创建100个事件用时: ${duration.toFixed(2)}ms
+          </div>
+        `;
+        
+        testResults.load = { duration, eventsPerSecond: (100 / duration * 1000).toFixed(2) };
+        updateMetrics();
+        
+      } catch (error) {
+        resultDiv.innerHTML = `<div class="status error">❌ 负载测试失败: ${error.message}</div>`;
+      }
+    }
+
+    // 循环攻击测试
+    async function runCircularTest() {
+      const resultDiv = document.getElementById('basicTestResult');
+      resultDiv.innerHTML = '<div class="status">🔄 运行循环攻击测试...</div>';
+      
+      try {
+        const testEventId = `circular-test-${Date.now()}`;
+        let updateCount = 0;
+        let circularDetected = false;
+        
+        const updateListener = (e) => {
+          const { eventId } = e.detail || {};
+          if (eventId === testEventId) {
+            updateCount++;
+            if (updateCount > 10) {
+              circularDetected = true;
+            }
+          }
+        };
+        
+        window.addEventListener('eventsUpdated', updateListener);
+        
+        // 快速连续更新模拟循环
+        const event = {
+          id: testEventId,
+          title: 'Circular Test Event',
+          isPlan: true,
+          isTask: true,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        
+        await EventService.createEvent(event, false, {
+          originComponent: 'PlanManager',
+          source: 'user-edit'
+        });
+        
+        // 快速连续更新
+        for (let i = 0; i < 5; i++) {
+          await EventService.updateEvent(testEventId, {
+            ...event,
+            title: `Circular Test Event Update ${i}`,
+            updatedAt: new Date().toISOString()
+          }, false, {
+            originComponent: 'PlanManager',
+            source: 'user-edit'
+          });
+        }
+        
+        // 等待传播
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        window.removeEventListener('eventsUpdated', updateListener);
+        await EventService.deleteEvent(testEventId);
+        
+        const status = circularDetected ? 'error' : 'success';
+        const statusText = circularDetected ? '🚨 检测到循环更新' : '✅ 循环防护有效';
+        
+        resultDiv.innerHTML = `
+          <div class="status ${status}">
+            ${statusText} - 总更新次数: ${updateCount}
+          </div>
+        `;
+        
+        testResults.circular = { updateCount, circularDetected };
+        updateMetrics();
+        
+      } catch (error) {
+        resultDiv.innerHTML = `<div class="status error">❌ 循环测试失败: ${error.message}</div>`;
+      }
+    }
+
+    // 开始监控
+    function startMonitoring() {
+      if (monitoringActive) return;
+      
+      monitoringActive = true;
+      updateCount = 0;
+      
+      const statusDiv = document.getElementById('monitoringStatus');
+      const logDiv = document.getElementById('monitoringLog');
+      
+      statusDiv.innerHTML = '<div class="status success">🔍 监控中... (30秒)</div>';
+      logDiv.style.display = 'block';
+      logDiv.textContent = '';
+      
+      const monitorListener = (e) => {
+        if (!monitoringActive) return;
+        
+        updateCount++;
+        const { eventId, originComponent, isLocalUpdate, updateId } = e.detail || {};
+        
+        const timestamp = new Date().toLocaleTimeString();
+        const logEntry = `[${timestamp}] #${updateCount} Event: ${eventId?.slice(-8)} | Origin: ${originComponent} | Local: ${isLocalUpdate} | ID: ${updateId}\n`;
+        
+        logDiv.textContent += logEntry;
+        logDiv.scrollTop = logDiv.scrollHeight;
+      };
+      
+      window.addEventListener('eventsUpdated', monitorListener);
+      
+      setTimeout(() => {
+        monitoringActive = false;
+        window.removeEventListener('eventsUpdated', monitorListener);
+        
+        statusDiv.innerHTML = `<div class="status success">✅ 监控完成 - 共捕获 ${updateCount} 次更新</div>`;
+      }, 30000);
+    }
+
+    // 停止监控
+    function stopMonitoring() {
+      monitoringActive = false;
+      const statusDiv = document.getElementById('monitoringStatus');
+      statusDiv.innerHTML = '<div class="status">⏹️ 监控已停止</div>';
+    }
+
+    // 更新性能指标
+    function updateMetrics() {
+      const metricsDiv = document.getElementById('performanceMetrics');
+      let html = '';
+      
+      if (testResults.basic) {
+        const status = testResults.basic.passed ? 'good' : 'bad';
+        html += `<div class="metric ${status}">基础测试: ${testResults.basic.updateCount} 次更新</div>`;
+      }
+      
+      if (testResults.load) {
+        html += `<div class="metric good">负载性能: ${testResults.load.eventsPerSecond} 事件/秒</div>`;
+      }
+      
+      if (testResults.circular) {
+        const status = testResults.circular.circularDetected ? 'bad' : 'good';
+        const text = testResults.circular.circularDetected ? '循环检测到' : '循环已防护';
+        html += `<div class="metric ${status}">${text}: ${testResults.circular.updateCount} 次更新</div>`;
+      }
+      
+      if (html) {
+        metricsDiv.innerHTML = html;
+      }
+    }
+
+    // 页面加载时检查环境
+    window.addEventListener('load', () => {
+      if (!checkEventService()) {
+        document.body.innerHTML = `
+          <div class="test-card">
+            <div class="status error">
+              ❌ EventService未找到
+              <br><br>
+              请按以下步骤操作：
+              <br>1. 打开ReMarkable应用
+              <br>2. 导航到Plan页面
+              <br>3. 在浏览器开发者工具中加载此测试文件
+            </div>
+          </div>
+        `;
+      }
+    });
+  </script>
+</body>
+</html>

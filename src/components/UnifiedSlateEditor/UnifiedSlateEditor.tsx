@@ -685,10 +685,19 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
         eventId, isDeleted, isNewEvent
       });
       
-      // 🆕 v1.8.4: 跳过刚刚保存的事件，避免覆盖用户正在编辑的内容
-      if (recentlySavedEventsRef.current.has(eventId)) {
-        console.log('%c[⏭️ 跳过] 该事件刚被保存，避免重复更新', 'background: #FF9800; color: white;', {
-          eventId: eventId.slice(-10),
+      // 🆕 循环更新防护：跳过本组件相关的更新
+      const { updateId, isLocalUpdate, originComponent } = e.detail || {};
+      
+      // 🚫 多重检查避免循环
+      if (isLocalUpdate || 
+          originComponent === 'PlanManager' || 
+          recentlySavedEventsRef.current.has(eventId) ||
+          (updateId && EventService.isLocalUpdate(eventId, updateId))) {
+        console.log('%c[🔄 跳过] 本组件相关的更新，避免循环', 'background: #FF9800; color: white;', {
+          eventId: eventId?.slice(-10),
+          isLocalUpdate,
+          originComponent,
+          hasRecentlySaved: recentlySavedEventsRef.current.has(eventId),
         });
         return;
       }
@@ -2118,7 +2127,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
         const para = element as any;
         if (para.bullet) {
           const level = para.bulletLevel || 0;
-          console.log('[renderElement] Bullet paragraph:', { bullet: para.bullet, bulletLevel: para.bulletLevel, calculatedLevel: level });
+          // Bullet paragraph rendering
           return (
             <div className="slate-bullet-paragraph" data-level={level} {...props.attributes}>
               {props.children}
@@ -2138,16 +2147,6 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   const renderLeaf = useCallback((props: RenderLeafProps) => {
     let { children } = props;
     const leaf = props.leaf as TextNode;
-    
-    // 🔍 调试日志：检查 leaf 是否包含颜色信息
-    if (leaf.color || leaf.backgroundColor) {
-      console.log('[renderLeaf] 🎨 渲染带颜色的 leaf:', {
-        text: (leaf as any).text,
-        color: leaf.color,
-        backgroundColor: leaf.backgroundColor,
-        hasColorStyle: !!(leaf.color || leaf.backgroundColor)
-      });
-    }
     
     // 🆕 检查是否是 @ 提及文本（高亮显示）
     if (showMentionPicker && editor.selection) {

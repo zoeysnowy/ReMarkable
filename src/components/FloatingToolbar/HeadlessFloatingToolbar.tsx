@@ -77,27 +77,67 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
   // 监听 activePickerIndex 变化，通过数字键激活对应的 picker
   useEffect(() => {
     if (activePickerIndex !== null && activePickerIndex !== undefined) {
-      const feature = effectiveFeatures[activePickerIndex]; // 🔧 使用 effectiveFeatures 而不是 config.features
-      if (feature) {
-        console.log('[HeadlessFloatingToolbar] 数字键激活功能:', { activePickerIndex, feature, mode });
+      // 🔧 判断当前层级：如果有 activePicker，说明在子菜单中
+      if (activePicker === 'textStyle') {
+        // textStyle 子菜单层级：数字键对应 textStyle 内的按钮
+        const textStyleFeatures: ToolbarFeatureType[] = ['bold', 'italic', 'strikethrough', 'textColor', 'bgColor', 'clearFormat'];
+        const feature = textStyleFeatures[activePickerIndex];
         
-        // 🔧 区分需要打开 Picker 的功能和直接执行的命令
-        const textFormatCommands = ['bold', 'italic', 'underline', 'strikethrough', 'clearFormat', 'bullet'];
-        
-        if (textFormatCommands.includes(feature)) {
-          // 文本格式化命令：直接执行，不打开 Picker
+        if (feature) {
+          
           const btnConfig = textFeatureConfig[feature as keyof typeof textFeatureConfig];
-          if (btnConfig) {
+          if (!btnConfig) return;
+          
+          // 判断是否有子菜单（textColor/bgColor 有颜色选择器）
+          if (feature === 'textColor' || feature === 'bgColor') {
+            // 打开颜色选择器子菜单
+            setActivePicker(feature);
+          } else {
+            // 无子菜单：直接执行命令并关闭整个 FloatingBar
             onTextFormat?.(btnConfig.command);
-            onRequestClose?.(); // 执行完命令后关闭 FloatingBar
+            setActivePicker(null);
+            onRequestClose?.();
           }
-        } else {
-          // 快捷操作功能 + textColor/bgColor：打开对应的 Picker
-          setActivePicker(feature);
+        }
+      } else if (activePicker === 'textColor' || activePicker === 'bgColor') {
+        // 颜色选择器层级：数字键已被颜色选择器组件内部处理
+      } else {
+        // 顶层菜单层级：数字键对应主菜单功能
+        const feature = effectiveFeatures[activePickerIndex];
+        if (feature) {
+          
+          // text_floatingbar 模式
+          if (mode === 'text_floatingbar') {
+            const textFormatCommands = ['bold', 'italic', 'underline', 'strikethrough', 'clearFormat', 'bullet'];
+            
+            if (textFormatCommands.includes(feature)) {
+              // 无子菜单：直接执行命令并关闭整个 FloatingBar
+              const btnConfig = textFeatureConfig[feature as keyof typeof textFeatureConfig];
+              if (btnConfig) {
+                onTextFormat?.(btnConfig.command);
+                onRequestClose?.();
+              }
+            } else if (feature === 'textColor' || feature === 'bgColor') {
+              // 有子菜单：打开颜色选择器
+              setActivePicker(feature);
+            }
+          } 
+          // menu_floatingbar 模式
+          else {
+            // addTask 是状态切换指令，执行后关闭
+            if (feature === 'addTask') {
+              onTaskToggle?.(!currentIsTask);
+              onRequestClose?.();
+            } 
+            // 其他都有子菜单：打开对应的 Picker
+            else {
+              setActivePicker(feature);
+            }
+          }
         }
       }
     }
-  }, [activePickerIndex, effectiveFeatures, mode, onTextFormat, onRequestClose]);
+  }, [activePickerIndex, effectiveFeatures, mode, activePicker, onTextFormat, onRequestClose, onTaskToggle, currentIsTask]);
 
   // 🆕 FloatingBar 重新打开时重置 activePicker（避免显示上次的 Picker 状态）
   useEffect(() => {
@@ -136,46 +176,21 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
                 <TextColorPicker
                   onPreview={(color) => {
                     // 🆕 预览模式：直接添加 mark，不触发 format 逻辑
-                    console.log('[HeadlessFloatingToolbar] 🎨 触发文本颜色预览:', { color });
                     const editor = slateEditorRef?.current;
                     if (editor && editor.selection) {
                       // 保存原始选区（仅第一次）
                       if (!savedSelectionRef.current) {
                         savedSelectionRef.current = { ...editor.selection };
-                        console.log('[HeadlessFloatingToolbar] 💾 保存原始选区:', savedSelectionRef.current);
                       }
                       // 🔑 关键：使用 Editor.addMark 直接添加，避免触发复杂的 format 逻辑
                       Editor.addMark(editor, 'color', color);
-                      
-                      // 🔍 诊断：检查选区内的节点是否真的有 color mark
-                      const marks = Editor.marks(editor);
-                      console.log('[HeadlessFloatingToolbar] 🔍 应用后的 marks:', marks);
-                      
-                      // 🔍 诊断：检查选中文本的实际 DOM 元素
-                      setTimeout(() => {
-                        const selection = window.getSelection();
-                        if (selection && selection.rangeCount > 0) {
-                          const range = selection.getRangeAt(0);
-                          const container = range.commonAncestorContainer;
-                          console.log('[HeadlessFloatingToolbar] 🔍 选中文本的 DOM:', {
-                            containerNodeName: container.nodeName,
-                            parentElement: container.parentElement,
-                            computedColor: container.parentElement ? window.getComputedStyle(container.parentElement).color : 'N/A',
-                            innerHTML: container.parentElement?.innerHTML
-                          });
-                        }
-                      }, 100);
-                      
-                      console.log('[HeadlessFloatingToolbar] ✅ 预览颜色已应用，选区保持不变');
                     }
                   }}
                   onSelect={(color) => {
-                    console.log('[HeadlessFloatingToolbar] ✅ 确认颜色选择:', { color });
                     const editor = slateEditorRef?.current;
                     // 恢复选区
                     if (editor && savedSelectionRef.current) {
                       Transforms.select(editor, savedSelectionRef.current);
-                      console.log('[HeadlessFloatingToolbar] 🔄 恢复原始选区');
                     }
                     onTextFormat?.('textColor', color);
                     savedSelectionRef.current = null; // 清除保存的选区
@@ -198,13 +213,11 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
                 <BackgroundColorPicker
                   onPreview={(color) => {
                     // 🆕 预览模式：直接添加 mark，不触发 format 逻辑
-                    console.log('[HeadlessFloatingToolbar] 🖍 触发背景颜色预览:', { color });
                     const editor = slateEditorRef?.current;
                     if (editor && editor.selection) {
                       // 保存原始选区（仅第一次）
                       if (!savedSelectionRef.current) {
                         savedSelectionRef.current = { ...editor.selection };
-                        console.log('[HeadlessFloatingToolbar] 💾 保存原始选区:', savedSelectionRef.current);
                       }
                       // 🔑 关键：使用 Editor.addMark 直接添加，避免触发复杂的 format 逻辑
                       if (color) {
@@ -212,16 +225,13 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
                       } else {
                         Editor.removeMark(editor, 'backgroundColor');
                       }
-                      console.log('[HeadlessFloatingToolbar] ✅ 预览背景色已应用，选区保持不变');
                     }
                   }}
                   onSelect={(color) => {
-                    console.log('[HeadlessFloatingToolbar] ✅ 确认背景色选择:', { color });
                     const editor = slateEditorRef?.current;
                     // 恢复选区
                     if (editor && savedSelectionRef.current) {
                       Transforms.select(editor, savedSelectionRef.current);
-                      console.log('[HeadlessFloatingToolbar] 🔄 恢复原始选区');
                     }
                     onTextFormat?.('backgroundColor', color);
                     savedSelectionRef.current = null; // 清除保存的选区
@@ -244,7 +254,6 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
           }
           visible={activePicker === feature}
           onClickOutside={() => {
-            console.log('[HeadlessFloatingToolbar] 🔒 点击外部，关闭颜色 Picker');
             setActivePicker(null);
           }}
           placement="bottom-start"
@@ -265,7 +274,11 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
               setActivePicker(activePicker === feature ? null : feature);
             }}
           >
-            {btnConfig.icon}
+            {btnConfig.icon === 'svg' && btnConfig.iconSrc ? (
+              <img src={btnConfig.iconSrc} alt={btnConfig.label} style={{ width: 20, height: 20, display: 'block' }} />
+            ) : (
+              btnConfig.icon
+            )}
           </button>
         </Tippy>
       );
@@ -519,6 +532,19 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
                   onRequestClose?.(); // 🆕 关闭 Picker 也关闭 FloatingBar
                 }}
               />
+            )}
+
+            {/* 🆕 textStyle 菜单：显示文本格式化按钮 */}
+            {activePicker === feature && feature === 'textStyle' && (
+              <div className="text-style-menu">
+                <div className="text-style-buttons">
+                  {['bold', 'italic', 'strikethrough', 'textColor', 'bgColor', 'clearFormat'].map((textFeature) => (
+                    <React.Fragment key={textFeature}>
+                      {renderTextFormatButton(textFeature as ToolbarFeatureType)}
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         }

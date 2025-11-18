@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **ContentSelectionPanel Button Spacing Optimization** (2025-11-19):
+  - 🎨 移除任务节点中所有不必要的spacer占位符
+  - 🐛 修复hide/unhide按钮与相邻元素的间距问题
+  - **优化逻辑**: hide/unhide按钮现在直接紧贴展开按钮或任务标题
+    - 有展开按钮的任务: hide/unhide → 展开按钮 → 任务标题
+    - 无展开按钮的任务: hide/unhide → 任务标题
+  - **移除组件**: 删除 `task-expand-spacer` 占位符逻辑
+  - Files: `ContentSelectionPanel.tsx`
+
+### Fixed
 - **SyncTargetPicker Performance & Rendering Issues** (2025-11-12):
   - 🐛 修复 EventEditModal 疯狂闪烁问题(无限循环重渲染)
   - 🐛 修复关闭 modal 后事件丢失问题

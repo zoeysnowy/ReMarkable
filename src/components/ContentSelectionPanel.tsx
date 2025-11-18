@@ -20,7 +20,7 @@ const DownIcon = ({ isExpanded }: { isExpanded?: boolean }) => (
       width: '12px', 
       height: '12px',
       transition: 'transform 0.2s',
-      transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)'
+      transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)'
     }} 
   />
 );
@@ -64,7 +64,7 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
   const [isCalendarVisible, setIsCalendarVisible] = useState(true);
 
   // Sample task tree data - matching Figma design
-  const [taskTree] = useState<TaskNode[]>([
+  const [taskTree, setTaskTree] = useState<TaskNode[]>([
     {
       id: '1',
       title: '#🔮Remarkable开发',
@@ -227,53 +227,100 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
   };
 
   const renderTaskNode = (node: TaskNode, depth: number = 0) => {
+    const hasChildren = node.children && node.children.length > 0;
+    const baseIndent = -8; // 向左偏移，因为hide/unhide按钮平时不显示
+    const indent = baseIndent + (depth * 16); // 每级增加16px缩进
+    
     return (
-      <div key={node.id} className="task-node" style={{ marginLeft: depth * 16 }}>
-        <div className="task-node-row">
-          {node.children && node.children.length > 0 && (
-            <button className="task-expand-btn">
+      <div key={node.id} className={`task-node task-node-depth-${depth}`}>
+        <div className="task-node-row" style={{ marginLeft: `${indent}px` }}>
+          {/* 可见性图标 */}
+          <div className="task-visibility-container">
+            {node.isHidden ? (
+              <button className="task-visibility-btn task-visibility-btn-visible">
+                <HideSmallIcon className="task-icon task-icon-hidden" />
+              </button>
+            ) : (
+              <button className="task-visibility-btn task-visibility-btn-hidden">
+                <UnhideSmallIcon className="task-icon task-icon-visible" />
+              </button>
+            )}
+          </div>
+          
+          {/* 展开/收缩按钮 */}
+          {hasChildren && (
+            <button 
+              className="task-expand-btn"
+              onClick={() => toggleTaskNode(node.id)}
+            >
               <DownIcon isExpanded={node.isExpanded} />
             </button>
           )}
-          {!node.children && <div className="task-expand-spacer" />}
           
-          {node.isHidden ? (
-            <HideSmallIcon className="task-icon task-icon-hidden" />
-          ) : node.isFavorite ? (
+          {/* 收藏图标 */}
+          {node.isFavorite && (
             <span className="task-icon task-icon-favorite">⭐</span>
-          ) : (
-            <UnhideSmallIcon className="task-icon task-icon-visible" />
           )}
           
-          <div className="task-title">{node.title}</div>
+          {/* 任务标题 */}
+          <div className="task-title" style={{ color: node.color }}>
+            {node.title}
+          </div>
           
+          {/* 统计信息 */}
           {node.stats && (
             <div className="task-stats">
-              <div className="task-progress-container">
-                <PiechartIcon className="task-pie-chart" color={node.color} />
-                <span className="task-progress-text">
-                  {node.stats.completed}/{node.stats.total}
-                </span>
+              <div className="task-stats-top">
+                <div className="task-stats-left">
+                  <PiechartIcon className="task-pie-chart" color={node.color} />
+                  <span className="task-progress-text">
+                    {node.stats.completed}/{node.stats.total}
+                  </span>
+                </div>
+                <span className="task-hours">{node.stats.hours}h</span>
               </div>
-              
               <div className="task-time-bar">
                 <div
                   className="task-time-fill"
                   style={{
                     width: `${(node.stats.completed / node.stats.total) * 100}%`,
-                    background: `linear-gradient(to right, ${node.color}, ${node.color})`,
+                    background: node.color === '#8b5cf6' 
+                      ? 'linear-gradient(to right, #a855f7, #9333ea)'
+                      : node.color === '#3b82f6'
+                      ? 'linear-gradient(to right, #3b82f6, #2563eb)'
+                      : node.color === '#10b981'
+                      ? 'linear-gradient(to right, #10b981, #059669)'
+                      : node.color,
                   }}
                 />
               </div>
-              
-              <span className="task-hours">{node.stats.hours}h</span>
             </div>
           )}
         </div>
-        {node.isExpanded &&
-          node.children?.map((child) => renderTaskNode(child, depth + 1))}
+        
+        {/* 子任务 */}
+        {node.isExpanded && hasChildren && (
+          <div className="task-children">
+            {node.children?.map((child) => renderTaskNode(child, depth + 1))}
+          </div>
+        )}
       </div>
     );
+  };
+
+  const toggleTaskNode = (nodeId: string) => {
+    const updateNode = (nodes: TaskNode[]): TaskNode[] => {
+      return nodes.map(node => {
+        if (node.id === nodeId) {
+          return { ...node, isExpanded: !node.isExpanded };
+        }
+        if (node.children) {
+          return { ...node, children: updateNode(node.children) };
+        }
+        return node;
+      });
+    };
+    setTaskTree(updateNode(taskTree));
   };
 
   return (

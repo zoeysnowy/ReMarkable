@@ -25,6 +25,11 @@ let syncManagerInstance: any = null;
 // 跨标签页广播通道
 let broadcastChannel: BroadcastChannel | null = null;
 
+// 🆕 循环更新防护机制
+let updateSequence = 0;
+const pendingLocalUpdates = new Map<string, { updateId: number; timestamp: number; component: string }>();
+const tabId = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
 export class EventService {
   /**
    * 初始化服务，注入同步管理器
@@ -36,7 +41,27 @@ export class EventService {
     // 初始化跨标签页广播通道
     try {
       broadcastChannel = new BroadcastChannel('remarkable-events');
-      eventLogger.log('📡 [EventService] BroadcastChannel initialized for cross-tab sync');
+      
+      // 🆕 监听其他标签页的消息，过滤自己发送的消息
+      broadcastChannel.onmessage = (event) => {
+        const { senderId, ...data } = event.data;
+        
+        // 🚫 忽略自己发送的消息，避免循环
+        if (senderId === tabId) {
+          eventLogger.log('🔄 [EventService] 忽略自己的广播消息', { eventId: data.eventId });
+          return;
+        }
+        
+        // ✅ 处理其他标签页的更新
+        if (data.type === 'eventsUpdated') {
+          eventLogger.log('📡 [EventService] 收到其他标签页更新', { eventId: data.eventId, senderId });
+          window.dispatchEvent(new CustomEvent('eventsUpdated', { 
+            detail: { ...data, isFromOtherTab: true, senderId }
+          }));
+        }
+      };
+      
+      eventLogger.log('📡 [EventService] BroadcastChannel initialized for cross-tab sync', { tabId });
     } catch (error) {
       eventLogger.warn('⚠️ [EventService] BroadcastChannel not supported:', error);
     }
@@ -205,8 +230,16 @@ export class EventService {
    * 创建新事�?
    * @param event - 事件对象
    * @param skipSync - 是否跳过同步（默认false，某些场景如Timer运行中可设为true�?
+   * @param options - 创建选项，包含来源组件信息
    */
-  static async createEvent(event: Event, skipSync: boolean = false): Promise<{ success: boolean; event?: Event; error?: string }> {
+  static async createEvent(
+    event: Event, 
+    skipSync: boolean = false,
+    options?: {
+      originComponent?: 'PlanManager' | 'TimeCalendar' | 'Timer' | 'EventEditModal';
+      source?: 'user-edit' | 'external-sync' | 'auto-sync';
+    }
+  ): Promise<{ success: boolean; event?: Event; error?: string }> {
     try {
       // 🔍 [DEBUG] 记录调用栈
       const stack = new Error().stack;
@@ -336,8 +369,35 @@ export class EventService {
         总事件数: existingEvents.length
       });
 
-      // 触发全局更新事件（携带完整事件数据，避免订阅者重新读取）
-      this.dispatchEventUpdate(event.id, { isNewEvent: true, tags: event.tags, event: finalEvent });
+      // 🆕 生成更新ID和跟踪本地更新
+      const updateId = ++updateSequence;
+      const originComponent = options?.originComponent || 'Unknown';
+      const source = options?.source || 'user-edit';
+      
+      // 记录本地更新，用于循环检测
+      if (source === 'user-edit') {
+        pendingLocalUpdates.set(finalEvent.id, {
+          updateId,
+          timestamp: Date.now(),
+          component: originComponent
+        });
+        
+        // 5秒后清理，给广播和同步足够时间
+        setTimeout(() => {
+          pendingLocalUpdates.delete(finalEvent.id);
+        }, 5000);
+      }
+
+      // 触发全局更新事件（携带完整事件数据和来源信息）
+      this.dispatchEventUpdate(finalEvent.id, { 
+        isNewEvent: true, 
+        tags: finalEvent.tags, 
+        event: finalEvent,
+        updateId,
+        originComponent,
+        source,
+        isLocalUpdate: source === 'user-edit'
+      });
 
       // 同步到Outlook（如果不跳过且有同步管理器）
       if (!skipSync && syncManagerInstance && finalEvent.syncStatus !== 'local-only') {
@@ -391,11 +451,16 @@ export class EventService {
    * @param eventId - 事件ID
    * @param updates - 更新内容（部分字段或完整事件对象�?
    * @param skipSync - 是否跳过同步
+   * @param options - 更新选项，包含来源组件信息
    */
   static async updateEvent(
     eventId: string, 
     updates: Partial<Event> | Event, 
-    skipSync: boolean = false
+    skipSync: boolean = false,
+    options?: {
+      originComponent?: 'PlanManager' | 'TimeCalendar' | 'Timer' | 'EventEditModal';
+      source?: 'user-edit' | 'external-sync' | 'auto-sync';
+    }
   ): Promise<{ success: boolean; event?: Event; error?: string }> {
     try {
       // 🔍 诊断：记录调用栈
@@ -621,8 +686,35 @@ export class EventService {
         isAllDay: updatedEvent.isAllDay
       });
 
-      // 触发全局更新事件（携带完整事件数据）
-      this.dispatchEventUpdate(eventId, { isUpdate: true, tags: updatedEvent.tags, event: updatedEvent });
+      // 🆕 生成更新ID和跟踪本地更新
+      const updateId = ++updateSequence;
+      const originComponent = options?.originComponent || 'Unknown';
+      const source = options?.source || 'user-edit';
+      
+      // 记录本地更新，用于循环检测
+      if (source === 'user-edit') {
+        pendingLocalUpdates.set(eventId, {
+          updateId,
+          timestamp: Date.now(),
+          component: originComponent
+        });
+        
+        // 5秒后清理，给广播和同步足够时间
+        setTimeout(() => {
+          pendingLocalUpdates.delete(eventId);
+        }, 5000);
+      }
+
+      // 触发全局更新事件（携带完整事件数据和来源信息）
+      this.dispatchEventUpdate(eventId, { 
+        isUpdate: true, 
+        tags: updatedEvent.tags, 
+        event: updatedEvent,
+        updateId,
+        originComponent,
+        source,
+        isLocalUpdate: source === 'user-edit'
+      });
 
       // 同步到Outlook
       if (!skipSync && syncManagerInstance && updatedEvent.syncStatus !== 'local-only') {
@@ -749,20 +841,27 @@ export class EventService {
    */
   private static dispatchEventUpdate(eventId: string, detail: any) {
     try {
-      const eventDetail = { eventId, ...detail };
+      const eventDetail = { 
+        eventId, 
+        ...detail,
+        senderId: tabId,  // 🆕 添加发送者标识
+        timestamp: Date.now()
+      };
       
       // 1. 触发当前标签页的事件
       window.dispatchEvent(new CustomEvent('eventsUpdated', {
         detail: eventDetail
       }));
       
-      // 2. 广播到其他标签页
+      // 2. 广播到其他标签页（携带发送者ID）
       if (broadcastChannel) {
         try {
           broadcastChannel.postMessage({
             type: 'eventsUpdated',
+            senderId: tabId,  // 🆕 标记发送者
             eventId,
-            detail: eventDetail
+            ...detail,
+            timestamp: Date.now()
           });
           eventLogger.log('📡 [EventService] Broadcasted to other tabs:', eventId);
         } catch (broadcastError) {
@@ -788,6 +887,23 @@ export class EventService {
    */
   static isInitialized(): boolean {
     return syncManagerInstance !== null;
+  }
+
+  /**
+   * 🆕 循环更新防护：检查是否为本地更新
+   */
+  static isLocalUpdate(eventId: string, updateId?: number): boolean {
+    const localUpdate = pendingLocalUpdates.get(eventId);
+    if (!localUpdate) return false;
+    
+    // 如果提供了 updateId，检查是否匹配
+    if (updateId !== undefined) {
+      return localUpdate.updateId === updateId;
+    }
+    
+    // 检查时间窗口（5秒内为本地更新）
+    const timeDiff = Date.now() - localUpdate.timestamp;
+    return timeDiff < 5000;
   }
 
   /**

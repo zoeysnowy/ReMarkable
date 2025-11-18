@@ -5078,3 +5078,31 @@ const handleChange = useCallback((newValue: Descendant[]) => {
 - `src/assets/icons/task_gray.svg`
 - `src/assets/icons/Attendee.svg` & `Location.svg`
 - `src/assets/icons/right.svg`
+
+### v2.0.1 按钮间距优化 (2025-11-19)
+
+**问题**: 任务节点中的 hide/unhide 按钮与相邻元素之间存在不必要的间距
+
+**优化内容**:
+- 🐛 **移除 spacer 占位符**: 删除 `task-expand-spacer` 逻辑，不再为没有展开按钮的任务添加占位符
+- 🎨 **紧贴布局**: hide/unhide 按钮直接紧贴展开按钮或任务标题
+  - 有展开按钮: `hide/unhide → 展开按钮 → 任务标题`  
+  - 无展开按钮: `hide/unhide → 任务标题`
+- ⚡ **简化渲染逻辑**: 从复杂的条件渲染改为简单的 `hasChildren &&` 判断
+
+**代码变更**:
+```typescript
+// 之前: 复杂的条件渲染 + spacer占位
+{hasChildren ? (
+  <button className="task-expand-btn">...</button>
+) : depth > 0 ? (
+  <div className="task-expand-spacer" />
+) : null}
+
+// 现在: 简洁的按需渲染
+{hasChildren && (
+  <button className="task-expand-btn">...</button>
+)}
+```
+
+**文件**: `src/components/ContentSelectionPanel.tsx` (Line ~250)

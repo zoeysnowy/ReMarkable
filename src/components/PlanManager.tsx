@@ -423,10 +423,25 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     };
   }, []);
   
-  // ✅ 监听 eventsUpdated，增量更新 items
+  // ✅ 监听 eventsUpdated，增量更新 items（带循环防护）
   useEffect(() => {
     const handleEventUpdated = (e: CustomEvent) => {
-      const { eventId, isDeleted, isNewEvent } = e.detail || {};
+      const { eventId, isDeleted, isNewEvent, updateId, isLocalUpdate, originComponent, source } = e.detail || {};
+      
+      // 🚫 循环更新防护：跳过本组件发出的更新
+      if (isLocalUpdate && originComponent === 'PlanManager') {
+        console.log('🔄 [PlanManager] 跳过本地更新，避免循环', { eventId: eventId?.slice(-10), source });
+        return;
+      }
+      
+      // 🚫 双重检查：询问EventService确认
+      if (updateId && EventService.isLocalUpdate(eventId, updateId)) {
+        console.log('🔄 [PlanManager] EventService确认为本地更新，跳过', { eventId: eventId?.slice(-10) });
+        return;
+      }
+      
+      // ✅ 确认为外部更新，执行同步
+      console.log('📡 [PlanManager] 外部更新，执行同步', { eventId: eventId?.slice(-10), source, originComponent });
       
       if (isDeleted) {
         // 增量删除

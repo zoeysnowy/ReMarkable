@@ -56,7 +56,6 @@ export const TextColorPicker: React.FC<TextColorPickerProps> = ({
       className="color-picker-panel"
       onMouseDown={(e) => {
         e.preventDefault();
-        console.log('[TextColorPicker] 🔒 阻止默认事件，保持编辑器选区');
       }}
     >
       <div className="picker-header">
@@ -83,7 +82,6 @@ export const TextColorPicker: React.FC<TextColorPickerProps> = ({
                 <button
                   className={`color-item ${active ? 'color-item-active' : ''}`}
                   onMouseEnter={() => {
-                    console.log('[TextColorPicker] 🎨 预览颜色:', color);
                     onPreview?.(color.value);
                   }}
                   onMouseDown={(e) => e.preventDefault()}

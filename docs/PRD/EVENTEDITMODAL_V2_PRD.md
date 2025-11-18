@@ -26,6 +26,12 @@
 > - ✅ **实时计时显示**: 每秒更新已计时时长，支持暂停/继续/停止/取消
 > - ✅ **时间格式统一**: 所有时间使用 `formatTimeForStorage()`，严格遵循 Time Architecture
 > - ✅ **左侧区域完成**: Emoji + 标题 + 标签 + Checkbox + Timer 按钮（含已计时时长显示）
+> - ✅ **参会人功能完成**: AttendeeDisplay 组件（多来源搜索 + 去重 + 悬浮预览 + 完整编辑 Modal）
+> - ✅ **联系人管理**: ContactModal 组件（内联编辑 + 关联事件查看 + 自动保存到 localStorage）
+> - ✅ **多来源搜索**: Outlook/Google/iCloud/ReMarkable/历史参会人，智能去重
+> - ✅ **键盘导航**: ↑↓ 选择，Enter 确认，Escape 关闭
+> - ✅ **悬浮预览卡片**: 鼠标悬浮 1 秒弹出，显示联系人详细信息 + 最近事件
+> - ✅ **自动同步**: 编辑联系人后自动更新所有引用位置，无需刷新
 
 ---
 
@@ -42,6 +48,88 @@
 **参考**: 
 - `src/utils/timeUtils.ts` - 时间工具函数
 - `docs/TIME_ARCHITECTURE.md` - 时间架构文档
+
+---
+
+## 📊 功能实现状态总览
+
+> **最后更新**: 2025-11-19  
+> **完成度**: 65% (13/20 核心功能已完成)
+
+### ✅ 已完成功能（13 项）
+
+| 功能模块 | 所在区域 | 组件/文件 | 完成时间 |
+|---------|---------|----------|----------|
+| **Emoji 选择器** | 左侧 - 上 Section | EmojiPicker | 2025-11-15 |
+| **标题输入框** | 左侧 - 上 Section | EventEditModalV2Demo.tsx | 2025-11-15 |
+| **标签显示** | 左侧 - 上 Section | HierarchicalTagPicker | 2025-11-15 |
+| **任务勾选框** | 左侧 - 上 Section | EventEditModalV2Demo.tsx | 2025-11-15 |
+| **Timer 计时按钮** | 左侧 - 中间按钮 | EventEditModalV2Demo.tsx | 2025-11-15 |
+| **参会人搜索与编辑** | 左侧 - 中 Section | AttendeeDisplay + ContactModal | 2025-11-18 |
+| **时间选择器 Tippy 集成** | 左侧 - 中 Section | Tippy + UnifiedDateTimePicker | 2025-11-19 |
+| **地址智能输入** | 左侧 - 中 Section | LocationInput | 2025-11-19 |
+| **日历来源显示** | 左侧 - 中 Section | 静态 UI | 2025-11-15 |
+| **标签区域静态显示** | 右侧 - Event Log | 静态 UI | 2025-11-15 |
+| **Plan 提示区域** | 右侧 - Event Log | 静态 UI | 2025-11-15 |
+| **时间戳分隔线样式** | 右侧 - Event Log | 静态 CSS | 2025-11-15 |
+| **日志静态展示** | 右侧 - Event Log | 静态 HTML | 2025-11-15 |
+
+### ⚠️ 部分实现功能（4 项）
+
+| 功能模块 | 已完成部分 | 待完成部分 | 优先级 |
+|---------|-----------|-----------|--------|
+| **实际进展区域** | 静态 UI + 样式 | 动态数据 + Timer 汇总逻辑 | P0 |
+| **Event Log 编辑** | 静态内容展示 | UnifiedSlateEditor 集成 | P0 |
+| **标签区域编辑** | 静态显示 | Slate 编辑能力（删除/插入） | P1 |
+| **视图切换** | 布局结构 | 切换交互 + 状态保持 | P1 |
+
+### ❌ 待开发功能（3 项）
+
+| 功能模块 | 所在区域 | 工作量估算 | 优先级 | 技术文档 |
+|---------|---------|-----------|--------|----------|
+| **日历来源 + 同步机制选择** | 左侧 - 中 Section | 5 天 | P0 | [技术分析](./CALENDAR_SYNC_CONFIG_TECHNICAL_ANALYSIS.md) + [场景矩阵](./CALENDAR_SYNC_SCENARIOS_MATRIX.md) |
+| **实际进展数据集成** | 左侧 - 下 Section | 2-3 天 | P0 | - |
+| **UnifiedSlateEditor 集成** | 右侧 - Event Log | 3-4 天 | P0 | - |
+| **Timer 二次计时自动升级** | 左侧 - Timer 按钮 | 2 天 | P2 | - |
+
+### 📈 开发进度
+
+```
+总体进度: ████████████░░░░░░░░ 65%
+
+左侧 Event Overview: ███████████████░░░ 85%
+  ├─ 上 Section (事件标识):       ████████████████████ 100%
+  ├─ 中 Section (计划安排):       ████████████████████ 100%
+  └─ 下 Section (实际进展):       ██████░░░░░░░░░░░░░░  30%
+
+右侧 Event Log:      ████░░░░░░░░░░░░░░░░  20%
+  ├─ 标签区域:                    ████████░░░░░░░░░░░░  40%
+  ├─ Plan 提示:                   ████████████████████ 100%
+  └─ Slate 编辑区:                ░░░░░░░░░░░░░░░░░░░░   0%
+```
+
+### 🎯 下一步开发建议
+
+**第一阶段**（本周完成）- P0 功能:
+1. ✅ **实际进展数据集成** - 2-3 天
+   - 时间片段列表动态渲染
+   - 总时长汇总计算
+   - 计划 vs 实际时间对比
+   - DDL 完成状态显示
+
+2. ✅ **UnifiedSlateEditor 集成** - 3-4 天
+   - 主日志富文本编辑器
+   - 时间戳分隔线动态生成
+   - 父事件 + Timer 子事件日志合并
+   - 点击 Timer 色块自动滚动
+
+**第二阶段**（下周完成）- P1 功能:
+3. ✅ **标签区域 Slate 编辑** - 1-2 天
+4. ✅ **视图切换交互** - 1-2 天
+
+**第三阶段**（后续优化）- P2 功能:
+5. ✅ **Timer 二次计时自动升级** - 2 天
+6. ✅ **日历归属选择器** - 1 天
 
 ---
 
@@ -319,7 +407,28 @@ const handleSave = async () => {
 
 ---
 
-## 左侧：Event Overview
+## 左侧：Event Overview ⚠️ **部分实现**
+
+**实现状态**: ⚠️ 部分实现（上 Section 完成，中 Section 完成，下 Section 部分完成）
+
+**已完成功能**:
+- ✅ **Emoji 选择器**（1.1）- EmojiPicker 集成，点击选择并自动添加到标题
+- ✅ **标题输入框**（1.2）- 实时编辑，Timer 子事件自动保存到父事件
+- ✅ **标签显示**（1.3）- HierarchicalTagPicker 集成，支持多选
+- ✅ **任务勾选框**（1.4）- 条件显示（Plan 事件且 isTask=true）
+- ✅ **Timer 按钮**（计时按钮）- 支持开始/暂停/继续/停止/取消，实时显示已计时时长
+- ✅ **参会人**（2.1）- AttendeeDisplay + ContactModal，多来源搜索 + 悬浮预览
+- ✅ **时间范围**（2.2）- Tippy + UnifiedDateTimePicker，自然语言解析
+- ✅ **位置**（2.3）- LocationInput，高德地图 API 集成
+- ✅ **日历来源**（静态显示）- 显示来源平台（Outlook/Google/iCloud）+ 同步模式
+
+**待实现功能**:
+- ❌ **实际进展区域**（3.1-3.2）- 时间片段列表、总时长汇总、计划 vs 实际对比、DDL 状态
+- ❌ **日历归属选择器**（2.5）- 切换事件所属日历
+- ❌ **Timer 二次计时自动升级**（独立 Timer → 父子结构）
+- ❌ **计划安排显示条件**（Timer 子事件读取父事件数据）
+
+---
 
 ### 【上 Section】- 事件标识
 
@@ -1151,7 +1260,26 @@ const handlePlanDataChange = async (field: string, value: any) => {
 
 ---
 
-#### 2.1 参会人（Organizer + Attendees）
+#### 2.1 参与人（Organizer + Attendees）✅ **已完成**
+
+**实现状态**: ✅ 已完成（AttendeeDisplay 组件 + ContactModal 组件）
+
+**已实现功能**:
+- ✅ 发起人和参会人列表显示（发起人：斜体 + 加粗 + 下划线，有邮箱的参会人：下划线）
+- ✅ 点击进入编辑模式（contentEditable）
+- ✅ 多来源搜索（Outlook/Google/iCloud/ReMarkable/历史参会人）
+- ✅ 智能去重（同一人多来源按优先级显示）
+- ✅ 键盘导航（↑↓ 选择，Enter 确认，Escape 关闭）
+- ✅ 悬浮预览卡片（鼠标悬浮 1 秒弹出，显示联系人详细信息 + 编辑按钮）
+- ✅ 完整联系人编辑 Modal（ContactModal，内联编辑所有字段）
+- ✅ 关联事件查看（预览卡片显示最近 5 个，Modal 显示全部）
+- ✅ 自动保存到 localStorage（新联系人自动添加到联系人库）
+- ✅ 实时同步（编辑联系人后自动更新所有引用位置）
+
+**核心组件**:
+- `src/components/common/AttendeeDisplay.tsx` - 参会人显示和搜索组件（1068 行）
+- `src/components/ContactModal/ContactModal.tsx` - 独立联系人编辑 Modal（337 行）
+- `src/services/ContactService.ts` - 联系人管理服务（多来源搜索 + 去重 + CRUD）
 
 **数据结构**:
 ```typescript
@@ -1960,9 +2088,24 @@ const handleSelectContact = async (contact: Contact) => {
 
 ---
 
-#### 2.2 时间范围
+#### 2.2 时间范围 ✅ **已完成**
+
+**实现状态**: ✅ 已完成（Tippy.js + UnifiedDateTimePicker 集成）
 
 **【2025-11-19 更新】Tippy.js 集成 - 优雅的时间选择器弹出方式**
+
+**已实现功能**:
+- ✅ **非侵入式**: 点击时间区域后，选择器从下方弹出，不灰化页面背景
+- ✅ **自动聚焦**: 弹出后光标自动聚焦到自然语言输入框，用户可直接输入
+- ✅ **双 Enter 逻辑**: 第一次 Enter 解析时间并显示预览，第二次 Enter 确认并关闭
+- ✅ **点击外部关闭**: 点击选择器外部区域自动关闭
+- ✅ **固定下方弹出**: 禁用 flip 和 preventOverflow，确保始终在下方
+- ✅ **完整显示**: maxWidth="none"，确保选择器完整显示
+- ✅ **自然语言解析**: 支持"明天下午3点"等自然语言输入
+
+**核心组件**:
+- `src/components/FloatingToolbar/pickers/UnifiedDateTimePicker.tsx` - 统一时间选择器
+- EventEditModalV2Demo.tsx（Lines 763-813）- Tippy 集成实现
 
 **设计理念**:
 - ✅ **非侵入式**: 点击时间区域后，选择器从下方弹出，不灰化页面背景
@@ -2314,7 +2457,26 @@ function parseNaturalTimeInput(input: string): { start: Date, end: Date, isAllDa
 
 ---
 
-#### 2.3 位置（地址智能输入）
+#### 2.3 位置（地址智能输入）✅ **已完成**
+
+**实现状态**: ✅ 已完成（LocationInput 组件 + 高德地图 API 集成）
+
+**已实现功能**:
+- ✅ 集成高德地图 Input Tips API
+- ✅ 实时地址自动补全（≥2 字符触发，300ms 防抖）
+- ✅ 地图跳转功能（高德地图/Google Maps，移动/桌面自适应）
+- ✅ 无边框编辑模式，和参会人样式一致
+- ✅ 紧凑下拉建议列表（地点名称 + 区域信息）
+- ✅ 错误处理（API Key 无效、网络错误、无结果）
+
+**核心组件**:
+- `src/components/common/LocationInput.tsx` - 地址输入组件
+- `src/components/common/LocationInput.css` - 组件样式
+
+**相关文档**:
+- `docs/LOCATION_FEATURE_SETUP.md` - API Key 申请和配置指南
+- `docs/LOCATION_TEST_CHECKLIST.md` - 测试清单（18 个测试用例）
+- `docs/LOCATION_FEATURE_SUMMARY.md` - 功能开发总结
 
 **数据来源**: `event.location`
 
@@ -2468,6 +2630,9 @@ docs/
 ---
 
 #### 2.4 来源日历 + 同步机制选择
+
+> **📌 技术分析文档**: [CALENDAR_SYNC_CONFIG_TECHNICAL_ANALYSIS.md](./CALENDAR_SYNC_CONFIG_TECHNICAL_ANALYSIS.md)  
+> **📌 场景矩阵分析**: [CALENDAR_SYNC_SCENARIOS_MATRIX.md](./CALENDAR_SYNC_SCENARIOS_MATRIX.md) - 详细规划相同日历 9 种场景 + Actual 多日历支持
 
 **位置**: 【中 Section】- 计划安排
 
@@ -4007,7 +4172,30 @@ function formatDuration(ms: number): string {
 
 ---
 
-## 右侧：Event Log
+## 右侧：Event Log ⚠️ **部分实现**
+
+**实现状态**: ⚠️ 部分实现（静态 UI 已完成，UnifiedSlateEditor 集成待开发）
+
+**已实现部分**:
+- ✅ 标签区域静态显示（`#🔗工作/#📝文档编辑`）
+- ✅ Plan 提示区域（任务图标 + DDL 提示）
+- ✅ 关联区域（上级任务链接）
+- ✅ 时间戳分隔线静态样式
+- ✅ 日志内容静态展示（多条日志，带时间戳）
+
+**待实现功能**:
+- ❌ **标签区域 Slate 编辑**: 允许用户删除/插入标签（像编辑文本一样）
+- ❌ **主日志 UnifiedSlateEditor 集成**: 富文本编辑器，支持 FloatingBar
+- ❌ **时间戳分隔线动态生成**: 根据 Timer 子事件自动插入
+- ❌ **父事件 + Timer 子事件日志合并**: 按时间排序显示所有日志
+- ❌ **点击 Timer 色块自动滚动**: 滚动到对应时间戳位置
+- ❌ **上下文虚化显示**: 显示上一段 Timer 的最后一行（延续性）
+- ❌ **增量保存**: 正在计时时保存到当前 Timer 子事件，未计时时保存到父事件
+
+**当前实现位置**:
+- `EventEditModalV2Demo.tsx`（Lines 950-1015）- 静态 UI 实现
+
+---
 
 ### 【标签区域】
 
