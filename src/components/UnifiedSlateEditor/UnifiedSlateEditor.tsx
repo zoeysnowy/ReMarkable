@@ -528,7 +528,21 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   
   // 🆕 增强的 value：始终在末尾添加一个 placeholder 提示行
   const enhancedValue = useMemo(() => {
+    // 🚨 DIAGNOSIS: 记录 enhancedValue 计算过程
+    console.log('🔍 [诊断] enhancedValue 重新计算:', {
+      items数量: items.length,
+      时间戳: new Date().toISOString()
+    });
+    
     const baseNodes = planItemsToSlateNodes(items);
+    
+    // 🚨 DIAGNOSIS: 检测 planItemsToSlateNodes 返回空数组
+    if (baseNodes.length === 0 && items.length > 0) {
+      console.error('🔴 [诊断] planItemsToSlateNodes 返回空数组！', {
+        items数量: items.length,
+        items示例: items.slice(0, 3).map(i => ({ id: i.id, title: i.title?.substring(0, 20) }))
+      });
+    }
     
     // 🎯 v1.8: 在末尾添加一个特殊的 placeholder 行（第 i+1 行）
     // 这一行不可编辑，只显示提示文字，点击时会在它之前插入新行
@@ -549,7 +563,16 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       } as any,
     };
     
-    return [...baseNodes, placeholderLine];
+    const result = [...baseNodes, placeholderLine];
+    
+    // 🚨 DIAGNOSIS: 记录 enhancedValue 最终结果
+    console.log('📊 [诊断] enhancedValue 计算完成:', {
+      baseNodes数量: baseNodes.length,
+      最终数量: result.length,
+      items数量: items.length
+    });
+    
+    return result;
   }, [items]);
   
   // 初始化内容
@@ -619,11 +642,33 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   // 🔧 仅在初始化时同步一次
   const isInitializedRef = React.useRef(false);
   useEffect(() => {
+    // 🚨 DIAGNOSIS: 记录初始化过程
+    console.log('🔍 [诊断] 初始化 useEffect 执行:', {
+      isInitialized: isInitializedRef.current,
+      items数量: items.length,
+      enhancedValue数量: enhancedValue.length,
+      value数量: value.length,
+      时间戳: new Date().toISOString()
+    });
+    
     if (!isInitializedRef.current && items.length > 0) {
       logOperation('初始化编辑器内容', { itemCount: items.length });
       
+      // 🚨 DIAGNOSIS: 检测 enhancedValue 异常
+      if (enhancedValue.length === 0 || (enhancedValue.length === 1 && enhancedValue[0].eventId === '__placeholder__')) {
+        console.error('🔴 [诊断] enhancedValue 异常为空！', {
+          items数量: items.length,
+          enhancedValue: enhancedValue,
+          items示例: items.slice(0, 3).map(i => ({ id: i.id, title: i.title?.substring(0, 20) }))
+        });
+      }
+      
       setValue(enhancedValue);
       isInitializedRef.current = true;
+      
+      console.log('✅ [诊断] 初始化完成:', {
+        设置的value数量: enhancedValue.length
+      });
     }
   }, []); // ✅ 空依赖，只执行一次
   
@@ -918,7 +963,20 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     logValueChange(value, newValue as unknown as EventLineNode[]);
     
     // 🔥 立即更新 UI（Slate 内部状态）
-    setValue(newValue as unknown as EventLineNode[]);
+    // 🚨 DIAGNOSIS: 检测 setValue 被调用时的异常
+    const newValueAsNodes = newValue as unknown as EventLineNode[];
+    const hasRealContent = newValueAsNodes.some(node => node.eventId !== '__placeholder__');
+    
+    if (!hasRealContent && value.some(node => node.eventId !== '__placeholder__')) {
+      console.error('🔴 [诊断] setValue 即将清空编辑器！', {
+        当前value有内容: value.filter(n => n.eventId !== '__placeholder__').length,
+        新value只有placeholder: !hasRealContent,
+        newValue数量: newValueAsNodes.length,
+        调用栈: new Error().stack?.split('\n').slice(0, 10)
+      });
+    }
+    
+    setValue(newValueAsNodes);
     
     // 🆕 检测@提及触发
     if (editor.selection && Range.isCollapsed(editor.selection)) {
@@ -1061,7 +1119,43 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
           return !(node.metadata as any)?.isPlaceholder && node.eventId !== '__placeholder__';
         });
         
+        // 🚨 DIAGNOSIS: 检测序列化返回空数组
+        if (filteredNodes.length === 0) {
+          console.error('🔴 [诊断] 自动保存 - filteredNodes 为空！', {
+            pendingChanges数量: (pendingChangesRef.current as any[])?.length,
+            调用栈: new Error().stack?.split('\n').slice(0, 10)
+          });
+        }
+        
         const planItems = slateNodesToPlanItems(filteredNodes);
+        
+        // 🚨 DIAGNOSIS: 检测序列化返回空数组
+        if (planItems.length === 0 && filteredNodes.length > 0) {
+          console.error('🔴 [诊断] slateNodesToPlanItems 返回空数组！', {
+            filteredNodes数量: filteredNodes.length,
+            planItems数量: planItems.length,
+            filteredNodes示例: filteredNodes.slice(0, 3).map(n => ({
+              eventId: n.eventId,
+              lineId: n.lineId,
+              mode: n.mode,
+              children数量: n.children.length
+            }))
+          });
+        }
+        
+        // 🚨 DIAGNOSIS: 检测序列化返回空数组
+        if (planItems.length === 0 && filteredNodes.length > 0) {
+          console.error('🔴 [诊断] slateNodesToPlanItems 返回空数组！', {
+            filteredNodes数量: filteredNodes.length,
+            planItems数量: planItems.length,
+            filteredNodes示例: filteredNodes.slice(0, 3).map(n => ({
+              eventId: n.eventId,
+              lineId: n.lineId,
+              mode: n.mode,
+              children数量: n.children.length
+            }))
+          });
+        }
         
         // 检测 eventlog 行删除
         planItems.forEach(item => {
@@ -1283,7 +1377,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
                 start: startStr,
                 end: endStr,
                 kind: endStr ? 'range' : 'fixed',
-                source: 'mention',
+                source: 'picker',
                 rawText: finalUserText, // 🔧 使用完整的用户输入文本
               });
               console.log('[@ Mention] 已存在事件，TimeHub 写入成功:', { eventId, startStr, endStr });
@@ -2045,6 +2139,16 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     let { children } = props;
     const leaf = props.leaf as TextNode;
     
+    // 🔍 调试日志：检查 leaf 是否包含颜色信息
+    if (leaf.color || leaf.backgroundColor) {
+      console.log('[renderLeaf] 🎨 渲染带颜色的 leaf:', {
+        text: (leaf as any).text,
+        color: leaf.color,
+        backgroundColor: leaf.backgroundColor,
+        hasColorStyle: !!(leaf.color || leaf.backgroundColor)
+      });
+    }
+    
     // 🆕 检查是否是 @ 提及文本（高亮显示）
     if (showMentionPicker && editor.selection) {
       try {
@@ -2102,8 +2206,14 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     if (leaf.strikethrough) {
       children = <s>{children}</s>;
     }
-    if (leaf.color) {
-      children = <span style={{ color: leaf.color }}>{children}</span>;
+    
+    // 🆕 文字颜色和背景色
+    const hasColorStyle = leaf.color || leaf.backgroundColor;
+    if (hasColorStyle) {
+      const style: React.CSSProperties = {};
+      if (leaf.color) style.color = leaf.color;
+      if (leaf.backgroundColor) style.backgroundColor = leaf.backgroundColor;
+      children = <span style={style}>{children}</span>;
     }
     
     return <span {...props.attributes}>{children}</span>;

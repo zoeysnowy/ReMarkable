@@ -68,9 +68,51 @@ export const AttendeeDisplay: React.FC<AttendeeDisplayProps> = ({
     
     const newParticipants: Contact[] = [];
     
+    // 辅助函数：通过多种方式查找联系人
+    const findContactInService = (contact: Contact): Contact | null => {
+      const allContacts = ContactService.getAllContacts();
+      
+      // 1. 优先通过 ID 精确匹配
+      if (contact.id) {
+        const foundById = allContacts.find(c => c.id === contact.id);
+        if (foundById) return foundById;
+      }
+      
+      // 2. 通过邮箱匹配（如果有邮箱）
+      if (contact.email) {
+        const foundByEmail = allContacts.find(c => 
+          c.email?.toLowerCase() === contact.email?.toLowerCase()
+        );
+        if (foundByEmail) return foundByEmail;
+      }
+      
+      // 3. 通过姓名 + 组织匹配（避免同名不同人）
+      if (contact.name && contact.organization) {
+        const foundByNameOrg = allContacts.find(c => 
+          c.name === contact.name && c.organization === contact.organization
+        );
+        if (foundByNameOrg) return foundByNameOrg;
+      }
+      
+      // 4. 仅通过姓名匹配（最后的手段，可能不准确）
+      if (contact.name) {
+        const foundByName = allContacts.find(c => c.name === contact.name);
+        if (foundByName) return foundByName;
+      }
+      
+      return null;
+    };
+    
     // 1. 添加发起人
     if (event.organizer) {
-      newParticipants.push(event.organizer);
+      const fullOrganizer = findContactInService(event.organizer) || event.organizer;
+      if (fullOrganizer !== event.organizer) {
+        console.log('[AttendeeDisplay] ✅ 找到发起人完整数据:', { 
+          name: fullOrganizer.name, 
+          matchedBy: fullOrganizer.email ? 'email' : 'name'
+        });
+      }
+      newParticipants.push(fullOrganizer);
     } else if (event.attendees?.some(a => a.email)) {
       // 用户自己创建的事件，有邮箱的参会人 → 发起人 = 用户自己
       newParticipants.push({
@@ -83,8 +125,29 @@ export const AttendeeDisplay: React.FC<AttendeeDisplayProps> = ({
     
     // 2. 添加参会人
     if (event.attendees) {
-      newParticipants.push(...event.attendees);
+      const fullAttendees = event.attendees.map(attendee => {
+        const fullContact = findContactInService(attendee) || attendee;
+        if (fullContact !== attendee) {
+          console.log('[AttendeeDisplay] ✅ 找到参会人完整数据:', { 
+            name: fullContact.name,
+            hasPhone: !!fullContact.phone,
+            matchedBy: fullContact.email ? 'email' : 'name'
+          });
+        }
+        return fullContact;
+      });
+      newParticipants.push(...fullAttendees);
     }
+    
+    console.log('[AttendeeDisplay] 📋 初始化参会人列表（已获取完整数据）:', {
+      count: newParticipants.length,
+      participants: newParticipants.map(p => ({ 
+        name: p.name, 
+        id: p.id,
+        hasPhone: !!p.phone, 
+        hasOrganization: !!p.organization 
+      }))
+    });
     
     setParticipants(newParticipants);
     
@@ -104,6 +167,81 @@ export const AttendeeDisplay: React.FC<AttendeeDisplayProps> = ({
     });
   }, [participants]);
 
+  // 订阅 ContactService 事件，自动同步联系人变更
+  useEffect(() => {
+    const handleContactUpdated = (event: any) => {
+      const { id, after } = event.data;
+      console.log('[AttendeeDisplay] 📇 收到联系人更新事件:', { id, after });
+      
+      // 自动更新 participants 数组中的联系人
+      setParticipants(prev => {
+        const updated = prev.map(p => p.id === id ? after : p);
+        const hasChanges = updated.some((p, i) => p !== prev[i]);
+        
+        if (hasChanges) {
+          console.log('[AttendeeDisplay] ✅ 已自动更新 participants 中的联系人');
+          
+          // 同步更新可编辑文本
+          const newText = updated.map(p => p.name).join('; ');
+          setEditableText(newText);
+          
+          // 触发 onChange 回调
+          if (onChange) {
+            const organizer = updated[0];
+            const attendees = updated.slice(1);
+            onChange(attendees, organizer);
+          }
+        }
+        
+        return updated;
+      });
+    };
+
+    const handleContactDeleted = (event: any) => {
+      const { id } = event.data;
+      console.log('[AttendeeDisplay] 🗑️ 收到联系人删除事件:', { id });
+      
+      // 从 participants 数组中移除该联系人
+      setParticipants(prev => {
+        const filtered = prev.filter(p => p.id !== id);
+        
+        if (filtered.length !== prev.length) {
+          console.log('[AttendeeDisplay] ✅ 已从 participants 中移除联系人');
+          
+          // 同步更新可编辑文本
+          const newText = filtered.map(p => p.name).join('; ');
+          setEditableText(newText);
+          
+          // 触发 onChange 回调
+          if (onChange) {
+            const organizer = filtered[0];
+            const attendees = filtered.slice(1);
+            onChange(attendees, organizer);
+          }
+        }
+        
+        return filtered;
+      });
+      
+      // 如果当前打开的 Modal 是被删除的联系人，关闭 Modal
+      if (fullContactModal.visible && fullContactModal.contact?.id === id) {
+        console.log('[AttendeeDisplay] 🚪 关闭已删除联系人的 Modal');
+        setFullContactModal({ visible: false });
+      }
+    };
+
+    ContactService.addEventListener('contact.updated', handleContactUpdated);
+    ContactService.addEventListener('contact.deleted', handleContactDeleted);
+
+    console.log('[AttendeeDisplay] 🔔 已订阅 ContactService 事件');
+
+    return () => {
+      ContactService.removeEventListener('contact.updated', handleContactUpdated);
+      ContactService.removeEventListener('contact.deleted', handleContactDeleted);
+      console.log('[AttendeeDisplay] 🔕 已取消订阅 ContactService 事件');
+    };
+  }, [onChange, fullContactModal.visible, fullContactModal.contact?.id]);
+
   // 从可编辑文本解析参会人
   const parseParticipantsFromText = (text: string): Contact[] => {
     const names = text
@@ -114,7 +252,10 @@ export const AttendeeDisplay: React.FC<AttendeeDisplayProps> = ({
     return names.map(name => {
       // 尝试从现有参会人中找到匹配
       const existing = participants.find(p => p.name === name);
-      if (existing) return existing;
+      if (existing) {
+        // 直接使用 existing，因为 participants 数组已通过事件订阅自动保持最新
+        return existing;
+      }
       
       // 创建新联系人
       return {
@@ -136,41 +277,16 @@ export const AttendeeDisplay: React.FC<AttendeeDisplayProps> = ({
     const localContacts = ContactService.searchLocalContacts(query);
     const historicalContacts = EventService.searchHistoricalParticipants(query);
     
-    // 合并所有结果
-    const allContacts = [
+    // 使用 ContactService 的去重逻辑
+    const mergedContacts = ContactService.mergeContactSources([
       ...platformContacts,
       ...localContacts,
       ...historicalContacts,
-    ];
+    ]);
     
-    // 合并同一人的多个来源（用邮箱或姓名作为唯一标识）
-    const uniqueMap = new Map<string, Contact>();
+    console.log(`[AttendeeDisplay] 搜索结果: ${mergedContacts.length} 个联系人`);
     
-    allContacts.forEach(contact => {
-      const key = contact.email || contact.name || '';
-      
-      if (!uniqueMap.has(key)) {
-        uniqueMap.set(key, contact);
-      } else {
-        // 同一人存在多个来源时，按优先级选择显示哪个来源
-        const existing = uniqueMap.get(key)!;
-        const newPriority = getSourcePriority(contact);
-        const existingPriority = getSourcePriority(existing);
-        
-        if (newPriority < existingPriority) {
-          uniqueMap.set(key, contact);
-        }
-      }
-    });
-    
-    return Array.from(uniqueMap.values());
-  };
-
-  // 来源优先级（数字越小优先级越高）
-  const getSourcePriority = (contact: Contact): number => {
-    if (contact.isOutlook || contact.isGoogle || contact.isiCloud) return 1;
-    if (contact.isReMarkable) return 2;
-    return 3; // 历史事件中的参会人
+    return mergedContacts;
   };
 
   // 格式化来源标签
@@ -308,10 +424,8 @@ export const AttendeeDisplay: React.FC<AttendeeDisplayProps> = ({
       updatedParticipants.forEach(contact => {
         if (contact.id?.startsWith('temp-')) {
           // 这是新创建的联系人，保存到 localStorage
-          const savedContact = ContactService.saveContact({
-            ...contact,
-            id: undefined, // 让 ContactService 生成新 ID
-          });
+          const { id, ...contactWithoutId } = contact;
+          const savedContact = ContactService.saveContact(contactWithoutId);
           console.log('[AttendeeDisplay] 💾 已保存新联系人:', savedContact);
         }
       });
@@ -385,14 +499,22 @@ export const AttendeeDisplay: React.FC<AttendeeDisplayProps> = ({
       // 获取 Tippy 的实际 placement
       const computedPlacement = instance.popper?.getAttribute('data-placement') || instance.props.placement;
       placement = computedPlacement?.startsWith('bottom') ? 'bottom' : 'top';
-      console.log('[AttendeeDisplay] 📍 Tippy placement:', computedPlacement, '→', placement);
       instance.hide();
     }
     
     // 存储触发元素（参会人名字）
     const triggerElement = e.currentTarget;
     
-    // 打开完整联系人 Modal
+    console.log('[AttendeeDisplay] 🎯 预览卡片打开 Modal，联系人数据:', {
+      name: person.name,
+      id: person.id,
+      email: person.email,
+      phone: person.phone,
+      organization: person.organization,
+      source: person.isOutlook ? 'Outlook' : person.isGoogle ? 'Google' : person.isiCloud ? 'iCloud' : person.isReMarkable ? 'ReMarkable' : 'Unknown'
+    });
+    
+    // 打开完整联系人 Modal（person 已通过事件订阅自动保持最新）
     setFullContactModal({ visible: true, contact: person, triggerElement, placement });
   };
 
@@ -522,7 +644,7 @@ export const AttendeeDisplay: React.FC<AttendeeDisplayProps> = ({
                           className="edit-icon"
                           onClick={(e) => {
                             e.stopPropagation();
-                            console.log('[AttendeeDisplay] 🖊️ 点击编辑图标，联系人:', person.name);
+                            console.log('[AttendeeDisplay] 🖊️ 预览卡片编辑图标点击，联系人:', person.name);
                             
                             // 获取 Tippy 实例并记录 placement
                             const instance = tippyInstances.get(person.id || '');
@@ -538,7 +660,17 @@ export const AttendeeDisplay: React.FC<AttendeeDisplayProps> = ({
                             // 找到参会人名字元素（Tippy 的原始 reference）
                             const triggerElement = instance?.reference as HTMLElement;
                             
-                            // 打开完整 Modal
+                            console.log('[AttendeeDisplay] 🎯 预览卡片打开 Modal，联系人数据:', {
+                              name: person.name,
+                              id: person.id,
+                              email: person.email,
+                              phone: person.phone,
+                              organization: person.organization,
+                              position: person.position,
+                              source: person.isOutlook ? 'Outlook' : person.isGoogle ? 'Google' : person.isiCloud ? 'iCloud' : person.isReMarkable ? 'ReMarkable' : 'Unknown'
+                            });
+                            
+                            // 打开完整 Modal（person 已通过事件订阅自动保持最新）
                             setFullContactModal({ visible: true, contact: person, triggerElement, placement });
                           }}
                         />
@@ -859,15 +991,7 @@ export const AttendeeDisplay: React.FC<AttendeeDisplayProps> = ({
               }}
               getReferenceClientRect={() => {
                 // 直接使用触发元素的实时位置
-                const rect = triggerElement.getBoundingClientRect();
-                
-                console.log('[AttendeeDisplay] 📍 Modal 定位:', {
-                  fromSearch: fullContactModal.fromSearch,
-                  placement: fullContactModal.placement,
-                  triggerRect: { top: rect.top, bottom: rect.bottom, left: rect.left, width: rect.width }
-                });
-                
-                return rect;
+                return triggerElement.getBoundingClientRect();
               }}
             >
               <span ref={modalTriggerRef} style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none' }} />
@@ -912,17 +1036,20 @@ export const AttendeeDisplay: React.FC<AttendeeDisplayProps> = ({
                           return;
                         }
                         
-                        const rect = triggerElement.getBoundingClientRect();
-                        console.log('[AttendeeDisplay] 📍 搜索框触发元素位置:', {
-                          element: triggerElement.className,
-                          rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
-                        });
-                        
                         // 清空搜索结果
                         setSearchResults([]);
                         setIsEditing(false);
                         
-                        // 打开完整 Modal（使用容器作为 reference，向下延伸）
+                        console.log('[AttendeeDisplay] 🔍 搜索选择器打开 Modal，联系人数据:', {
+                          name: contact.name,
+                          id: contact.id,
+                          email: contact.email,
+                          phone: contact.phone,
+                          organization: contact.organization,
+                          source: contact.isOutlook ? 'Outlook' : contact.isGoogle ? 'Google' : contact.isiCloud ? 'iCloud' : contact.isReMarkable ? 'ReMarkable' : 'Unknown'
+                        });
+                        
+                        // 打开完整 Modal（如果联系人已在 participants 中，会通过事件自动同步）
                         setFullContactModal({ visible: true, contact, triggerElement, placement: 'bottom', fromSearch: true });
                       }}
                     />

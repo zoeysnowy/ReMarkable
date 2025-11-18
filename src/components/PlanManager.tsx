@@ -28,6 +28,8 @@ import { dbg, warn, error } from '../utils/debugLogger';
 import { formatRelativeTimeDisplay } from '../utils/relativeDateFormatter';
 import TimeHoverCard from './TimeHoverCard';
 import { calculateFixedPopupPosition } from '../utils/popupPositionUtils';
+import ContentSelectionPanel from './ContentSelectionPanel';
+import UpcomingEventsPanel from './UpcomingEventsPanel';
 
 // � 初始化调试标志 - 在模块加载时立即从 localStorage 读取
 if (typeof window !== 'undefined') {
@@ -331,7 +333,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       return true;
     });
     
-    // 🔍 DEBUG: 检查过滤后的数据
+    // 🔍 DIAGNOSIS: 检查过滤后的数据
     console.log('[PlanManager] 初始化 - 过滤后的 Plan 事件:', {
       过滤后数量: filtered.length,
       示例: filtered.slice(0, 3).map(e => {
@@ -352,6 +354,25 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         };
       })
     });
+    
+    // 🚨 DIAGNOSIS: 检测空数组异常
+    if (filtered.length === 0 && allEvents.length > 0) {
+      console.error('🔴 [诊断] PlanManager 所有事件被过滤！', {
+        总事件数: allEvents.length,
+        isPlan事件: allEvents.filter(e => e.isPlan).length,
+        有parentEventId的: allEvents.filter(e => e.parentEventId).length,
+        TimeCalendar事件: allEvents.filter(e => e.isTimeCalendar).length,
+        TimeCalendar已过期: allEvents.filter(e => e.isTimeCalendar && e.endTime && new Date(e.endTime) <= now).length,
+        示例事件: allEvents.slice(0, 3).map(e => ({
+          id: e.id?.substring(0, 20),
+          title: e.title?.substring(0, 20),
+          isPlan: e.isPlan,
+          isTimeCalendar: e.isTimeCalendar,
+          parentEventId: e.parentEventId,
+          endTime: e.endTime
+        }))
+      });
+    }
     
     return filtered;
   });
@@ -416,7 +437,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         if (newEvent && newEvent.isPlan && !newEvent.parentEventId) {
           const now = new Date();
           // 检查是否应该显示
-          if (!newEvent.isTimeCalendar || now < new Date(newEvent.endTime)) {
+          if (!newEvent.isTimeCalendar || (newEvent.endTime && now < new Date(newEvent.endTime))) {
             setItems(prev => [...prev, newEvent]);
           }
         }
@@ -523,7 +544,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   }, [activePickerIndex, currentFocusedMode, currentFocusedLineId]); // 🔥 添加 currentFocusedLineId 依赖
 
   // 将文本格式命令路由到当前 Slate 编辑器
-  const handleTextFormat = useCallback((command: string) => {
+  const handleTextFormat = useCallback((command: string, value?: string) => {
     // 🆕 使用 UnifiedSlateEditor 的 applyTextFormat 函数
     const editor = unifiedEditorRef.current;
     if (!editor) {
@@ -531,7 +552,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       return;
     }
     
-    const success = applyTextFormat(editor, command);
+    const success = applyTextFormat(editor, command, value);
     
     // 如果是 bullet 切换，隐藏 FloatingBar
     if (success && command === 'toggleBulletList') {
@@ -939,13 +960,26 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     const allItems = [...items, ...Array.from(pendingEmptyItems.values())];
     
     // 排序确保新建行按期望顺序显示
-    return allItems
+    const result = allItems
       .filter(item => item.id) // 过滤掉无 id 的项
       .sort((a: any, b: any) => {
         const pa = (a as any).position ?? allItems.indexOf(a);
         const pb = (b as any).position ?? allItems.indexOf(b);
         return pa - pb;
       });
+    
+    // 🚨 DIAGNOSIS: 检测 editorItems 异常
+    if (result.length === 0 && items.length > 0) {
+      console.error('🔴 [诊断] editorItems 为空但 items 有数据！', {
+        items数量: items.length,
+        pendingEmptyItems数量: pendingEmptyItems.size,
+        allItems数量: allItems.length,
+        过滤后数量: result.length,
+        items示例: items.slice(0, 3).map(i => ({ id: i.id, title: i.title?.substring(0, 20) }))
+      });
+    }
+    
+    return result;
   }, [items, pendingEmptyItems]);
 
   // 处理编辑器内容变化
@@ -963,7 +997,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     newLines.forEach((line) => {
       if (!line.id) return;
       const itemId = line.id.includes('-desc') ? line.id.replace('-desc', '') : line.id;
-      const isDescription = line.id.includes('-desc') || line.data?.mode === 'description';
+      const isDescription = line.id.includes('-desc') || (line.data as any)?.mode === 'eventlog';
 
       if (!itemGroups.has(itemId)) {
         itemGroups.set(itemId, {});
@@ -1319,22 +1353,40 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   });
 
   return (
-    <div className="plan-manager">
-      {/* 内联样式 */}
-      <style>{`
-        .plan-list-scroll-container {
-          flex: 1;
-          overflow-y: auto;
-          scrollbar-width: none; /* Firefox */
-          -ms-overflow-style: none; /* IE/Edge */
-          min-height: 0;
-          padding: 0;
-        }
-        
-        .plan-list-scroll-container::-webkit-scrollbar {
-          display: none; /* Chrome/Safari/Opera */
-        }
-      `}</style>
+    <div className="plan-manager-container">
+      {/* 左侧面板 - 内容选取 */}
+      <ContentSelectionPanel
+        onFilterChange={(filter) => {
+          console.log('[PlanManager] Filter changed:', filter);
+          // TODO: 根据 filter 更新显示的事件列表
+        }}
+        onSearchChange={(query) => {
+          console.log('[PlanManager] Search query:', query);
+          // TODO: 实现 NLP 搜索功能
+        }}
+        onDateSelect={(date) => {
+          console.log('[PlanManager] Date selected:', date);
+          // TODO: 根据日期过滤事件
+        }}
+      />
+
+      {/* 中间主内容区 - 计划清单 */}
+      <div className="plan-manager">
+        {/* 内联样式 */}
+        <style>{`
+          .plan-list-scroll-container {
+            flex: 1;
+            overflow-y: auto;
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE/Edge */
+            min-height: 0;
+            padding: 0;
+          }
+          
+          .plan-list-scroll-container::-webkit-scrollbar {
+            display: none; /* Chrome/Safari/Opera */
+          }
+        `}</style>
 
       <div className="section-header">
         <div className="title-indicator"></div>
@@ -1491,7 +1543,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         activePickerIndex={activePickerIndex}
         eventId={currentFocusedLineId ? (items.find(i => i.id === currentFocusedLineId.replace('-desc',''))?.id) : undefined}
         useTimeHub={true}
-        editorMode={currentFocusedMode}
+        editorMode={currentFocusedMode === 'description' ? 'eventlog' : currentFocusedMode}
         slateEditorRef={unifiedEditorRef}
         onRequestClose={() => {
           // 🆕 Picker 关闭时自动关闭整个 FloatingBar
@@ -1867,6 +1919,15 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           }
         />
       )}
+      </div>
+
+      {/* 右侧面板 - 即将到来 */}
+      <UpcomingEventsPanel
+        onTimeFilterChange={(filter) => {
+          console.log('[PlanManager] Time filter changed:', filter);
+          // TODO: 根据时间过滤更新右侧面板事件显示
+        }}
+      />
     </div>
   );
 };

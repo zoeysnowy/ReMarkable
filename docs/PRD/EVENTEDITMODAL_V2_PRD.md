@@ -2,7 +2,7 @@
 
 > **版本**: v2.0.0  
 > **创建时间**: 2025-11-06  
-> **最后更新**: 2025-11-16  
+> **最后更新**: 2025-11-19  
 > **Figma 设计稿**: [EventEditModal v2 设计稿](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=201-630&m=dev)  
 > **基于**: EventEditModal v1 + Figma 设计稿  
 > **依赖模块**: EventHub, TimeHub, UnifiedSlateEditor, HeadlessFloatingToolbar, Timer Module  
@@ -13,7 +13,14 @@
 > - [TIME_ARCHITECTURE.md](../TIME_ARCHITECTURE.md)
 > - [SLATE_DEVELOPMENT_GUIDE.md](../SLATE_DEVELOPMENT_GUIDE.md)
 
-> **🔥 v2.0.0 最新更新** (2025-11-16):
+> **🔥 v2.0.0 最新更新** (2025-11-19):
+> - ✅ **时间选择器 Tippy 集成**: 使用 Tippy.js 包裹 UnifiedDateTimePicker，优雅弹出
+> - ✅ **交互优化**: 点击时间显示区下方弹出选择器，不灰化页面背景
+> - ✅ **自动聚焦**: 弹出后光标自动聚焦到自然语言输入框
+> - ✅ **双 Enter 逻辑**: 第一次 Enter 解析时间并显示，第二次 Enter 确认并关闭
+> - ✅ **地址智能输入**: 集成高德地图 API，支持地址自动补全和地图跳转
+> - ✅ **LocationInput 组件**: 无边框编辑模式，实时搜索，紧凑下拉建议列表
+> - ✅ **地图导航**: Go 按钮智能跳转高德地图/Google Maps（自适应移动/桌面）
 > - ✅ **Timer 集成完成**: 支持零门槛启动（无标签/无标题）
 > - ✅ **统一 Timer 接口**: 所有组件使用 `App.tsx` 的 Timer 函数（handleTimerStart/Stop/Pause/Resume/Cancel）
 > - ✅ **实时计时显示**: 每秒更新已计时时长，支持暂停/继续/停止/取消
@@ -1955,6 +1962,158 @@ const handleSelectContact = async (contact: Contact) => {
 
 #### 2.2 时间范围
 
+**【2025-11-19 更新】Tippy.js 集成 - 优雅的时间选择器弹出方式**
+
+**设计理念**:
+- ✅ **非侵入式**: 点击时间区域后，选择器从下方弹出，不灰化页面背景
+- ✅ **自动聚焦**: 弹出后光标自动聚焦到自然语言输入框，用户可直接输入
+- ✅ **双 Enter 逻辑**: 第一次 Enter 解析时间并显示预览，第二次 Enter 确认并关闭
+- ✅ **点击外部关闭**: 点击选择器外部区域自动关闭
+
+**实现代码**:
+```tsx
+import Tippy from '@tippyjs/react';
+import 'tippy.js/dist/tippy.css';
+import UnifiedDateTimePicker from './FloatingToolbar/pickers/UnifiedDateTimePicker';
+
+// 时间选择器状态
+const [showTimePicker, setShowTimePicker] = useState(false);
+
+// 时间应用回调
+const handleTimeApplied = (startIso: string, endIso?: string, allDay?: boolean) => {
+  setFormData(prev => ({
+    ...prev,
+    startTime: startIso,
+    endTime: endIso || startIso,
+    allDay: allDay || false
+  }));
+  setShowTimePicker(false); // 关闭选择器
+};
+
+// Tippy 包裹的时间显示区域
+<Tippy
+  content={
+    <UnifiedDateTimePicker
+      initialStart={formData.startTime || undefined}
+      initialEnd={formData.endTime || undefined}
+      onApplied={handleTimeApplied}
+      onClose={() => setShowTimePicker(false)}
+    />
+  }
+  visible={showTimePicker}
+  onClickOutside={() => setShowTimePicker(false)}
+  interactive={true}
+  placement="bottom-start"
+  theme="light"
+  arrow={false}
+  offset={[0, 8]}
+  appendTo={document.body}
+>
+  <div 
+    className="eventmodal-v2-plan-row" 
+    onClick={() => setShowTimePicker(true)} 
+    style={{ cursor: 'pointer' }}
+  >
+    <img src={datetimeIcon} alt="" className="eventmodal-v2-plan-icon" />
+    <div className="eventmodal-v2-plan-content">
+      {formatTimeDisplay(formData.startTime, formData.endTime) || (
+        <span style={{ color: '#9ca3af' }}>添加时间...</span>
+      )}
+    </div>
+  </div>
+</Tippy>
+```
+
+**UnifiedDateTimePicker 自动聚焦**:
+```tsx
+// UnifiedDateTimePicker.tsx
+const searchInputRef = useRef<HTMLInputElement>(null);
+
+// 组件挂载时自动聚焦到自然语言输入框
+useEffect(() => {
+  const timer = setTimeout(() => {
+    if (searchInputRef.current) {
+      searchInputRef.current.focus();
+      dbg('picker', '🎯 自动聚焦到自然语言输入框');
+    }
+  }, 100);
+  return () => clearTimeout(timer);
+}, []);
+
+// 搜索输入框
+<input
+  ref={searchInputRef}
+  className="search-input"
+  type="text"
+  placeholder="输入'明天下午3点'试试"
+  value={searchInput}
+  onChange={handleSearchInputChange}
+  onKeyDown={(e) => {
+    if (e.key === 'Enter') {
+      // 第一次 Enter: 解析并显示预览
+      handleSearchBlur();
+      e.currentTarget.blur(); // 失焦以便下次 Enter 触发全局确认
+      e.preventDefault();
+    }
+  }}
+/>
+```
+
+**双 Enter 逻辑**:
+```tsx
+// 第一次 Enter: 在输入框内触发（onKeyDown）
+// - 解析用户输入的自然语言时间
+// - 显示解析结果的预览
+// - 失焦输入框
+
+// 第二次 Enter: 全局键盘事件触发
+useEffect(() => {
+  const handleGlobalKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      handleApply(); // 确认并关闭
+    }
+  };
+  document.addEventListener('keydown', handleGlobalKeyDown, true);
+  return () => document.removeEventListener('keydown', handleGlobalKeyDown, true);
+}, [handleApply]);
+```
+
+**Tippy 样式自定义**:
+```css
+/* EventEditModalV2Demo.css */
+.tippy-box[data-theme~='light'] {
+  background-color: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  padding: 0;
+}
+
+.tippy-box[data-theme~='light'] .tippy-content {
+  padding: 0;
+}
+```
+
+**交互流程**:
+1. 用户点击"添加时间..."或已有时间 → Tippy 弹出，选择器显示在下方
+2. 选择器弹出后，光标自动聚焦到自然语言输入框
+3. 用户输入"明天下午3点" → 按第一次 Enter
+4. 输入框失焦，选择器显示解析后的时间（明天 15:00）
+5. 用户确认无误 → 按第二次 Enter（全局）
+6. 调用 `onApplied` 回调，更新 formData，关闭选择器
+
+**优势对比**:
+
+| 方案 | 旧实现（Overlay + Popup） | 新实现（Tippy） |
+|------|---------------------------|-----------------|
+| 背景灰化 | ✅ 有（rgba(0,0,0,0.3)） | ❌ 无 |
+| 位置定位 | 居中显示 | 相对触发元素下方 |
+| 点击外部 | 手动实现 | Tippy 自动处理 |
+| 代码量 | ~30 行（overlay + popup） | ~20 行（Tippy配置） |
+| 动画效果 | 无 | Tippy 内置淡入淡出 |
+| 可访问性 | 需手动处理 | Tippy 自动处理焦点管理 |
+
 **数据来源**:
 ```typescript
 import { DatetimeIcon } from '@/assets/icons';
@@ -2155,33 +2314,156 @@ function parseNaturalTimeInput(input: string): { start: Date, end: Date, isAllDa
 
 ---
 
-#### 2.3 位置
+#### 2.3 位置（地址智能输入）
 
 **数据来源**: `event.location`
 
-**显示逻辑**:
-```typescript
-import { LocationIcon } from '@/assets/icons';
+**功能概述**:
+- ✅ 集成高德地图 Input Tips API
+- ✅ 实时地址自动补全
+- ✅ 地图跳转功能（高德地图/Google Maps）
+- ✅ 无边框编辑模式，和参会人样式一致
 
-{event.location && (
-  <div className="location-row">
-    <img src={LocationIcon} alt="位置" className="icon-location" />
-    <span className="location-text">{event.location}</span>
+**显示逻辑**:
+
+**非编辑模式**（默认）:
+```typescript
+<div className="eventmodal-v2-plan-row" style={{ cursor: 'pointer' }}>
+  <img src={locationIcon} alt="" className="eventmodal-v2-plan-icon" />
+  <div 
+    className="eventmodal-v2-plan-content" 
+    onClick={() => setIsEditingLocation(true)}
+  >
+    {formData.location || <span style={{ color: '#9ca3af' }}>添加地点...</span>}
   </div>
-)}
+</div>
 ```
 
-**交互**:
+**编辑模式**:
+```typescript
+import { LocationInput } from '../common/LocationInput';
 
-**PC 版**:
-- **点击位置字段**：进入编辑模式，可修改位置信息
-- **选中文字**：可复制位置文本
-- **右键位置区域**：弹出上下文菜单，包含"复制"选项
+<div className="eventmodal-v2-plan-row">
+  <img src={locationIcon} alt="" className="eventmodal-v2-plan-icon" />
+  <LocationInput
+    value={formData.location || ''}
+    onChange={(value) => {
+      setFormData(prev => ({ ...prev, location: value }));
+    }}
+    onSelect={() => setIsEditingLocation(false)}
+    onBlur={() => setIsEditingLocation(false)}
+    placeholder="添加地点..."
+  />
+</div>
+```
 
-**移动端**:
-- **点击位置字段**：进入编辑模式，可修改位置信息
-- **长按位置**：打开地图应用（如果系统支持，未来功能）
-- **双击位置文本**：选中并复制到剪贴板
+**LocationInput 组件特性**:
+
+1. **地址自动补全**:
+   - 使用高德地图 `/v3/assistant/inputtips` API
+   - 输入 ≥2 个字符触发搜索
+   - 300ms 防抖优化
+   - 显示地点名称 + 区域信息
+
+2. **下拉建议列表**:
+   - 紧凑设计（padding: 6px 12px）
+   - 显示地点名称（13px）+ 区域（11px）
+   - hover 高亮效果
+   - 点击选择后自动退出编辑模式
+
+3. **地图跳转（Go 按钮）**:
+   - 🗺️ 图标按钮，位于输入框右侧
+   - **移动端**: 尝试唤起高德地图 APP (`iosamap://`)，3秒后降级到网页版
+   - **桌面端**: 直接打开高德地图网页版 (`https://uri.amap.com/marker`)
+   - **国际化**: 可扩展支持 Google Maps
+
+4. **样式特点**:
+   - 无边框（`border: none`）
+   - 透明背景（`background: transparent`）
+   - 和 AttendeeDisplay 样式保持一致
+   - 只在有地址时显示 Go 按钮
+
+**API 配置**:
+
+环境变量设置（`.env`）:
+```env
+VITE_AMAP_KEY=your_amap_api_key_here
+```
+
+组件中读取:
+```typescript
+const AMAP_KEY = import.meta.env.VITE_AMAP_KEY || 'YOUR_AMAP_KEY';
+```
+
+**API 配额**:
+- 免费额度: 300,000 次/天
+- 并发限制: 200 次/秒
+- 估算使用: ~10,000 次/天（1000 用户）
+
+**交互流程**:
+
+```
+[非编辑模式] 显示地址或"添加地点..."
+    ↓ 点击
+[编辑模式] 显示 LocationInput
+    ↓ 输入关键词（≥2 字符）
+[搜索] 调用高德地图 API（300ms 防抖）
+    ↓ 返回结果
+[下拉列表] 显示地址建议（紧凑样式）
+    ↓ 点击建议
+[自动填充] + [退出编辑模式]
+    ↓ 或点击 Go 按钮
+[跳转地图] 打开高德地图/Google Maps
+```
+
+**错误处理**:
+
+1. **API Key 无效**: 
+   - 控制台输出: `[LocationInput] API 返回状态异常: {status: '0', info: 'INVALID_USER_KEY'}`
+   - 不显示下拉建议
+
+2. **网络错误**:
+   - 控制台输出: `[LocationInput] Failed to fetch suggestions: [error]`
+   - 不显示下拉建议
+
+3. **无搜索结果**:
+   - 不显示下拉框（suggestions 为空数组）
+
+**PC 版交互**:
+- ✅ **点击位置区域**: 进入编辑模式
+- ✅ **输入地址**: 实时搜索，显示建议列表
+- ✅ **选择建议**: 自动填充并退出编辑
+- ✅ **点击外部**: 保存当前输入，退出编辑
+- ✅ **点击 Go**: 在新标签页打开地图
+- ✅ **选中文字**: 可复制位置文本
+
+**移动端交互**:
+- ✅ **点击位置区域**: 进入编辑模式
+- ✅ **输入地址**: 实时搜索，显示建议列表
+- ✅ **选择建议**: 自动填充并退出编辑
+- ✅ **点击 Go**: 尝试唤起高德地图 APP，降级到网页版
+- ✅ **双击位置文本**: 选中并复制到剪贴板
+
+**技术实现**:
+
+文件结构:
+```
+src/components/common/
+  ├── LocationInput.tsx       # 地址输入组件
+  └── LocationInput.css       # 组件样式
+
+docs/
+  ├── LOCATION_FEATURE_SETUP.md      # API Key 申请和配置指南
+  ├── LOCATION_TEST_CHECKLIST.md     # 测试清单（18 个测试用例）
+  └── LOCATION_FEATURE_SUMMARY.md    # 功能开发总结
+
+.env.example                  # 环境变量模板
+```
+
+**参考文档**:
+- [高德地图 Input Tips API](https://lbs.amap.com/api/webservice/guide/api/inputtips)
+- [高德地图 URI API](https://lbs.amap.com/api/amap-mobile/guide/android/marker)
+- [地址功能设置指南](../../LOCATION_FEATURE_SETUP.md)
 
 ---
 

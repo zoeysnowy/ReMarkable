@@ -1,9 +1,21 @@
 /* ==================== PlanManager 主布局 ==================== */
+/* 三列布局容器 */
+.plan-manager-container {
+  display: flex;
+  gap: 8px;
+  height: 100%;
+  width: 100%;
+  background: #f8f9fa;
+  padding: 8px;
+}
+
+/* 中间主内容区 */
 .plan-manager {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0;
   height: 100%;
-  width: 100%;
   overflow: hidden;
   background: white;
   border-radius: 20px;

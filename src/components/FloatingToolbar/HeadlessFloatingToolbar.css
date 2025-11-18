@@ -2030,6 +2030,21 @@
   transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
+/* 🎨 颜色选择器专用样式 - 确保阴影显示 */
+.color-picker-wrapper {
+  background: rgba(255, 255, 255, 0.98) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  border-radius: 12px !important;
+  box-shadow: 
+    0 10px 40px rgba(0, 0, 0, 0.15) !important,
+    0 6px 20px rgba(0, 0, 0, 0.1) !important,
+    0 2px 8px rgba(0, 0, 0, 0.06) !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
 /* 暗色主题 */
 [data-theme="dark"] .headless-emoji-tippy-content,
 [data-theme="dark"] .headless-picker-tippy-content {

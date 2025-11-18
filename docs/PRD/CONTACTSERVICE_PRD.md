@@ -542,52 +542,289 @@ class ContactService {
 src/components/ContactModal/
 ├── ContactModal.tsx          # 主组件
 ├── ContactModal.css          # 样式
-├── ContactModalField.tsx     # 单个字段组件
 └── index.ts                  # 导出
 ```
+
+**组件 Props**:
+```typescript
+interface ContactModalProps {
+  visible: boolean;                    // 是否显示
+  contact?: Contact;                   // 联系人对象（edit/view 模式必填）
+  mode?: 'create' | 'edit' | 'view';   // 模式（默认 edit）
+  onClose: () => void;                 // 关闭回调
+  triggerElement?: HTMLElement;        // 触发元素（用于定位）
+  placement?: 'top' | 'bottom' | 'top-start' | 'bottom-start'; // 定位方向
+  initialFocus?: 'name' | 'email' | 'phone' | 'organization'; // 初始聚焦字段
+  onSave?: (contact: Contact) => void; // 保存成功回调
+  onDelete?: (contactId: string) => void; // 删除成功回调
+}
+```
+
+**使用示例**:
+
+#### 基础用法 - 编辑联系人
+```tsx
+import { ContactModal } from '@/components/ContactModal';
+
+function MyComponent() {
+  const [modalState, setModalState] = useState({ visible: false });
+
+  return (
+    <ContactModal
+      visible={modalState.visible}
+      contact={selectedContact}
+      mode="edit"
+      onClose={() => setModalState({ visible: false })}
+      onSave={(updated) => console.log('已更新:', updated)}
+    />
+  );
+}
+```
+
+#### 高级用法 - Tippy 定位
+```tsx
+function AttendeeDisplay() {
+  const handleClickParticipant = (contact: Contact, e: React.MouseEvent) => {
+    setModalState({
+      visible: true,
+      contact,
+      triggerElement: e.currentTarget as HTMLElement,
+    });
+  };
+
+  return (
+    <>
+      <span onClick={(e) => handleClickParticipant(contact, e)}>
+        {contact.name}
+      </span>
+
+      <ContactModal
+        visible={modalState.visible}
+        contact={modalState.contact}
+        mode="edit"
+        triggerElement={modalState.triggerElement}
+        placement="bottom-start"
+        onClose={() => setModalState({ visible: false })}
+      />
+    </>
+  );
+}
+```
+
+#### 创建新联系人
+```tsx
+<ContactModal
+  visible={true}
+  mode="create"
+  contact={{ name: '', email: '' }}
+  onClose={() => setVisible(false)}
+  onSave={(newContact) => console.log('新建:', newContact)}
+/>
+```
+
+**特性**:
+- ✅ **内联编辑**: 所有字段点击即可编辑
+- ✅ **键盘导航**: 
+  - `Enter` - 跳转到下一个字段
+  - `Ctrl/Cmd + Enter` - 保存并关闭
+  - `Escape` - 关闭 Modal
+- ✅ **自动保存**: 失焦时自动保存
+- ✅ **事件驱动**: 通过 ContactService 事件机制自动同步
+- ✅ **完全独立**: 不依赖外部状态
+
+**迁移指南**:
+
+**之前** (AttendeeDisplay 内嵌):
+```tsx
+const [fullContactModal, setFullContactModal] = useState({ visible: false });
+// 200+ 行 Modal JSX 代码...
+```
+
+**之后** (独立组件):
+```tsx
+import { ContactModal } from '@/components/ContactModal';
+
+<ContactModal
+  visible={modalState.visible}
+  contact={modalState.contact}
+  mode="edit"
+  triggerElement={modalState.triggerElement}
+  onClose={() => setModalState({ visible: false })}
+/>
+```
+
+**优势**:
+- 代码量减少 ~200 行
+- 职责清晰，易于维护
+- 可在多个组件复用
+- 独立测试，提高质量
 
 **验收标准**:
 - ContactModal 可以独立使用，不依赖 AttendeeDisplay
 - 支持通过 props 传入 triggerElement 和 placement
 - 保存/删除操作通过 ContactService 完成
 - Modal 关闭后组件自动清理
+- 所有三种模式（create/edit/view）正常工作
 
-### 4.4 Phase 3: AttendeeDisplay 重构 (1-2天)
+### 4.4 Phase 3: AttendeeDisplay 重构 (1-2天) ✅ 已完成
 
 **目标**: 改造 AttendeeDisplay 使用事件订阅模式
 
 **任务**:
-1. ✅ 移除内嵌的 Modal 代码
-2. ✅ 使用独立的 `<ContactModal>` 组件
-3. ✅ 订阅 `contact.updated` 和 `contact.deleted` 事件
-4. ✅ 移除手动更新 `participants` 的逻辑
-5. ✅ 验证所有场景（预览卡片、搜索、直接点击）
+1. ✅ 添加 ContactService 事件订阅（contact.updated / contact.deleted）
+2. ✅ 移除所有手动 getContactById 调用
+3. ✅ 优化 parseParticipantsFromText，依赖事件自动同步
+4. ✅ ContactPreviewCard 添加事件订阅
+5. ✅ FullContactModal 添加事件订阅
 
-**代码对比**:
+**实现代码**:
 ```typescript
-// ❌ 之前：手动更新
-const handleSave = () => {
-  ContactService.updateContact(id, updates);
-  setParticipants(prev => prev.map(p => p.id === id ? updates : p));
-};
-
-// ✅ 之后：自动更新
+// AttendeeDisplay.tsx - 事件订阅
 useEffect(() => {
-  const handleUpdate = (event) => {
-    setParticipants(prev => prev.map(p => 
-      p.id === event.data.id ? event.data.after : p
-    ));
+  const handleContactUpdated = (event: any) => {
+    const { id, after } = event.data;
+    
+    // 自动更新 participants 数组
+    setParticipants(prev => {
+      const updated = prev.map(p => p.id === id ? after : p);
+      
+      // 同步更新可编辑文本
+      const newText = updated.map(p => p.name).join('; ');
+      setEditableText(newText);
+      
+      // 触发 onChange 回调
+      if (onChange) {
+        const organizer = updated[0];
+        const attendees = updated.slice(1);
+        onChange(attendees, organizer);
+      }
+      
+      return updated;
+    });
   };
-  ContactService.addEventListener('contact.updated', handleUpdate);
-  return () => ContactService.removeEventListener('contact.updated', handleUpdate);
-}, []);
+
+  const handleContactDeleted = (event: any) => {
+    const { id } = event.data;
+    
+    // 从 participants 中移除
+    setParticipants(prev => {
+      const filtered = prev.filter(p => p.id !== id);
+      
+      // 同步更新文本和回调
+      const newText = filtered.map(p => p.name).join('; ');
+      setEditableText(newText);
+      
+      if (onChange) {
+        const organizer = filtered[0];
+        const attendees = filtered.slice(1);
+        onChange(attendees, organizer);
+      }
+      
+      return filtered;
+    });
+    
+    // 如果打开的 Modal 是被删除的联系人，关闭 Modal
+    if (fullContactModal.visible && fullContactModal.contact?.id === id) {
+      setFullContactModal({ visible: false });
+    }
+  };
+
+  ContactService.addEventListener('contact.updated', handleContactUpdated);
+  ContactService.addEventListener('contact.deleted', handleContactDeleted);
+
+  return () => {
+    ContactService.removeEventListener('contact.updated', handleContactUpdated);
+    ContactService.removeEventListener('contact.deleted', handleContactDeleted);
+  };
+}, [onChange, fullContactModal.visible, fullContactModal.contact?.id]);
+
+// ContactPreviewCard.tsx - 事件订阅
+useEffect(() => {
+  if (!fullContact?.id) return;
+
+  const handleContactUpdated = (event: any) => {
+    const { id, after } = event.data;
+    
+    if (id === fullContact.id) {
+      // 重新获取完整信息（包括关联事件）
+      const identifier = after.email || after.name || '';
+      const events = EventService.getEventsByContact(identifier, 5);
+      const totalEvents = EventService.getEventsByContact(identifier, 9999).length;
+      
+      setFullContact({
+        ...after,
+        recentEvents: events,
+        totalEvents,
+      });
+      
+      onUpdate?.(after);
+    }
+  };
+
+  const handleContactDeleted = (event: any) => {
+    const { id } = event.data;
+    
+    if (id === fullContact.id) {
+      setFullContact(null);
+    }
+  };
+
+  ContactService.addEventListener('contact.updated', handleContactUpdated);
+  ContactService.addEventListener('contact.deleted', handleContactDeleted);
+
+  return () => {
+    ContactService.removeEventListener('contact.updated', handleContactUpdated);
+    ContactService.removeEventListener('contact.deleted', handleContactDeleted);
+  };
+}, [fullContact?.id, onUpdate]);
+
+// FullContactModal.tsx - 事件订阅
+useEffect(() => {
+  if (!visible || !editedContact?.id) return;
+
+  const handleContactUpdated = (event: any) => {
+    const { id, after } = event.data;
+    
+    if (id === editedContact.id) {
+      // 自动刷新显示
+      const fullInfo = ContactService.getFullContactInfo(after);
+      setEditedContact(fullInfo);
+      
+      const identifier = after.email || after.name || '';
+      const events = EventService.getEventsByContact(identifier, 9999);
+      setRelatedEvents(events);
+      
+      setHasChanges(false);
+    }
+  };
+
+  const handleContactDeleted = (event: any) => {
+    const { id } = event.data;
+    
+    if (id === editedContact.id) {
+      onClose();
+    }
+  };
+
+  ContactService.addEventListener('contact.updated', handleContactUpdated);
+  ContactService.addEventListener('contact.deleted', handleContactDeleted);
+
+  return () => {
+    ContactService.removeEventListener('contact.updated', handleContactUpdated);
+    ContactService.removeEventListener('contact.deleted', handleContactDeleted);
+  };
+}, [visible, editedContact?.id, onClose]);
 ```
 
+**优化效果**:
+- ❌ 之前：每次打开 Modal 都要手动 `getContactById()` 获取最新数据
+- ✅ 之后：`participants` 数组通过事件订阅自动保持最新，直接使用即可
+
 **验收标准**:
-- 点击参会人名字 → 打开 ContactModal
-- 在 Modal 中编辑 → 保存后自动刷新显示
-- 删除联系人 → 自动从列表移除
-- 搜索框编辑 → 保存后正确更新
+- ✅ 在任意组件编辑联系人 → 所有显示该联系人的组件自动刷新
+- ✅ 删除联系人 → 自动从所有组件移除，打开的 Modal 自动关闭
+- ✅ 预览卡片、完整 Modal、参会人列表数据完全一致
+- ✅ 无需手动调用 `getContactById()`，依赖事件自动同步
 
 ### 4.5 Phase 4: 其他组件集成 (按需)
 

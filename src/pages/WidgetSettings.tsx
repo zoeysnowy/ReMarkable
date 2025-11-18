@@ -9,6 +9,27 @@ import React, { useState, useEffect } from 'react';
 import CalendarSettingsPanel, { CalendarSettings } from '../features/Calendar/components/CalendarSettingsPanel';
 import './WidgetSettings.css'; // 🎨 Widget Settings 专用样式
 
+/**
+ * 将 Microsoft 颜色名称转换为十六进制颜色值
+ */
+function convertMicrosoftColorToHex(colorName: string): string {
+  const colorMap: { [key: string]: string } = {
+    'auto': '#3788d8',
+    'lightBlue': '#5194f0',
+    'lightGreen': '#42b883',
+    'lightOrange': '#ff8c42',
+    'lightGray': '#9ca3af',
+    'lightYellow': '#f1c40f',
+    'lightTeal': '#48c9b0',
+    'lightPink': '#f48fb1',
+    'lightBrown': '#a0826d',
+    'lightRed': '#e74c3c',
+    'maxColor': '#6366f1'
+  };
+  
+  return colorMap[colorName] || colorName || '#3788d8';
+}
+
 const WidgetSettings: React.FC = () => {
   const [settings, setSettings] = useState<CalendarSettings>({
     eventOpacity: 80,
@@ -123,7 +144,7 @@ const WidgetSettings: React.FC = () => {
             ...calendars.map((cal: any) => ({
               id: cal.id,
               name: cal.name,
-              color: cal.color || '#3788d8'
+              color: convertMicrosoftColorToHex(cal.color) // 🎨 转换 Microsoft 颜色名称
             })),
             {
               id: 'local-created',

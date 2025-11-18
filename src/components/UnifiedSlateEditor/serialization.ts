@@ -162,11 +162,21 @@ function htmlToSlateFragment(html: string): (TextNode | TagNode | DateMentionNod
   
   const fragment: (TextNode | TagNode | DateMentionNode)[] = [];
   
-  function processNode(node: Node): void {
+  // 🆕 辅助函数：从 style 属性中提取颜色值
+  function extractColorFromStyle(styleStr: string, property: 'color' | 'background-color'): string | undefined {
+    if (!styleStr) return undefined;
+    const regex = property === 'color' 
+      ? /color:\s*([^;]+)/i
+      : /background-color:\s*([^;]+)/i;
+    const match = styleStr.match(regex);
+    return match ? match[1].trim() : undefined;
+  }
+  
+  function processNode(node: Node, inheritedMarks: Partial<TextNode> = {}): void {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent || '';
       if (text) {
-        fragment.push({ text });
+        fragment.push({ text, ...inheritedMarks });
       }
     } else if (node.nodeType === Node.ELEMENT_NODE) {
       const element = node as HTMLElement;
@@ -206,15 +216,33 @@ function htmlToSlateFragment(html: string): (TextNode | TagNode | DateMentionNod
           fragment.push({ text: element.textContent || '' });
         }
       }
-      // 格式化文本
-      else if (element.tagName === 'STRONG' || element.tagName === 'B') {
-        const children: (TextNode | TagNode | DateMentionNode)[] = [];
-        element.childNodes.forEach(child => processNode(child));
-        // TODO: 处理嵌套格式
-      }
-      // 递归处理子节点
+      // 🆕 格式化文本 - 支持嵌套标记
       else {
-        element.childNodes.forEach(child => processNode(child));
+        const newMarks = { ...inheritedMarks };
+        
+        // 解析标记
+        if (element.tagName === 'STRONG' || element.tagName === 'B') {
+          newMarks.bold = true;
+        } else if (element.tagName === 'EM' || element.tagName === 'I') {
+          newMarks.italic = true;
+        } else if (element.tagName === 'U') {
+          newMarks.underline = true;
+        } else if (element.tagName === 'S' || element.tagName === 'STRIKE') {
+          newMarks.strikethrough = true;
+        }
+        
+        // 🆕 解析 <span style="..."> 中的颜色
+        if (element.tagName === 'SPAN' && element.hasAttribute('style')) {
+          const styleStr = element.getAttribute('style') || '';
+          const color = extractColorFromStyle(styleStr, 'color');
+          const backgroundColor = extractColorFromStyle(styleStr, 'background-color');
+          
+          if (color) newMarks.color = color;
+          if (backgroundColor) newMarks.backgroundColor = backgroundColor;
+        }
+        
+        // 递归处理子节点，继承标记
+        element.childNodes.forEach(child => processNode(child, newMarks));
       }
     }
   }
@@ -524,7 +552,15 @@ function slateFragmentToHtml(fragment: (TextNode | TagNode | DateMentionNode)[])
       if (node.italic) text = `<em>${text}</em>`;
       if (node.underline) text = `<u>${text}</u>`;
       if (node.strikethrough) text = `<s>${text}</s>`;
-      if (node.color) text = `<span style="color: ${node.color}">${text}</span>`;
+      
+      // 🆕 支持文字颜色和背景色
+      if (node.color || node.backgroundColor) {
+        const styles = [];
+        if (node.color) styles.push(`color: ${node.color}`);
+        if (node.backgroundColor) styles.push(`background-color: ${node.backgroundColor}`);
+        text = `<span style="${styles.join('; ')}">${text}</span>`;
+      }
+      
       return text;
     } else if (node.type === 'tag') {
       const attrs = [

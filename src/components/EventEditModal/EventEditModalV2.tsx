@@ -14,6 +14,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Event } from '../../types';
 import { formatTimeForStorage } from '../../utils/timeUtils';
+import { LocationInput } from '../common/LocationInput';
 import './EventEditModalV2.css';
 
 interface EventEditModalV2Props {
@@ -568,14 +569,11 @@ const PlannedScheduleSection: React.FC<any> = ({
         <span style={{ fontSize: '14px', color: '#6b7280' }}>全天事件</span>
       </label>
 
-      {/* 地点 */}
-      <input
-        type="text"
-        className="location-input"
+      {/* 地点 - 使用增强版地址输入组件 */}
+      <LocationInput
         value={location || ''}
-        onChange={(e) => onChange({ location: e.target.value })}
+        onChange={(value) => onChange({ location: value })}
         placeholder="📍 地点"
-        style={{ marginTop: '12px' }}
       />
 
       {/* 日历同步设置 */}

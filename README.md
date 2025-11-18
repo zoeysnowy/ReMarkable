@@ -17,11 +17,12 @@ ReMarkable 是一个现代化的时间管理应用，支持与 Microsoft Outlook
 - 📅 **TUI Calendar 集成** - 交互式日历视图，支持周/月视图切换
 - 🏷️ **多标签事件管理** - 为事件添加多个标签，支持层级结构
 - ✏️ **增强事件编辑器** - 自定义模态窗口，支持标签搜索和多选
-- � **日历过滤系统** - 按日历显示/隐藏事件，实时更新
+- 📍 **地址智能输入** - 集成高德地图 API，支持地址自动补全和地图跳转
+- 🔍 **日历过滤系统** - 按日历显示/隐藏事件，实时更新
 - 🔄 **双向同步** - 与 Microsoft Outlook 日历无缝同步
 - 🧹 **事件去重机制** - 自动检测并清理重复事件
 - ⏰ **番茄钟计时器** - 专注时间管理，提高工作效率
-- � **任务管理** - 任务创建与跟踪
+- ✅ **任务管理** - 任务创建与跟踪
 
 ### 数据完整性
 - 🛡️ **智能时间解析** - 支持多种 ISO 8601 格式
@@ -49,11 +50,31 @@ ReMarkable 是一个现代化的时间管理应用，支持与 Microsoft Outlook
 - Node.js 16+ 
 - npm 或 yarn
 - Azure AD 应用注册（用于 Outlook 同步）
+- 高德地图 API Key（用于地址功能，可选）
 
 ### 安装依赖
 ```bash
 npm install
 ```
+
+### 配置地址功能（可选）
+
+如需使用地址自动补全功能，请配置高德地图 API Key：
+
+1. 复制环境变量模板：
+```bash
+cp .env.example .env
+```
+
+2. 申请高德地图 API Key（免费，300,000 次/天）：  
+   访问 [高德开放平台](https://console.amap.com/)
+
+3. 在 `.env` 文件中配置：
+```env
+VITE_AMAP_KEY=your_actual_api_key_here
+```
+
+详细配置指南见 [地址功能设置文档](./docs/LOCATION_FEATURE_SETUP.md)
 
 ### 启动开发服务器
 ```bash
@@ -71,9 +92,16 @@ npm run build
 
 ## 📖 文档
 
+### 核心文档
 - [v1.1 Release Notes](./RELEASE_NOTES_v1.1.md) - 版本更新说明
 - [TimeCalendar README](./docs/TIMECALENDAR_README.md) - 日历组件实现指南
 - [TUI Integration Guide](./docs/timecalendar-tui-integration.md) - TUI Calendar 集成文档
+
+### 功能文档
+- [地址功能设置指南](./docs/LOCATION_FEATURE_SETUP.md) - 高德地图 API 配置
+- [地址功能测试清单](./docs/LOCATION_TEST_CHECKLIST.md) - LocationInput 组件测试
+
+### 测试文档
 - [Testing Guide](./docs/timecalendar-testing-guide.md) - 测试指南
 - [UI Verification Framework](./docs/ui-verification-framework.md) - UI 测试框架
 

@@ -17,6 +17,8 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
+import Tippy from '@tippyjs/react';
+import 'tippy.js/dist/tippy.css';
 import { TagService } from '../services/TagService';
 import { EventService } from '../services/EventService';
 import { ContactService } from '../services/ContactService';
@@ -24,6 +26,7 @@ import { Event, Contact } from '../types';
 import { HierarchicalTagPicker } from './HierarchicalTagPicker/HierarchicalTagPicker';
 import UnifiedDateTimePicker from './FloatingToolbar/pickers/UnifiedDateTimePicker';
 import { AttendeeDisplay } from './common/AttendeeDisplay';
+import { LocationInput } from './common/LocationInput';
 import './EventEditModalV2Demo.css';
 
 // Import SVG icons
@@ -54,6 +57,7 @@ interface MockEvent {
   startTime: string | null; // ISO 8601 string
   endTime: string | null;   // ISO 8601 string
   allDay: boolean;
+  location?: string;
   organizer?: Contact;
   attendees?: Contact[];
 }
@@ -132,6 +136,7 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showTagPicker, setShowTagPicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [isEditingLocation, setIsEditingLocation] = useState(false);
   const [isDetailView, setIsDetailView] = useState(true);
   const [tagPickerPosition, setTagPickerPosition] = useState({ top: 0, left: 0, width: 0 });
   const [currentTime, setCurrentTime] = useState<number>(Date.now());
@@ -756,51 +761,94 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
                 />
 
                 {/* 时间显示 */}
-                <div className="eventmodal-v2-plan-row" onClick={() => setShowTimePicker(true)} style={{ cursor: 'pointer' }}>
-                  <img src={datetimeIcon} alt="" className="eventmodal-v2-plan-icon" />
-                  <div className="eventmodal-v2-plan-content" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    {(() => {
-                      const timeInfo = formatTimeDisplay(formData.startTime, formData.endTime);
-                      if (!timeInfo) {
-                        return <span style={{ color: '#9ca3af' }}>选择时间...</span>;
-                      }
-                      
-                      return (
-                        <>
-                          <span>{timeInfo.dateStr} ({timeInfo.weekday}) {timeInfo.startTimeStr}</span>
-                          {timeInfo.endTimeStr && timeInfo.duration && (
-                            <>
-                              <div className="time-arrow-section">
-                                <span className="duration-text">{timeInfo.duration}</span>
-                                <img src={arrowBlueIcon} alt="" className="arrow-icon" />
-                              </div>
-                              <span>{timeInfo.endTimeStr}</span>
-                            </>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </div>
-                </div>
-
-                {/* UnifiedDateTimePicker Popup */}
-                {showTimePicker && (
-                  <div className="tag-picker-overlay" onClick={() => setShowTimePicker(false)}>
-                    <div className="time-picker-popup" onClick={(e) => e.stopPropagation()}>
-                      <UnifiedDateTimePicker
-                        initialStart={formData.startTime || undefined}
-                        initialEnd={formData.endTime || undefined}
-                        onApplied={handleTimeApplied}
-                        onClose={() => setShowTimePicker(false)}
-                      />
+                <Tippy
+                  content={
+                    <UnifiedDateTimePicker
+                      initialStart={formData.startTime || undefined}
+                      initialEnd={formData.endTime || undefined}
+                      onApplied={handleTimeApplied}
+                      onClose={() => setShowTimePicker(false)}
+                    />
+                  }
+                  visible={showTimePicker}
+                  onClickOutside={() => setShowTimePicker(false)}
+                  interactive={true}
+                  placement="bottom"
+                  popperOptions={{
+                    strategy: 'fixed',
+                    modifiers: [
+                      {
+                        name: 'flip',
+                        enabled: false, // 禁止自动翻转到上方
+                      },
+                      {
+                        name: 'preventOverflow',
+                        options: {
+                          altAxis: true,
+                          tether: false, // 允许超出边界
+                        },
+                      },
+                    ],
+                  }}
+                  theme="light"
+                  arrow={false}
+                  offset={[0, 8]}
+                  appendTo={document.body}
+                  maxWidth="none"
+                >
+                  <div 
+                    className="eventmodal-v2-plan-row" 
+                    onClick={() => setShowTimePicker(true)} 
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <img src={datetimeIcon} alt="" className="eventmodal-v2-plan-icon" />
+                    <div className="eventmodal-v2-plan-content" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      {(() => {
+                        const timeInfo = formatTimeDisplay(formData.startTime, formData.endTime);
+                        if (!timeInfo) {
+                          return <span style={{ color: '#9ca3af' }}>添加时间...</span>;
+                        }
+                        
+                        return (
+                          <>
+                            <span>{timeInfo.dateStr} ({timeInfo.weekday}) {timeInfo.startTimeStr}</span>
+                            {timeInfo.endTimeStr && timeInfo.duration && (
+                              <>
+                                <div className="time-arrow-section">
+                                  <span className="duration-text">{timeInfo.duration}</span>
+                                  <img src={arrowBlueIcon} alt="" className="arrow-icon" />
+                                </div>
+                                <span>{timeInfo.endTimeStr}</span>
+                              </>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
-                )}
+                </Tippy>
 
                 {/* 地点 */}
-                <div className="eventmodal-v2-plan-row">
+                <div className="eventmodal-v2-plan-row" style={{ cursor: 'pointer' }}>
                   <img src={locationIcon} alt="" className="eventmodal-v2-plan-icon" />
-                  <div className="eventmodal-v2-plan-content">静安嘉里中心2F环球, RM工作室, 5号会议室</div>
+                  {isEditingLocation ? (
+                    <LocationInput
+                      value={formData.location || ''}
+                      onChange={(value) => {
+                        setFormData(prev => ({ ...prev, location: value }));
+                      }}
+                      onSelect={() => setIsEditingLocation(false)}
+                      onBlur={() => setIsEditingLocation(false)}
+                      placeholder="添加地点..."
+                    />
+                  ) : (
+                    <div 
+                      className="eventmodal-v2-plan-content" 
+                      onClick={() => setIsEditingLocation(true)}
+                    >
+                      {formData.location || <span style={{ color: '#9ca3af' }}>添加地点...</span>}
+                    </div>
+                  )}
                 </div>
 
                 {/* 日历来源和同步模式 */}

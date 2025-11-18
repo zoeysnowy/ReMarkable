@@ -1377,6 +1377,27 @@ const html = serializeToHtml(slateNodes);
 const nodes = deserializeFromHtml(htmlString);
 ```
 
+**支持的格式标记 (v2.11)**:
+- **粗体**: `<strong>` 或 `<b>`
+- **斜体**: `<em>` 或 `<i>`
+- **下划线**: `<u>`
+- **删除线**: `<s>` 或 `<del>` 或 `<strike>`
+- **文本颜色**: `<span style="color: #xxx">`
+- **背景颜色**: `<span style="background-color: #xxx">`
+
+**颜色序列化示例**:
+```html
+<!-- Slate → HTML -->
+<span style="color: #ef4444; background-color: #fce7f3">高亮文本</span>
+
+<!-- HTML → Slate -->
+{ 
+  text: '高亮文本', 
+  color: '#ef4444', 
+  backgroundColor: '#fce7f3' 
+}
+```
+
 #### 插入自定义元素
 
 ```typescript
@@ -1497,6 +1518,9 @@ interface CustomText {
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
+  strikethrough?: boolean;
+  color?: string;           // 🆕 文本颜色 (v2.11)
+  backgroundColor?: string; // 🆕 背景颜色 (v2.11)
   code?: boolean;
 }
 
@@ -1534,6 +1558,15 @@ const renderLeaf = useCallback((props: RenderLeafProps) => {
   if (props.leaf.bold) children = <strong>{children}</strong>;
   if (props.leaf.italic) children = <em>{children}</em>;
   if (props.leaf.underline) children = <u>{children}</u>;
+  if (props.leaf.strikethrough) children = <s>{children}</s>;
+  
+  // 🆕 文本颜色和背景颜色 (v2.11)
+  if (props.leaf.color || props.leaf.backgroundColor) {
+    const style: React.CSSProperties = {};
+    if (props.leaf.color) style.color = props.leaf.color;
+    if (props.leaf.backgroundColor) style.backgroundColor = props.leaf.backgroundColor;
+    children = <span style={style}>{children}</span>;
+  }
   
   return <span {...props.attributes}>{children}</span>;
 }, []);
@@ -2953,6 +2986,179 @@ const editorRegistryRef = useRef<Map<string, Editor>>(new Map());
 // 每行一个 editor，FloatingBar 需要查找
 
 // ✅ 新架构
+const slateEditorRef = useRef<Editor>(null);
+// 单一 editor，直接引用
+```
+
+---
+
+## 🎨 文本颜色功能 (v2.11 - 2025-11-18)
+
+### 功能概述
+
+UnifiedSlateEditor 支持通过 Text FloatingBar 为选中文本设置颜色和背景色，提供实时预览和键盘快捷操作。
+
+### 核心特性
+
+#### 1. 颜色选择器
+
+**文本颜色** (9种颜色):
+- 黑色 `#000000` (默认)
+- 红色 `#ef4444`
+- 橙色 `#f59e0b`
+- 黄色 `#eab308`
+- 绿色 `#22c55e`
+- 蓝色 `#3b82f6`
+- 紫色 `#8b5cf6`
+- 粉色 `#ec4899`
+- 灰色 `#6b7280`
+
+**背景颜色** (8种颜色 + 无背景):
+- 红底 `#fee2e2`
+- 橙底 `#fed7aa`
+- 黄底 `#fef3c7`
+- 绿底 `#d1fae5`
+- 蓝底 `#dbeafe`
+- 紫底 `#e0e7ff`
+- 粉底 `#fce7f3`
+- 灰底 `#f3f4f6`
+- 无背景 (清除背景色)
+
+#### 2. 实时预览
+
+**核心机制**:
+```typescript
+// HeadlessFloatingToolbar.tsx
+onPreview={(color) => {
+  const editor = slateEditorRef?.current;
+  if (editor && editor.selection) {
+    // 保存原始选区（仅第一次）
+    if (!savedSelectionRef.current) {
+      savedSelectionRef.current = { ...editor.selection };
+    }
+    // 使用 Editor.addMark 直接添加，避免触发 format 逻辑
+    Editor.addMark(editor, 'color', color);
+  }
+}}
+```
+
+**关键设计决策**:
+- ✅ 使用 `Editor.addMark()` 而非 `onTextFormat()` - 避免触发复杂的格式化逻辑和选区变化
+- ✅ 保存原始选区 `savedSelectionRef` - 预览期间选区保持不变
+- ✅ CSS 强制覆盖 - 使用 `-webkit-text-fill-color: unset !important` 确保选中状态下颜色可见
+
+**CSS 选中样式优化**:
+```css
+/* UnifiedSlateEditor.css */
+.unified-slate-editor ::selection,
+.unified-slate-editor *::selection,
+.unified-editable ::selection,
+.unified-editable *::selection {
+  background-color: rgba(59, 130, 246, 0.15) !important; /* 极淡蓝色 */
+}
+
+/* 关键：禁用选中时的文字颜色覆盖 */
+.unified-slate-editor ::selection {
+  color: unset !important;
+  -webkit-text-fill-color: unset !important;
+}
+
+.unified-slate-editor span[style*="color"]::selection {
+  color: unset !important;
+  -webkit-text-fill-color: unset !important;
+}
+```
+
+**为什么需要 `-webkit-text-fill-color`**:
+- Chrome/Edge 等 Chromium 内核浏览器会用 `-webkit-text-fill-color` 覆盖 `color` 属性
+- 浏览器默认选中样式会强制设置文字颜色（通常为白色或黑色）
+- 必须显式设置 `unset !important` 才能保持自定义颜色
+
+#### 3. 键盘导航
+
+**数字键快速选择**:
+- 按 `1-9` 键快速选择对应颜色
+- 文本颜色选择器: 1=黑, 2=红, 3=橙, 4=黄, 5=绿, 6=蓝, 7=紫, 8=粉, 9=灰
+- 背景颜色选择器: 1=红底, 2=橙底, ..., 8=灰底, 9=无背景
+
+**ESC 键关闭**:
+- 关闭颜色选择器时恢复原始选区
+- 不应用预览的颜色
+
+#### 4. 序列化与持久化
+
+**HTML 序列化**:
+```typescript
+// renderLeaf - Slate → HTML
+if (leaf.color || leaf.backgroundColor) {
+  const style: React.CSSProperties = {};
+  if (leaf.color) style.color = leaf.color;
+  if (leaf.backgroundColor) style.backgroundColor = leaf.backgroundColor;
+  children = <span style={style}>{children}</span>;
+}
+
+// deserialize - HTML → Slate
+const colorMatch = styleAttr.match(/color:\s*([^;]+)/);
+const bgMatch = styleAttr.match(/background-color:\s*([^;]+)/);
+if (colorMatch) child.color = colorMatch[1].trim();
+if (bgMatch) child.backgroundColor = bgMatch[1].trim();
+```
+
+**持久化格式**:
+```json
+{
+  "text": "重要提醒",
+  "color": "#ef4444",
+  "backgroundColor": "#fee2e2",
+  "bold": true
+}
+```
+
+#### 5. 用户体验优化
+
+**已解决的问题**:
+1. ✅ **预览时选区丢失** - 使用 `savedSelectionRef` 保持选区不变
+2. ✅ **选中文字颜色不可见** - CSS `::selection` 样式优化
+3. ✅ **预览触发多次渲染** - 直接使用 `Editor.addMark` 避免复杂逻辑
+4. ✅ **背景色和文字色冲突** - 支持同时应用，互不干扰
+5. ✅ **菜单自动关闭** - Tippy.js `interactiveBorder={20}` 配置
+
+**实现文件**:
+- `HeadlessFloatingToolbar.tsx` - 集成颜色选择器，处理预览逻辑
+- `TextColorPicker.tsx` - 文本颜色选择器组件
+- `BackgroundColorPicker.tsx` - 背景颜色选择器组件
+- `UnifiedSlateEditor.tsx` - renderLeaf 渲染逻辑
+- `UnifiedSlateEditor.css` - 选中样式覆盖
+- `serialization.ts` - HTML 序列化/反序列化
+- `helpers.ts` - applyTextFormat 命令处理
+
+### 使用示例
+
+```typescript
+import { UnifiedSlateEditor } from '@/components/UnifiedSlateEditor';
+
+function MyComponent() {
+  return (
+    <UnifiedSlateEditor
+      items={items}
+      onChange={handleChange}
+      // Text FloatingBar 会自动显示颜色选择器
+      // 用户选中文字后点击颜色图标即可使用
+    />
+  );
+}
+```
+
+---
+
+## 🔄 更新历史
+
+### v2.11 (2025-11-18)
+- ✅ 新增文本颜色和背景颜色功能
+- ✅ 实时颜色预览（鼠标悬停）
+- ✅ 键盘快捷键（1-9 数字键）
+- ✅ CSS 选中样式优化（-webkit-text-fill-color）
+- ✅ HTML 序列化支持颜色属性
 const unifiedEditorRef = useRef<Editor>(null);
 // 单个 editor，FloatingBar 直接使用
 ```

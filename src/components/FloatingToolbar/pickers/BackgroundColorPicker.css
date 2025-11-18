@@ -1,0 +1,70 @@
+/* BackgroundColorPicker 样式 */
+/* 使用 TextColorPicker.css 中的统一样式 */
+
+@import './TextColorPicker.css';
+
+/* 背景颜色选择器特殊样式 - 色块作为按钮 */
+.color-picker-panel .bg-color-item {
+  position: relative;
+  width: 100%;
+  height: 40px;
+  border-radius: 8px;
+  border: 2px solid rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 0;
+  overflow: hidden;
+}
+
+.color-picker-panel .bg-color-item:hover {
+  border-color: rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.color-picker-panel .bg-color-item-active {
+  border-color: rgba(59, 130, 246, 0.5) !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2), 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  transform: translateY(-2px) scale(1.02);
+}
+
+.color-picker-panel .bg-color-shortcut {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.4);
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 1px 5px;
+  border-radius: 3px;
+  line-height: 1;
+  z-index: 1;
+}
+
+.color-picker-panel .bg-color-item:hover .bg-color-shortcut {
+  background: rgba(255, 255, 255, 1);
+  color: rgba(0, 0, 0, 0.6);
+}
+
+/* 无背景选项特殊样式 */
+.color-picker-panel .bg-color-item.no-bg {
+  background: 
+    repeating-linear-gradient(
+      45deg,
+      #f8f9fa,
+      #f8f9fa 10px,
+      #e9ecef 10px,
+      #e9ecef 20px
+    );
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.color-picker-panel .bg-color-item.no-bg::before {
+  content: '✕';
+  font-size: 20px;
+  color: #94a3b8;
+  font-weight: bold;
+}

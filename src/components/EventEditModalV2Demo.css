@@ -788,3 +788,19 @@
   max-height: 700px;
   overflow: auto;
 }
+
+/* Tippy Time Picker Styling */
+.tippy-box[data-theme~='light'] {
+  background-color: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  padding: 0;
+  max-width: none !important;
+}
+
+.tippy-box[data-theme~='light'] .tippy-content {
+  padding: 0;
+  max-width: 800px;
+  max-height: 700px;
+  overflow: auto;
+}

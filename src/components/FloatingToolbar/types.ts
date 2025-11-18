@@ -37,6 +37,8 @@ export type ToolbarFeatureType =
   | 'outdent'       // 取消缩进（Shift+Tab）
   | 'collapse'      // 收起当前项（Ctrl+↑）
   | 'expand'        // 展开当前项（Ctrl+↓）
+  | 'textColor'     // 🆕 文本颜色选择器
+  | 'bgColor'       // 🆕 背景颜色选择器
   
   // 快捷操作
   | 'tag'           // # 标签选择器

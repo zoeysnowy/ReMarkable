@@ -1176,10 +1176,12 @@ function createWidgetSettingsWindow() {
       frame: false, // 🎨 无边框（桌面卡片样式）
       titleBarStyle: 'hidden', // 🎨 隐藏标题栏（macOS）
       titleBarOverlay: false, // 🎨 禁用标题栏覆盖（Windows 11）
-      thickFrame: false, // 🎨 Windows：禁用粗边框
+      thickFrame: true, // ✅ Windows：启用粗边框以支持 resize
       transparent: true, // 🎨 透明窗口
       backgroundColor: '#00000000', // 🎨 完全透明背景
-      resizable: false, // ❌ 禁止调整大小（卡片样式）
+      resizable: true, // ✅ 允许调整大小
+      minWidth: 320, // 🎨 最小宽度
+      minHeight: 400, // 🎨 最小高度
       minimizable: false, // ❌ 禁止最小化
       maximizable: false, // ❌ 禁止最大化
       hasShadow: false, // 🎨 禁用阴影

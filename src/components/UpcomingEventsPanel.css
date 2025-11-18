@@ -1,0 +1,334 @@
+/* Upcoming Events Panel Styles */
+.upcoming-events-panel {
+  width: 317px;
+  height: 829px;
+  background: white;
+  border-radius: 20px;
+  box-shadow: 5px 5px 10px 0px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e5e7eb;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Microsoft YaHei', Arial, sans-serif;
+}
+
+/* ==================== Section Header ==================== */
+/* 使用统一的 section-header 样式 - 完全复制 PlanManager.css + App.css */
+.upcoming-events-panel .section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-shrink: 0;
+  justify-content: flex-start;
+}
+
+.upcoming-events-panel .section-header:hover .panel-toggle-btn {
+  opacity: 0.6;
+}
+
+.upcoming-events-panel .section-header .title-indicator {
+  width: 4px;
+  height: 20px;
+  background: linear-gradient(135deg, #a855f7 0%, #3b82f6 75%);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.upcoming-events-panel .section-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+  line-height: 1.4;
+  font-family: 'Microsoft YaHei', Arial, sans-serif;
+  text-align: left;
+}
+
+.panel-toggle-btn {
+  width: 20px;
+  height: 20px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  font-size: 16px;
+  padding: 0;
+  transition: opacity 0.2s;
+}
+
+.panel-toggle-btn:hover {
+  opacity: 1 !important;
+}
+
+/* Filter Buttons */
+.filter-buttons {
+  display: flex;
+  gap: 0;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 5px;
+}
+
+.filter-btn {
+  flex: 1;
+  height: 24px;
+  border: none;
+  background: transparent;
+  font-family: 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  color: #4b5563;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.filter-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.filter-btn-active {
+  background: linear-gradient(to right, #22d3ee, #3b82f6);
+  color: white;
+  font-weight: 700;
+}
+
+/* Event Divider */
+.event-divider {
+  display: flex;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.event-divider-line {
+  flex: 1;
+  height: 0;
+  border-top: 3px solid #e5e7eb;
+}
+
+/* Event List */
+.event-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Event Card */
+.event-card {
+  position: relative;
+  padding-left: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.event-indicator-line {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 2px;
+}
+
+.event-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Event Header */
+.event-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.event-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.event-title {
+  font-family: 'Inter', 'Noto Sans SC', 'Noto Sans JP', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0;
+  line-height: 1.2;
+}
+
+/* Event Tag */
+.event-tag {
+  font-family: 'Inter', 'Noto Sans JP', 'Noto Sans SC', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  margin-left: 24px;
+}
+
+/* Event Time Row */
+.event-time-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: 24px;
+}
+
+.event-time-info {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.event-time-label {
+  font-family: 'Inter', 'Noto Sans JP', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: #4b5563;
+}
+
+.event-countdown {
+  font-family: 'Inter', 'Noto Sans SC', 'Noto Sans JP', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  background: linear-gradient(to right, #22d3ee, #3b82f6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Event Attendees */
+.event-attendees {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-left: 24px;
+}
+
+.event-attendees-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.event-attendees-text {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: #4b5563;
+  line-height: 1.3;
+  flex: 1;
+}
+
+/* Event Location */
+.event-location {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-left: 24px;
+}
+
+.event-location-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.event-location-text {
+  font-family: 'Inter', 'Noto Sans JP', 'Noto Sans SC', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: #4b5563;
+  line-height: 1.3;
+  flex: 1;
+}
+
+/* Event Description */
+.event-description {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-left: 24px;
+}
+
+.event-description-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.event-description-text {
+  font-family: 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  color: #4b5563;
+  line-height: 1.3;
+  flex: 1;
+}
+
+/* Action Indicator Labels (matching Figma design) */
+.action-indicator-label {
+  position: absolute;
+  left: -10px;
+  transform: translateY(-50%);
+  font-family: 'Roboto', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  font-style: italic;
+  font-variation-settings: 'wdth' 100;
+}
+
+.action-indicator-new {
+  color: #dc2626;
+}
+
+.action-indicator-done {
+  color: #0b9265;
+}
+
+.action-indicator-updated {
+  color: #9ca3af;
+}
+
+/* Scrollbar Styling */
+.upcoming-events-panel::-webkit-scrollbar,
+.event-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.upcoming-events-panel::-webkit-scrollbar-track,
+.event-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.upcoming-events-panel::-webkit-scrollbar-thumb,
+.event-list::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.3);
+  border-radius: 3px;
+}
+
+.upcoming-events-panel::-webkit-scrollbar-thumb:hover,
+.event-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.5);
+}

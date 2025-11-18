@@ -41,6 +41,51 @@ export const ContactPreviewCard: React.FC<ContactPreviewCardProps> = ({
   const [fullContact, setFullContact] = useState<ContactWithEvents | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  // 订阅 ContactService 事件，自动刷新显示的联系人数据
+  useEffect(() => {
+    if (!fullContact?.id) return;
+
+    const handleContactUpdated = (event: any) => {
+      const { id, after } = event.data;
+      
+      // 如果更新的是当前显示的联系人，自动刷新
+      if (id === fullContact.id) {
+        console.log('[ContactPreviewCard] 📇 收到联系人更新事件，自动刷新显示');
+        
+        // 重新获取完整信息（包括关联事件）
+        const identifier = after.email || after.name || '';
+        const events = EventService.getEventsByContact(identifier, 5);
+        const totalEvents = EventService.getEventsByContact(identifier, 9999).length;
+        
+        setFullContact({
+          ...after,
+          recentEvents: events,
+          totalEvents,
+        });
+        
+        onUpdate?.(after);
+      }
+    };
+
+    const handleContactDeleted = (event: any) => {
+      const { id } = event.data;
+      
+      // 如果删除的是当前显示的联系人，清空显示
+      if (id === fullContact.id) {
+        console.log('[ContactPreviewCard] 🗑️ 当前联系人已被删除，清空显示');
+        setFullContact(null);
+      }
+    };
+
+    ContactService.addEventListener('contact.updated', handleContactUpdated);
+    ContactService.addEventListener('contact.deleted', handleContactDeleted);
+
+    return () => {
+      ContactService.removeEventListener('contact.updated', handleContactUpdated);
+      ContactService.removeEventListener('contact.deleted', handleContactDeleted);
+    };
+  }, [fullContact?.id, onUpdate]);
+
   const loadContactInfo = async () => {
     if (isLoading || fullContact) return;
     
@@ -70,11 +115,9 @@ export const ContactPreviewCard: React.FC<ContactPreviewCardProps> = ({
     if (!fullContact?.id) return;
     
     try {
-      const updated = ContactService.updateContact(fullContact.id, { [field]: value });
-      if (updated) {
-        setFullContact({ ...fullContact, [field]: value });
-        onUpdate?.(updated);
-      }
+      // 直接调用 ContactService.updateContact，它会触发事件
+      // 事件订阅会自动更新 fullContact 状态，无需手动更新
+      ContactService.updateContact(fullContact.id, { [field]: value });
     } catch (error) {
       console.error('[ContactPreviewCard] Failed to update contact:', error);
     }

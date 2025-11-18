@@ -3,8 +3,9 @@
 **模块路径**: `src/components/PlanManager.tsx`  
 **代码行数**: ~2400 lines  
 **架构版本**: v1.9 (模块化重构)  
-**最后更新**: 2025-11-14  
-**编写框架**: Copilot PRD Reverse Engineering Framework v1.0
+**最后更新**: 2025-11-18  
+**编写框架**: Copilot PRD Reverse Engineering Framework v1.0  
+**Figma 设计稿**: [ReMarkable-0.1 - 1450w default](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=290-2646&m=dev)
 
 ---
 
@@ -763,6 +764,7 @@ export interface Event {
   priority?: number;               // ⭐ 优先级（1-5）
   isCompleted?: boolean;           // ✅ 是否已完成
   isTask?: boolean;                // 📋 是否为任务（影响时间显示逻辑）
+  isFavorite?: boolean;            // ⭐ 是否收藏（用于左侧边栏收藏筛选）
   
   // === Event 专用字段 ===
   start?: string;                  // ⏰ 开始时间（本地时间格式，如 '2025-01-15T14:30:00'）
@@ -781,6 +783,10 @@ export interface Event {
   // === Outlook 同步字段 ===
   outlookEventId?: string;
   outlookCalendarId?: string;
+  
+  // === 操作历史字段（用于右侧边栏 Action Indicators）===
+  completedAt?: string;            // ✅ 完成时间（本地时间格式）
+  deletedAt?: string;              // 🗑️ 删除时间（软删除标记）
 }
 ```
 
@@ -2089,7 +2095,1137 @@ const getContentStyle = (item: Event) => ({
 
 ---
 
-## 10. 已发现问题与优化建议
+## 10. 侧边栏模块 (Side Panels)
+
+### 10.1 概述
+
+PlanManager 包含两个侧边栏面板，分别位于主编辑区域的左右两侧，提供内容筛选和即将到来的事件预览功能。
+
+```
+┌──────────────┬────────────────────┬──────────────┐
+│              │                    │              │
+│  内容选取面板  │   主编辑区域        │  即将到来面板  │
+│  (Left Panel)│   (Plan List)      │ (Right Panel)│
+│              │                    │              │
+│  - 搜索框     │   - 计划列表        │  - 时间筛选   │
+│  - 月历       │   - Slate 编辑器   │  - 事件列表   │
+│  - 筛选按钮   │   - 浮动工具栏      │  - 事件详情   │
+│  - 任务树     │                    │              │
+│              │                    │              │
+└──────────────┴────────────────────┴──────────────┘
+```
+
+### 10.2 左侧边栏 - 内容选取面板 (Content Selection Panel)
+
+#### 10.2.1 面板结构 ✅ 已实现
+
+**文件路径**: `src/components/ContentSelectionPanel.tsx` & `ContentSelectionPanel.css`
+
+**容器样式**：
+- **宽度**: 315px
+- **高度**: 823px  
+- **背景**: 白色 (`#FFFFFF`)
+- **圆角**: 20px
+- **阴影**: `5px 5px 10px 0px rgba(0, 0, 0, 0.05)` (匹配系统标准)
+- **边框**: `1px solid #e5e7eb`
+- **内边距**: 20px (匹配系统 plan-manager 容器)
+- **字体**: 'Microsoft YaHei', Arial, sans-serif
+
+#### 10.2.2 标题栏区域 ✅ 已实现
+
+**组件结构**：
+```tsx
+<div className="section-header">
+  <div className="title-indicator" />
+  <h3>内容选取</h3>
+  <button className="panel-toggle-btn">
+    <HideIcon />
+  </button>
+  <button className="panel-show-all-btn">显示全部</button>
+</div>
+```
+
+**样式规范** (完全匹配 PlanManager.css section-header):
+```css
+.content-selection-panel .section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-shrink: 0;
+  justify-content: flex-start;
+}
+
+.content-selection-panel .section-header .title-indicator {
+  width: 4px;
+  height: 20px;
+  background: linear-gradient(135deg, #a855f7 0%, #3b82f6 75%);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.content-selection-panel .section-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+  line-height: 1.4;
+  font-family: 'Microsoft YaHei', Arial, sans-serif;
+  text-align: left;
+}
+```
+
+**元素列表**：
+1. **渐变指示器** ✅
+   - 宽度: 4px, 高度: 20px
+   - 渐变: `linear-gradient(135deg, #a855f7 0%, #3b82f6 75%)`
+   - 圆角: 2px
+
+2. **标题文本** "内容选取" ✅
+   - 字体: Microsoft YaHei, 18px, weight 600
+   - 颜色: `#111827`
+
+3. **隐藏图标** ✅
+   - 使用: `src/assets/icons/hide.svg`
+   - 尺寸: 20x20px, opacity: 0.6
+   - 功能: 切换日历显示/隐藏
+
+4. **"显示全部"按钮** ✅
+   - 字体: 14px, weight 500
+   - 颜色: `#9ca3af`
+   - hover效果: `color: #6b7280`
+
+#### 10.2.3 搜索框区域 ✅ 已实现 (渐变边框)
+
+**组件结构** (复制 UnifiedDateTimePicker 样式):
+```tsx
+<div className="search-container">
+  <div className="search-input-wrapper">
+    <SearchIcon className="search-icon" />
+    <input 
+      type="text"
+      className="search-input"
+      placeholder="输入"上个月没完成的任务"试试"
+      value={searchQuery}
+      onChange={handleSearchChange}
+    />
+  </div>
+</div>
+```
+
+**样式规范**:
+```css
+.search-input-wrapper {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.search-input {
+  width: 100%;
+  height: 34px;
+  padding-left: 43px;
+  padding-right: 16px;
+  border: 2px solid transparent;
+  border-radius: 25px;
+  font-size: 14px;
+  color: #374151;
+  background: white;
+  outline: none;
+  background-clip: padding-box;
+  font-family: 'Microsoft YaHei', Arial, sans-serif;
+}
+
+/* 渐变边框效果 */
+.search-input-wrapper::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 25px;
+  padding: 2px;
+  background: linear-gradient(90deg, #A855F7 0%, #3B82F6 75.48%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+```
+
+**元素列表**：
+1. **搜索图标** ✅
+   - 使用: `src/assets/icons/Search.svg`
+   - 尺寸: 20x20px, opacity: 0.6
+   - 位置: left: 12px
+
+2. **搜索输入框** ✅
+   - 高度: 34px, 圆角: 25px
+   - 渐变边框: 紫色到蓝色
+   - 占位符: "输入"上个月没完成的任务"试试"
+   - focus效果: `box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.1)`
+
+#### 10.2.4 月历视图区域 ✅ 已实现 (紧凑布局)
+
+**组件结构**：
+```tsx
+{isCalendarVisible && (
+  <div className="calendar-container">
+    {/* 月份导航 */}
+    <div className="calendar-header">
+      <button className="calendar-nav-btn" onClick={prevMonth}>‹</button>
+      <h4 className="calendar-title">{currentYear}年 {currentMonth + 1}月</h4>
+      <button className="calendar-nav-btn" onClick={nextMonth}>›</button>
+    </div>
+    
+    {/* 星期标题行 */}
+    <div className="calendar-weekdays">
+      {weekdays.map(day => (
+        <div key={day} className="calendar-weekday">{day}</div>
+      ))}
+    </div>
+    
+    {/* 日期网格 */}
+    <div className="calendar-days">
+      {weeks.map((week, weekIndex) => (
+        <div key={weekIndex} className="calendar-week">
+          {week.map((day, dayIndex) => (
+            <div
+              key={dayIndex}
+              className={`calendar-day ${day.isCurrentMonth ? '' : 'calendar-day-empty'} ${day.isSelected ? 'calendar-day-selected' : ''}`}
+              onClick={() => day.isCurrentMonth && handleDateSelect(day.date)}
+            >
+              {day.date}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  </div>
+)}
+```
+
+**样式规范** (紧凑优化):
+```css
+.calendar-container {
+  background: rgba(255, 255, 255, 0.7);
+  padding: 8px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+}
+
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.calendar-title {
+  font-family: 'Roboto', 'Noto Sans JP', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 22px;
+  color: #374151;
+}
+
+.calendar-nav-btn {
+  width: 38.4px;
+  height: 38.4px;
+  border: none;
+  background: none;
+  font-size: 24px;
+  color: #374151;
+  cursor: pointer;
+  border-radius: 9.6px;
+}
+
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.calendar-weekday {
+  text-align: center;
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 14.4px;
+  font-weight: 700;
+  color: #6b7280;
+  padding: 4px 0;
+  background: rgba(248, 250, 252, 0.5);
+  border-radius: 4.8px;
+}
+
+.calendar-day {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Roboto', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-height: 28px;
+  max-height: 28px;
+}
+
+.calendar-days {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.calendar-day-selected {
+  background: linear-gradient(to right, #22d3ee, #3b82f6);
+  color: white;
+}
+```
+
+**元素列表**：
+1. **月份导航区** ✅
+   - 导航按钮: 38.4px × 38.4px
+   - 月份标题: **16px** (已优化), weight 600
+   - 功能: 月份前后切换
+
+2. **星期标题行** ✅
+   - 网格布局: 7列
+   - 字体: 'Noto Sans SC', 14.4px, weight 700
+   - padding: **4px 0** (紧凑优化)
+   - 间距: **margin-bottom: 4px** (紧凑优化)
+
+3. **日期网格** ✅
+   - 单元格: **28px 高度限制** (紧凑优化)
+   - 字体: **14px** (优化), weight 600
+   - 圆角: **6px** (调整)
+   - 行间距: **gap: 1px** (紧凑优化)
+   - 选中状态: 渐变背景
+
+2. **星期标题行**
+   - 7 列: 日、一、二、三、四、五、六
+   - 字体大小: 14px
+   - 颜色: `#6B7280`
+   - 行高: 39.36px
+
+3. **日期网格**
+   - 布局: 7 列 × 5-6 行网格
+   - 每个单元格尺寸: 约 51.7px × 27.7px
+   - 日期文本大小: 16px
+   - 当前日期: 需要高亮显示
+   - 非当月日期: 灰色显示
+   - 有事件的日期: 下方显示小圆点指示器
+
+#### 10.2.5 筛选按钮组
+
+**组件结构**：
+```tsx
+<div className="filter-buttons">
+  <button className={filterMode === 'tags' ? 'active' : ''}>标签</button>
+  <button className={filterMode === 'tasks' ? 'active' : ''}>事项</button>
+  <button className={filterMode === 'favorites' ? 'active' : ''}>收藏</button>
+  <button className={filterMode === 'new' ? 'active' : ''}>New</button>
+</div>
+```
+
+**元素列表**：
+1. **按钮容器**
+   - 宽度: 200px
+   - 高度: 34px
+   - 布局: 4 个按钮水平排列
+
+2. **单个按钮**
+   - 宽度: 48px
+   - 高度: 24px
+   - 圆角: 4px
+   - 间距: 5px
+   - 文本: "标签" / "事项" / "收藏" / "New"
+   - 激活状态: 背景色变化（需要从设计系统获取）
+
+**筛选模式说明**：
+- **标签模式**: 显示所有标签的层级树，展示每个标签下的任务数量和时间统计
+- **事项模式**: 按事项类型（待办/已完成/进行中）分组显示
+- **收藏模式**: 
+  - 只显示被标记为收藏的计划项
+  - **数据字段**: 需要在 `Event` 类型中增加 `isFavorite?: boolean` 字段
+  - 收藏操作通过任务树中的星标图标或右键菜单触发
+- **New 模式**: 
+  - 显示在选中时间范围内新建的计划项
+  - 判断逻辑：`createdAt` 字段在选中时间范围内
+  - 时间范围：根据左侧月历选中的日期/周/月动态确定
+  - 示例：选中 11 月 18 日，则显示该日新建的所有事件
+
+#### 10.2.6 任务树视图区域 ✅ 已实现
+
+**组件结构**：
+```tsx
+<div className="task-tree">
+  {taskHierarchy.map(node => renderTaskNode(node, 0))}
+</div>
+
+const renderTaskNode = (node: TaskNode, depth: number) => (
+  <div key={node.id} className="task-node" style={{ marginLeft: depth * 16 }}>
+    <div className="task-node-row">
+      {/* 展开按钮 */}
+      {node.children && node.children.length > 0 && (
+        <button className="task-expand-btn">
+          <DownIcon isExpanded={node.isExpanded} />
+        </button>
+      )}
+      {!node.children && <div className="task-expand-spacer" />}
+      
+      {/* 可见性图标 */}
+      {node.isHidden ? (
+        <HideSmallIcon className="task-icon task-icon-hidden" />
+      ) : node.isFavorite ? (
+        <span className="task-icon task-icon-favorite">⭐</span>
+      ) : (
+        <UnhideSmallIcon className="task-icon task-icon-visible" />
+      )}
+      
+      {/* 标签标题 */}
+      <div className="task-title">{node.title}</div>
+      
+      {/* 统计信息 */}
+      {node.stats && (
+        <div className="task-stats">
+          <div className="task-progress-bar">
+            <div 
+              className="task-progress-fill"
+              style={{ 
+                width: `${(node.stats.completed / node.stats.total) * 100}%`,
+                backgroundColor: node.color
+              }}
+            />
+          </div>
+          <span className="task-progress-text">
+            {node.stats.completed}/{node.stats.total}
+          </span>
+          <PieChart className="task-pie-icon" />
+          <span className="task-time">{node.stats.hours}h</span>
+        </div>
+      )}
+    </div>
+    
+    {/* 递归渲染子节点 */}
+    {node.isExpanded && node.children && 
+      node.children.map(child => renderTaskNode(child, depth + 1))
+    }
+  </div>
+);
+```
+
+**样式规范**：
+```css
+.task-node {
+  display: flex;
+  flex-direction: column;
+}
+
+.task-node-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  min-height: 32px;
+}
+
+.task-expand-btn {
+  width: 12px;
+  height: 12px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.task-expand-spacer {
+  width: 12px;
+  height: 12px;
+}
+
+.task-icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.task-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  flex: 1;
+}
+
+.task-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.task-progress-bar {
+  width: 42px;
+  height: 8px;
+  background: rgba(229, 231, 235, 0.5);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.task-progress-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+```
+
+**交互功能** ✅：
+1. **展开/折叠图标**
+   - 使用: `src/assets/icons/down.svg`  
+   - 动画: `transition: 'transform 0.2s'`
+   - 展开: rotate(0deg), 折叠: rotate(-90deg)
+   - 尺寸: 12px × 12px, 无border
+
+2. **可见性状态图标**
+   - 隐藏: `HideSmallIcon` (半透明显示)
+   - 可见: `UnhideSmallIcon`
+   - 收藏: ⭐ 星标图标
+
+3. **层级缩进**
+   - 每级缩进: `marginLeft: depth * 16px`
+   - 支持多层嵌套显示
+
+4. **统计信息显示**
+   - 进度条: 42px宽, 8px高
+   - 完成度: `completed/total`
+   - 时间统计: `{hours}h`
+   - 饼图图标: `src/assets/icons/piechart.svg`
+
+**元素列表**：
+
+1. **树节点结构**
+   - **层级 0**（顶层标签）:
+     - 展开/收起图标: 12x12px 向下箭头（展开）或向右箭头（收起）
+     - 可见性图标: 16x16px
+     - 标签名称: 如 "#🔮Remarkable开发"
+   
+   - **层级 1**（子标签）:
+     - 左侧缩进: 16px
+     - 可见性图标: 16x16px
+     - 标签名称: 如 "#🔮PRD文档"
+   
+   - **层级 2**（更深层级）:
+     - 左侧缩进: 32px（每层增加 16px）
+
+2. **统计信息区域**（每个节点右侧）
+   - **进度条**:
+     - 宽度: 70px
+     - 高度: 4px
+     - 背景色: `#E5E7EB`
+     - 填充色: 根据完成度动态设置
+     - 完成度计算: `(已完成任务数 / 总任务数) * 100%`
+   
+   - **完成度文本**:
+     - 格式: "3/7"（已完成/总数）
+     - 字体大小: 10px
+     - 颜色: `#6B7280`
+   
+   - **饼图图标**:
+     - 尺寸: 14x14px
+     - 功能: 点击显示详细统计弹窗
+   
+   - **累计时长**:
+     - 格式: "12h" / "6h" / "3h"
+     - 字体大小: 10px
+     - 颜色: `#6B7280`
+     - 计算逻辑: 汇总该标签下所有任务的 `duration` 字段
+
+3. **特殊图标状态**
+   - **收起状态的标签**:
+     - 图标类型: `hide` (16x16px)
+     - 不显示子项
+   
+   - **收藏标签**:
+     - 图标类型: `favorite` (16x16px)
+     - 黄色星标显示在标签名称旁
+
+#### 10.2.7 交互行为
+
+**搜索功能**：
+- **NLP 自然语言查询支持**：
+  - 支持复杂查询如 "上个月没完成的任务"
+  - 参考 `datetimeparse` 模块的自然语言解析能力
+  - 后续需要完善自定义词典系统（详见：`NATURAL_LANGUAGE_DICTIONARY_REFERENCE.md`）
+  
+- **搜索结果高亮逻辑**：
+  - **日期相关查询**：左侧月历自动选中相关日期
+  - **标签相关查询**：任务树中只显示相关标签，无关标签自动 hide
+  - **事件相关查询**：任务树中只显示符合条件的事件，无关事件自动 hide
+  - **主编辑区显示**：正常显示所有符合搜索结果的事件
+  - **用户体验**：通过左侧栏的筛选状态，用户可以清楚地看到搜索结果的范围
+
+**日历交互**：
+- **点击日期响应**：
+  - 根据选中日期的首尾时间，生成类似 TimeHub Snapshot 的事件清单
+  - 清单样式参考 Figma 设计稿中的事件列表布局
+  - 主编辑区自动滚动并高亮显示该日期范围内的事件
+  
+- **日期小圆点指示器**：
+  - 显示规则：有事件的日期下方显示小圆点
+  - 颜色规则：
+    - **有标签的事件**：使用标签颜色
+    - **无标签的事件**：灰色 (`#9CA3AF`)
+    - **多标签事件**：显示主标签颜色（第一个标签）
+  - 尺寸：直径 4px
+  
+- **当前日期高亮**：
+  - 背景色：`#E0F2FE`（浅蓝色）
+  - 边框：1px 实线 `#3B82F6`
+
+**筛选按钮**：
+- 点击切换筛选模式
+- 激活状态显示不同背景色
+- 支持与搜索框组合使用
+
+**任务树交互**：
+- **点击展开/收起图标**: 展开/收起子项
+  
+- **点击可见性图标**: 
+  - 切换该标签任务的显示/隐藏状态
+  - **主编辑区实时响应**：立即隐藏/显示对应任务
+  - 隐藏的任务在任务树中显示为半透明（`opacity: 0.5`）
+  - 状态持久化：保存到用户偏好设置中
+  
+- **点击饼图图标**: 打开详细统计弹窗
+  - **弹窗内容**：
+    - Event Tree（事件树）结构
+    - 标签分类统计
+    - 每个事件的完成时间和计划时间对比
+    - **年轮图可视化**（核心设计）
+  
+  - **年轮图设计规范**：
+    ```
+    ┌─────────────────────────────────────────┐
+    │         年轮图 (Radial Tree Chart)        │
+    ├─────────────────────────────────────────┤
+    │                                         │
+    │      ╱───────────────────╲             │
+    │    ╱  ┌─────────────┐     ╲           │
+    │   │   │   Parent    │      │          │
+    │   │   │   Event     │      │  ← 外圈   │
+    │   │   │             │      │  (子事件) │
+    │   │   └─────────────┘      │          │
+    │    ╲    ← 内圈(核心任务)    ╱           │
+    │      ╲───────────────────╱             │
+    │                                         │
+    └─────────────────────────────────────────┘
+    ```
+    
+    - **圆心**: Parent Event（父任务）
+    - **内圈**: 核心任务（第一层子任务）
+    - **外圈**: 更深层的子任务（可嵌套多层）
+    - **圈层数量**: 根据事件层级深度动态生成
+    
+    - **单圈结构**：
+      - **角度**: 每个事件占据的角度 = (事件时长 / 24小时) × 360°
+      - **颜色**: 使用事件的标签颜色
+      - **厚度**: 固定（如 20px），层级越深，半径越大
+      - **交互**: 鼠标悬停显示事件详情（名称、时长、完成进度）
+    
+    - **成就感设计**：
+      - 累积时间越多，年轮图半径越大，视觉冲击力越强
+      - 完成的事件显示为实心，未完成显示为虚线边框
+      - 中心显示总累积时长（如 "总计 156h 30m"）
+    
+    - **数据来源**：
+      - 汇总该 Parent Event 下所有子事件的 `duration` 字段
+      - 按标签分组统计，使用标签颜色渲染
+      - 支持时间范围筛选（本周/本月/全部）
+  
+- **点击标签名称**: 筛选该标签下的所有任务
+
+---
+
+### 10.3 右侧边栏 - 即将到来面板 (Upcoming Events Panel)
+
+#### 10.3.1 面板结构
+
+**容器样式**：
+- **宽度**: 317px
+- **背景**: 白色 (`#FFFFFF`)
+- **圆角**: 20px
+- **阴影**: `0px 4px 10px 0px rgba(0,0,0,0.25)`
+- **内边距**: 上下 8px，左右 16px
+
+#### 10.3.2 标题栏区域
+
+**组件结构**：
+```tsx
+<div className="header">
+  <div className="title-border">
+    <div className="gradient-indicator" /> {/* 4px 宽渐变条 */}
+    <h3>即将到来</h3>
+    <IconButton icon="hide" /> {/* 隐藏/显示图标 */}
+  </div>
+</div>
+```
+
+**元素列表**：
+1. **渐变指示器**
+   - 宽度: 4px
+   - 高度: 20px
+   - 位置: 左侧，垂直居中对齐标题
+   - 颜色: 渐变色（与左侧边栏一致）
+
+2. **标题文本** "即将到来"
+   - 字体大小: 18px
+   - 字重: Semi-bold
+   - 颜色: `#111827`
+
+3. **隐藏图标**
+   - 尺寸: 20x20px
+   - 功能: 点击收起/展开右侧边栏
+   - 位置: 标题栏右侧
+
+#### 10.3.3 时间筛选按钮组
+
+**组件结构**：
+```tsx
+<div className="time-filter-buttons">
+  <button className={timeFilter === 'today' ? 'active' : ''}>今天</button>
+  <button className={timeFilter === 'tomorrow' ? 'active' : ''}>明天</button>
+  <button className={timeFilter === 'thisWeek' ? 'active' : ''}>本周</button>
+  <button className={timeFilter === 'nextWeek' ? 'active' : ''}>下周</button>
+</div>
+```
+
+**元素列表**：
+1. **按钮容器**
+   - 宽度: 200px
+   - 高度: 34px
+   - 位置: 标题栏下方
+   - 布局: 4 个按钮水平排列
+
+2. **单个按钮**
+   - 宽度: 48px
+   - 高度: 24px
+   - 圆角: 4px
+   - 间距: 5px
+   - 文本: "今天" / "明天" / "本周" / "下周"
+   - 激活状态: 背景色 `#E0F2FE`（浅蓝色）
+
+**筛选逻辑**：
+- **今天**: 显示今天开始或截止的事件
+- **明天**: 显示明天的事件
+- **本周**: 显示本周剩余时间的事件
+  - 周起始日：当前默认为**周一**
+  - 未来支持用户自定义设置（周日/周一可选）
+  - **代码实现要求**：使用配置变量 `weekStartsOn`，便于后续扩展
+- **下周**: 显示下周的事件
+  - 周起始日：与 "本周" 保持一致
+- **全部**: 显示所有有时间的事件（不限时间范围）
+
+**注意**：Figma 设计稿中包含**"全部"按钮**，需要添加到时间筛选按钮组：
+```tsx
+<button className={timeFilter === 'all' ? 'active' : ''}>全部</button>
+```
+
+#### 10.3.4 事件列表区域
+
+**组件结构**：
+```tsx
+<div className="event-list">
+  {/* 单个事件卡片 */}
+  <div className="event-card">
+    {/* 左侧指示线 */}
+    <div className="event-indicator" />
+    
+    {/* 事件内容 */}
+    <div className="event-content">
+      {/* 事件标题 */}
+      <div className="event-header">
+        <EventIcon type="task_gray" /> {/* 事件类型图标 */}
+        <h4 className="event-title">🎙️ 议程讨论</h4>
+      </div>
+      
+      {/* 标签 */}
+      <div className="event-tags">
+        <Tag>#🧐展会</Tag>
+      </div>
+      
+      {/* 时间信息 */}
+      <div className="event-time">
+        <TimeIcon type="timer_start" /> {/* 开始时间图标 */}
+        <span className="time-text">13:00开始</span>
+      </div>
+      
+      {/* 参与者 */}
+      <div className="event-attendees">
+        <AttendeeIcon />
+        <span className="attendees-text">Zoey Gong; Jenny Wong; Cindy Cai</span>
+      </div>
+      
+      {/* 地点 */}
+      <div className="event-location">
+        <LocationIcon />
+        <span className="location-text">静安嘉里中心2座F38，RM工作室，5号会议室</span>
+      </div>
+      
+      {/* 剩余时间 */}
+      <div className="event-remaining">
+        <span className="remaining-text">还有1h</span>
+      </div>
+    </div>
+  </div>
+  
+  {/* ... 更多事件卡片 */}
+</div>
+```
+
+#### 10.3.5 事件卡片元素详细说明
+
+**1. 左侧指示线（Action Indicators）**
+
+**设计理念**：
+- 指示线通过颜色编码显示事件在选中时间范围内的**操作历史**（Action History）
+- 一个事件可能经历多个状态变化（如：New → Updated → Done），指示线需要同时显示所有状态
+- 不同行的指示线应尽可能融合，避免视觉杂乱
+
+**颜色规则**（按 Action 类型）：
+- **New（新建）**: 蓝色 `#3B82F6`
+- **Updated（更新）**: 黄色 `#FBBF24`
+- **Done（完成）**: 绿色 `#10B981`
+- **Missed（错过/逾期）**: 红色 `#EF4444`
+- **Deleted（删除）**: 灰色 `#9CA3AF`
+
+**多状态叠加规则**：
+- **单条指示线**：宽度 2px，高度与事件标题对齐（约 20px）
+- **多状态显示**：从左到右依次排列不同颜色的指示线
+  - 示例：一个事件在选中时间范围内先 New（蓝色）、后 Updated（黄色）、最后 Done（绿色）
+  - 指示线显示：`[蓝|黄|绿]` 三条细线紧密排列
+  - 总宽度：2px × 状态数量（最多 8.74px）
+  
+- **状态说明文字**：
+  - 在事件列表顶部显示一次图例（Legend）
+  - 格式：`New（蓝色） | Updated（黄色） | Done（绿色）`
+  - 避免在每个事件卡片上重复显示文字，减少视觉杂乱
+
+**判断逻辑**：
+- **New**: `createdAt` 在选中时间范围内
+- **Updated**: `updatedAt` 在选中时间范围内且晚于 `createdAt`
+- **Done**: `completedAt` 在选中时间范围内
+- **Missed**: `dueDate` 在选中时间范围内且早于当前时间，但 `isCompleted === false`
+- **Deleted**: `deletedAt` 在选中时间范围内（需要在 `Event` 类型中增加 `deletedAt` 字段）
+
+**2. 事件标题区域**
+- **事件类型图标**: 
+  - 尺寸: 16x16px
+  - 类型: `task_gray` / `event` / `deadline`
+- **标题文本**:
+  - 字体大小: 15px
+  - 字重: Medium
+  - 颜色: `#111827`
+  - 示例: "🎙️ 议程讨论"
+
+**3. 标签区域**
+- **标签样式**:
+  - 高度: 20px
+  - 内边距: 4px 8px
+  - 圆角: 4px
+  - 背景色: 根据标签颜色动态设置
+  - 文本: 如 "#🧐展会"
+  - 字体大小: 13px
+
+**4. 时间信息区域**
+- **时间图标**:
+  - 尺寸: 20x20px
+  - 类型: `timer_start` / `timer_end` / `timer_deadline`
+- **时间文本**:
+  - 字体大小: 14px
+  - 颜色: `#374151`
+  - 格式:
+    - 开始时间: "13:00开始"
+    - 截止时间: "17:00截止"
+    - 全天事件: "全天"
+    - 未来时间: "晚上"
+
+**5. 参与者区域**（可选，仅会议事件显示）
+- **参与者图标**:
+  - 尺寸: 16x16px
+  - 类型: `Attendee`
+- **参与者文本**:
+  - 字体大小: 12px
+  - 颜色: `#6B7280`
+  - 格式: 多人用分号分隔
+  - 示例: "Zoey Gong; Jenny Wong; Cindy Cai"
+
+**6. 地点区域**（可选，仅有地点的事件显示）
+- **地点图标**:
+  - 尺寸: 16x16px
+  - 类型: `Location`
+- **地点文本**:
+  - 字体大小: 12px
+  - 颜色: `#6B7280`
+  - 多行显示（最多 2 行）
+  - 示例: "静安嘉里中心2座F38，RM工作室，5号会议室"
+
+**7. 描述区域**（可选，仅有描述的事件显示）
+- **描述图标**:
+  - 尺寸: 16x16px
+  - 类型: `right`（展开/收起）
+- **描述文本**:
+  - 字体大小: 12px
+  - 颜色: `#6B7280`
+  - 最多显示 1 行，超出显示省略号
+  - 示例: "西班牙海鲜炖饭（Paella）、塔帕斯..."
+
+**8. 剩余时间提示**（可选，仅未来事件显示）
+- 字体大小: 14px
+- 颜色: `#6B7280`
+- 位置: 右侧对齐
+- 格式:
+  - 距离开始时间: "还有1h" / "还有30分钟"
+  - 已开始: "进行中"
+  - 已过期: 不显示
+- **刷新频率**: 每分钟自动更新一次
+- **实现方式**: 使用 `setInterval` 定时器，间隔 60000ms
+
+#### 10.3.6 事件卡片示例
+
+**示例 1: 会议事件**
+```
+┌─────────────────────────────────────────────────┐
+│ │  🎙️ 议程讨论                                   │
+│ │  #🧐展会                                       │
+│ │  ⏰ 13:00开始                         还有1h    │
+│ │  👥 Zoey Gong; Jenny Wong; Cindy Cai         │
+│ │  📍 静安嘉里中心2座F38，RM工作室，              │
+│ │      5号会议室                                 │
+└─────────────────────────────────────────────────┘
+```
+
+**示例 2: 任务事件**
+```
+┌─────────────────────────────────────────────────┐
+│ │  📚 协议定稿                                   │
+│ │  #🧮采购                                       │
+│ │  ⏰ 17:00截止                         还有1h    │
+│ │  👥 Zoey Gong; Jenny Wong; Cindy Cai         │
+│ │  📍 静安嘉里中心2座F38，RM工作室，              │
+│ │      5号会议室                                 │
+└─────────────────────────────────────────────────┘
+```
+
+**示例 3: 无时间的事件**
+```
+┌─────────────────────────────────────────────────┐
+│ │  🎆️ 巴塞罗那美食source                         │
+│ │  #🤩丰富多彩的快乐生活                          │
+│ │  ⏰ 晚上                                       │
+│ │  ▶ 西班牙海鲜炖饭（Paella）、塔帕斯...          │
+└─────────────────────────────────────────────────┘
+```
+
+#### 10.3.7 交互行为
+
+**时间筛选**：
+- 点击筛选按钮切换时间范围
+- 列表自动更新显示对应时间范围的事件
+- 支持与搜索框组合使用
+
+**事件卡片交互**：
+- **点击事件卡片**: 在主编辑区定位到该计划项
+  - 主编辑区自动滚动到对应行
+  - 高亮显示该事件（背景色闪烁动画）
+  
+- **点击描述展开图标**: 
+  - **行为**: 打开 `EventEditModal` 弹窗
+  - **弹窗内容**: 显示事件的完整详情和编辑界面
+  - **关闭弹窗**: 保存更改后，右侧边栏自动刷新
+  
+- **点击标签**: 筛选该标签下的所有计划项
+  - 左侧边栏任务树自动选中该标签
+  - 主编辑区只显示该标签的事件
+  
+- **长按事件卡片**: 显示快捷操作菜单（编辑/删除/标记完成）
+
+**数据更新**：
+- 实时同步主编辑区的事件更新
+- 剩余时间每分钟自动刷新
+- **拖拽排期功能**（v2.0 规划）：
+  - 支持拖拽事件卡片到左侧月历进行重新排期
+  - 拖拽目标：左侧边栏的月历日期单元格
+  - 拖拽效果：更新事件的 `start` 和 `end` 字段
+  - **当前版本暂不实现**，预留接口
+
+---
+
+### 10.4 侧边栏状态管理
+
+#### 10.4.1 状态定义
+
+```typescript
+// 左侧边栏状态
+const [leftPanelVisible, setLeftPanelVisible] = useState(true);
+const [searchQuery, setSearchQuery] = useState('');
+const [selectedMonth, setSelectedMonth] = useState(new Date());
+const [filterMode, setFilterMode] = useState<'tags' | 'tasks' | 'favorites' | 'new'>('tags');
+const [expandedTags, setExpandedTags] = useState<Set<string>>(new Set());
+
+// 右侧边栏状态
+const [rightPanelVisible, setRightPanelVisible] = useState(true);
+const [timeFilter, setTimeFilter] = useState<'today' | 'tomorrow' | 'thisWeek' | 'nextWeek'>('today');
+const [expandedEventIds, setExpandedEventIds] = useState<Set<string>>(new Set());
+```
+
+#### 10.4.2 数据计算
+
+**左侧边栏 - 任务树数据**：
+```typescript
+const taskTreeData = useMemo(() => {
+  // 1. 根据 filterMode 筛选计划项
+  let filteredItems = items;
+  
+  if (searchQuery) {
+    filteredItems = filteredItems.filter(item => 
+      item.content?.includes(searchQuery) || 
+      item.title?.includes(searchQuery)
+    );
+  }
+  
+  // 2. 按标签分组
+  const tagGroups = new Map<string, Event[]>();
+  filteredItems.forEach(item => {
+    item.tags?.forEach(tagId => {
+      if (!tagGroups.has(tagId)) {
+        tagGroups.set(tagId, []);
+      }
+      tagGroups.get(tagId)!.push(item);
+    });
+  });
+  
+  // 3. 计算每个标签的统计信息
+  const treeData = Array.from(tagGroups.entries()).map(([tagId, items]) => {
+    const completed = items.filter(i => i.isCompleted).length;
+    const total = items.length;
+    const totalTime = items.reduce((sum, i) => sum + (i.duration || 0), 0);
+    
+    return {
+      tagId,
+      tagName: getTagName(tagId),
+      items,
+      completed,
+      total,
+      totalTime,
+      progress: total > 0 ? (completed / total) * 100 : 0,
+    };
+  });
+  
+  return treeData;
+}, [items, searchQuery, filterMode]);
+```
+
+**右侧边栏 - 即将到来事件列表**：
+```typescript
+const upcomingEvents = useMemo(() => {
+  const now = new Date();
+  
+  // 1. 筛选有时间的事件
+  const eventsWithTime = items.filter(item => 
+    item.start && item.start !== ''
+  );
+  
+  // 2. 根据时间筛选器过滤
+  let filteredEvents = eventsWithTime;
+  
+  switch (timeFilter) {
+    case 'today':
+      filteredEvents = eventsWithTime.filter(item => 
+        isSameDay(parseISO(item.start!), now)
+      );
+      break;
+    case 'tomorrow':
+      const tomorrow = addDays(now, 1);
+      filteredEvents = eventsWithTime.filter(item => 
+        isSameDay(parseISO(item.start!), tomorrow)
+      );
+      break;
+    case 'thisWeek':
+      const endOfWeek = endOfWeek(now);
+      filteredEvents = eventsWithTime.filter(item => 
+        isWithinInterval(parseISO(item.start!), { start: now, end: endOfWeek })
+      );
+      break;
+    case 'nextWeek':
+      const startOfNextWeek = startOfWeek(addWeeks(now, 1));
+      const endOfNextWeek = endOfWeek(addWeeks(now, 1));
+      filteredEvents = eventsWithTime.filter(item => 
+        isWithinInterval(parseISO(item.start!), { 
+          start: startOfNextWeek, 
+          end: endOfNextWeek 
+        })
+      );
+      break;
+  }
+  
+  // 3. 按开始时间排序
+  filteredEvents.sort((a, b) => 
+    parseISO(a.start!).getTime() - parseISO(b.start!).getTime()
+  );
+  
+  // 4. 计算剩余时间
+  return filteredEvents.map(event => ({
+    ...event,
+    remainingTime: calculateRemainingTime(event.start!),
+  }));
+}, [items, timeFilter]);
+```
+
+#### 10.4.3 工具函数
+
+```typescript
+// 计算剩余时间
+function calculateRemainingTime(startTime: string): string {
+  const now = new Date();
+  const start = parseISO(startTime);
+  const diffMs = start.getTime() - now.getTime();
+  
+  if (diffMs < 0) return ''; // 已过期
+  
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  
+  if (diffHours > 0) {
+    return `还有${diffHours}h`;
+  } else {
+    return `还有${diffMinutes}分钟`;
+  }
+}
+
+// 格式化时长
+function formatDuration(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  if (hours > 0) {
+    return `${hours}h`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m`;
+}
+```
+
+---
+
+## 11. 已发现问题与优化建议
 
 ### 10.1 已发现的代码问题
 

@@ -18,6 +18,13 @@ import cancelSvg from './cancel.svg';
 import emojiSvg from './emoji.svg';
 import moreSvg from './more.svg';
 import datetimeSvg from './datetime.svg';
+import addTaskGraySvg from './Add_task_gray.svg';
+import addTaskColorSvg from './Add_task_color.svg';
+import strikethroughSvg from './Strikethrough.svg';
+import removestyleSvg from './Removestyle.svg';
+import textcolorSvg from './TextColor.svg';
+import backgroundcolorSvg from './backgroundcolor.svg';
+import textstyleSvg from './Textstyle.svg';
 
 export const icons = {
   logo: logoSvg,
@@ -39,6 +46,13 @@ export const icons = {
   emoji: emojiSvg,
   more: moreSvg,
   datetime: datetimeSvg,
+  addTaskGray: addTaskGraySvg,
+  addTaskColor: addTaskColorSvg,
+  strikethrough: strikethroughSvg,
+  removestyle: removestyleSvg,
+  textcolor: textcolorSvg,
+  backgroundcolor: backgroundcolorSvg,
+  textstyle: textstyleSvg,
 };
 
 // 图标类型定义

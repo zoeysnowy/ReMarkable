@@ -23,9 +23,28 @@
   pointer-events: none;
 }
 
-/* 确保跨行选择可见 */
-.unified-editable ::selection {
-  background-color: rgba(59, 130, 246, 0.3);
+/* 🔥 强制覆盖浏览器默认选中样式 - 使用最高优先级 */
+.unified-slate-editor ::selection,
+.unified-slate-editor *::selection,
+.unified-editable ::selection,
+.unified-editable *::selection {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+}
+
+/* 🔑 关键修复：彻底禁用选中时的文字颜色覆盖 */
+.unified-slate-editor ::selection {
+  color: unset !important;
+  -webkit-text-fill-color: unset !important;
+}
+
+.unified-slate-editor span[style*="color"]::selection {
+  color: unset !important;
+  -webkit-text-fill-color: unset !important;
+}
+
+/* 🔑 确保有颜色的 span 在选中时保持原色 */
+.unified-editable span[style*="color"] {
+  color: inherit; /* 这个会被 inline style 覆盖，确保 inline style 生效 */
 }
 
 /* 🆕 Gray text placeholder */

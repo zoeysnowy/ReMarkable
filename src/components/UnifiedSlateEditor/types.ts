@@ -95,6 +95,7 @@ export interface TextNode {
   underline?: boolean;
   strikethrough?: boolean;
   color?: string;
+  backgroundColor?: string; // 🆕 背景颜色
 }
 
 /**

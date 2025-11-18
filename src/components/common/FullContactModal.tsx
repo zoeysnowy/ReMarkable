@@ -46,6 +46,49 @@ export const FullContactModal: React.FC<FullContactModalProps> = ({
     }
   }, [visible, contact]);
 
+  // 订阅 ContactService 事件，自动刷新或关闭 Modal
+  useEffect(() => {
+    if (!visible || !editedContact?.id) return;
+
+    const handleContactUpdated = (event: any) => {
+      const { id, after } = event.data;
+      
+      // 如果更新的是当前编辑的联系人，自动刷新显示
+      if (id === editedContact.id) {
+        console.log('[FullContactModal] 📇 收到联系人更新事件，自动刷新显示');
+        
+        // 重新加载完整信息（包括关联事件）
+        const fullInfo = ContactService.getFullContactInfo(after);
+        setEditedContact(fullInfo);
+        
+        const identifier = after.email || after.name || '';
+        const events = EventService.getEventsByContact(identifier, 9999);
+        setRelatedEvents(events);
+        
+        // 如果是外部更新（不是自己触发的），清除 hasChanges 标志
+        setHasChanges(false);
+      }
+    };
+
+    const handleContactDeleted = (event: any) => {
+      const { id } = event.data;
+      
+      // 如果删除的是当前编辑的联系人，关闭 Modal
+      if (id === editedContact.id) {
+        console.log('[FullContactModal] 🗑️ 当前联系人已被删除，关闭 Modal');
+        onClose();
+      }
+    };
+
+    ContactService.addEventListener('contact.updated', handleContactUpdated);
+    ContactService.addEventListener('contact.deleted', handleContactDeleted);
+
+    return () => {
+      ContactService.removeEventListener('contact.updated', handleContactUpdated);
+      ContactService.removeEventListener('contact.deleted', handleContactDeleted);
+    };
+  }, [visible, editedContact?.id, onClose]);
+
   const handleFieldUpdate = (field: keyof Contact, value: any) => {
     setEditedContact(prev => ({ ...prev, [field]: value }));
     setHasChanges(true);
@@ -57,12 +100,11 @@ export const FullContactModal: React.FC<FullContactModalProps> = ({
       return;
     }
 
-    const updated = ContactService.updateContact(editedContact.id, editedContact);
-    if (updated) {
-      onSave?.(updated);
-      setHasChanges(false);
-      onClose();
-    }
+    // 直接调用 ContactService.updateContact，它会触发事件
+    // 事件订阅会自动更新 editedContact 状态和关联事件
+    ContactService.updateContact(editedContact.id, editedContact);
+    onSave?.(editedContact);
+    onClose();
   };
 
   const handleCancel = () => {
