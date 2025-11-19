@@ -1674,6 +1674,94 @@ visible={
 
 ---
 
+### 2025-11-19: 颜色选择器键盘交互修复
+
+**问题描述**:
+打开颜色选择器（textColor/bgColor）后，按数字键 1-9 无法选择颜色，窗口停滞不动。
+
+**根本原因**:
+`useFloatingToolbar` hook 在 FloatingBar 打开时会拦截所有数字键 1-9，用于主菜单项选择。当颜色选择器打开后，数字键仍然被 hook 拦截，导致颜色选择器内部的键盘监听器无法接收到按键事件。
+
+**解决方案**:
+
+**1. 添加 `isSubPickerOpen` 参数到 useFloatingToolbar**：
+```typescript
+// useFloatingToolbar.ts
+export interface UseFloatingToolbarOptions {
+  // ... 其他参数
+  /** 子选择器是否打开（textColor/bgColor picker），打开时不拦截数字键 */
+  isSubPickerOpen?: boolean;
+}
+```
+
+**2. 修改数字键拦截逻辑**：
+```typescript
+// 🔑 关键：如果子选择器（颜色选择器）已打开，不拦截数字键，让子选择器自己处理
+if (!isSubPickerOpen && (toolbarActive || mode === 'menu_floatingbar' || mode === 'text_floatingbar') && /^[1-9]$/.test(event.key)) {
+  // ... 主菜单数字键处理逻辑
+}
+```
+
+**3. 在 HeadlessFloatingToolbar 中监听 activePicker 变化**：
+```typescript
+// 监听 activePicker 变化，通知父组件子选择器状态
+useEffect(() => {
+  const isSubPickerOpen = activePicker === 'textColor' || activePicker === 'bgColor';
+  onSubPickerStateChange?.(isSubPickerOpen);
+}, [activePicker, onSubPickerStateChange]);
+```
+
+**4. 在 PlanManager 中管理状态并传递**：
+```typescript
+const [isSubPickerOpen, setIsSubPickerOpen] = useState<boolean>(false);
+
+const floatingToolbar = useFloatingToolbar({
+  // ... 其他配置
+  isSubPickerOpen, // 🔑 传递子选择器状态
+});
+
+<HeadlessFloatingToolbar
+  // ... 其他 props
+  onSubPickerStateChange={(isOpen) => setIsSubPickerOpen(isOpen)}
+/>
+```
+
+**完整的键盘交互流程**:
+1. 用户选中文字，按数字键 4 打开 bgColor 选择器
+2. bgColor 选择器打开，`activePicker` 变为 'bgColor'
+3. HeadlessFloatingToolbar 通知 PlanManager：`onSubPickerStateChange(true)`
+4. PlanManager 更新 `isSubPickerOpen = true`
+5. `useFloatingToolbar` hook 检测到 `isSubPickerOpen = true`，**不再拦截数字键**
+6. 用户按数字键 1-9，事件直接传递到 BackgroundColorPicker 内部的键盘监听器
+7. BackgroundColorPicker 接收按键，调用 `onSelect(BG_COLORS[index].value)` 应用颜色
+8. 颜色选择器关闭，`activePicker` 变为 null，`isSubPickerOpen` 重置为 false
+
+**技术要点**:
+- **状态提升**: 将子选择器的打开状态提升到 PlanManager 层级管理
+- **条件拦截**: 根据 `isSubPickerOpen` 状态决定是否拦截数字键
+- **回调传递**: 使用 `onSubPickerStateChange` 回调实现跨组件状态同步
+- **事件优先级**: 子选择器打开时，数字键事件优先传递给子组件处理
+
+**附加修复：移除颜色预览功能**:
+
+发现颜色选择器的 `onMouseEnter` 预览功能存在 bug：鼠标悬停时应用的临时颜色在移开后不会被清除，导致颜色叠加覆盖文字。为避免复杂的状态管理，**临时移除了预览功能**，只在用户明确选择（点击或按数字键）时才应用颜色。
+
+```typescript
+// 移除前（有 bug）:
+onMouseEnter={() => { onPreview?.(color.value); }}
+
+// 移除后：
+// 不再有 onMouseEnter/onMouseLeave，只在 onChange/onSelect 时应用颜色
+```
+
+**影响范围**:
+- ✅ 修复了颜色选择器键盘数字键 1-9 无法响应的问题
+- ✅ textColor 和 bgColor 选择器都支持数字键快速选择
+- ✅ 移除了预览功能，避免颜色叠加 bug（未来可能需要重新实现预览，需要保存/恢复原始颜色状态）
+- ✅ 保持了主菜单和子菜单的键盘交互独立性
+
+---
+
 ## 🔗 相关文档
 
 - [PlanManager 模块 PRD](./PRD/PLANMANAGER_MODULE_PRD.md)

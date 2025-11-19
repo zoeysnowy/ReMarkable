@@ -35,6 +35,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
   onColorSelect,
   onTaskToggle,
   onRequestClose,
+  onSubPickerStateChange, // 🆕 子选择器状态变化回调
   availableTags = [],
   currentTags = [],
   currentIsTask = false,
@@ -184,11 +185,16 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
     prevShowRef.current = position.show;
   }, [position.show]);
 
-  // 监听 activePicker 变化
+  // 监听 activePicker 变化，通知父组件子选择器状态
   useEffect(() => {
     console.log(`[activePicker useEffect] 🔄 activePicker 变化: ${activePicker}`);
     console.log('[activePicker useEffect] 调用堆栈:', new Error().stack);
-  }, [activePicker]);
+    
+    // 🔑 通知父组件：textColor 或 bgColor 打开时，子选择器处于打开状态
+    const isSubPickerOpen = activePicker === 'textColor' || activePicker === 'bgColor';
+    onSubPickerStateChange?.(isSubPickerOpen);
+    console.log(`[activePicker useEffect] 🎨 子选择器状态: ${isSubPickerOpen ? '打开' : '关闭'}`);
+  }, [activePicker, onSubPickerStateChange]);
 
   if (!position.show) return null;
 
@@ -268,11 +274,28 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
                     }
                   }}
                   onSelect={(color) => {
+                    console.log('[BackgroundColorPicker onSelect] 🎨 选择背景颜色:', { color });
                     const editor = slateEditorRef?.current;
+                    
+                    console.log('[BackgroundColorPicker onSelect] 📋 Editor 状态:', {
+                      hasEditor: !!editor,
+                      hasSavedSelection: !!savedSelectionRef.current,
+                      savedSelection: savedSelectionRef.current,
+                      currentSelection: editor?.selection,
+                    });
+                    
                     // 恢复选区
                     if (editor && savedSelectionRef.current) {
+                      console.log('[BackgroundColorPicker onSelect] ✅ 恢复选区:', savedSelectionRef.current);
                       Transforms.select(editor, savedSelectionRef.current);
                     }
+                    
+                    console.log('[BackgroundColorPicker onSelect] 🔄 调用 onTextFormat:', {
+                      command: 'backgroundColor',
+                      value: color,
+                      selectionAfterRestore: editor?.selection,
+                    });
+                    
                     onTextFormat?.('backgroundColor', color);
                     savedSelectionRef.current = null; // 清除保存的选区
                     setActivePicker(null);

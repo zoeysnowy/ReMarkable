@@ -546,6 +546,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   // FloatingToolbar Hook - 自动管理模式切换
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const [activePickerIndex, setActivePickerIndex] = useState<number | null>(null);
+  const [isSubPickerOpen, setIsSubPickerOpen] = useState<boolean>(false); // 🆕 追踪子选择器（颜色选择器）是否打开
   
   const floatingToolbar = useFloatingToolbar({
     editorRef: editorContainerRef as React.RefObject<HTMLElement>,
@@ -554,6 +555,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     onMenuSelect: (menuIndex: number) => {
       setActivePickerIndex(menuIndex);
     },
+    isSubPickerOpen, // 🔑 传递子选择器状态
   });
 
   // 🆕 监听 TagPicker 打开，同步实际的标签状态
@@ -1738,6 +1740,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         config={toolbarConfig}
         activePickerIndex={activePickerIndex}
         onActivePickerIndexConsumed={() => setActivePickerIndex(null)} // 🔑 立即重置
+        onSubPickerStateChange={(isOpen) => setIsSubPickerOpen(isOpen)} // 🔑 追踪子选择器状态
         eventId={currentFocusedLineId ? (() => {
           const actualItemId = currentFocusedLineId.replace('-desc','');
           // 🔧 [FIX] 先在 items 中查找，再检查 pendingEmptyItems

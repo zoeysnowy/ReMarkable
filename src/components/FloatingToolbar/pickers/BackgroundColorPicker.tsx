@@ -82,9 +82,6 @@ export const BackgroundColorPicker: React.FC<BackgroundColorPickerProps> = ({
                 <button
                   className={`bg-color-item ${active ? 'bg-color-item-active' : ''} ${!color.value ? 'no-bg' : ''}`}
                   style={{ backgroundColor: color.value || 'transparent' }}
-                  onMouseEnter={() => {
-                    onPreview?.(color.value);
-                  }}
                   onMouseDown={(e) => e.preventDefault()}
                   title={color.label}
                 >

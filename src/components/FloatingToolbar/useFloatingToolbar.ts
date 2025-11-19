@@ -19,6 +19,8 @@ export interface UseFloatingToolbarOptions {
   menuItemCount?: number;
   /** 数字键选择回调 */
   onMenuSelect?: (index: number) => void;
+  /** 子选择器是否打开（textColor/bgColor picker），打开时不拦截数字键 */
+  isSubPickerOpen?: boolean;
 }
 
 export interface UseFloatingToolbarReturn {
@@ -41,7 +43,7 @@ export interface UseFloatingToolbarReturn {
  * 只有在编辑器内有焦点（编辑状态激活）时，快捷键才会生效
  */
 export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloatingToolbarReturn {
-  const { editorRef, enabled = true, menuItemCount = 5, onMenuSelect } = options;
+  const { editorRef, enabled = true, menuItemCount = 5, onMenuSelect, isSubPickerOpen = false } = options;
 
   const [position, setPosition] = useState<FloatingToolbarPosition>({
     top: 0,
@@ -266,7 +268,8 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
       }
 
       // 2. 如果工具栏已激活或处于菜单模式或文本模式，监听数字键 1-9
-      if ((toolbarActive || mode === 'menu_floatingbar' || mode === 'text_floatingbar') && /^[1-9]$/.test(event.key)) {
+      // 🔑 关键：如果子选择器（颜色选择器）已打开，不拦截数字键，让子选择器自己处理
+      if (!isSubPickerOpen && (toolbarActive || mode === 'menu_floatingbar' || mode === 'text_floatingbar') && /^[1-9]$/.test(event.key)) {
         event.preventDefault();
         event.stopPropagation(); // 🔧 阻止事件冒泡到 Slate 编辑器
         
@@ -274,7 +277,7 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
         
         // 检查是否在菜单范围内
         if (menuIndex < menuItemCount) {
-          FloatingToolbarLogger.log(`🎯 [FloatingToolbar] 选择菜单项 ${event.key} (索引 ${menuIndex}, 模式: ${mode})`);
+          FloatingToolbarLogger.log(`🎯 [FloatingToolbar] 选择菜单项 ${event.key} (索引 ${menuIndex}, 模式: ${mode}, timestamp: ${event.timeStamp})`);
           
           // 触发菜单选择回调
           if (onMenuSelect) {
@@ -292,7 +295,7 @@ export function useFloatingToolbar(options: UseFloatingToolbarOptions): UseFloat
         return;
       }
     },
-    [enabled, editorRef, lastAltPressTime, toolbarActive, mode, menuItemCount, onMenuSelect, calculatePosition, hideToolbar]
+    [enabled, editorRef, lastAltPressTime, toolbarActive, mode, menuItemCount, onMenuSelect, calculatePosition, hideToolbar, isSubPickerOpen]
   );
 
   // 监听点击外部区域

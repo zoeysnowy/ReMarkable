@@ -72,6 +72,7 @@ export interface FloatingToolbarProps {
   onTaskToggle?: (isTask: boolean) => void; // 🆕 任务开关回调
   onTimeApplied?: (startIso: string, endIso?: string, allDay?: boolean) => void; // 🆕 TimeHub 模式下，时间写入完成后的回调（用于插入可视化/保存非时间字段）
   onRequestClose?: () => void; // 🆕 Picker 关闭时请求关闭整个 FloatingBar
+  onSubPickerStateChange?: (isOpen: boolean) => void; // 🆕 子选择器（颜色选择器）打开/关闭时通知父组件
   
   // 数据源
   availableTags?: Array<{
@@ -87,6 +88,7 @@ export interface FloatingToolbarProps {
   
   // 键盘控制
   activePickerIndex?: number | null; // 通过数字键激活的 picker 索引
+  onActivePickerIndexConsumed?: () => void; // 🔑 数字键处理完成后的回调（立即重置 activePickerIndex）
 
   // 🆕 TimeHub 集成
   eventId?: string;       // 当前上下文的事件/行 ID，用于 UnifiedDateTimePicker 通过 TimeHub 读写

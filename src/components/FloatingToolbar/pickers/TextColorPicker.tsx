@@ -81,9 +81,6 @@ export const TextColorPicker: React.FC<TextColorPickerProps> = ({
               {({ active }) => (
                 <button
                   className={`color-item ${active ? 'color-item-active' : ''}`}
-                  onMouseEnter={() => {
-                    onPreview?.(color.value);
-                  }}
                   onMouseDown={(e) => e.preventDefault()}
                   title={color.label}
                 >
