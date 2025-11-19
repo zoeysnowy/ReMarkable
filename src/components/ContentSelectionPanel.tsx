@@ -89,6 +89,12 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
   const [selectedDate, setSelectedDate] = useState(dateRange?.start || new Date());
   const [currentMonth, setCurrentMonth] = useState(new Date(2025, 10, 1)); // November 2025
   const [isCalendarVisible, setIsCalendarVisible] = useState(true);
+  
+  // 日期范围选择状态
+  const [rangeStart, setRangeStart] = useState<Date | null>(dateRange?.start || null);
+  const [rangeEnd, setRangeEnd] = useState<Date | null>(dateRange?.end || null);
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [hoverDate, setHoverDate] = useState<Date | null>(null);
 
   // 基于真实标签数据构建任务树
   const taskTree = useMemo(() => {
@@ -132,8 +138,66 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
   };
 
   const handleDateSelect = (date: Date) => {
-    setSelectedDate(date);
-    onDateSelect?.(date);
+    if (!isSelecting || !rangeStart) {
+      // 开始选择范围
+      setRangeStart(date);
+      setRangeEnd(null);
+      setIsSelecting(true);
+      setSelectedDate(date);
+    } else {
+      // 完成范围选择
+      const start = rangeStart < date ? rangeStart : date;
+      const end = rangeStart < date ? date : rangeStart;
+      setRangeStart(start);
+      setRangeEnd(end);
+      setIsSelecting(false);
+      setHoverDate(null);
+      
+      // 通知父组件日期范围改变
+      onDateRangeChange?.(start, end);
+    }
+  };
+  
+  const handleDateHover = (date: Date) => {
+    if (isSelecting && rangeStart) {
+      setHoverDate(date);
+    }
+  };
+  
+  const clearDateRange = () => {
+    setRangeStart(null);
+    setRangeEnd(null);
+    setIsSelecting(false);
+    setHoverDate(null);
+  };
+  
+  const selectPresetRange = (preset: 'today' | 'week' | 'month') => {
+    const today = new Date();
+    let start: Date, end: Date;
+    
+    switch (preset) {
+      case 'today':
+        start = new Date(today);
+        end = new Date(today);
+        break;
+      case 'week':
+        start = new Date(today);
+        start.setDate(today.getDate() - today.getDay()); // 本周日
+        end = new Date(start);
+        end.setDate(start.getDate() + 6); // 本周六
+        break;
+      case 'month':
+        start = new Date(today.getFullYear(), today.getMonth(), 1); // 月初
+        end = new Date(today.getFullYear(), today.getMonth() + 1, 0); // 月末
+        break;
+      default:
+        return;
+    }
+    
+    setRangeStart(start);
+    setRangeEnd(end);
+    setIsSelecting(false);
+    onDateRangeChange?.(start, end);
   };
 
   const handlePrevMonth = () => {
@@ -194,6 +258,13 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
             </div>
           ))}
         </div>
+        
+        {isSelecting && (
+          <div className="selection-hint">
+            点击结束日期完成范围选择
+          </div>
+        )}
+        
         <div className="calendar-days">
           {weeks.map((week, weekIndex) => (
             <div key={weekIndex} className="calendar-week">
@@ -203,14 +274,20 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
                   className={`calendar-day ${
                     day === null ? 'calendar-day-empty' : ''
                   } ${
-                    day &&
-                    selectedDate.getDate() === day &&
-                    selectedDate.getMonth() === month &&
-                    selectedDate.getFullYear() === year
-                      ? 'calendar-day-selected'
+                    day && isDateInRange(new Date(year, month, day))
+                      ? 'calendar-day-in-range'
+                      : ''
+                  } ${
+                    day && isDateRangeEnd(new Date(year, month, day))
+                      ? 'calendar-day-range-end'
+                      : ''
+                  } ${
+                    day && isDateRangeStart(new Date(year, month, day))
+                      ? 'calendar-day-range-start'
                       : ''
                   }`}
                   onClick={() => day && handleDateSelect(new Date(year, month, day))}
+                  onMouseEnter={() => day && handleDateHover(new Date(year, month, day))}
                 >
                   {day}
                 </div>
@@ -316,6 +393,55 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
     // TODO: 实现标签展开/收起状态管理
     console.log('Toggle task node:', nodeId);
   };
+  
+  // 日期范围判断辅助函数
+  const isDateInRange = (date: Date): boolean => {
+    if (!rangeStart) return false;
+    
+    const compareDate = new Date(date);
+    compareDate.setHours(0, 0, 0, 0);
+    
+    if (rangeEnd) {
+      // 已完成选择，显示确定的范围
+      const start = new Date(rangeStart);
+      const end = new Date(rangeEnd);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(0, 0, 0, 0);
+      return compareDate >= start && compareDate <= end;
+    } else if (isSelecting && hoverDate) {
+      // 选择中，显示预览范围
+      const start = rangeStart < hoverDate ? rangeStart : hoverDate;
+      const end = rangeStart < hoverDate ? hoverDate : rangeStart;
+      const startTime = new Date(start);
+      const endTime = new Date(end);
+      startTime.setHours(0, 0, 0, 0);
+      endTime.setHours(0, 0, 0, 0);
+      return compareDate >= startTime && compareDate <= endTime;
+    } else {
+      // 只选择了起始日期
+      const start = new Date(rangeStart);
+      start.setHours(0, 0, 0, 0);
+      return compareDate.getTime() === start.getTime();
+    }
+  };
+  
+  const isDateRangeStart = (date: Date): boolean => {
+    if (!rangeStart) return false;
+    const start = new Date(rangeStart);
+    start.setHours(0, 0, 0, 0);
+    const compareDate = new Date(date);
+    compareDate.setHours(0, 0, 0, 0);
+    return compareDate.getTime() === start.getTime();
+  };
+  
+  const isDateRangeEnd = (date: Date): boolean => {
+    if (!rangeEnd) return false;
+    const end = new Date(rangeEnd);
+    end.setHours(0, 0, 0, 0);
+    const compareDate = new Date(date);
+    compareDate.setHours(0, 0, 0, 0);
+    return compareDate.getTime() === end.getTime();
+  };
 
   return (
     <div className="content-selection-panel">
@@ -341,6 +467,49 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
             onChange={handleSearchChange}
           />
         </div>
+      </div>
+      
+      {/* Date Range Controls */}
+      <div className="date-range-controls">
+        <div className="preset-buttons">
+          <button 
+            className="preset-btn"
+            onClick={() => selectPresetRange('today')}
+          >
+            今天
+          </button>
+          <button 
+            className="preset-btn"
+            onClick={() => selectPresetRange('week')}
+          >
+            本周
+          </button>
+          <button 
+            className="preset-btn"
+            onClick={() => selectPresetRange('month')}
+          >
+            本月
+          </button>
+          <button 
+            className="preset-btn clear-btn"
+            onClick={clearDateRange}
+          >
+            清除
+          </button>
+        </div>
+        
+        {(rangeStart || rangeEnd) && (
+          <div className="selected-range-display">
+            <span className="range-text">
+              {rangeStart && rangeEnd
+                ? `${rangeStart.getMonth() + 1}/${rangeStart.getDate()} - ${rangeEnd.getMonth() + 1}/${rangeEnd.getDate()}`
+                : rangeStart
+                ? `从 ${rangeStart.getMonth() + 1}/${rangeStart.getDate()} 开始`
+                : '选择日期范围'
+              }
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Calendar */}

@@ -272,6 +272,46 @@ export const DATE_RANGE_DICTIONARY: Record<string, (referenceDate?: Date) => Dat
     return { ...result, displayHint: 'next weekend' };
   },
   
+  // 🆕 更多周末变体
+  '上周末': (ref = new Date()) => {
+    const now = dayjs(ref);
+    const lastSaturday = now.subtract(1, 'week').day(6);
+    const lastSunday = lastSaturday.add(1, 'day');
+    
+    return {
+      start: lastSaturday.startOf('day'),
+      end: lastSunday.endOf('day'),
+      displayHint: '上周末',
+      isFuzzyDate: true
+    };
+  },
+  
+  '下下周末': (ref = new Date()) => {
+    const now = dayjs(ref);
+    const nextNextSaturday = now.add(2, 'week').day(6);
+    const nextNextSunday = nextNextSaturday.add(1, 'day');
+    
+    return {
+      start: nextNextSaturday.startOf('day'),
+      end: nextNextSunday.endOf('day'),
+      displayHint: '下下周末',
+      isFuzzyDate: true
+    };
+  },
+  
+  '上上周末': (ref = new Date()) => {
+    const now = dayjs(ref);
+    const lastLastSaturday = now.subtract(2, 'week').day(6);
+    const lastLastSunday = lastLastSaturday.add(1, 'day');
+    
+    return {
+      start: lastLastSaturday.startOf('day'),
+      end: lastLastSunday.endOf('day'),
+      displayHint: '上上周末',
+      isFuzzyDate: true
+    };
+  },
+  
   // 周中相关
   '周中': (ref = new Date()) => {
     const now = dayjs(ref);

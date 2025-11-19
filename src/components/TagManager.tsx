@@ -253,6 +253,9 @@ const TagManager: React.FC<TagManagerProps> = ({
     
     const duration = performance.now() - startTime;
     TagManagerLogger.log(`? [TagManager] Initialized in ${duration.toFixed(2)}ms`);
+    
+    // 🛡️ 标记初始化完成，允许后续的onTagsChange触发
+    setTimeout(() => setIsInitialized(true), 0);
   }, []);
 
   // 自动保存标签数据到localStorage
@@ -316,6 +319,12 @@ const TagManager: React.FC<TagManagerProps> = ({
   useEffect(() => {
     TagManagerLogger.log('??? [FigmaTagManager] Tags changed, current count:', tags.length);
     
+    // 🛡️ 初始化期间不触发onTagsChange，避免不必要的重渲染
+    if (!isInitialized) {
+      TagManagerLogger.log('🔧 [FigmaTagManager] Skipping onTagsChange during initialization');
+      return;
+    }
+    
     // 使用 setTimeout 防抖，避免频繁触发
     const timer = setTimeout(() => {
       if (onTagsChange && tags.length > 0) {
@@ -335,7 +344,7 @@ const TagManager: React.FC<TagManagerProps> = ({
     }, 100); // 100ms 防抖
     
     return () => clearTimeout(timer);
-  }, [tags, onTagsChange]);
+  }, [tags, onTagsChange, isInitialized]);
 
   // Removed global keyboard handler to prevent duplicate events with component handlers
 

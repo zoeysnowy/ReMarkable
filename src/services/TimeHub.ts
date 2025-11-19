@@ -24,6 +24,7 @@ export type SetEventTimeInput = {
   timeFieldState?: [number | null, number | null, number | null, number | null];  // 🆕 v2.7.4: [startHour, startMinute, endHour, endMinute]
   isFuzzyTime?: boolean;  // 🆕 v2.7: 是否为模糊时间段
   fuzzyTimeName?: string; // 🆕 v2.7: 模糊时间段名称
+  // displayHint 已移除，使用动态计算
 };
 
 class TimeHubImpl {
@@ -248,6 +249,7 @@ class TimeHubImpl {
     if (input.timeFieldState !== undefined) (updated as any).timeFieldState = input.timeFieldState;
     if (input.isFuzzyTime !== undefined) (updated as any).isFuzzyTime = input.isFuzzyTime;
     if (input.fuzzyTimeName !== undefined) (updated as any).fuzzyTimeName = input.fuzzyTimeName;
+    // displayHint 已移除，使用动态计算
 
     dbg('timehub', '💾 持久化到 EventService', { 
       eventId, 

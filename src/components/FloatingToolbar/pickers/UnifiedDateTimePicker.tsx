@@ -702,7 +702,8 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
             isFuzzyDate,         // 🆕 v2.6
             timeFieldState,      // 🆕 v2.6
             isFuzzyTime,         // 🆕 v2.7
-            fuzzyTimeName: fuzzyTimeName || undefined  // 🆕 v2.7
+            fuzzyTimeName: fuzzyTimeName || undefined,  // 🆕 v2.7
+            // displayHint 已移除，使用动态计算
           });
           dbg('picker', '✅ TimeHub 写入成功，准备调用 onApplied', { eventId });
           onApplied?.(startIso, endIso, allDaySelected, searchInput); // 🔧 传递完整的用户输入文本
@@ -1065,7 +1066,7 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
             end: point.date
           });
           
-          // 🔥 v2.8.2: 移除 displayHint 设置，由 formatRelativeDate 动态计算
+          // displayHint 已移除，使用动态计算
           
           setFuzzyTimeName(null);
           
@@ -1092,8 +1093,7 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
             end: customParsed.dateRange.end
           });
           
-          // 🔥 v2.8.2: 移除 displayHint 设置 - 由 formatRelativeDate 动态计算
-          // displayHint 不再存储，避免远程同步事件无法正确显示
+          // displayHint 已移除，使用动态计算
           
           setCurrentMonth(customParsed.dateRange.start);
         }

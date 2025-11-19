@@ -527,10 +527,16 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   }, [editor]);
   
   // 🆕 增强的 value：始终在末尾添加一个 placeholder 提示行
+  // 🛡️ PERFORMANCE FIX: 添加深度比较避免不必要的重计算
+  const itemsHash = useMemo(() => {
+    return items.map(item => `${item.id}-${item.title}-${item.updatedAt}`).join('|');
+  }, [items]);
+  
   const enhancedValue = useMemo(() => {
     // 🚨 DIAGNOSIS: 记录 enhancedValue 计算过程
     console.log('🔍 [诊断] enhancedValue 重新计算:', {
       items数量: items.length,
+      itemsHash: itemsHash.substring(0, 50) + '...',
       时间戳: new Date().toISOString()
     });
     
@@ -573,7 +579,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     });
     
     return result;
-  }, [items]);
+  }, [itemsHash]); // 使用itemsHash代替items直接依赖
   
   // 初始化内容
   const [value, setValue] = useState<EventLineNode[]>(() => enhancedValue);

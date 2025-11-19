@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug 本周末 Issue</title>
+</head>
+<body>
+    <h1>Debug "本周末" 显示问题</h1>
+    <div id="results"></div>
+
+    <script type="module">
+        // 模拟当前日期 2025-11-19
+        const today = new Date('2025-11-19');
+        console.log('Today:', today.toLocaleDateString());
+        console.log('Day of week:', today.getDay()); // 0=周日, 1=周一...6=周六
+        
+        // 计算本周末
+        function calculateWeekend(ref = new Date()) {
+            const now = new Date(ref);
+            const currentDay = now.getDay(); // 0=周日, 6=周六
+            
+            let saturday;
+            if (currentDay === 0) {
+                // 当前是周日，返回昨天（周六）和今天（周日）
+                saturday = new Date(now);
+                saturday.setDate(now.getDate() - 1);
+            } else if (currentDay === 6) {
+                // 当前是周六，返回今天和明天
+                saturday = new Date(now);
+            } else {
+                // 工作日，返回本周的周六周日
+                const daysUntilSaturday = 6 - currentDay;
+                saturday = new Date(now);
+                saturday.setDate(now.getDate() + daysUntilSaturday);
+            }
+            
+            const sunday = new Date(saturday);
+            sunday.setDate(saturday.getDate() + 1);
+            
+            return {
+                saturday: saturday,
+                sunday: sunday,
+                displayHint: '本周末'
+            };
+        }
+        
+        // 测试"本周末"
+        const weekend = calculateWeekend(today);
+        console.log('Weekend calculation:', {
+            saturday: weekend.saturday.toLocaleDateString(),
+            sunday: weekend.sunday.toLocaleDateString(),
+            displayHint: weekend.displayHint
+        });
+        
+        // 当今天是 2025-11-19 (周三)
+        // 本周六应该是 2025-11-22，本周日应该是 2025-11-23
+        
+        // 测试相对时间显示
+        function formatRelativeDateSimple(targetDate, today) {
+            const msPerDay = 24 * 60 * 60 * 1000;
+            const daysDiff = Math.round((targetDate.getTime() - today.getTime()) / msPerDay);
+            
+            if (daysDiff === 0) return '今天';
+            if (daysDiff === 1) return '明天';
+            if (daysDiff === 2) return '后天';
+            if (daysDiff === 3) return '大后天';
+            if (daysDiff > 3) return `${daysDiff}天后`;
+            if (daysDiff === -1) return '昨天';
+            if (daysDiff < -1) return `${Math.abs(daysDiff)}天前`;
+            
+            return targetDate.toLocaleDateString();
+        }
+        
+        const saturdayRelative = formatRelativeDateSimple(weekend.saturday, today);
+        const sundayRelative = formatRelativeDateSimple(weekend.sunday, today);
+        
+        console.log('Relative dates:', {
+            saturday: `${weekend.saturday.toLocaleDateString()} = ${saturdayRelative}`,
+            sunday: `${weekend.sunday.toLocaleDateString()} = ${sundayRelative}`
+        });
+        
+        // 问题：如果只传入 Saturday 作为 startTime，会显示"大后天"
+        // 但用户输入的是"本周末"，期望显示"本周末"
+        
+        document.getElementById('results').innerHTML = `
+            <h2>今天: ${today.toLocaleDateString()} (${['周日','周一','周二','周三','周四','周五','周六'][today.getDay()]})</h2>
+            <h2>本周末:</h2>
+            <p>周六: ${weekend.saturday.toLocaleDateString()} (${saturdayRelative})</p>
+            <p>周日: ${weekend.sunday.toLocaleDateString()} (${sundayRelative})</p>
+            <h2>问题:</h2>
+            <p>当前显示: "${saturdayRelative} 00:00 - 0:00 结束"</p>
+            <p>期望显示: "本周末"</p>
+            <h2>分析:</h2>
+            <p>1. formatRelativeDate 只处理单个日期，不知道这是"本周末"的一部分</p>
+            <p>2. 没有 displayHint 机制来保留用户的原始输入意图</p>
+            <p>3. 时间为 null 但仍显示 "00:00"</p>
+        `;
+        
+    </script>
+</body>
+</html>

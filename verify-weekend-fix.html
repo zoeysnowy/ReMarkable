@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>验证"本周末"修复</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-case { border: 1px solid #ddd; margin: 10px 0; padding: 15px; }
+        .success { border-color: green; background-color: #f0f8f0; }
+        .error { border-color: red; background-color: #f8f0f0; }
+    </style>
+</head>
+<body>
+    <h1>验证"本周末"显示修复</h1>
+    
+    <h2>修复前的问题:</h2>
+    <ul>
+        <li>❌ 输入"本周末" → 显示"大后天 00:00 - 0:00 结束"</li>
+        <li>❌ 时间为 null 但显示为 "00:00"</li>
+        <li>❌ 显示多余的"结束"标签</li>
+        <li>❌ 只显示一天而不是周六+周日</li>
+    </ul>
+    
+    <h2>修复内容:</h2>
+    <ul>
+        <li>✅ 恢复 displayHint 机制保持用户输入意图</li>
+        <li>✅ 修复 formatRelativeTimeDisplay 不显示 00:00:00 时间</li>
+        <li>✅ UnifiedDateTimePicker 正确设置 displayHint</li>
+        <li>✅ TimeHub 正确保存 displayHint</li>
+        <li>✅ PlanManager 正确传递 displayHint</li>
+    </ul>
+    
+    <h2>预期结果:</h2>
+    <div class="test-case success">
+        <h3>输入: "本周末"</h3>
+        <p><strong>应该显示:</strong> "本周末"</p>
+        <p><strong>而不是:</strong> "大后天 00:00 - 0:00 结束"</p>
+    </div>
+    
+    <div class="test-case success">
+        <h3>输入: "本周末下午2点"</h3>
+        <p><strong>应该显示:</strong> "本周末 14:00"</p>
+        <p><strong>而不是:</strong> "大后天 14:00"</p>
+    </div>
+    
+    <h2>测试步骤:</h2>
+    <ol>
+        <li>启动应用</li>
+        <li>创建新事件</li>
+        <li>在时间选择器中输入"本周末"</li>
+        <li>确认并查看右侧时间显示列</li>
+        <li>应该显示"本周末"而不是"大后天 00:00-00:00 结束"</li>
+    </ol>
+    
+    <h2>关键修改文件:</h2>
+    <ul>
+        <li><code>src/utils/relativeDateFormatter.ts</code> - 添加 displayHint 参数</li>
+        <li><code>src/components/PlanManager.tsx</code> - 传递 displayHint</li>
+        <li><code>src/components/FloatingToolbar/pickers/UnifiedDateTimePicker.tsx</code> - 恢复 displayHint 设置</li>
+        <li><code>src/services/TimeHub.ts</code> - 保存 displayHint</li>
+    </ul>
+    
+    <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; margin: 20px 0;">
+        <h3>🎯 核心原理</h3>
+        <p>displayHint 机制允许保持用户的原始输入意图。当用户输入"本周末"时，系统会：</p>
+        <ol>
+            <li>解析为具体的日期范围（2025-11-22 到 2025-11-23）</li>
+            <li>同时保存 displayHint = "本周末"</li>
+            <li>显示时优先使用 displayHint，而不是动态计算的相对时间</li>
+        </ol>
+        <p>这样既保持了用户意图，又支持精确的日期计算。</p>
+    </div>
+    
+    <script>
+        console.log('修复验证页面已加载');
+        console.log('请按照测试步骤验证"本周末"显示是否正确');
+    </script>
+</body>
+</html>

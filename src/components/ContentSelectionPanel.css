@@ -159,6 +159,75 @@
   box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.1);
 }
 
+/* ==================== Date Range Controls ==================== */
+.date-range-controls {
+  margin-bottom: 16px;
+  width: 100%;
+}
+
+.preset-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.preset-btn {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.preset-btn:hover {
+  background: #e5e7eb;
+}
+
+.preset-btn.clear-btn {
+  background: #fee2e2;
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+.preset-btn.clear-btn:hover {
+  background: #fecaca;
+}
+
+.selected-range-display {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.range-text {
+  color: #0369a1;
+  font-weight: 500;
+}
+
+.selection-hint {
+  background: #fffbeb;
+  border: 1px solid #fed7aa;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #d97706;
+  text-align: center;
+  margin-bottom: 8px;
+  animation: pulse 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes pulse {
+  from { opacity: 0.7; }
+  to { opacity: 1; }
+}
+
 /* Calendar */
 .calendar-container {
   background: rgba(255, 255, 255, 0.7);
@@ -259,6 +328,37 @@
 .calendar-day-selected {
   background: linear-gradient(to right, #22d3ee, #3b82f6);
   color: white;
+}
+
+/* 日期范围选择样式 */
+.calendar-day-in-range {
+  background: #dbeafe !important;
+  border-color: #93c5fd !important;
+  color: #1d4ed8 !important;
+}
+
+.calendar-day-range-start {
+  background: #3b82f6 !important;
+  color: white !important;
+  border-color: #2563eb !important;
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+
+.calendar-day-range-end {
+  background: #3b82f6 !important;
+  color: white !important;
+  border-color: #2563eb !important;
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+}
+
+.calendar-day-range-start.calendar-day-range-end {
+  border-radius: 6px !important;
+}
+
+.calendar-day-in-range:hover {
+  background: #bfdbfe !important;
 }
 
 /* Filter Buttons */

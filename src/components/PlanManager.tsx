@@ -85,7 +85,7 @@ const PlanItemTimeDisplay = React.memo<{
   const endTime = (eventTime.end && eventTime.end !== '') ? new Date(eventTime.end) : (item.endTime ? new Date(item.endTime) : null);
   const dueDate = item.dueDate ? new Date(item.dueDate) : null;
   const isAllDay = eventTime.timeSpec?.allDay ?? item.isAllDay;
-  const displayHint = eventTime.displayHint ?? item.displayHint ?? null; // 🆕 v1.1: 获取 displayHint
+  // displayHint 已移除，使用动态计算
   
   // 🆕 v2.5: 获取 timeFieldState（时间字段状态位图）
   const timeFieldState = eventTime.timeFieldState ?? item.timeFieldState ?? null;
@@ -179,7 +179,7 @@ const PlanItemTimeDisplay = React.memo<{
   // ✅ v2.8: 简化逻辑 - 只要有任何时间信息就显示
   if (!startTime && !dueDate) return null;
 
-  // 使用相对时间格式化
+  // 使用相对时间格式化（动态计算）
   const relativeTimeDisplay = formatRelativeTimeDisplay(
     startTimeStr,
     endTimeStr,
@@ -295,7 +295,15 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   microsoftService, // 🆕 接收 Microsoft 服务
 }) => {
   // ✅ PlanManager 自己维护 items state
+  // 🛡️ PERFORMANCE FIX: 使用useRef缓存初始数据，避免重复计算
+  const initialItemsRef = useRef<Event[] | null>(null);
+  
   const [items, setItems] = useState<Event[]>(() => {
+    if (initialItemsRef.current) {
+      console.log('[PlanManager] 使用缓存的初始数据');
+      return initialItemsRef.current;
+    }
+    
     // 初始化：从 EventService 加载 Plan 事件
     const now = new Date();
     const allEvents = EventService.getAllEvents();

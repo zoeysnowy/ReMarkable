@@ -13,6 +13,7 @@
  */
 
 import { parseLocalTimeString } from './timeUtils';
+import { DATE_RANGE_DICTIONARY } from './naturalLanguageTimeDictionary';
 
 /**
  * 获取一天的开始时间（00:00:00）
@@ -162,6 +163,54 @@ export function formatRelativeDate(
 }
 
 /**
+ * 使用共享词库进行日期范围的反向识别
+ * @param startDate 开始日期
+ * @param endDate 结束日期  
+ * @param now 当前日期
+ * @returns 相对表达（如"本周末"、"下周中"）或 null
+ */
+function detectDateRange(startDate: Date, endDate: Date, now: Date): string | null {
+  // 遍历 DATE_RANGE_DICTIONARY 中的所有词条
+  const dateRangeEntries = [
+    ['本周末', '周末'],
+    ['下周末'],
+    ['上周末'], // 需要添加到词库
+    ['下下周末'], // 需要添加到词库
+    ['上上周末'], // 需要添加到词库
+    ['周中', '本周中'],
+    ['下周中'],
+    ['上周中'],
+    ['工作日', '本工作日'],
+    ['下工作日']
+  ];
+  
+  for (const aliases of dateRangeEntries) {
+    for (const keyword of aliases) {
+      if (DATE_RANGE_DICTIONARY[keyword]) {
+        try {
+          const range = DATE_RANGE_DICTIONARY[keyword](now);
+          
+          // 比较日期范围（只比较日期部分，忽略时间）
+          const rangeStart = new Date(range.start.year(), range.start.month(), range.start.date());
+          const rangeEnd = new Date(range.end.year(), range.end.month(), range.end.date());
+          const inputStart = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+          const inputEnd = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+          
+          if (rangeStart.getTime() === inputStart.getTime() && rangeEnd.getTime() === inputEnd.getTime()) {
+            return range.displayHint || keyword;
+          }
+        } catch (e) {
+          // 词库条目可能不存在，跳过
+          continue;
+        }
+      }
+    }
+  }
+  
+  return null;
+}
+
+/**
  * 格式化时间为 HH:MM 格式
  * @param date 日期对象
  * @returns 时间字符串（如"14:30"）
@@ -263,21 +312,47 @@ export function formatRelativeTimeDisplay(
     return ''; // 没有任何日期信息
   }
   
-  const targetDate = parseLocalTimeString(primaryDate);
-  const relativeDate = formatRelativeDate(targetDate, now);
+  const startDate = parseLocalTimeString(primaryDate);
+  
+  // 🆕 智能日期范围检测（使用共享词库）
+  if (endTime) {
+    const endDate = parseLocalTimeString(endTime);
+    const dateRange = detectDateRange(startDate, endDate, now);
+    if (dateRange) {
+      // 检查是否有有效时间
+      const hasValidStartTime = startTime && !startTime.includes('00:00:00');
+      const hasValidEndTime = endTime && !endTime.includes('00:00:00');
+      
+      if (!hasValidStartTime && !hasValidEndTime) {
+        // 纯日期范围，直接返回如"本周末"
+        return dateRange;
+      } else if (hasValidStartTime || hasValidEndTime) {
+        // 有具体时间的话，应该是语义错误（如"本周末2点"）
+        // 但为了容错，还是组合显示
+        if (hasValidStartTime) {
+          const startTimeStr = formatTime(startDate);
+          return `${dateRange} ${startTimeStr}`;
+        }
+      }
+    }
+  }
+  
+  const relativeDate = formatRelativeDate(startDate, now);
   
   // 全天事件
   if (isAllDay) {
     return `${relativeDate} 全天`;
   }
   
-  // 有明确时间的事件
-  if (startTime) {
-    const startDate = parseLocalTimeString(startTime);
+  // 🔧 修复：只有当时间不是 00:00:00 才显示具体时间
+  const hasValidStartTime = startTime && !startTime.includes('00:00:00');
+  const hasValidEndTime = endTime && !endTime.includes('00:00:00');
+  
+  if (hasValidStartTime) {
     const startTimeStr = formatTime(startDate);
     
-    if (endTime) {
-      const endDate = parseLocalTimeString(endTime);
+    if (hasValidEndTime) {
+      const endDate = parseLocalTimeString(endTime!);
       const endTimeStr = formatTime(endDate);
       return `${relativeDate} ${startTimeStr} - ${endTimeStr}`;
     }

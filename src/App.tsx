@@ -144,9 +144,8 @@ function App() {
     // 如果TagService已经初始化，立即加载标签
     if (TagService.isInitialized()) {
       loadAvailableTagsForEdit();
-      // 🔧 初始化时也触发一次更新
-      setTagsVersion(v => v + 1);
-      AppLogger.log('🏷️ [App] TagService initialized');
+      // 🛡️ 初始化时不需要触发setTagsVersion，会在真正有标签变化时触发
+      AppLogger.log('🏷️ [App] TagService already initialized, loading tags');
     }
 
     return () => {

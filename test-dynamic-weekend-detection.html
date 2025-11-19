@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>测试动态周末识别</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-case { border: 1px solid #ddd; margin: 10px 0; padding: 15px; }
+        .success { border-color: green; background-color: #f0f8f0; }
+        .info { border-color: blue; background-color: #f0f0f8; }
+    </style>
+</head>
+<body>
+    <h1>动态周末识别测试</h1>
+    
+    <div class="info">
+        <h3>🎯 新架构原理</h3>
+        <p>不再依赖 displayHint 存储，而是在显示时通过共享词库进行反向识别：</p>
+        <ol>
+            <li>用户输入"本周末" → naturalLanguageTimeDictionary 解析为日期范围</li>
+            <li>保存具体日期到数据库（2025-11-22 到 2025-11-23）</li>
+            <li>显示时：formatRelativeTimeDisplay 使用 DATE_RANGE_DICTIONARY 反向匹配</li>
+            <li>识别出日期范围对应"本周末" → 显示"本周末"</li>
+        </ol>
+    </div>
+    
+    <h2>测试用例（基于今天 2025-11-19）：</h2>
+    
+    <div class="test-case">
+        <h3>本周末</h3>
+        <p><strong>输入日期范围:</strong> 2025-11-22 (周六) 到 2025-11-23 (周日)</p>
+        <p><strong>期望显示:</strong> "本周末"</p>
+        <p><strong>语义验证:</strong> ✅ 正确，周末是2天的时间范围</p>
+    </div>
+    
+    <div class="test-case">
+        <h3>下周末</h3>
+        <p><strong>输入日期范围:</strong> 2025-11-29 (周六) 到 2025-11-30 (周日)</p>
+        <p><strong>期望显示:</strong> "下周末"</p>
+        <p><strong>语义验证:</strong> ✅ 正确</p>
+    </div>
+    
+    <div class="test-case">
+        <h3>上周末</h3>
+        <p><strong>输入日期范围:</strong> 2025-11-15 (周六) 到 2025-11-16 (周日)</p>
+        <p><strong>期望显示:</strong> "上周末"</p>
+        <p><strong>语义验证:</strong> ✅ 正确</p>
+    </div>
+    
+    <div class="test-case" style="border-color: orange; background-color: #fff8f0;">
+        <h3>❌ 错误用法："本周末2点"</h3>
+        <p><strong>问题:</strong> 周末是2天范围，不能指定具体时间</p>
+        <p><strong>正确表达:</strong> "周六2点" 或 "周日2点"</p>
+        <p><strong>系统处理:</strong> 为了容错，可能显示为 "本周末 14:00"</p>
+    </div>
+    
+    <h2>词库共享优势：</h2>
+    <ul>
+        <li>✅ 解析和显示使用同一套词库，确保一致性</li>
+        <li>✅ 不需要存储 displayHint，减少数据冗余</li>
+        <li>✅ 支持远程同步事件的智能显示</li>
+        <li>✅ 易于扩展新的时间表达（如"下下周末"）</li>
+    </ul>
+    
+    <h2>实现要点：</h2>
+    <ul>
+        <li><code>naturalLanguageTimeDictionary.ts</code> - 扩展 DATE_RANGE_DICTIONARY</li>
+        <li><code>relativeDateFormatter.ts</code> - 新增 detectDateRange 反向匹配</li>
+        <li><code>formatRelativeTimeDisplay</code> - 优先使用范围识别</li>
+    </ul>
+    
+    <div class="success">
+        <h3>🚀 预期效果</h3>
+        <p>现在输入"本周末"应该显示为<strong>"本周末"</strong>而不是"大后天 00:00-00:00 结束"</p>
+    </div>
+    
+    <script>
+        console.log('动态周末识别测试页面已加载');
+        
+        // 模拟测试
+        function testWeekendDetection() {
+            const today = new Date('2025-11-19');
+            
+            const testCases = [
+                {
+                    name: '本周末',
+                    start: new Date('2025-11-22'),
+                    end: new Date('2025-11-23'),
+                    expected: '本周末'
+                },
+                {
+                    name: '下周末', 
+                    start: new Date('2025-11-29'),
+                    end: new Date('2025-11-30'),
+                    expected: '下周末'
+                },
+                {
+                    name: '上周末',
+                    start: new Date('2025-11-15'),
+                    end: new Date('2025-11-16'), 
+                    expected: '上周末'
+                }
+            ];
+            
+            console.log('=== 周末识别测试 ===');
+            testCases.forEach(test => {
+                console.log(`${test.name}: ${test.start.toDateString()} - ${test.end.toDateString()} → 期望: ${test.expected}`);
+            });
+        }
+        
+        testWeekendDetection();
+    </script>
+</body>
+</html>
