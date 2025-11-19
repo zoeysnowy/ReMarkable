@@ -172,11 +172,11 @@ export function formatRelativeDate(
 function detectDateRange(startDate: Date, endDate: Date, now: Date): string | null {
   // 遍历 DATE_RANGE_DICTIONARY 中的所有词条
   const dateRangeEntries = [
-    ['本周末', '周末'],
+    ['本周末', '这周末', '周末'],
     ['下周末'],
-    ['上周末'], // 需要添加到词库
-    ['下下周末'], // 需要添加到词库
-    ['上上周末'], // 需要添加到词库
+    ['上周末'],
+    ['下下周末'],
+    ['上上周末'],
     ['周中', '本周中'],
     ['下周中'],
     ['上周中'],

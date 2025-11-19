@@ -163,42 +163,6 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
       setHoverDate(date);
     }
   };
-  
-  const clearDateRange = () => {
-    setRangeStart(null);
-    setRangeEnd(null);
-    setIsSelecting(false);
-    setHoverDate(null);
-  };
-  
-  const selectPresetRange = (preset: 'today' | 'week' | 'month') => {
-    const today = new Date();
-    let start: Date, end: Date;
-    
-    switch (preset) {
-      case 'today':
-        start = new Date(today);
-        end = new Date(today);
-        break;
-      case 'week':
-        start = new Date(today);
-        start.setDate(today.getDate() - today.getDay()); // 本周日
-        end = new Date(start);
-        end.setDate(start.getDate() + 6); // 本周六
-        break;
-      case 'month':
-        start = new Date(today.getFullYear(), today.getMonth(), 1); // 月初
-        end = new Date(today.getFullYear(), today.getMonth() + 1, 0); // 月末
-        break;
-      default:
-        return;
-    }
-    
-    setRangeStart(start);
-    setRangeEnd(end);
-    setIsSelecting(false);
-    onDateRangeChange?.(start, end);
-  };
 
   const handlePrevMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
@@ -468,77 +432,11 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
           />
         </div>
       </div>
-      
-      {/* Date Range Controls */}
-      <div className="date-range-controls">
-        <div className="preset-buttons">
-          <button 
-            className="preset-btn"
-            onClick={() => selectPresetRange('today')}
-          >
-            今天
-          </button>
-          <button 
-            className="preset-btn"
-            onClick={() => selectPresetRange('week')}
-          >
-            本周
-          </button>
-          <button 
-            className="preset-btn"
-            onClick={() => selectPresetRange('month')}
-          >
-            本月
-          </button>
-          <button 
-            className="preset-btn clear-btn"
-            onClick={clearDateRange}
-          >
-            清除
-          </button>
-        </div>
-        
-        {(rangeStart || rangeEnd) && (
-          <div className="selected-range-display">
-            <span className="range-text">
-              {rangeStart && rangeEnd
-                ? `${rangeStart.getMonth() + 1}/${rangeStart.getDate()} - ${rangeEnd.getMonth() + 1}/${rangeEnd.getDate()}`
-                : rangeStart
-                ? `从 ${rangeStart.getMonth() + 1}/${rangeStart.getDate()} 开始`
-                : '选择日期范围'
-              }
-            </span>
-          </div>
-        )}
-      </div>
 
       {/* Calendar */}
       {isCalendarVisible && renderCalendar()}
 
-      {/* Event Snapshot */}
-      {snapshot && (
-        <div className="event-snapshot">
-          <h4>时间段快照</h4>
-          <div className="snapshot-stats">
-            <div className="snapshot-item">
-              <span className="snapshot-label">新建:</span>
-              <span className="snapshot-value">{snapshot.created}</span>
-            </div>
-            <div className="snapshot-item">
-              <span className="snapshot-label">修改:</span>
-              <span className="snapshot-value">{snapshot.updated}</span>
-            </div>
-            <div className="snapshot-item">
-              <span className="snapshot-label">完成:</span>
-              <span className="snapshot-value">{snapshot.completed}</span>
-            </div>
-            <div className="snapshot-item">
-              <span className="snapshot-label">删除:</span>
-              <span className="snapshot-value">{snapshot.deleted}</span>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* Filter Buttons */}
       <div className="filter-buttons">

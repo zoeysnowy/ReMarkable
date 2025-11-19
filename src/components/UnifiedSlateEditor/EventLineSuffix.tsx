@@ -52,8 +52,19 @@ export const EventLineSuffix: React.FC<EventLineSuffixProps> = React.memo(({ ele
   let timeLabel = null;
   let timeLabelColor = '#6b7280';
   
-  if (startTimeStr && endTimeStr && startTimeStr !== endTimeStr) {
-    // 有时间段：显示"结束"
+  // 检查是否为模糊日期范围（如"本周末"、"下周"等）
+  const isFuzzyDateRange = relativeTimeDisplay && (
+    relativeTimeDisplay.includes('周末') ||
+    relativeTimeDisplay.includes('周中') ||
+    relativeTimeDisplay.includes('工作日') ||
+    /^(本|下|上|这|next|last)\s*(周|week)/i.test(relativeTimeDisplay)
+  );
+  
+  if (isFuzzyDateRange) {
+    // 模糊日期范围不显示标签，避免"本周末 结束"这种语义错误
+    timeLabel = null;
+  } else if (startTimeStr && endTimeStr && startTimeStr !== endTimeStr) {
+    // 明确时间段：显示"结束"
     timeLabel = '结束';
     timeLabelColor = '#4b5563'; // 深灰色
   } else if (startTimeStr && (!endTimeStr || startTimeStr === endTimeStr)) {

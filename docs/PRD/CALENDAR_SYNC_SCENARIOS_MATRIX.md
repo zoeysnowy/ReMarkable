@@ -710,7 +710,7 @@ function syncChildEvent1234Manual1() {
 ```typescript
 {
   mergedMode: 'plan-receive-actual-send-multi-events',  // ✅ 新模式
-  remoteEventCount: 'dynamic',  // ❗ 动态数量（取决于 Timer 子事件数量）
+  remoteEventCount: 1 + (event.childEvents?.length || 0),  // ⭐ Plan 1个 + Actual N个子事件
   
   syncStrategy: {
     plan: {
@@ -914,7 +914,7 @@ function onSubEventActualReceive(remoteEvent: OutlookEvent, subEvent: Event) {
 ```typescript
 {
   mergedMode: 'plan-receive-actual-bidirectional-multi-events',  // ⭐ 双向
-  remoteEventCount: event.childEvents?.length || 0,  // 动态数量
+  remoteEventCount: 1 + (event.childEvents?.length || 0),  // ⭐ Plan 1个 + Actual N个子事件
   
   syncStrategy: {
     plan: {
@@ -969,9 +969,11 @@ function onSubEventActualReceive(remoteEvent: OutlookEvent, subEvent: Event) {
 
 #### 远程事件数量
 
-**动态数量**: **N 个** (N = Timer 子事件数量)
+**动态数量**: **1 + N 个**
+- Plan 接收：**1 个**外部事件（由外部创建）
+- Actual 双向：**N 个**子事件（Timer/TimeLog/OutsideApp，各自独立）
 
-**总计**: Plan 接收 1 个外部事件，Actual 双向同步 N 个子事件
+**总计**: 1 + N 个（Plan 和 Actual 子事件各自独立管理）
 
 ---
 
@@ -1248,54 +1250,109 @@ function onPlanCreate(parentEvent: Event) {
 ```
 
 **同步行为**:
-- 📤 **Plan 发送**: Plan → Outlook（创建事件）
-- 🔄 **Actual 双向**: Actual ↔ Outlook（读写）
-- ⚠️ **冲突**: Plan 发送的事件会被 Actual 接收并可能修改
+- 📤 **Plan 发送**: Plan → Outlook 事件 A
+- 🔄 **Actual 双向**: Actual ↔ Outlook 事件 B
+- ✅ **两个独立的远程事件**，各自管理各自的数据
 
-**数据流向**:
+**典型用例**: 
+- 用户创建日程（Plan），单向推送到日历
+- Actual 记录实际进展，需要接收外部修改（双向）
+- Remote 端看到 2 个事件：Plan 的日程 + Actual 的实际进展
+
+---
+
+#### 🔑 核心设计：两个独立的远程事件
+
+**数据结构**:
+```typescript
+// ReMarkable 本地
+const event = {
+  id: '5678',
+  title: '技术分享会',
+  
+  // Plan 部分
+  startTime: '9:00',
+  endTime: '10:00',
+  plannedCalendarIds: ['outlook-calendar-work'],
+  planSyncConfig: { mode: 'send-only' },
+  syncedPlanEventId: 'outlook-plan-event-abc',  // ⭐ Plan 的远程事件 ID
+  
+  // Actual 部分
+  actualSegments: [{ start: '9:05', end: '9:45' }],
+  actualCalendarIds: ['outlook-calendar-work'],
+  actualSyncConfig: { mode: 'bidirectional' },
+  syncedActualEventId: 'outlook-actual-event-def'  // ⭐ Actual 的远程事件 ID
+};
 ```
-本地 Plan (9:00-17:00)
-    ↓ 📤 发送
-Outlook "工作" 日历（事件 9:00-17:00）
-    ↓ 🔄 双向同步
-本地 Actual (segments) ↔ Outlook
-    ↑ ❌ Actual 修改后不会回写到 Plan（Plan 是 send-only）
+
+**远程日历结构**:
+```typescript
+// Outlook "工作" 日历
+const events = [
+  // Plan 的远程事件
+  {
+    id: 'outlook-plan-event-abc',
+    title: '技术分享会',
+    start: '9:00',
+    end: '10:00',
+    extendedProperties: {
+      remarkableEventId: '5678',
+      remarkableType: 'plan-event'
+    }
+  },
+  
+  // Actual 的远程事件
+  {
+    id: 'outlook-actual-event-def',
+    title: '技术分享会 - 实际进展',
+    start: '9:05',
+    end: '9:45',
+    extendedProperties: {
+      remarkableEventId: '5678',
+      remarkableType: 'actual-event'
+    }
+  }
+];
 ```
 
-**关键问题**:
-1. ❓ Actual 修改 segments 后，Outlook 的事件会更新吗？ → **会！**
-2. ❓ Outlook 更新后，Plan 会收到通知吗？ → **不会！**（Plan 是 send-only）
-3. ❓ 这样会导致 Plan 和 Actual 的数据不一致！
+---
 
-**推荐方案**: **Actual 优先**（双向 > 只发送）
+#### 📊 SyncConfig 合并逻辑
 
-**SyncConfig 合并逻辑**:
 ```typescript
 {
-  mergedMode: 'actual-bidirectional-wins',  // Actual 优先
-  remoteEventCount: 1,
+  mergedMode: 'plan-send-actual-bidirectional',
+  remoteEventCount: 2,  // ⭐ 2 个独立的远程事件
+  
   syncStrategy: {
     plan: {
-      shouldSync: false,  // ❌ 禁用 Plan 发送
-      reason: 'overridden-by-actual-bidirectional',
-      warning: 'Actual（双向）优先级高于 Plan（只发送）'
+      shouldSync: true,
+      direction: 'send-only',
+      targetCalendar: 'outlook-calendar-work',
+      remoteEventId: event.syncedPlanEventId,
+      eventType: 'plan-event'
     },
+    
     actual: {
       shouldSync: true,
       direction: 'bidirectional',
       targetCalendar: 'outlook-calendar-work',
-      mergeSegments: true,
-      priority: 'actual-wins'
+      remoteEventId: event.syncedActualEventId,
+      eventType: 'actual-event',
+      titleSuffix: ' - 实际进展',
+      mergeSegments: true
     }
   },
+  
   uiWarning: {
     show: true,
-    message: 'ℹ️ Plan 的同步已被禁用，因为 Actual 使用双向同步（优先级更高）'
+    level: 'info',
+    message: 'ℹ️ 将在日历中创建 2 个事件：Plan 的日程（只发送）+ Actual 的实际进展（双向同步）'
   }
 }
 ```
 
-**远程事件数量**: **1 个**（Actual 创建并管理）
+**远程事件数量**: **2 个**（Plan 1 个 + Actual 1 个，各自独立管理）
 
 ---
 
@@ -1322,43 +1379,241 @@ Outlook "工作" 日历（事件 9:00-17:00）
 ```
 
 **同步行为**:
-- 🔄 **Plan 双向**: Plan ↔ Outlook
-- 📤 **Actual 发送**: Actual → Outlook
-- ⚠️ **冲突**: Plan 和 Actual 都要写入同一个远程事件
+- 🔄 **Plan 双向**: Plan ↔ Outlook 事件 A
+- 📤 **Actual 发送**: Actual → Outlook 事件 B
+- ✅ **两个独立的远程事件**，各自管理各自的数据
 
-**关键问题**:
-1. ❓ Plan 的时间范围 vs Actual 的合并时间段，谁覆盖谁？
-2. ❓ Actual 发送后，Plan 会接收回来吗？ → **会！**（Plan 是双向）
-3. ❓ 这样会形成无限循环吗？
+**典型用例**: 
+- 用户完全控制 Plan（时间、标题、描述），需要与 Remote 端双向同步
+- Actual 只记录实际进展（只发送，不接收）
+- Remote 端看到 2 个事件：Plan 的日程 + Actual 的实际进展
 
-**推荐方案**: **Plan 优先**（双向 > 只发送）
+---
 
-**SyncConfig 合并逻辑**:
+#### 🔑 核心设计：两个独立的远程事件
+
+**数据结构**:
+```typescript
+// ReMarkable 本地
+const event = {
+  id: '1234',
+  title: '产品评审会',
+  
+  // Plan 部分
+  startTime: '9:00',
+  endTime: '10:00',
+  plannedCalendarIds: ['outlook-calendar-work'],
+  planSyncConfig: { mode: 'bidirectional' },
+  syncedPlanEventId: 'outlook-plan-event-123',  // ⭐ Plan 的远程事件 ID
+  
+  // Actual 部分
+  actualSegments: [{ start: '9:05', end: '9:45' }],
+  actualCalendarIds: ['outlook-calendar-work'],
+  actualSyncConfig: { mode: 'send-only' },
+  syncedActualEventId: 'outlook-actual-event-456'  // ⭐ Actual 的远程事件 ID
+};
+```
+
+**远程日历结构**:
+```typescript
+// Outlook "工作" 日历
+const events = [
+  // Plan 的远程事件
+  {
+    id: 'outlook-plan-event-123',
+    title: '产品评审会',
+    start: '9:00',
+    end: '10:00',
+    extendedProperties: {
+      remarkableEventId: '1234',
+      remarkableType: 'plan-event'  // ⭐ 标记为 Plan 事件
+    }
+  },
+  
+  // Actual 的远程事件
+  {
+    id: 'outlook-actual-event-456',
+    title: '产品评审会 - 实际进展',
+    start: '9:05',
+    end: '9:45',
+    extendedProperties: {
+      remarkableEventId: '1234',
+      remarkableType: 'actual-event'  // ⭐ 标记为 Actual 事件
+    }
+  }
+];
+```
+
+**同步逻辑**:
+```typescript
+// Plan 同步（双向）
+function syncPlan(event: Event) {
+  const planEvent = {
+    id: event.syncedPlanEventId || generateEventId(),
+    title: event.title,
+    start: event.startTime,
+    end: event.endTime,
+    extendedProperties: {
+      remarkableEventId: event.id,
+      remarkableType: 'plan-event'
+    }
+  };
+  
+  // 发送 Plan 到远程
+  OutlookCalendarService.createOrUpdateEvent(
+    event.plannedCalendarIds[0],
+    planEvent
+  );
+  
+  // 接收远程 Plan 的修改
+  const remotePlanEvent = OutlookCalendarService.getEvent(event.syncedPlanEventId);
+  if (remotePlanEvent) {
+    updateLocalPlan(event, {
+      startTime: remotePlanEvent.start,
+      endTime: remotePlanEvent.end,
+      title: remotePlanEvent.title
+    });
+  }
+}
+
+// Actual 同步（只发送）
+function syncActual(event: Event) {
+  const mergedSegments = mergeActualSegments(event.actualSegments);
+  
+  const actualEvent = {
+    id: event.syncedActualEventId || generateEventId(),
+    title: `${event.title} - 实际进展`,
+    start: mergedSegments.startTime,
+    end: mergedSegments.endTime,
+    extendedProperties: {
+      remarkableEventId: event.id,
+      remarkableType: 'actual-event'
+    }
+  };
+  
+  // 只发送 Actual 到远程
+  OutlookCalendarService.createOrUpdateEvent(
+    event.actualCalendarIds[0],
+    actualEvent
+  );
+}
+```
+
+---
+
+#### 🔄 完整数据流示例
+
+**场景：用户在 ReMarkable 记录 Actual 时间片段**
+
+```
+步骤 1: 用户计时 9:05-9:45
+  ReMarkable 本地
+    └─ Event #1234
+        ├─ Plan: 9:00-10:00 (unchanged)
+        │   └─ syncedPlanEventId: 'outlook-plan-event-123'
+        └─ Actual: 9:05-9:45 ✅ 新增
+
+步骤 2: Actual 发送到 Remote（创建新事件）
+  Outlook "工作" 日历
+    ├─ 📅 事件 A (outlook-plan-event-123) - Plan 的事件
+    │   └─ 9:00-10:00
+    └─ 📅 事件 B (outlook-actual-event-456) - Actual 的事件 ✅ 新创建
+        └─ 9:05-9:45
+  
+  ReMarkable 本地
+    └─ Event #1234
+        └─ syncedActualEventId: 'outlook-actual-event-456' ✅ 记录 Actual 的远程事件 ID
+```
+
+**场景：外部用户在 Outlook 修改 Plan 事件时间**
+
+```
+步骤 1: 外部用户在 Outlook 修改事件 A (Plan) 的时间 9:00-10:00 → 10:00-11:00
+  Outlook "工作" 日历
+    ├─ 📅 事件 A (outlook-plan-event-123) - 修改 ✅
+    │   └─ 10:00-11:00
+    └─ 📅 事件 B (outlook-actual-event-456) - 不变
+        └─ 9:05-9:45
+
+步骤 2: Plan 接收 Remote 更新
+  ReMarkable 本地
+    └─ Event #1234
+        ├─ Plan: 10:00-11:00 ✅ 更新
+        └─ Actual: 9:05-9:45 (unchanged)
+```
+
+**场景：外部用户修改 Actual 事件**
+
+```
+步骤 1: 外部用户在 Outlook 修改事件 B (Actual) 的时间
+  Outlook "工作" 日历
+    ├─ 📅 事件 A (outlook-plan-event-123) - 不变
+    │   └─ 10:00-11:00
+    └─ 📅 事件 B (outlook-actual-event-456) - 修改
+        └─ 9:00-10:00
+
+步骤 2: Actual 不接收（send-only）
+  ReMarkable 本地
+    └─ Event #1234
+        ├─ Plan: 10:00-11:00 (unchanged)
+        └─ Actual: 9:05-9:45 ✅ 不受影响（只发送，不接收）
+```
+
+---
+
+#### 📊 SyncConfig 合并逻辑
+
 ```typescript
 {
-  mergedMode: 'plan-bidirectional-wins',
-  remoteEventCount: 1,
+  mergedMode: 'plan-bidirectional-actual-send',
+  remoteEventCount: 2,  // ⭐ 2 个独立的远程事件
+  
   syncStrategy: {
     plan: {
       shouldSync: true,
       direction: 'bidirectional',
       targetCalendar: 'outlook-calendar-work',
-      priority: 'plan-wins'
+      remoteEventId: event.syncedPlanEventId,  // ⭐ Plan 的远程事件 ID
+      eventType: 'plan-event'
     },
+    
     actual: {
-      shouldSync: false,  // ❌ 禁用 Actual 发送
-      reason: 'overridden-by-plan-bidirectional',
-      warning: 'Plan（双向）优先级高于 Actual（只发送）'
+      shouldSync: true,
+      direction: 'send-only',
+      targetCalendar: 'outlook-calendar-work',
+      remoteEventId: event.syncedActualEventId,  // ⭐ Actual 的远程事件 ID
+      eventType: 'actual-event',
+      titleSuffix: ' - 实际进展'  // ⭐ 区分标题
     }
   },
+  
   uiWarning: {
     show: true,
-    message: 'ℹ️ Actual 的同步已被禁用，因为 Plan 使用双向同步（优先级更高）'
+    level: 'info',
+    message: 'ℹ️ 将在日历中创建 2 个事件：Plan 的日程 + Actual 的实际进展'
   }
 }
 ```
 
-**远程事件数量**: **1 个**（Plan 创建并管理）
+---
+
+#### 🎯 用户价值
+
+**对于 ReMarkable 用户**:
+- ✅ Plan 完全控制时间范围（双向同步）
+- ✅ Actual 只记录实际进展（只发送）
+- ✅ Plan 和 Actual 独立管理，互不干扰
+
+**对于 Remote 端用户**:
+- ✅ 看到 2 个独立的事件：
+  - 事件 A: "产品评审会" (9:00-10:00) - Plan 的日程
+  - 事件 B: "产品评审会 - 实际进展" (9:05-9:45) - Actual 的记录
+
+---
+
+#### 远程事件数量
+
+**2 个**（Plan 1 个 + Actual 1 个，各自独立管理）
 
 ---
 
@@ -1375,45 +1630,265 @@ Outlook "工作" 日历（事件 9:00-17:00）
 ```
 
 **同步行为**:
-- 🔄 **Plan 双向**: Plan ↔ Outlook
-- 🔄 **Actual 双向**: Actual ↔ Outlook
-- ⚠️ **严重冲突**: 两者都要读写同一个远程事件
+- 🔄 **Plan 双向**: Plan ↔ Outlook 事件 A
+- 🔄 **Actual 双向**: Actual ↔ Outlook 事件 B
+- ✅ **两个独立的远程事件**，各自管理各自的数据
 
-**关键问题**:
-1. ❓ Plan 修改时间 → Outlook → Actual 接收 → Actual 修改 → Outlook → Plan 接收 → 无限循环？
-2. ❓ Plan 的时间范围 vs Actual 的时间片段，谁覆盖谁？
+**典型用例**: 
+- 用户完全掌控日程，Plan 和 Actual 都需要与 Remote 端双向同步
+- 不想区分 Plan/Actual，只想让所有数据保持同步
+- Remote 端看到 2 个事件：Plan 的日程 + Actual 的实际进展
 
-**推荐方案**: **Plan 优先**
+---
 
-**SyncConfig 合并逻辑**:
+#### 🔑 核心设计：两个独立的远程事件
+
+**数据结构**:
+```typescript
+// ReMarkable 本地
+const event = {
+  id: '1234',
+  title: '产品评审会',
+  
+  // Plan 部分
+  startTime: '9:00',
+  endTime: '10:00',
+  plannedCalendarIds: ['outlook-calendar-work'],
+  planSyncConfig: { mode: 'bidirectional' },
+  syncedPlanEventId: 'outlook-plan-event-123',  // ⭐ Plan 的远程事件 ID
+  
+  // Actual 部分
+  actualSegments: [{ start: '9:05', end: '9:45' }],
+  actualCalendarIds: ['outlook-calendar-work'],
+  actualSyncConfig: { mode: 'bidirectional' },
+  syncedActualEventId: 'outlook-actual-event-456'  // ⭐ Actual 的远程事件 ID
+};
+```
+
+**远程日历结构**:
+```typescript
+// Outlook "工作" 日历
+const events = [
+  // Plan 的远程事件
+  {
+    id: 'outlook-plan-event-123',
+    title: '产品评审会',
+    start: '9:00',
+    end: '10:00',
+    extendedProperties: {
+      remarkableEventId: '1234',
+      remarkableType: 'plan-event'  // ⭐ 标记为 Plan 事件
+    }
+  },
+  
+  // Actual 的远程事件
+  {
+    id: 'outlook-actual-event-456',
+    title: '产品评审会 - 实际进展',
+    start: '9:05',
+    end: '9:45',
+    extendedProperties: {
+      remarkableEventId: '1234',
+      remarkableType: 'actual-event'  // ⭐ 标记为 Actual 事件
+    }
+  }
+];
+```
+
+**同步逻辑**:
+```typescript
+// Plan 同步（双向）
+function syncPlan(event: Event) {
+  const planEvent = {
+    id: event.syncedPlanEventId || generateEventId(),
+    title: event.title,
+    start: event.startTime,
+    end: event.endTime,
+    extendedProperties: {
+      remarkableEventId: event.id,
+      remarkableType: 'plan-event'
+    }
+  };
+  
+  // 发送 Plan 到远程
+  OutlookCalendarService.createOrUpdateEvent(
+    event.plannedCalendarIds[0],
+    planEvent
+  );
+  
+  // 接收远程 Plan 的修改
+  const remotePlanEvent = OutlookCalendarService.getEvent(event.syncedPlanEventId);
+  if (remotePlanEvent && remotePlanEvent.extendedProperties?.remarkableType === 'plan-event') {
+    updateLocalPlan(event, {
+      startTime: remotePlanEvent.start,
+      endTime: remotePlanEvent.end,
+      title: remotePlanEvent.title
+    });
+  }
+}
+
+// Actual 同步（双向）
+function syncActual(event: Event) {
+  const mergedSegments = mergeActualSegments(event.actualSegments);
+  
+  const actualEvent = {
+    id: event.syncedActualEventId || generateEventId(),
+    title: `${event.title} - 实际进展`,
+    start: mergedSegments.startTime,
+    end: mergedSegments.endTime,
+    extendedProperties: {
+      remarkableEventId: event.id,
+      remarkableType: 'actual-event'
+    }
+  };
+  
+  // 发送 Actual 到远程
+  OutlookCalendarService.createOrUpdateEvent(
+    event.actualCalendarIds[0],
+    actualEvent
+  );
+  
+  // 接收远程 Actual 的修改
+  const remoteActualEvent = OutlookCalendarService.getEvent(event.syncedActualEventId);
+  if (remoteActualEvent && remoteActualEvent.extendedProperties?.remarkableType === 'actual-event') {
+    updateLocalActualSegments(event, {
+      startTime: remoteActualEvent.start,
+      endTime: remoteActualEvent.end
+    });
+  }
+}
+```
+
+---
+
+#### 🔄 完整数据流示例
+
+**场景：用户在 ReMarkable 修改 Plan 时间**
+
+```
+步骤 1: 用户修改 Plan 时间 9:00-10:00 → 10:00-11:00
+  ReMarkable 本地
+    └─ Event #1234
+        ├─ Plan: 10:00-11:00 ✅
+        ├─ syncedPlanEventId: 'outlook-plan-event-123'
+        └─ Actual: 9:05-9:45 (unchanged)
+            └─ syncedActualEventId: 'outlook-actual-event-456'
+
+步骤 2: Plan 发送到 Remote（更新事件 A）
+  Outlook "工作" 日历
+    ├─ 📅 事件 A (outlook-plan-event-123) - 更新 ✅
+    │   └─ 10:00-11:00
+    └─ 📅 事件 B (outlook-actual-event-456) - 不变
+        └─ 9:05-9:45
+```
+
+**场景：用户在 ReMarkable 记录 Actual 时间片段**
+
+```
+步骤 1: 用户计时 14:00-15:00
+  ReMarkable 本地
+    └─ Event #1234
+        ├─ Plan: 10:00-11:00 (unchanged)
+        └─ Actual: 9:05-9:45, 14:00-15:00 ✅ 新增
+
+步骤 2: Actual 发送到 Remote（更新事件 B）
+  Outlook "工作" 日历
+    ├─ 📅 事件 A (outlook-plan-event-123) - 不变
+    │   └─ 10:00-11:00
+    └─ 📅 事件 B (outlook-actual-event-456) - 更新 ✅
+        └─ 9:05-15:00（合并后的时间段）
+```
+
+**场景：外部用户在 Outlook 修改事件 A (Plan)**
+
+```
+步骤 1: 外部用户修改事件 A 的时间 10:00-11:00 → 11:00-12:00
+  Outlook "工作" 日历
+    ├─ 📅 事件 A (outlook-plan-event-123) - 修改 ✅
+    │   └─ 11:00-12:00
+    └─ 📅 事件 B (outlook-actual-event-456) - 不变
+        └─ 9:05-15:00
+
+步骤 2: Plan 接收 Remote 更新
+  ReMarkable 本地
+    └─ Event #1234
+        ├─ Plan: 11:00-12:00 ✅ 更新
+        └─ Actual: 9:05-9:45, 14:00-15:00 (unchanged)
+```
+
+**场景：外部用户在 Outlook 修改事件 B (Actual)**
+
+```
+步骤 1: 外部用户修改事件 B 的时间 9:05-15:00 → 9:00-16:00
+  Outlook "工作" 日历
+    ├─ 📅 事件 A (outlook-plan-event-123) - 不变
+    │   └─ 11:00-12:00
+    └─ 📅 事件 B (outlook-actual-event-456) - 修改 ✅
+        └─ 9:00-16:00
+
+步骤 2: Actual 接收 Remote 更新
+  ReMarkable 本地
+    └─ Event #1234
+        ├─ Plan: 11:00-12:00 (unchanged)
+        └─ Actual: 9:00-16:00 ✅ 更新
+```
+
+---
+
+#### 📊 SyncConfig 合并逻辑
+
 ```typescript
 {
-  mergedMode: 'plan-bidirectional-wins',
-  remoteEventCount: 1,
+  mergedMode: 'plan-actual-bidirectional',
+  remoteEventCount: 2,  // ⭐ 2 个独立的远程事件
+  
   syncStrategy: {
     plan: {
       shouldSync: true,
       direction: 'bidirectional',
       targetCalendar: 'outlook-calendar-work',
-      priority: 'plan-wins',
-      fields: ['startTime', 'endTime', 'title', 'description']
+      remoteEventId: event.syncedPlanEventId,  // ⭐ Plan 的远程事件 ID
+      eventType: 'plan-event'
     },
+    
     actual: {
-      shouldSync: false,  // ❌ 禁用 Actual 双向同步
-      reason: 'same-calendar-conflict',
-      warning: 'Plan 和 Actual 不能同时双向同步到同一个日历'
+      shouldSync: true,
+      direction: 'bidirectional',
+      targetCalendar: 'outlook-calendar-work',
+      remoteEventId: event.syncedActualEventId,  // ⭐ Actual 的远程事件 ID
+      eventType: 'actual-event',
+      titleSuffix: ' - 实际进展'  // ⭐ 区分标题
     }
   },
+  
   uiWarning: {
     show: true,
-    message: '⚠️ 配置冲突：Plan 和 Actual 都要双向同步到 "工作" 日历。建议：\n1. 保留 Plan 双向，Actual 改为只接收\n2. 或选择不同的日历'
+    level: 'info',
+    message: 'ℹ️ 将在日历中创建 2 个事件：Plan 的日程 + Actual 的实际进展，各自独立双向同步'
   }
 }
 ```
 
-**远程事件数量**: **1 个**（Plan 创建并管理）
+---
 
-**推荐方案**: **禁止此配置**，在 UI 层显示错误提示。
+#### 🎯 用户价值
+
+**对于 ReMarkable 用户**:
+- ✅ Plan 和 Actual 都完全控制，双向同步
+- ✅ Plan 和 Actual 独立管理，互不干扰
+- ✅ 外部修改会正确同步回对应的 Plan 或 Actual
+
+**对于 Remote 端用户**:
+- ✅ 看到 2 个独立的事件：
+  - 事件 A: "产品评审会" (10:00-11:00) - Plan 的日程
+  - 事件 B: "产品评审会 - 实际进展" (9:05-15:00) - Actual 的记录
+- ✅ 可以分别修改两个事件，修改会同步回 ReMarkable
+
+---
+
+#### 远程事件数量
+
+**2 个**（Plan 1 个 + Actual 1 个，各自独立管理）
 
 ---
 
@@ -1423,33 +1898,40 @@ Outlook "工作" 日历（事件 9:00-17:00）
 
 > ⚠️ **Actual 只支持 2 种模式**: send-only（只发送）和 bidirectional（双向），**不支持 receive-only**，因为外部进来的信息都应该归为 Plan。
 
-| 场景 | Plan 模式 | Actual 模式 | 远程事件 | Plan 同步 | Actual 同步 | 关键逻辑 | UI 警告 | 典型用例 |
-|------|-----------|-------------|----------|-----------|-------------|----------|---------|----------|
+| 场景 | Plan 模式 | Actual 模式 | 远程事件 | Plan 同步 | Actual 同步 | 说明 | UI 警告 | 典型用例 |
+|------|-----------|-------------|----------|-----------|-------------|------|---------|----------|
 | ~~**A1**~~ | ~~只接收~~ | ~~只接收~~ | - | - | - | ❌ 已移除 | - | Actual 不支持只接收 |
-| **A1** ⭐ | 只接收 | 只发送 | N 个 | ✅ 接收（忽略子事件） | ✅ 每个 Timer → 1 个事件 | Event Tree 多事件同步 | ℹ️ 多事件提示 | 接收会议 + 记录工作进展 |
-| **A2** | 只接收 | 双向 | 1 个 | ❌ 禁用 | ✅ 双向 | Actual 优先 | ⚠️ 配置冲突 | 不推荐 |
+| **A1** ⭐ | 只接收 | 只发送 | N 个 | ✅ 接收（忽略子事件） | ✅ 每个子事件 → 1 个事件 | Plan 接收外部，子事件各创建独立事件 | ℹ️ 多事件提示 | 接收会议 + 记录工作进展 |
+| **A2** | 只接收 | 双向 | 1+1 个 | ✅ 接收 | ✅ 双向 | Plan 和 Actual 各创建独立事件 | ℹ️ 2 个独立事件 | 不推荐 |
 | ~~**B1**~~ | ~~只发送~~ | ~~只接收~~ | - | - | - | ❌ 已移除 | - | Actual 不支持只接收 |
-| **B1** | 只发送 | 只发送 | 1 个 | ✅ 发送 | ❌ 禁用 | Plan 优先发送 | ⚠️ 禁止重复发送 | 不推荐 |
-| **B2** | 只发送 | 双向 | 1 个 | ❌ 禁用 | ✅ 双向 | Actual 优先 | ℹ️ Actual 优先级高 | Actual 主导同步 |
+| **B1** | 只发送 | 只发送 | 1+N 个 | ✅ 发送 | ✅ 多事件发送 | Plan 1个 + 每个子事件 1个 | ℹ️ Plan + Actual 多事件 | 自己创建日程 + 记录进展 |
+| **B2** | 只发送 | 双向 | 1+1 个 | ✅ 发送 | ✅ 双向 | Plan 和 Actual 各创建独立事件 | ℹ️ 2 个独立事件 | Actual 主导同步 |
 | ~~**C1**~~ | ~~双向~~ | ~~只接收~~ | - | - | - | ❌ 已移除 | - | Actual 不支持只接收 |
-| **C1** | 双向 | 只发送 | 1 个 | ✅ 双向 | ❌ 禁用 | Plan 优先 | ℹ️ Plan 优先级高 | Plan 完全控制 |
-| **C2** | 双向 | 双向 | 1 个 | ✅ 双向 | ❌ 禁用 | Plan 优先 | ⚠️ 禁止双双向 | 不推荐 |
+| **C1** | 双向 | 只发送 | 1+1 个 | ✅ 双向 | ✅ 发送 | Plan 和 Actual 各创建独立事件 | ℹ️ 2 个独立事件 | Plan 完全控制 + Actual 发送 |
+| **C2** | 双向 | 双向 | 1+1 个 | ✅ 双向 | ✅ 双向 | Plan 和 Actual 各创建独立事件 | ℹ️ 2 个独立事件 | Plan + Actual 都双向同步 |
 
 **关键变化**:
 - ❌ **移除 3 个场景**: A1 (Plan只接收+Actual只接收), B1 (Plan只发送+Actual只接收), C1 (Plan双向+Actual只接收)
 - ✅ **保留 6 个场景**: A1, A2, B1, B2, C1, C2（重新编号）
 - ⭐ **A1 成为核心场景**: Plan 只接收 + Actual 只发送（最常见的使用场景）
+- 🔑 **核心理解**: **Plan 和 Actual 永远创建独立的远程事件**，各自有独立的 `syncedPlanEventId` 和 `syncedActualEventId`
+
+**远程事件数量规则**:
+1. **A1/B1**: Plan 1个 + 每个子事件（Timer/TimeLog/OutsideApp）1个 = **1+N 个**
+2. **A2/B2/C1/C2**: Plan 1个 + Actual 1个 = **2 个**（各自独立管理）
 
 **优先级规则**:
-1. **Actual 只支持 2 种模式**: send-only（只发送）和 bidirectional（双向）
+1. **Actual 只支持 4 种模式**: send-only, send-only-private, bidirectional, bidirectional-private
 2. **双向 > 只发送** 当 Plan 和 Actual 冲突时
 3. **Plan 优先** 当优先级相同时
-4. **A1 场景特殊**: 每个 Timer 子事件创建独立的远程事件（N 个）
-5. **其他场景**: 相同日历只创建 1 个远程事件
+4. **A1/B1 场景特殊**: 每个子事件创建独立的远程事件（1+N 个）
+5. **C1/C2 场景**: 使用去重策略，只创建 1 个远程事件
 
 **⭐ 推荐场景**:
-- **A1**: 接收外部日程，记录自己的工作进展（最常见）
-- **C1**: 完全控制日程，Actual 只发送实际进展
+- **A1**: 接收外部日程，记录自己的工作进展（最常见）⭐
+- **B1**: 自己创建日程，记录自己的工作进展
+- **C1**: Plan 完全控制 + Actual 发送实际进展
+- **C2**: Plan + Actual 都双向同步（自动去重）
 
 ---
 
@@ -1870,7 +2352,17 @@ export interface Event {
   isTimeLog?: boolean;    // TimeLog 子事件（用户随手记录笔记）
   isOutsideApp?: boolean; // OutsideApp 子事件（使用的 App、录屏、音乐等）
   
-  /** 已同步到 Outlook 的事件 ID（仅 Timer 子事件） */
+  // ============================================================
+  // ✅ 远程事件同步 ID（Plan 和 Actual 各自独立）
+  // ============================================================
+  
+  /** Plan 已同步到远程的事件 ID */
+  syncedPlanEventId?: string | null;
+  
+  /** Actual 已同步到远程的事件 ID（或子事件同步的远程事件 ID） */
+  syncedActualEventId?: string | null;
+  
+  /** @deprecated 使用 syncedPlanEventId 和 syncedActualEventId 代替 */
   syncedOutlookEventId?: string | null;
 }
 
@@ -1997,39 +2489,41 @@ function handleSameCalendarScenarios(event: Event, overlappingCalendars: string[
   const planMode = event.planSyncConfig?.mode;
   const actualMode = event.actualSyncConfig?.mode;
   
+  // ⚠️ Actual 不支持 receive-only 模式，外部信息都应该归为 Plan
+  if (actualMode === 'receive-only') {
+    throw new Error('Actual 不支持 receive-only 模式');
+  }
+  
   // 场景 A: Plan 只接收
   if (planMode === 'receive-only') {
-    if (actualMode === 'receive-only') return scenarioA1(event);
-    if (actualMode === 'send-only') return scenarioA2(event);  // ⭐ 多事件同步
-    if (actualMode === 'bidirectional') return scenarioA3(event);  // ⚠️ 冲突
+    if (actualMode === 'send-only') return scenarioA1(event);  // ⭐ 1+N 事件
+    if (actualMode === 'bidirectional') return scenarioA2(event);  // ⚠️ 冲突
   }
   
   // 场景 B: Plan 只发送
   if (planMode === 'send-only') {
-    if (actualMode === 'receive-only') return scenarioB1(event);
-    if (actualMode === 'send-only') return scenarioB2(event);  // ⚠️ 冲突
-    if (actualMode === 'bidirectional') return scenarioB3(event);
+    if (actualMode === 'send-only') return scenarioB1(event);  // ⭐ 1+N 事件
+    if (actualMode === 'bidirectional') return scenarioB2(event);  // 2 个独立事件
   }
   
   // 场景 C: Plan 双向
   if (planMode === 'bidirectional') {
-    if (actualMode === 'receive-only') return scenarioC1(event);
-    if (actualMode === 'send-only') return scenarioC2(event);
-    if (actualMode === 'bidirectional') return scenarioC3(event);  // ⚠️ 冲突
+    if (actualMode === 'send-only') return scenarioC1(event);  // 2 个独立事件
+    if (actualMode === 'bidirectional') return scenarioC2(event);  // 2 个独立事件
   }
   
   throw new Error('未知的同步模式组合');
 }
 
 /**
- * 场景 A2 的具体实现（多事件同步）
+ * 场景 A1 的具体实现（多事件同步）
  * 
- * @description Plan 只接收 + Actual 只发送，每个 Timer 子事件创建独立的远程事件
+ * @description Plan 只接收 + Actual 只发送，Plan 1个 + 每个子事件创建独立的远程事件
  */
-function scenarioA2(event: Event): MergedSyncConfig {
+function scenarioA1(event: Event): MergedSyncConfig {
   return {
     mergedMode: 'plan-receive-actual-send-multi-events',
-    remoteEventCount: event.childEvents?.length || 0,  // 动态数量
+    remoteEventCount: 1 + (event.childEvents?.length || 0),  // ⭐ Plan 1个 + Actual N个子事件
     allTargetCalendars: event.plannedCalendarIds || [],
     
     syncStrategy: {
@@ -2077,7 +2571,7 @@ function handleDifferentCalendarScenarios(event: Event): MergedSyncConfig {
   
   return {
     mergedMode: 'mixed',
-    remoteEventCount: calculateRemoteEventCount(event),
+    remoteEventCount: 1 + actualUniqueCalendars.length,  // ⭐ Plan 1个 + Actual N个（每个日历1个）
     allTargetCalendars: [...plannedCalendarIds, ...actualUniqueCalendars],
     syncStrategy: {
       plan: {
@@ -2211,13 +2705,19 @@ export function extractParticipantsFromDescription(description?: string): {
 export function syncToRemoteCalendar(
   event: Event,
   syncMode: PlanSyncMode | ActualSyncMode,
-  calendarId: string
+  calendarId: string,
+  syncType: 'plan' | 'actual' = 'plan'  // ⭐ 新增：指定是 Plan 还是 Actual 同步
 ): void {
   const isPrivate = isPrivateMode(syncMode);
   
+  // ⭐ 根据同步类型选择对应的远程事件 ID
+  const remoteEventId = syncType === 'plan' 
+    ? event.syncedPlanEventId 
+    : event.syncedActualEventId;
+  
   const remoteEvent = {
-    id: event.syncedOutlookEventId || generateRemoteEventId(event.id),
-    title: event.title,
+    id: remoteEventId || generateRemoteEventId(event.id, syncType),
+    title: syncType === 'actual' ? `${event.title} - 实际进展` : event.title,
     start: event.startTime,
     end: event.endTime,
     
@@ -2231,15 +2731,22 @@ export function syncToRemoteCalendar(
     // 扩展属性（用于识别 ReMarkable 创建的事件）
     extendedProperties: {
       remarkableEventId: event.id,
-      remarkableType: getEventType(event),
+      remarkableType: syncType === 'plan' ? 'plan-event' : 'actual-event',  // ⭐ 明确标记类型
       remarkableParentId: event.parentEventId,
       remarkableSubEventId: event.id,
-      remarkableIsPrivate: isPrivate  // ⭐ 标记是否为 Private 模式
+      remarkableIsPrivate: isPrivate
     }
   };
   
   // 发送到远程日历（Outlook/Google/iCloud）
-  OutlookCalendarService.createOrUpdateEvent(calendarId, remoteEvent);
+  const updatedRemoteEventId = OutlookCalendarService.createOrUpdateEvent(calendarId, remoteEvent);
+  
+  // ⭐ 更新本地事件的远程事件 ID
+  if (syncType === 'plan') {
+    event.syncedPlanEventId = updatedRemoteEventId;
+  } else {
+    event.syncedActualEventId = updatedRemoteEventId;
+  }
 }
 
 /**

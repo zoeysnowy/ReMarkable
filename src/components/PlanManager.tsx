@@ -431,6 +431,83 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   const [hiddenTags, setHiddenTags] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   
+  // 🆕 事件状态计算函数
+  const getEventStatus = useCallback((eventId: string): 'new' | 'updated' | 'done' | 'missed' | 'deleted' | undefined => {
+    if (!dateRange) return undefined;
+    
+    try {
+      // 从EventHistoryService获取事件在指定时间段的历史记录
+      const startTime = dateRange.start.toISOString();
+      const endTime = dateRange.end.toISOString();
+      const history = EventHistoryService.queryHistory({ 
+        eventId, 
+        startTime, 
+        endTime 
+      });
+      
+      // 🔍 Debug: 检查历史记录
+      console.log(`[getEventStatus] 事件 ${eventId.substring(0, 8)} 在时间段 ${startTime.substring(5, 10)} - ${endTime.substring(5, 10)} 的历史:`, history);
+      
+      if (!history || history.length === 0) {
+        console.log(`[getEventStatus] 事件 ${eventId.substring(0, 8)} 无历史记录`);
+        return undefined;
+      }
+      
+      // 按时间排序，最新的在前
+      const sortedHistory = history.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      const latestAction = sortedHistory[0];
+      
+      // 根据最新操作确定状态
+      switch (latestAction.operation) {
+        case 'create':
+          return 'new';
+        case 'update':
+          return 'updated';
+        case 'delete':
+          return 'deleted';
+        case 'checkin':
+          // 检查checkin历史的具体action来判断是签到还是取消签到
+          if (latestAction.metadata?.action === 'check-in') {
+            return 'done';
+          } else if (latestAction.metadata?.action === 'uncheck') {
+            // 取消签到后，需要进一步判断事件状态
+            const event = EventService.getEventById(eventId);
+            if (event && event.startTime) {
+              const eventTime = new Date(event.startTime);
+              const now = new Date();
+              if (eventTime < now) {
+                return 'missed'; // 过了时间但取消了签到
+              }
+            }
+            return 'updated'; // 还没到时间或没有时间设置
+          }
+          return 'done';
+        default:
+          // 检查事件的当前签到状态
+          const event = EventService.getEventById(eventId);
+          if (event) {
+            const checkInStatus = EventService.getCheckInStatus(eventId);
+            if (checkInStatus.isChecked) {
+              return 'done';
+            }
+            
+            // 检查是否有计划时间但未完成（missed）
+            if (event.startTime) {
+              const eventTime = new Date(event.startTime);
+              const now = new Date();
+              if (eventTime < now && !checkInStatus.isChecked) {
+                return 'missed';
+              }
+            }
+          }
+          return 'updated';
+      }
+    } catch (error) {
+      console.warn(`[getEventStatus] Error getting status for event ${eventId}:`, error);
+      return undefined;
+    }
+  }, [dateRange]);
+  
   // 避免重复插入同一标签的防抖标记（同一行同一标签在短时间内仅插入一次）
   const lastTagInsertRef = useRef<{ lineId: string; tagId: string; time: number } | null>(null);
   // 🆕 UnifiedSlateEditor 的单个编辑器实例
@@ -559,7 +636,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   const floatingToolbar = useFloatingToolbar({
     editorRef: editorContainerRef as React.RefObject<HTMLElement>,
     enabled: true,
-    menuItemCount: 7, // 🆕 menu_floatingbar 有 7 个菜单项：tag, emoji, dateRange, priority, color, addTask, bullet；text_floatingbar 有 6 个菜单项
+    menuItemCount: 7, // 🆕 最大菜单项数：text_floatingbar 有 7 个菜单项，menu_floatingbar 有 6 个菜单项
     onMenuSelect: (menuIndex: number) => {
       setActivePickerIndex(menuIndex);
     },
@@ -1048,11 +1125,15 @@ const PlanManager: React.FC<PlanManagerProps> = ({
 
   // 🆕 生成事件变更快照
   const generateEventSnapshot = useCallback(() => {
+    if (!dateRange) {
+      return {
+        created: 0, updated: 0, completed: 0, deleted: 0, details: []
+      };
+    }
+    
     try {
       // 从EventHistoryService获取指定时间范围的历史记录
-      const { EventHistoryService } = require('../services/EventHistoryService');
-      
-      const snapshot = EventHistoryService.getHistoryInDateRange(
+      const snapshot = EventHistoryService.getChangesByTimeRange(
         dateRange.start.toISOString(),
         dateRange.end.toISOString()
       );
@@ -1090,12 +1171,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       });
     }
     
-    // 应用日期范围过滤
-    result = result.filter(item => {
-      if (!item.createdAt) return true;
-      const itemDate = new Date(item.createdAt);
-      return itemDate >= dateRange.start && itemDate <= dateRange.end;
-    });
+    // 🔧 移除日期范围过滤 - 显示所有事件，状态竖线根据选定时间段显示活动状态
+    // 日期范围仅用于计算事件状态竖线，不用于过滤事件显示
     
     // 应用搜索过滤
     if (searchQuery.trim()) {
@@ -1588,6 +1665,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         <UnifiedSlateEditor
           items={editorItems}
           onChange={debouncedOnChange}
+          getEventStatus={getEventStatus}
           onFocus={(lineId) => {
             // ✅ 重构: 直接从 lineId 判断模式
             setCurrentFocusedLineId(lineId);

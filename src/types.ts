@@ -235,6 +235,10 @@ export interface Event {
   // 🆕 Issue #12: Timer ↔ Plan 集成
   parentEventId?: string;   // 父事件 ID（用于 Timer 子事件关联）
   timerLogs?: string[];     // 计时日志（子 Timer 事件 ID 列表）
+  
+  // 🆕 签到功能：用于任务管理和定时打卡
+  checked?: string[];       // 签到时间戳数组（ISO格式）
+  unchecked?: string[];     // 取消签到时间戳数组（ISO格式）
 }
 
 export interface Task {

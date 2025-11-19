@@ -176,6 +176,9 @@ const TagManager: React.FC<TagManagerProps> = ({
   
   // ?? 追踪选中的标签ID列表
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  
+  // 🆕 初始化状态跟踪
+  const [isInitialized, setIsInitialized] = useState<boolean>(false);
 
   // 初始化数据- 从localStorage加载或使用空数据
   useEffect(() => {

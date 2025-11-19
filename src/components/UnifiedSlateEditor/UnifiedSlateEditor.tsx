@@ -115,6 +115,7 @@ export interface UnifiedSlateEditorProps {
   onSave?: (eventId: string, updates: any) => void;  // 🆕 保存事件回调
   onTimeClick?: (eventId: string, anchor: HTMLElement) => void;  // 🆕 时间点击回调
   onMoreClick?: (eventId: string) => void;  // 🆕 More 图标点击回调
+  getEventStatus?: (eventId: string) => 'new' | 'updated' | 'done' | 'missed' | 'deleted' | undefined; // 🆕 获取事件状态
   className?: string;
 }
 
@@ -490,6 +491,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   onSave,  // 🆕 保存回调
   onTimeClick,  // 🆕 时间点击回调
   onMoreClick,  // 🆕 More 图标点击回调
+  getEventStatus,  // 🆕 获取事件状态
   className = '',
 }) => {
   // 🔍 组件挂载日志
@@ -2119,14 +2121,17 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     
     switch (element.type) {
       case 'event-line':
+        const eventLineElement = element as EventLineNode;
+        const eventStatus = getEventStatus && eventLineElement.eventId ? getEventStatus(eventLineElement.eventId) : undefined;
         return (
           <EventLineElement
             {...props}
-            element={element as EventLineNode}
+            element={eventLineElement}
             onSave={onSave}
             onTimeClick={onTimeClick}
             onMoreClick={onMoreClick}
             onPlaceholderClick={handlePlaceholderClick}
+            eventStatus={eventStatus}
           />
         );
       case 'paragraph':
@@ -2148,7 +2153,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       default:
         return <div {...props.attributes}>{props.children}</div>;
     }
-  }, [onSave, onTimeClick, onMoreClick, handlePlaceholderClick]);
+  }, [onSave, onTimeClick, onMoreClick, handlePlaceholderClick, getEventStatus]);
   
   const renderLeaf = useCallback((props: RenderLeafProps) => {
     let { children } = props;

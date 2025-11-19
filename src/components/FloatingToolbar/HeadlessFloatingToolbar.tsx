@@ -52,19 +52,23 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
   
   // 🔍 Debug: 包装 setActivePicker 以追踪所有调用
   const setActivePicker = (value: string | null) => {
-    console.log(`[setActivePicker 调用] 🎯 ${activePickerState} → ${value}`, new Error().stack);
+    // Debug: setActivePicker调用
     setActivePickerState(value);
   };
   const activePicker = activePickerState;
 
   // 🆕 根据 mode 决定显示的功能集合（提前计算，供 useEffect 使用）
-  const menuFloatingbarFeaturesBase: ToolbarFeatureType[] = ['tag', 'emoji', 'dateRange', 'addTask', 'textStyle'];
-  const textFloatingbarFeatures: ToolbarFeatureType[] = ['bold', 'italic', 'textColor', 'bgColor', 'strikethrough', 'clearFormat'];
+  const menuFloatingbarFeaturesBase: ToolbarFeatureType[] = ['tag', 'emoji', 'dateRange', 'addTask', 'textStyle', 'bullet'];
+  const textFloatingbarFeaturesBase: ToolbarFeatureType[] = ['bold', 'italic', 'textColor', 'bgColor', 'strikethrough', 'clearFormat', 'bullet'];
   
   // 🔧 标题模式下隐藏 bullet 菜单（因为标题已有勾选框）
   const menuFloatingbarFeatures = editorMode === 'title' 
     ? menuFloatingbarFeaturesBase.filter(f => f !== 'bullet')
     : menuFloatingbarFeaturesBase;
+  
+  const textFloatingbarFeatures = editorMode === 'title'
+    ? textFloatingbarFeaturesBase.filter(f => f !== 'bullet')
+    : textFloatingbarFeaturesBase;
   
   // 根据 mode 覆盖 config.features（如果外层没有提供）
   const effectiveFeatures = mode === 'text_floatingbar' 
@@ -98,7 +102,11 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
       // 🔧 判断当前层级：如果有 activePicker，说明在子菜单中
       if (activePicker === 'textStyle') {
         // textStyle 子菜单层级：数字键对应 textStyle 内的按钮
-        const textStyleFeatures: ToolbarFeatureType[] = ['bold', 'italic', 'strikethrough', 'textColor', 'bgColor', 'clearFormat'];
+        const textStyleFeaturesBase: ToolbarFeatureType[] = ['bold', 'italic', 'strikethrough', 'textColor', 'bgColor', 'clearFormat', 'bullet'];
+        // 🔧 标题模式下也要隐藏 bullet
+        const textStyleFeatures = editorMode === 'title'
+          ? textStyleFeaturesBase.filter(f => f !== 'bullet')
+          : textStyleFeaturesBase;
         const feature = textStyleFeatures[activePickerIndex];
         
         if (feature) {
@@ -609,11 +617,19 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
             {(activePicker === 'textStyle' || activePicker === 'textColor' || activePicker === 'bgColor') && feature === 'textStyle' && (
               <div className="text-style-menu">
                 <div className="text-style-buttons">
-                  {['bold', 'italic', 'strikethrough', 'textColor', 'bgColor', 'clearFormat'].map((textFeature) => (
-                    <React.Fragment key={textFeature}>
-                      {renderTextFormatButton(textFeature as ToolbarFeatureType)}
-                    </React.Fragment>
-                  ))}
+                  {(() => {
+                    // 🔧 根据编辑器模式决定显示的功能（标题模式下隐藏 bullet）
+                    const textStyleFeaturesBase: ToolbarFeatureType[] = ['bold', 'italic', 'strikethrough', 'textColor', 'bgColor', 'clearFormat', 'bullet'];
+                    const textStyleMenuFeatures = editorMode === 'title'
+                      ? textStyleFeaturesBase.filter(f => f !== 'bullet')
+                      : textStyleFeaturesBase;
+                    
+                    return textStyleMenuFeatures.map((textFeature) => (
+                      <React.Fragment key={textFeature}>
+                        {renderTextFormatButton(textFeature as ToolbarFeatureType)}
+                      </React.Fragment>
+                    ));
+                  })()}
                 </div>
               </div>
             )}

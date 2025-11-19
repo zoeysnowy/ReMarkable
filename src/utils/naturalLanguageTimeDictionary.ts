@@ -243,8 +243,14 @@ export const DATE_RANGE_DICTIONARY: Record<string, (referenceDate?: Date) => Dat
     };
   },
   
-  '这周末': (ref = new Date()) => DATE_RANGE_DICTIONARY['周末'](ref),
-  '本周末': (ref = new Date()) => DATE_RANGE_DICTIONARY['周末'](ref),
+  '这周末': (ref = new Date()) => {
+    const result = DATE_RANGE_DICTIONARY['周末'](ref);
+    return { ...result, displayHint: '这周末' };
+  },
+  '本周末': (ref = new Date()) => {
+    const result = DATE_RANGE_DICTIONARY['周末'](ref);
+    return { ...result, displayHint: '本周末' };
+  },
   'weekend': (ref = new Date()) => {
     const result = DATE_RANGE_DICTIONARY['周末'](ref);
     return { ...result, displayHint: 'weekend' };

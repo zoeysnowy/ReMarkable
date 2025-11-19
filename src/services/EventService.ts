@@ -16,6 +16,7 @@ import { logger } from '../utils/logger';
 import { validateEventTime } from '../utils/eventValidation';
 import { determineSyncTarget, shouldSync } from '../utils/syncRouter';
 import { ContactService } from './ContactService';
+import { EventHistoryService } from './EventHistoryService'; // 🆕 事件历史记录
 
 const eventLogger = logger.module('EventService');
 
@@ -355,6 +356,9 @@ export class EventService {
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
       eventLogger.log('💾 [EventService] Event saved to localStorage');
       
+      // 🆕 记录到事件历史
+      EventHistoryService.logCreate(finalEvent, options?.source || 'user-edit');
+      
       // ✨ 自动提取并保存联系人
       if (finalEvent.organizer || finalEvent.attendees) {
         ContactService.extractAndAddFromEvent(finalEvent.organizer, finalEvent.attendees);
@@ -672,6 +676,9 @@ export class EventService {
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
       eventLogger.log('💾 [EventService] Event updated in localStorage');
       
+      // 记录事件历史
+      EventHistoryService.logUpdate(eventId, filteredUpdates);
+      
       // ✨ 自动提取并保存联系人（如果 organizer 或 attendees 有更新）
       if (updates.organizer !== undefined || updates.attendees !== undefined) {
         ContactService.extractAndAddFromEvent(updatedEvent.organizer, updatedEvent.attendees);
@@ -780,6 +787,9 @@ export class EventService {
       const setItemDuration = performance.now() - setItemStart;
       console.log(`💾 [EventService] localStorage.setItem took ${setItemDuration.toFixed(2)}ms`);
       eventLogger.log('💾 [EventService] Event deleted from localStorage');
+      
+      // 记录事件历史
+      EventHistoryService.logDelete(eventId);
 
       // 触发全局更新事件
       console.log(`🔔 [EventService] About to dispatch eventsUpdated...`);
@@ -807,6 +817,155 @@ export class EventService {
       eventLogger.error('�?[EventService] Failed to delete event:', error);
       return { success: false, error: String(error) };
     }
+  }
+
+  /**
+   * 事件签到 - 记录签到时间戳
+   */
+  static checkIn(eventId: string): { success: boolean; error?: string } {
+    try {
+      eventLogger.log('✅ [EventService] Checking in event:', eventId);
+
+      const existingEvents = this.getAllEvents();
+      const eventIndex = existingEvents.findIndex(e => e.id === eventId);
+
+      if (eventIndex === -1) {
+        const error = `Event not found: ${eventId}`;
+        eventLogger.error('❌ [EventService]', error);
+        return { success: false, error };
+      }
+
+      const event = existingEvents[eventIndex];
+      const timestamp = new Date().toISOString();
+
+      // 初始化checked数组（如果不存在）
+      if (!event.checked) {
+        event.checked = [];
+      }
+
+      // 添加签到时间戳
+      event.checked.push(timestamp);
+
+      // 更新updatedAt
+      event.updatedAt = timestamp;
+
+      // 保存到localStorage
+      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
+      eventLogger.log('💾 [EventService] Event checked in, saved to localStorage');
+
+      // 记录事件历史
+      EventHistoryService.logCheckin(eventId, event.title || 'Untitled Event', { action: 'check-in', timestamp });
+
+      // 触发更新事件
+      this.dispatchEventUpdate(eventId, { checkedIn: true, timestamp });
+
+      eventLogger.log('✅ [EventService] 签到成功:', {
+        eventId,
+        timestamp,
+        totalCheckins: event.checked.length
+      });
+
+      return { success: true };
+    } catch (error) {
+      eventLogger.error('❌ [EventService] Failed to check in event:', error);
+      return { success: false, error: String(error) };
+    }
+  }
+
+  /**
+   * 取消事件签到 - 记录取消签到时间戳
+   */
+  static uncheck(eventId: string): { success: boolean; error?: string } {
+    try {
+      eventLogger.log('❌ [EventService] Unchecking event:', eventId);
+
+      const existingEvents = this.getAllEvents();
+      const eventIndex = existingEvents.findIndex(e => e.id === eventId);
+
+      if (eventIndex === -1) {
+        const error = `Event not found: ${eventId}`;
+        eventLogger.error('❌ [EventService]', error);
+        return { success: false, error };
+      }
+
+      const event = existingEvents[eventIndex];
+      const timestamp = new Date().toISOString();
+
+      // 初始化unchecked数组（如果不存在）
+      if (!event.unchecked) {
+        event.unchecked = [];
+      }
+
+      // 添加取消签到时间戳
+      event.unchecked.push(timestamp);
+
+      // 更新updatedAt
+      event.updatedAt = timestamp;
+
+      // 保存到localStorage
+      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
+      eventLogger.log('💾 [EventService] Event unchecked, saved to localStorage');
+
+      // 记录事件历史
+      EventHistoryService.logCheckin(eventId, event.title || 'Untitled Event', { action: 'uncheck', timestamp });
+
+      // 触发更新事件
+      this.dispatchEventUpdate(eventId, { unchecked: true, timestamp });
+
+      eventLogger.log('❌ [EventService] 取消签到成功:', {
+        eventId,
+        timestamp,
+        totalUnchecks: event.unchecked.length
+      });
+
+      return { success: true };
+    } catch (error) {
+      eventLogger.error('❌ [EventService] Failed to uncheck event:', error);
+      return { success: false, error: String(error) };
+    }
+  }
+
+  /**
+   * 获取事件的签到状态
+   */
+  static getCheckInStatus(eventId: string): { 
+    isChecked: boolean; 
+    lastCheckIn?: string; 
+    lastUncheck?: string;
+    checkInCount: number;
+    uncheckCount: number;
+  } {
+    const event = this.getEventById(eventId);
+    if (!event) {
+      return { isChecked: false, checkInCount: 0, uncheckCount: 0 };
+    }
+
+    const checked = event.checked || [];
+    const unchecked = event.unchecked || [];
+    
+    // 获取最后的操作时间戳来判断当前状态
+    const lastCheckIn = checked.length > 0 ? checked[checked.length - 1] : undefined;
+    const lastUncheck = unchecked.length > 0 ? unchecked[unchecked.length - 1] : undefined;
+    
+    // 如果都没有操作，默认未签到
+    if (!lastCheckIn && !lastUncheck) {
+      return { 
+        isChecked: false, 
+        checkInCount: checked.length, 
+        uncheckCount: unchecked.length 
+      };
+    }
+    
+    // 比较最后的签到和取消签到时间
+    const isChecked = lastCheckIn && (!lastUncheck || lastCheckIn > lastUncheck);
+
+    return {
+      isChecked,
+      lastCheckIn,
+      lastUncheck,
+      checkInCount: checked.length,
+      uncheckCount: unchecked.length
+    };
   }
 
   /**
