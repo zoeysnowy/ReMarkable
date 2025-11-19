@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import './ContentSelectionPanel.css';
 
 // 导入本地 SVG 图标
@@ -46,83 +46,79 @@ interface TaskNode {
   isFavorite?: boolean;
 }
 
+interface EventSnapshot {
+  created: number;
+  updated: number;
+  completed: number;
+  deleted: number;
+  details: any[];
+}
+
+interface Tag {
+  id: string;
+  name: string;
+  color?: string;
+  emoji?: string;
+}
+
 interface ContentSelectionPanelProps {
+  dateRange?: { start: Date; end: Date };
+  snapshot?: EventSnapshot;
+  tags?: Tag[];
+  hiddenTags?: Set<string>;
   onFilterChange?: (filter: 'tags' | 'tasks' | 'favorites' | 'new') => void;
   onSearchChange?: (query: string) => void;
   onDateSelect?: (date: Date) => void;
+  onDateRangeChange?: (start: Date, end: Date) => void;
+  onTagVisibilityChange?: (tagId: string, visible: boolean) => void;
 }
 
 const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
+  dateRange,
+  snapshot,
+  tags = [],
+  hiddenTags = new Set(),
   onFilterChange,
   onSearchChange,
   onDateSelect,
+  onDateRangeChange,
+  onTagVisibilityChange,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'tags' | 'tasks' | 'favorites' | 'new'>('tags');
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [currentMonth, setCurrentMonth] = useState(new Date(2025, 9, 1)); // October 2025
+  const [selectedDate, setSelectedDate] = useState(dateRange?.start || new Date());
+  const [currentMonth, setCurrentMonth] = useState(new Date(2025, 10, 1)); // November 2025
   const [isCalendarVisible, setIsCalendarVisible] = useState(true);
 
-  // Sample task tree data - matching Figma design
-  const [taskTree, setTaskTree] = useState<TaskNode[]>([
-    {
-      id: '1',
-      title: '#🔮Remarkable开发',
-      tag: 'Remarkable开发',
-      color: '#a855f7',
-      isExpanded: true,
-      stats: { completed: 3, total: 7, hours: 12 },
-      children: [
-        {
-          id: '1-1',
-          title: '#🔮PRD文档',
-          tag: 'PRD文档',
-          color: '#3b82f6',
-          stats: { completed: 3, total: 7, hours: 6 },
-        },
-        {
-          id: '1-2',
-          title: '#🔮码代码',
-          tag: '码代码',
-          color: '#10b981',
-          stats: { completed: 3, total: 7, hours: 3 },
-        },
-      ],
-    },
-    {
-      id: '2',
-      title: '#🔮Remarkable开发',
-      tag: 'Remarkable开发',
-      color: '#a855f7',
-      isExpanded: true,
-      stats: { completed: 3, total: 7, hours: 12 },
-      children: [
-        {
-          id: '2-1',
-          title: '#🔮PRD文档',
-          tag: 'PRD文档',
-          color: '#3b82f6',
-          stats: { completed: 3, total: 7, hours: 6 },
-        },
-        {
-          id: '2-2',
-          title: '#🔮码代码',
-          tag: '码代码',
-          color: '#10b981',
-          stats: { completed: 3, total: 7, hours: 3 },
-        },
-      ],
-    },
-    {
-      id: '3',
-      title: '#🔮Remarkable开发',
-      tag: 'Remarkable开发',
-      color: '#a855f7',
-      isExpanded: false,
-      isHidden: true,
-      stats: { completed: 3, total: 7, hours: 12 },
-    },
-  ]);
+  // 基于真实标签数据构建任务树
+  const taskTree = useMemo(() => {
+    return tags.map(tag => {
+      const isHidden = hiddenTags.has(tag.id);
+      return {
+        id: tag.id,
+        title: `${tag.emoji || '#'}${tag.name}`,
+        tag: tag.name,
+        color: tag.color || '#6b7280',
+        isExpanded: !isHidden,
+        isHidden,
+        stats: {
+          completed: snapshot?.details?.filter((log: any) => 
+            log.operation === 'update' && 
+            log.changes?.some((change: any) => 
+              change.field === 'isCompleted' && 
+              change.after === true
+            ) &&
+            log.after?.tags?.includes(tag.id)
+          ).length || 0,
+          total: snapshot?.details?.filter((log: any) => 
+            (log.operation === 'create' || log.operation === 'update') &&
+            (log.after?.tags?.includes(tag.id) || log.before?.tags?.includes(tag.id))
+          ).length || 0,
+          hours: 0 // TODO: 从时间记录计算
+        }
+      } as TaskNode;
+    });
+  }, [tags, hiddenTags, snapshot]);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const query = e.target.value;
@@ -237,11 +233,19 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
           {/* 可见性图标 */}
           <div className="task-visibility-container">
             {node.isHidden ? (
-              <button className="task-visibility-btn task-visibility-btn-visible">
+              <button 
+                className="task-visibility-btn task-visibility-btn-visible"
+                onClick={() => onTagVisibilityChange?.(node.id, true)}
+                title="显示此标签的事件"
+              >
                 <HideSmallIcon className="task-icon task-icon-hidden" />
               </button>
             ) : (
-              <button className="task-visibility-btn task-visibility-btn-hidden">
+              <button 
+                className="task-visibility-btn task-visibility-btn-hidden"
+                onClick={() => onTagVisibilityChange?.(node.id, false)}
+                title="隐藏此标签的事件"
+              >
                 <UnhideSmallIcon className="task-icon task-icon-visible" />
               </button>
             )}
@@ -309,18 +313,8 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
   };
 
   const toggleTaskNode = (nodeId: string) => {
-    const updateNode = (nodes: TaskNode[]): TaskNode[] => {
-      return nodes.map(node => {
-        if (node.id === nodeId) {
-          return { ...node, isExpanded: !node.isExpanded };
-        }
-        if (node.children) {
-          return { ...node, children: updateNode(node.children) };
-        }
-        return node;
-      });
-    };
-    setTaskTree(updateNode(taskTree));
+    // TODO: 实现标签展开/收起状态管理
+    console.log('Toggle task node:', nodeId);
   };
 
   return (
@@ -352,6 +346,31 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
       {/* Calendar */}
       {isCalendarVisible && renderCalendar()}
 
+      {/* Event Snapshot */}
+      {snapshot && (
+        <div className="event-snapshot">
+          <h4>时间段快照</h4>
+          <div className="snapshot-stats">
+            <div className="snapshot-item">
+              <span className="snapshot-label">新建:</span>
+              <span className="snapshot-value">{snapshot.created}</span>
+            </div>
+            <div className="snapshot-item">
+              <span className="snapshot-label">修改:</span>
+              <span className="snapshot-value">{snapshot.updated}</span>
+            </div>
+            <div className="snapshot-item">
+              <span className="snapshot-label">完成:</span>
+              <span className="snapshot-value">{snapshot.completed}</span>
+            </div>
+            <div className="snapshot-item">
+              <span className="snapshot-label">删除:</span>
+              <span className="snapshot-value">{snapshot.deleted}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Filter Buttons */}
       <div className="filter-buttons">
         <button
@@ -382,7 +401,7 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
 
       {/* Task Tree */}
       <div className="task-tree">
-        {taskTree.map((node) => renderTaskNode(node))}
+        {taskTree.map((node: TaskNode) => renderTaskNode(node))}
       </div>
     </div>
   );

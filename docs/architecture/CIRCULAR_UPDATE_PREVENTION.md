@@ -15,10 +15,22 @@ UnifiedSlateEditor onChange
 → 可能再次触发onChange (循环开始)
 ```
 
+### 新增ID分配问题
+```
+用户激活新行
+→ UnifiedSlateEditor.onFocus 
+→ PlanManager创建pendingEmptyItems
+→ 用户输入内容
+→ onChange触发
+→ 查找items数组找不到事件 (因为还在pending中)
+→ 时间插入失败: “找不到对应的item”
+```
+
 ### 根本原因
 1. **无法区分更新来源**: 不知道eventsUpdated是自己还是外部触发的
 2. **数据流双向绑定**: props和state相互影响
-3. **时间窗口保护不足**: 现有的3秒保护机制不够健壮
+3. **ID分配时序问题**: pendingEmptyItems和items状态不同步
+4. **时间窗口保护不足**: 现有的3秒保护机制不够健壮
 
 ## 🛡️ 新的防循环架构
 
@@ -97,8 +109,24 @@ useEffect(() => {
     
     if (isDeleted) {
       setItems(prev => prev.filter(event => event.id !== eventId));
+      // 🧹 同时从 pendingEmptyItems 中清理
+      setPendingEmptyItems(prev => {
+        const next = new Map(prev);
+        next.delete(eventId);
+        return next;
+      });
     } else {
-      // ... 处理更新/新增
+      // 🔍 统一ID查找逻辑：支持 pendingEmptyItems
+      const existingItem = items.find(i => i.id === eventId) || pendingEmptyItems.get(eventId);
+      if (existingItem) {
+        // 更新现有事件
+        setItems(prev => prev.map(item => 
+          item.id === eventId ? { ...item, ...newData } : item
+        ));
+      } else {
+        // 新增事件
+        setItems(prev => [...prev, newEvent]);
+      }
     }
   };
   
@@ -125,7 +153,24 @@ useEffect(() => {
     }
     
     // ✅ 确认外部更新，执行增量同步
-    performIncrementalUpdate(eventId, e.detail);
+    // 🔍 增强的ID查找：同时检查 items 和 pendingEmptyItems
+    const targetEvent = findEventInAllStates(eventId);
+    performIncrementalUpdate(eventId, e.detail, targetEvent);
+  };
+  
+  // 🆕 统一事件查找函数
+  const findEventInAllStates = useCallback((eventId: string) => {
+    // 先在 Slate 节点中查找
+    const slateNode = value.find(node => node.eventId === eventId);
+    if (slateNode) return slateNode;
+    
+    // 再在 items 中查找
+    const item = items.find(i => i.id === eventId);
+    if (item) return item;
+    
+    // 最后在 pendingEmptyItems 中查找
+    return pendingEmptyItems?.get?.(eventId);
+  }, [value, items, pendingEmptyItems]);
   };
   
   window.addEventListener('eventsUpdated', handleEventUpdated);
@@ -249,13 +294,20 @@ class EventService {
 }
 ```
 
-## 🎯 推荐实施方案
+## 📅 实施计划
 
-### 阶段1: 快速修复 (1天)
+### 阶段1: 快速修复 (1-2天) ✅ 已完成
 实施**方案1**的基础版本：
 - EventService添加updateId和来源标记
 - PlanManager和UnifiedSlateEditor添加来源检查
 - 保持现有架构不变
+
+### 阶段1.5: ID分配优化 (1天) ✅ 已完成
+- 用户激活时立即创建pendingEmptyItems
+- 统一ID查找逻辑（items + pendingEmptyItems）
+- 时间插入BUG修复
+- 自动清理过期空行机制
+- 状态转换逻辑优化
 
 ### 阶段2: 架构重构 (3-5天)  
 实施**方案2**：
@@ -267,6 +319,12 @@ class EventService {
 实施**方案3**：
 - 改进BroadcastChannel机制
 - 添加标签页标识
+
+### 新增 阶段4: 持续优化 (进行中)
+- pendingEmptyItems内存优化
+- 更精准的状态转换触发条件
+- 用户体验指标监控
+- 跨组件状态一致性保障
 
 ## 🧪 测试验证
 

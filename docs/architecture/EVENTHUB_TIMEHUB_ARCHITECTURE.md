@@ -1,10 +1,72 @@
 # EventHub & TimeHub 统一架构文档
 
-> **文档版本**: v1.5  
+> **文档版本**: v1.6  
 > **创建时间**: 2025-11-06  
 > **最后更新**: 2025-11-19  
-> **关联模块**: EventHub, TimeHub, EventService, TimeParsingService  
+> **关联模块**: EventHub, TimeHub, EventService, TimeParsingService, PlanManager  
 > **文档类型**: 核心架构文档
+> **新增关联**: pendingEmptyItems状态管理, 统一ID查找策略
+
+---
+
+## 🎉 v1.6 ID分配与时间系统优化 (2025-11-19)
+
+### 最新优化
+
+**问题**: 新建事件时间插入失败，TimeHub与EventService的ID映射不同步
+**解决方案**: 实现统一ID管理和即时状态同步机制
+**状态**: ✅ 已优化并完成测试
+
+### 核心改进
+
+#### 1. TimeHub与EventService的统一ID查找
+```typescript
+// TimeHub.ts - 增强的ID解析机制
+class TimeHub {
+  static setEventTime(eventId: string, timeData: TimeData) {
+    // 🔍 统一ID查找：支持 items 和 pendingEmptyItems
+    let targetEvent = EventService.getEventById(eventId);
+    
+    // 如果在EventService中找不到，检查PlanManager的pending状态
+    if (!targetEvent) {
+      const planManagerState = this.getPlanManagerState();
+      targetEvent = planManagerState?.pendingEmptyItems?.get(eventId);
+    }
+    
+    if (targetEvent) {
+      // 更新TimeHub和EventService
+      this.updateTimeSnapshot(eventId, timeData);
+      EventService.updateEvent(eventId, {
+        startTime: timeData.start,
+        endTime: timeData.end,
+        isAllDay: timeData.isAllDay
+      });
+    }
+  }
+  
+  // 新增：获取PlanManager状态的通信接口
+  private static getPlanManagerState() {
+    return (window as any).__planManagerState;
+  }
+}
+```
+
+#### 2. EventService的增强查找逻辑
+```typescript
+// EventService.ts - 支持多源查找
+static getEventById(eventId: string): Event | null {
+  // 优先在正式事件中查找
+  let event = this.events.get(eventId);
+  
+  if (!event) {
+    // 检查PlanManager的pendingEmptyItems
+    const planState = (window as any).__planManagerState;
+    event = planState?.pendingEmptyItems?.get(eventId);
+  }
+  
+  return event || null;
+}
+```
 
 ---
 

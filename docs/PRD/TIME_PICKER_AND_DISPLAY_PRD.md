@@ -1,8 +1,8 @@
 # Time Picker and Display 时间选择与显示模块 PRD
 
-> **文档版本**: v2.8.3  
+> **文档版本**: v2.10.2  
 > **创建日期**: 2025-01-15  
-> **最后更新**: 2025-11-14  
+> **最后更新**: 2025-11-19  
 > **文档状态**: ✅ 完整版本  
 > **核心组件**: 
 > - `src/components/FloatingToolbar/pickers/UnifiedDateTimePicker.tsx` (时间选择器)
@@ -200,6 +200,48 @@ graph TB
 ---
 
 ## 📝 更新日志
+
+### v2.10.2 (2025-11-19) - 🎯 精确日期+精确时间组合支持
+
+**核心功能**:
+
+1. **✅ 精确日期+精确时间组合解析**:
+   - **新功能**: 支持"下周三9点"、"明天8点半"、"后天14:30"等表达
+   - **解析逻辑**: 先匹配日期关键词，移除后匹配精确时间格式
+   - **时间格式支持**: 
+     - `数字点`: 9点、22点
+     - `数字点半`: 8点半、14点半  
+     - `数字点一刻/三刻`: 9点一刻(15分)、10点三刻(45分)
+     - `数字:数字`: 14:30、22:15
+     - `数字点数字分`: 8点30分
+
+2. **🔧 修复词典正则匹配冲突**:
+   - **问题**: "下周五9点" 匹配到 "五9点"，hourStr="五"(5) 而非 "9"
+   - **根因**: 正则匹配到日期中的数字字符
+   - **解决方案**: 先移除已匹配的日期部分，再在剩余部分匹配时间
+   
+   ```typescript
+   // 修复前：直接在完整输入中匹配，导致冲突
+   const exactTimeMatch = trimmedInput.match(exactTimePattern);
+   
+   // 修复后：移除日期部分后匹配
+   const timeOnlyInput = trimmedInput.replace(pointKey.toLowerCase(), '').trim();
+   const exactTimeMatch = timeOnlyInput.match(exactTimePattern);
+   ```
+
+3. **🔧 修复时间设置逻辑跳过问题**:
+   - **问题**: 精确时间点处理后直接return，跳过timePeriod设置
+   - **解决**: 检查是否同时存在timePeriod，继续处理时间部分
+
+**测试用例**:
+```typescript
+parseNaturalLanguage("下周三9点")   // ✅ 2025-11-26 09:00
+parseNaturalLanguage("明天8点半")   // ✅ 2025-11-20 08:30  
+parseNaturalLanguage("后天14:30")   // ✅ 2025-11-21 14:30
+parseNaturalLanguage("大后天22点一刻") // ✅ 2025-11-22 22:15
+```
+
+---
 
 ### v2.8.3 (2025-11-14) - 🔥 Undefined Time 完整支持 + 时间选择器优化
 

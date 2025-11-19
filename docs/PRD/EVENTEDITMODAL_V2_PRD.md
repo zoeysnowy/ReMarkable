@@ -14,6 +14,12 @@
 > - [SLATE_DEVELOPMENT_GUIDE.md](../SLATE_DEVELOPMENT_GUIDE.md)
 
 > **🔥 v2.0.0 最新更新** (2025-11-19):
+> - ✅ **子事件类型扩展**: 支持 Timer/TimeLog/OutsideApp 三种子事件类型
+>   - `isTimer`: 系统自动（用户点击开始/停止 Timer）
+>   - `isTimeLog`: 用户随手记录的笔记（会议纪要、思考、发现等）
+>   - `isOutsideApp`: 系统自动记录（使用的 App、录屏、音乐等）
+> - ✅ **日历同步支持**: 所有子事件类型都继承 ParentEvent 的 Actual 配置，每个创建独立的远程事件
+> - ✅ **过滤逻辑优化**: ParentEvent 的 Plan 接收时忽略所有子事件（避免循环）
 > - ✅ **时间选择器 Tippy 集成**: 使用 Tippy.js 包裹 UnifiedDateTimePicker，优雅弹出
 > - ✅ **交互优化**: 点击时间显示区下方弹出选择器，不灰化页面背景
 > - ✅ **自动聚焦**: 弹出后光标自动聚焦到自然语言输入框
@@ -515,9 +521,12 @@ function extractFirstEmoji(text: string): string | null {
 
 **数据读取**:
 ```typescript
-// 🔍 读取标题：Timer 子事件显示父事件的标题
+// 🔍 读取标题：所有子事件（Timer/TimeLog/OutsideApp）显示父事件的标题
 function getDisplayTitle(event: Event): string {
-  if (event.isTimer && event.parentEventId) {
+  // 检查是否为任何类型的子事件
+  const isSubEvent = event.isTimer || event.isTimeLog || event.isOutsideApp;
+  
+  if (isSubEvent && event.parentEventId) {
     const parentEvent = EventService.getEventById(event.parentEventId);
     return parentEvent?.title || event.title;
   }
@@ -541,11 +550,13 @@ function getTitlePlaceholder(tags: string[]): string {
 }
 ```
 
-**数据保存**（Timer 子事件情况）:
+**数据保存**（子事件情况）:
 ```typescript
 const handleTitleChange = async (newTitle: string) => {
-  // 🔍 如果当前是 Timer 子事件（isTimer = true），保存到父事件
-  if (event.isTimer && event.parentEventId) {
+  // 🔍 如果当前是子事件（Timer/TimeLog/OutsideApp），保存到父事件
+  const isSubEvent = event.isTimer || event.isTimeLog || event.isOutsideApp;
+  
+  if (isSubEvent && event.parentEventId) {
     const parentEvent = EventService.getEventById(event.parentEventId);
     if (!parentEvent) return;
     
@@ -705,7 +716,9 @@ const handleTimerAction = async (action: 'start' | 'pause' | 'resume' | 'stop' |
       // ▶️ 为当前事件启动新的 Timer
       
       // 🆕 特殊处理：独立 Timer 事件的二次计时
-      if (event.isTimer && !event.parentEventId && event.segments && event.segments.length > 0) {
+      // 检查是否为任何类型的子事件
+      const isSubEvent = event.isTimer || event.isTimeLog || event.isOutsideApp;
+      if (isSubEvent && !event.parentEventId && event.segments && event.segments.length > 0) {
         // 检测到这是独立 Timer 的二次计时，自动升级为父子结构
         
         // Step 1: 创建父事件（继承原 Timer 的所有元数据）
@@ -780,7 +793,7 @@ const handleTimerAction = async (action: 'start' | 'pause' | 'resume' | 'stop' |
 // 检测条件
 const shouldUpgradeToParentChild = (event: Event): boolean => {
   return (
-    event.isTimer === true &&           // 是 Timer 事件
+    (event.isTimer === true || event.isTimeLog === true || event.isOutsideApp === true) &&  // 是子事件
     event.parentEventId == null &&      // 无父事件（独立 Timer）
     event.segments &&                   // 已有计时记录
     event.segments.length > 0           // 至少有一次完整计时
@@ -1181,8 +1194,8 @@ function shouldShowPlanSection(event: Event): boolean {
   return true;
   
   // 说明：
-  // - Timer 子事件（isTimer = true + parentEventId 存在）→ **显示父事件的计划安排**
-  // - 独立 Timer 事件（isTimer = true + 无 parentEventId）→ **不显示**
+  // - 子事件（isTimer/isTimeLog/isOutsideApp = true + parentEventId 存在）→ **显示父事件的计划安排**
+  // - 独立子事件（isTimer/isTimeLog/isOutsideApp = true + 无 parentEventId）→ **不显示**
   // - Remote 事件（microsoftEventId 存在）→ 显示
   // - Plan 页面创建（isPlan = true）→ 显示
   // - TimeCalendar 日历区域直接创建（isTimeCalendar = true）→ 显示
@@ -7689,6 +7702,36 @@ interface TimerChildEvent {
   remarkableSource: true;      // ReMarkable 创建
   tags: string[];              // 继承父事件的标签
 }
+
+/**
+ * 🆕 子事件类型标识
+ * 
+ * 用于区分不同类型的子事件（继承 ParentEvent 的 Actual 配置）
+ */
+interface Event {
+  /**
+   * 是否为 Timer 子事件
+   * 系统自动创建（用户点击开始/停止 Timer）
+   */
+  isTimer?: boolean;
+  
+  /**
+   * 是否为 TimeLog 子事件
+   * 用户随手记录的笔记（会议纪要、思考、发现等）
+   */
+  isTimeLog?: boolean;
+  
+  /**
+   * 是否为 OutsideApp 子事件
+   * 系统自动记录用户在工作期间使用的应用、录屏、音乐等
+   */
+  isOutsideApp?: boolean;
+  
+  /**
+   * 事件类型（用于日历同步）
+   */
+  type?: 'parent' | 'timer' | 'timelog' | 'outsideapp' | 'event' | 'task';
+}
 ```
 
 ---
@@ -8213,7 +8256,8 @@ sequenceDiagram
    ```typescript
    const handleFieldChange = async (field: string, value: any) => {
      // 🔍 判断：当且仅当 isTimer = true 时，才同步到父事件
-     if (event.isTimer === true && event.parentEventId) {
+     const isSubEvent = event.isTimer || event.isTimeLog || event.isOutsideApp;
+     if (isSubEvent && event.parentEventId) {
        // 共享字段 → 保存到父事件
        if (['title', 'tags', 'attendees', 'startTime', 'endTime', 'location', 'calendarId'].includes(field)) {
          await EventService.update(event.parentEventId, { [field]: value });

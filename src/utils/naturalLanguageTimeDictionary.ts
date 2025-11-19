@@ -1769,12 +1769,90 @@ export function parseNaturalLanguage(input: string, referenceDate: Date = new Da
     }
   }
   
-  // 1. 尝试匹配精确时间点（大后天、月底、eom等）
+  // 1. 尝试匹配精确时间点 + 精确时间（如"下周三9点"、"明天8点半"）
   // 🔧 修复：按词条长度从长到短排序，优先匹配更具体的词条（如"下周五"优先于"下周"）
   const sortedPointEntries = Object.entries(POINT_IN_TIME_DICTIONARY).sort((a, b) => b[0].length - a[0].length);
   for (const [pointKey, pointFunc] of sortedPointEntries) {
     if (trimmedInput === pointKey.toLowerCase() || trimmedInput.includes(pointKey.toLowerCase())) {
       const pointInTime = pointFunc(referenceDate);
+      
+      // 🆕 检查是否还包含精确时间点（如"9点"、"8点半"、"10:30"）  
+      // 支持：数字+点、数字+点半、数字:数字、数字点数字分
+      // 🔧 修复：先移除已匹配的日期部分，再匹配时间
+      const timeOnlyInput = trimmedInput.replace(pointKey.toLowerCase(), '').trim();
+      const exactTimePattern = /^([0-9零一二三四五六七八九十百千万]+)(?:[：:]([0-9零一二三四五六七八九十百千万]+)|点(?:半|一刻|三刻|([0-9零一二三四五六七八九十百千万]+)分)?)$/;
+      const exactTimeMatch = timeOnlyInput.match(exactTimePattern);
+      
+      if (exactTimeMatch) {
+        const [fullMatch, hourStr, colonMinute, dotMinute] = exactTimeMatch;
+        
+        // 转换中文数字到阿拉伯数字
+        let hour = parseChineseNumber(hourStr);
+        let minute = 0;
+        
+        // 解析分钟（优先检测口语表达）
+        if (fullMatch.includes('点半')) {
+          minute = 30;
+        } else if (fullMatch.includes('一刻')) {
+          minute = 15;
+        } else if (fullMatch.includes('三刻')) {
+          minute = 45;
+        } else if (colonMinute) {
+          minute = parseChineseNumber(colonMinute);
+        } else if (dotMinute) {
+          minute = parseChineseNumber(dotMinute);
+        }
+        
+        // 验证时间有效性
+        if (hour >= 0 && hour < 24 && minute >= 0 && minute < 60) {
+          dbg('dict', '🎯 检测到精确日期+精确时间组合', { 
+            日期: pointKey,
+            原始输入: trimmedInput,
+            时间部分: timeOnlyInput,
+            正则匹配结果: exactTimeMatch,
+            hourStr: hourStr,
+            colonMinute: colonMinute,
+            dotMinute: dotMinute,
+            fullMatch: fullMatch,
+            原始小时: parseChineseNumber(hourStr),
+            小时: hour, 
+            分钟: minute
+          });
+          
+          // 🔧 检测是否是截止时间
+          const timeName = fullMatch.includes('点半') ? `${hour}点半` : 
+                          fullMatch.includes('一刻') ? `${hour}点一刻` :
+                          fullMatch.includes('三刻') ? `${hour}点三刻` :
+                          minute > 0 ? `${hour}:${minute.toString().padStart(2, '0')}` : `${hour}点`;
+          
+          return {
+            pointInTime,
+            timePeriod: isDueTime ? {
+              // 截止时间：只有结束时间
+              name: timeName,
+              startHour: 0,
+              startMinute: 0,
+              endHour: hour,
+              endMinute: minute,
+              isFuzzyTime: false,
+              timeType: 'due'
+            } : {
+              // 开始时间：只有开始时间
+              name: timeName,
+              startHour: hour,
+              startMinute: minute,
+              endHour: 0,
+              endMinute: 0,
+              isFuzzyTime: false,
+              timeType: 'start'
+            },
+            timeType: isDueTime ? 'due' : 'start',
+            matched: true
+          };
+        }
+      }
+      
+      // 没有匹配到时间，只返回日期
       return {
         pointInTime,
         matched: true

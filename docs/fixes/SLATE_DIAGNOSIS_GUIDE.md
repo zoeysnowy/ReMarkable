@@ -36,6 +36,13 @@ if (result.length === 0 && items.length > 0) {
   console.error('🔴 [诊断] editorItems 为空但 items 有数据！', {
     items数量: items.length,
     pendingEmptyItems数量: pendingEmptyItems.size,
+    // 🆕 新增：检查pendingEmptyItems的详细内容
+    pendingEmptyItems详情: Array.from(pendingEmptyItems.entries()).map(([id, item]) => ({
+      id: id.substring(0, 20),
+      title: item.title?.substring(0, 15) || '空',
+      hasContent: !!(item.title?.trim() || item.content?.trim()),
+      创建时间: item.createdAt
+    })),
     allItems数量: allItems.length,
     过滤后数量: result.length,
     items示例: [...]

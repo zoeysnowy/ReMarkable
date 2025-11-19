@@ -9,6 +9,80 @@
 
 ---
 
+## 🎉 v2.1 ID分配与状态管理优化 (2025-11-19)
+
+### 最新优化
+
+**问题**: 事件创建时间插入失败，ID分配时机不当，pendingEmptyItems管理不清晰
+**影响**: 新建事件无法立即插入时间，用户体验下降，内存可能泄漏
+**状态**: ✅ 已优化并完成测试验证
+
+### 核心改进
+
+#### 1. 即时ID分配机制（与UnifiedSlateEditor协同）
+```typescript
+// PlanManager.tsx - onFocus 处理优化
+onFocus={(lineId) => {
+  const baseId = lineId.replace('-desc', '');
+  const matchedItem = editorItems.find(item => item.id === baseId);
+  
+  if (!matchedItem) {
+    // 🆕 用户激活新行时，立即创建 pendingEmptyItems
+    const existsInPending = pendingEmptyItems.has(baseId);
+    const existsInItems = items.some(item => item.id === baseId);
+    
+    if (!existsInPending && !existsInItems) {
+      const newPendingItem = createEmptyEvent(baseId);
+      setPendingEmptyItems(prev => new Map(prev).set(baseId, newPendingItem));
+      dbg('plan', '🆕 用户激活新行，创建 pendingEmptyItems', { lineId: baseId });
+    }
+  }
+}}
+```
+
+#### 2. 智能状态转换
+```typescript
+// 明确的转换时机：用户添加任何内容时立即转移
+if (wasPending && hasContent) {
+  // 从 pendingEmptyItems 移除 → 添加到 items 数组 → EventService保存
+  setPendingEmptyItems(prev => {
+    const next = new Map(prev);
+    next.delete(titleLine.id);
+    return next;
+  });
+  setItems(prev => [...prev, newItem]);
+  onSave(newItem);
+}
+```
+
+#### 3. 自动清理机制
+```typescript
+// 定期清理超过5分钟的空行，防止内存泄漏
+useEffect(() => {
+  const cleanupTimer = setInterval(() => {
+    setPendingEmptyItems(prev => {
+      const next = new Map(prev);
+      for (const [id, item] of prev.entries()) {
+        const isEmpty = (!item.title?.trim() && !item.content?.trim() && ...);
+        const isOld = now - createdTime > 5 * 60 * 1000; // 5分钟
+        if (isEmpty && isOld) {
+          next.delete(id);
+        }
+      }
+      return next;
+    });
+  }, 60000);
+}, []);
+```
+
+### 解决的问题
+- ✅ **时间插入BUG修复**: 新事件立即可用于时间插入
+- ✅ **即时响应**: 用户激活行时立即分配ID
+- ✅ **内存管理**: 自动清理超时空行
+- ✅ **状态一致性**: 统一的ID查找逻辑
+
+---
+
 ## 🎉 v2.0 循环更新防护机制 (2025-11-19)
 
 ### 重大修复
@@ -84,23 +158,13 @@ const isEmpty = (
 清理完成: 20/20 事件删除成功
 ```
 
----
+### 核心改进摘要
 
-## 🆕 v1.9 模块化重构 - 职责分离 (2025-11-14)
-
-### 重构目标
-
-**核心原则**：PlanManager 应当**只负责信息传输**，不直接操作编辑器
-
-### 重构内容
-
-#### 1. 文本格式化逻辑迁移
-
-**之前**：PlanManager 直接操作 Slate API
-```typescript
-// ❌ PlanManager.tsx (~100 lines)
-import { Editor, Transforms, Element } from 'slate';
-import { ReactEditor } from 'slate-react';
+- **即时ID分配**: 用户激洿行时立即创建pendingEmptyItems
+- **统一查找**: 支持items和pendingEmptyItems的统一ID查找
+- **状态转换**: hasContent=true时立即从pending转为正式事件
+- **自动清理**: 5分钟过期空行自动清理机制
+- **时间插入**: 修复新事件无法立即插入时间的BUG} from 'slate-react';
 
 const handleTextFormat = (command: string) => {
   const editor = unifiedEditorRef.current;
@@ -843,6 +907,14 @@ export interface Event {
   isTask?: boolean;                // 📋 是否为任务（影响时间显示逻辑）
   isFavorite?: boolean;            // ⭐ 是否收藏（用于左侧边栏收藏筛选）
   
+  // === 🎯 事件类型标记（用于控制显示样式和过滤逻辑）===
+  isTimer?: boolean;               // ⏱️ 标记为计时器事件
+  isTimeLog?: boolean;             // 📊 标记为纯系统时间日志事件（如自动记录的活动轨迹）
+  isOutsideApp?: boolean;          // 📱 标记为外部应用数据（如听歌记录、录屏等）
+  isDeadline?: boolean;            // ⏰ 标记为截止日期事件
+  isPlan?: boolean;                // 📋 标记为计划页面事件
+  isTimeCalendar?: boolean;        // 📅 标记为 TimeCalendar 页面创建的事件
+  
   // === Event 专用字段 ===
   start?: string;                  // ⏰ 开始时间（本地时间格式，如 '2025-01-15T14:30:00'）
   end?: string;                    // ⏰ 结束时间（本地时间格式，如 '2025-01-15T16:30:00'）
@@ -923,6 +995,150 @@ const newItem: Event = {
 2. ✅ **灵活性**：支持纯待办事项（无时间）和日程事件（有时间）两种模式
 3. ✅ **无缝转换**：添加时间后自动从 Task Bar 移动到时间轴
 4. ✅ **避免时区问题**：使用 `formatTimeForStorage` 而非 ISO 格式
+
+---
+
+## 2.4 Plan页面事件显示和过滤逻辑 (v2.1 优化)
+
+### 2.4.1 数据来源和过滤规则
+
+**数据加载**: PlanManager 从 EventService.getAllEvents() 获取所有事件，然后应用以下过滤规则:
+
+```typescript
+const filtered = allEvents.filter((event: Event) => {
+  if (!event.isPlan) return false;
+  
+  // 🔧 精确过滤：只排除系统生成的子事件，保留用户计划分项
+  if (event.parentEventId) {
+    // 如果是子事件，检查是否为需要排除的系统类型
+    if (event.isTimer || event.isTimeLog || event.isOutsideApp) {
+      return false; // 排除：计时器子事件、时间日志、外部应用数据或纯粹的用户日志笔记
+    }
+    // 其他子事件（用户创建的计划分项）保留显示
+  }
+  
+  if (event.isTimeCalendar) {
+    if (event.endTime) {
+      const endTime = new Date(event.endTime);
+      return now < endTime;
+    }
+    return false; // 没有endTime的TimeCalendar事件视为已过期
+  }
+  return true;
+});
+```
+
+### 2.4.2 事件类型分类表
+
+| 事件类型 | 字段标识 | 是否显示 | 说明 |
+|---------|----------|----------|------|
+| **用户计划** | `isPlan: true` | ✅ 显示 | 用户在Plan页面创建的正常计划事件 |
+| **计划分项** | `isPlan: true, parentEventId: 存在` | ✅ 显示 | 用户创建的子任务/分项 |
+| **计时器子事件** | `isTimer: true, parentEventId: 存在` | ❌ 隐藏 | 系统自动生成的计时记录 |
+| **时间日志** | `isTimeLog: true, parentEventId: 存在` | ❌ 隐藏 | 系统自动记录的活动轨迹或纯粹的用户日志笔记 |
+| **外部应用数据** | `isOutsideApp: true, parentEventId: 存在` | ❌ 隐藏 | 外部应用同步的数据（音乐、录屏等） |
+| **过期TimeCalendar** | `isTimeCalendar: true, endTime < now` | ❌ 隐藏 | 已过期的TimeCalendar事件 |
+
+### 2.4.3 新增事件类型字段定义
+
+#### isTimeLog
+```typescript
+isTimeLog?: boolean; // 标记为纯系统时间日志事件（如自动记录的活动轨迹）
+```
+- **用途**: 标识系统自动生成的时间活动记录或纯粹的用户日志笔记
+- **特点**: 不需要用户干预，纯记录性质，不是actionable的计划任务
+- **在Plan页面**: 自动隐藏，不干扰用户计划管理
+- **示例**: 自动记录的工作时间轨迹、应用使用统计、系统活动日志、用户的碎片化日志笔记
+
+#### isOutsideApp  
+```typescript
+isOutsideApp?: boolean; // 标记为外部应用数据（如听歌记录、录屏等）
+```
+- **用途**: 标识从外部应用同步的数据
+- **示例**: Spotify听歌记录、录屏软件活动记录、其他应用使用数据
+- **在Plan页面**: 自动隐藏，避免干扰用户主动计划
+- **数据特征**: 通常具有外部应用的特定格式和元数据
+
+### 2.4.4 过滤逻辑的关键优化
+
+#### 修改前（v2.0及之前）
+```typescript
+// 🚨 问题：简单粗暴排除所有子事件
+if (event.parentEventId) return false;
+```
+**问题**: 用户创建的计划分项（子任务）也被误删，导致层级结构丢失
+
+#### 修改后（v2.1优化）
+```typescript
+// ✅ 精确识别：只排除系统类型的子事件
+if (event.parentEventId) {
+  if (event.isTimer || event.isTimeLog || event.isOutsideApp) {
+    return false; // 只排除系统生成的子事件或纯粹的用户日志笔记
+  }
+  // 用户创建的计划分项继续显示
+}
+```
+**优势**: 保留用户手动创建的子任务，提升计划管理的层级结构完整性
+
+### 2.4.5 兼容性说明
+
+#### 向后兼容
+- 现有事件如果没有新字段，默认会显示在Plan页面
+- 只有明确标记为系统类型的子事件才会被隐藏
+- 用户手动创建的所有事件（包括分项）都会保留显示
+
+#### 数据迁移
+- 现有数据不需要迁移
+- 新功能开发时需要正确设置事件类型标识
+- 建议在创建系统生成事件时明确设置对应的类型标识
+
+### 2.4.6 最佳实践
+
+#### 事件创建时的标识设置
+```typescript
+// ✅ 用户计划事件
+const userPlan = {
+  isPlan: true,
+  isTask: true,
+  // 不设置 isTimer, isTimeLog, isOutsideApp
+};
+
+// ✅ 用户计划分项
+const userSubTask = {
+  isPlan: true,
+  isTask: true,
+  parentEventId: 'parent-task-id',
+  // 不设置系统类型标识
+};
+
+// ❌ 系统计时器子事件（Plan页面自动隐藏）
+const timerSubEvent = {
+  isPlan: true, // 可能继承自父事件
+  isTimer: true,
+  parentEventId: 'parent-task-id',
+};
+
+// ❌ 外部应用数据（Plan页面自动隐藏）
+const spotifyRecord = {
+  isPlan: false, // 通常不是计划
+  isOutsideApp: true,
+  parentEventId: 'music-session-id',
+};
+```
+
+#### 调试建议
+```typescript
+// 在浏览器控制台检查过滤结果
+const allEvents = EventService.getAllEvents();
+const planEvents = allEvents.filter(event => {
+  if (!event.isPlan) return false;
+  if (event.parentEventId && (event.isTimer || event.isTimeLog || event.isOutsideApp)) {
+    return false;
+  }
+  return true;
+});
+console.log('Plan页面显示的事件:', planEvents);
+```
 
 ---
 

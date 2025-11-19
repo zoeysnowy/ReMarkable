@@ -1076,7 +1076,13 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
           setScrollTrigger(prev => prev + 1);
           setSelectedQuickBtn(null);
           setCurrentMonth(point.date);
-          return;
+          
+          // 🔧 修复：如果同时有 timePeriod（如"下周三9点"），继续处理时间部分
+          if (customParsed.timePeriod) {
+            // 直接跳到时间段处理逻辑，不要 return
+          } else {
+            return;
+          }
         }
         
         // 情况2: 日期范围 ± 时间段（如"周末"、"周末上午"、"下周二中午12点"）
@@ -1096,6 +1102,12 @@ const UnifiedDateTimePicker: React.FC<UnifiedDateTimePickerProps> = ({
         if (customParsed.timePeriod) {
           // 🆕 v2.7.4: 根据 timeType 决定设置哪个时间字段
           const timeType = customParsed.timePeriod.timeType || customParsed.timeType || 'start';
+          
+          dbg('picker', '🔧 准备设置时间段', {
+            timePeriod: customParsed.timePeriod,
+            timeType: timeType,
+            isFuzzyTime: customParsed.timePeriod.isFuzzyTime
+          });
           
           if (timeType === 'due') {
             // 截止时间：只设置结束时间
