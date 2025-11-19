@@ -17,6 +17,7 @@ import { formatDateDisplay } from '../utils/dateParser';
 import { EventEditModal } from './EventEditModal';
 import { EventHub } from '../services/EventHub'; // 🎯 使用 EventHub 而不是 EventService
 import { EventService } from '../services/EventService'; // 🔧 仅用于查询（getEventById）
+import { EventHistoryService } from '../services/EventHistoryService'; // 🆕 用于事件历史快照
 import { generateEventId } from '../utils/calendarUtils';
 import { formatTimeForStorage, parseLocalTimeString } from '../utils/timeUtils';
 import { icons } from '../assets/icons';
@@ -183,8 +184,7 @@ const PlanItemTimeDisplay = React.memo<{
     startTimeStr,
     endTimeStr,
     isAllDay ?? false,
-    dueDateStr,
-    displayHint
+    dueDateStr
   );
 
   // 🎨 统一的渲染组件
@@ -325,10 +325,22 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     
     const filtered = allEvents.filter((event: Event) => {
       if (!event.isPlan) return false;
-      if (event.parentEventId) return false;
+      
+      // 🔧 精确过滤：只排除系统生成的子事件，保留用户计划分项
+      if (event.parentEventId) {
+        // 如果是子事件，检查是否为需要排除的系统类型
+        if (event.isTimer || event.isTimeLog || event.isOutsideApp) {
+          return false; // 排除：计时器子事件、时间日志、外部应用数据或纯粹的用户日志笔记
+        }
+        // 其他子事件（用户创建的计划分项）保留显示
+      }
+      
       if (event.isTimeCalendar) {
-        const endTime = new Date(event.endTime);
-        return now < endTime;
+        if (event.endTime) {
+          const endTime = new Date(event.endTime);
+          return now < endTime;
+        }
+        return false; // 没有endTime的TimeCalendar事件视为已过期
       }
       return true;
     });
@@ -397,6 +409,19 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   
   // 🆕 保存当前聚焦行的 isTask 状态
   const [currentIsTask, setCurrentIsTask] = useState<boolean>(false);
+  
+  // 🆕 ContentSelectionPanel 状态管理
+  const [dateRange, setDateRange] = useState<{start: Date, end: Date}>(() => {
+    const today = new Date();
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - today.getDay()); // 本周开始
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6); // 本周结束
+    return { start: weekStart, end: weekEnd };
+  });
+  const [activeFilter, setActiveFilter] = useState<'tags' | 'tasks' | 'favorites' | 'new'>('tags');
+  const [hiddenTags, setHiddenTags] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
   
   // 避免重复插入同一标签的防抖标记（同一行同一标签在短时间内仅插入一次）
   const lastTagInsertRef = useRef<{ lineId: string; tagId: string; time: number } | null>(null);
@@ -528,8 +553,6 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     menuItemCount: 7, // 🆕 menu_floatingbar 有 7 个菜单项：tag, emoji, dateRange, priority, color, addTask, bullet；text_floatingbar 有 6 个菜单项
     onMenuSelect: (menuIndex: number) => {
       setActivePickerIndex(menuIndex);
-      // 延迟重置，确保 HeadlessFloatingToolbar 的 useEffect 能接收到变化
-      setTimeout(() => setActivePickerIndex(null), 100);
     },
   });
 
@@ -894,6 +917,46 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     }
   }, [items, itemsMap, onSave, onDelete]);
 
+  // 🆕 定期清理空的 pendingEmptyItems（超过5分钟未填充内容的空行）
+  useEffect(() => {
+    const cleanupTimer = setInterval(() => {
+      const now = Date.now();
+      setPendingEmptyItems(prev => {
+        const next = new Map(prev);
+        let cleanedCount = 0;
+        
+        for (const [id, item] of prev.entries()) {
+          // 检查是否为完全空白的事件
+          const isEmpty = (
+            !item.title?.trim() && 
+            !item.content?.trim() && 
+            !item.description?.trim() &&
+            !item.startTime &&
+            !item.endTime &&
+            !item.dueDate
+          );
+          
+          // 检查创建时间是否超过5分钟
+          const createdTime = new Date(item.createdAt || 0).getTime();
+          const isOld = now - createdTime > 5 * 60 * 1000; // 5分钟
+          
+          if (isEmpty && isOld) {
+            next.delete(id);
+            cleanedCount++;
+          }
+        }
+        
+        if (cleanedCount > 0) {
+          dbg('plan', '🧹 清理过期空行', { cleanedCount, remainingCount: next.size });
+        }
+        
+        return next;
+      });
+    }, 60000); // 每分钟检查一次
+    
+    return () => clearInterval(cleanupTimer);
+  }, []);
+
   // 🆕 v1.8: 立即状态同步（不防抖）- 用于更新 UI 状态
   const immediateStateSync = useCallback((updatedItems: any[]) => {
     // 🎯 目标：立即更新 pendingEmptyItems，让勾选框立即显示
@@ -973,10 +1036,74 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     }, 300);
   }, [immediateStateSync, executeBatchUpdate]);
 
+  // 🆕 生成事件变更快照
+  const generateEventSnapshot = useCallback(() => {
+    try {
+      // 从EventHistoryService获取指定时间范围的历史记录
+      const { EventHistoryService } = require('../services/EventHistoryService');
+      
+      const snapshot = EventHistoryService.getHistoryInDateRange(
+        dateRange.start.toISOString(),
+        dateRange.end.toISOString()
+      );
+      
+      return {
+        created: snapshot.filter((log: any) => log.operation === 'create').length,
+        updated: snapshot.filter((log: any) => log.operation === 'update').length,
+        completed: snapshot.filter((log: any) => 
+          log.operation === 'update' && 
+          log.changes?.some((change: any) => 
+            change.field === 'isCompleted' && 
+            change.after === true
+          )
+        ).length,
+        deleted: snapshot.filter((log: any) => log.operation === 'delete').length,
+        details: snapshot
+      };
+    } catch (error) {
+      console.warn('[PlanManager] EventHistoryService not available, using fallback');
+      return {
+        created: 0, updated: 0, completed: 0, deleted: 0, details: []
+      };
+    }
+  }, [dateRange]);
+  
+  // 🆕 过滤后的事件列表
+  const filteredItems = useMemo(() => {
+    let result = [...items, ...Array.from(pendingEmptyItems.values())];
+    
+    // 应用标签隐藏过滤
+    if (hiddenTags.size > 0) {
+      result = result.filter(item => {
+        const itemTags = item.tags || [];
+        return !itemTags.some(tag => hiddenTags.has(tag));
+      });
+    }
+    
+    // 应用日期范围过滤
+    result = result.filter(item => {
+      if (!item.createdAt) return true;
+      const itemDate = new Date(item.createdAt);
+      return itemDate >= dateRange.start && itemDate <= dateRange.end;
+    });
+    
+    // 应用搜索过滤
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(item => 
+        item.title?.toLowerCase().includes(query) ||
+        item.description?.toLowerCase().includes(query) ||
+        item.content?.toLowerCase().includes(query)
+      );
+    }
+    
+    return result;
+  }, [items, pendingEmptyItems, hiddenTags, dateRange, searchQuery]);
+  
   // 将 Event[] 转换为 FreeFormLine<Event>[]
   // ✅ 重构: 直接准备 Event[] 给 UnifiedSlateEditor，移除 FreeFormLine 中间层
   const editorItems = useMemo(() => {
-    const allItems = [...items, ...Array.from(pendingEmptyItems.values())];
+    const allItems = filteredItems;
     
     // 排序确保新建行按期望顺序显示
     const result = allItems
@@ -1157,20 +1284,23 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         changedItems.push(newItem);
         
         if (wasPending && hasContent) {
-          // 从 pending 转为正式：移除 pending
+          // 🔥 从 pending 转为正式：移除 pending，添加到 changedItems
           setPendingEmptyItems(prev => {
             const next = new Map(prev);
             next.delete(titleLine.id);
             return next;
           });
+          dbg('plan', '✅ 空行有内容，从 pending 转为正式事件', { id: titleLine.id, title: newItem.title?.substring(0, 20) });
         } else if (wasPending && !hasContent) {
-          // 仍然是空行：保持在 pending
+          // 🔧 仍然是空行：更新 pending 中的数据但不转为正式
           setPendingEmptyItems(prev => new Map(prev).set(titleLine.id, newItem));
+          dbg('plan', '📝 更新空行 pending 数据', { id: titleLine.id });
         } else if (!wasPending && hasContent) {
-          // 直接创建有内容的新 item（比如粘贴文本）
-          // 不再在这里调用 onSave，等批量更新
+          // 🆕 直接创建有内容的新 item（比如粘贴文本）
+          dbg('plan', '🚀 直接创建有内容的新事件', { id: titleLine.id, title: newItem.title?.substring(0, 20) });
         } else {
-          // 新空行：添加到 pending
+          // ⚠️ 这种情况理论上不应该发生，因为用户激活时已经创建了 pending
+          dbg('plan', '⚠️ 意外情况：新空行但未在 pending 中', { id: titleLine.id });
           setPendingEmptyItems(prev => new Map(prev).set(titleLine.id, newItem));
         }
       }
@@ -1178,6 +1308,13 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     
     // 🔧 批量更新：只更新真正变化的 item
     if (changedItems.length > 0) {
+      // 🔥 [FIX] 立即更新本地 items 状态，避免时间插入时找不到事件
+      const newItems = changedItems.filter(item => !items.some(existing => existing.id === item.id));
+      if (newItems.length > 0) {
+        setItems(prev => [...prev, ...newItems]);
+        dbg('plan', '🆕 立即添加新事件到本地状态', { newItemIds: newItems.map(i => i.id) });
+      }
+      
       // 批量保存
       changedItems.forEach(item => {
         onSave(item);
@@ -1375,17 +1512,42 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     <div className="plan-manager-container">
       {/* 左侧面板 - 内容选取 */}
       <ContentSelectionPanel
+        dateRange={dateRange}
+        snapshot={generateEventSnapshot()}
+        tags={TagService.getFlatTags()}
+        hiddenTags={hiddenTags}
         onFilterChange={(filter) => {
-          console.log('[PlanManager] Filter changed:', filter);
-          // TODO: 根据 filter 更新显示的事件列表
+          setActiveFilter(filter);
+          console.log('[PlanManager] 切换过滤模式:', filter);
         }}
         onSearchChange={(query) => {
-          console.log('[PlanManager] Search query:', query);
-          // TODO: 实现 NLP 搜索功能
+          setSearchQuery(query);
+          console.log('[PlanManager] 搜索查询:', query);
         }}
         onDateSelect={(date) => {
-          console.log('[PlanManager] Date selected:', date);
-          // TODO: 根据日期过滤事件
+          // 选择单个日期时，设置为该日期的范围
+          const dayStart = new Date(date);
+          dayStart.setHours(0, 0, 0, 0);
+          const dayEnd = new Date(date);
+          dayEnd.setHours(23, 59, 59, 999);
+          setDateRange({ start: dayStart, end: dayEnd });
+          console.log('[PlanManager] 选择日期:', date);
+        }}
+        onDateRangeChange={(start, end) => {
+          setDateRange({ start, end });
+          console.log('[PlanManager] 日期范围变更:', { start, end });
+        }}
+        onTagVisibilityChange={(tagId, visible) => {
+          setHiddenTags(prev => {
+            const next = new Set(prev);
+            if (visible) {
+              next.delete(tagId);
+            } else {
+              next.add(tagId);
+            }
+            return next;
+          });
+          console.log('[PlanManager] 标签可见性变更:', { tagId, visible });
         }}
       />
 
@@ -1427,6 +1589,42 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             const matchedItem = editorItems.find(item => item.id === baseId);
             if (matchedItem) {
               setCurrentIsTask(matchedItem.isTask || false);
+            } else {
+              // 🆕 用户激活新行时，立即创建 pendingEmptyItems
+              const existsInPending = pendingEmptyItems.has(baseId);
+              const existsInItems = items.some(item => item.id === baseId);
+              
+              if (!existsInPending && !existsInItems) {
+                const now = new Date();
+                const nowISO = formatTimeForStorage(now);
+                
+                const newPendingItem: Event = {
+                  id: baseId,
+                  title: '',
+                  content: '',
+                  description: '',
+                  tags: [],
+                  level: 0,
+                  priority: 'medium',
+                  isCompleted: false,
+                  type: 'todo',
+                  isPlan: true,
+                  isTask: true,
+                  isTimeCalendar: false,
+                  remarkableSource: true,
+                  startTime: '',
+                  endTime: '',
+                  isAllDay: false,
+                  createdAt: nowISO,
+                  updatedAt: nowISO,
+                  source: 'local',
+                  syncStatus: 'local-only',
+                } as Event;
+                
+                setPendingEmptyItems(prev => new Map(prev).set(baseId, newPendingItem));
+                dbg('plan', '🆕 用户激活新行，创建 pendingEmptyItems', { lineId: baseId });
+              }
+              setCurrentIsTask(false);
             }
           }}
           onEditorReady={(editorApi) => {
@@ -1462,27 +1660,6 @@ const PlanManager: React.FC<PlanManagerProps> = ({
               setSelectedItemId(eventId);
               setEditingItem(item);
             }
-          }}
-          renderLinePrefix={(element) => {
-            // Placeholder 行特殊处理 - 显示提示文字
-            if (element.metadata?.isPlaceholder || element.eventId === '__placeholder__') {
-              return (
-                <span style={{ 
-                  color: '#9ca3af', 
-                  fontSize: '14px',
-                  userSelect: 'none',
-                  cursor: 'text',
-                }}>
-                  🖱️点击创建新事件 | ⌨️Shift+Enter 添加描述 | Tab/Shift+Tab 层级缩进 | Shift+Alt+↑↓移动所选事件
-                </span>
-              );
-            }
-            // 其他情况交给 EventLineElement 内部处理
-            return undefined;
-          }}
-          renderLineSuffix={(element) => {
-            // 所有后缀渲染交给 EventLineElement 内部处理
-            return undefined;
           }}
         />
       </div>
@@ -1560,7 +1737,13 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         mode={floatingToolbar.mode}
         config={toolbarConfig}
         activePickerIndex={activePickerIndex}
-        eventId={currentFocusedLineId ? (items.find(i => i.id === currentFocusedLineId.replace('-desc',''))?.id) : undefined}
+        onActivePickerIndexConsumed={() => setActivePickerIndex(null)} // 🔑 立即重置
+        eventId={currentFocusedLineId ? (() => {
+          const actualItemId = currentFocusedLineId.replace('-desc','');
+          // 🔧 [FIX] 先在 items 中查找，再检查 pendingEmptyItems
+          const item = items.find(i => i.id === actualItemId) || pendingEmptyItems.get(actualItemId);
+          return item?.id;
+        })() : undefined}
         useTimeHub={true}
         editorMode={currentFocusedMode === 'description' ? 'eventlog' : currentFocusedMode}
         slateEditorRef={unifiedEditorRef}
@@ -1575,7 +1758,11 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             startIso, 
             endIso, 
             focusedLineId: currentFocusedLineId,
-            对应的eventId: currentFocusedLineId ? (items.find(i => i.id === currentFocusedLineId.replace('-desc',''))?.id) : undefined
+            对应的eventId: currentFocusedLineId ? (() => {
+              const actualItemId = currentFocusedLineId.replace('-desc','');
+              const item = items.find(i => i.id === actualItemId) || pendingEmptyItems.get(actualItemId);
+              return item?.id;
+            })() : undefined
           });
           
           const targetId = currentFocusedLineId || '';
@@ -1585,10 +1772,25 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           }
           
           const actualItemId = targetId.replace('-desc','');
-          const item = items.find(i => i.id === actualItemId);
+          let item = items.find(i => i.id === actualItemId);
+
+          // 🔧 [FIX] 如果在 items 中找不到，检查 pendingEmptyItems（新创建的事件）
+          if (!item) {
+            item = pendingEmptyItems.get(actualItemId);
+            if (item) {
+              dbg('picker', '✅ 在 pendingEmptyItems 中找到新创建的事件', { actualItemId, itemTitle: item.title });
+            }
+          }
 
           if (!item) {
-            warn('picker', '⚠️ onTimeApplied: 找不到对应的 item', { targetId, actualItemId });
+            warn('picker', '⚠️ onTimeApplied: 找不到对应的 item', { 
+              targetId, 
+              actualItemId, 
+              itemsCount: items.length, 
+              pendingCount: pendingEmptyItems.size,
+              availableItemIds: items.slice(0, 5).map(i => i.id), // 显示前5个ID用于调试
+              availablePendingIds: Array.from(pendingEmptyItems.keys()).slice(0, 5)
+            });
             return;
           }
 
@@ -1748,7 +1950,13 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           content={
             <div style={{ padding: 0 }}>
               <UnifiedDateTimePicker
-                eventId={(items.find(i => i.id === (pickerTargetItemIdRef.current || currentFocusedLineId || '').replace('-desc',''))?.id) || undefined}
+                eventId={(() => {
+                  const targetId = (pickerTargetItemIdRef.current || currentFocusedLineId || '').replace('-desc','');
+                  if (!targetId) return undefined;
+                  // 🔧 [FIX] 先在 items 中查找，再检查 pendingEmptyItems
+                  const item = items.find(i => i.id === targetId) || pendingEmptyItems.get(targetId);
+                  return item?.id;
+                })()}
                 useTimeHub={true}
                 initialStart={(items.find(i => i.id === (pickerTargetItemIdRef.current || currentFocusedLineId || '').replace('-desc',''))?.startTime) || undefined}
                 initialEnd={(items.find(i => i.id === (pickerTargetItemIdRef.current || currentFocusedLineId || '').replace('-desc',''))?.endTime) || undefined}

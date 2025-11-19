@@ -172,6 +172,8 @@ export interface Event {
   lastLocalChange?: string; // 🔧 修改：使用字符串存储本地时间
   // 🎯 事件类型标记（用于控制显示样式）
   isTimer?: boolean;     // 🆕 添加：标记为计时器事件
+  isTimeLog?: boolean;   // 🆕 添加：标记为纯系统时间日志事件（如自动记录的活动轨迹）
+  isOutsideApp?: boolean; // 🆕 添加：标记为外部应用数据（如听歌记录、录屏等）
   isDeadline?: boolean; // 🆕 添加：标记为截止日期事件
   isTask?: boolean;      // 🆕 添加：标记为任务事件
   isPlan?: boolean;      // 🆕 添加：标记为计划页面事件

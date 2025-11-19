@@ -1601,6 +1601,79 @@ onTimeApplied={(startIso, endIso) => {
 
 ---
 
+## 🐛 重要 Bug 修复记录
+
+### 2025-11-19: textStyle 子菜单状态管理修复
+
+**问题描述**:
+1. 按数字键 5 打开 textStyle 菜单后，菜单立即关闭，只留下定位小三角
+2. 点击 textStyle 菜单内的 textColor/bgColor 按钮后，颜色选择器无法打开，整个 FloatingBar 消失
+
+**根本原因**:
+1. **activePickerIndex useEffect 的依赖数组包含 activePicker**：当 activePicker 变化时，useEffect 重新执行，调用 `onActivePickerIndexConsumed()` 触发父组件重新渲染，导致状态混乱
+2. **Tippy visible 条件不完整**：textStyle 的 Tippy 使用 `visible={activePicker === feature}`，当 activePicker 变为 'textColor' 时，textStyle 菜单被隐藏，导致 textColor 按钮被卸载
+3. **内容渲染条件不匹配**：textStyle 菜单内容使用 `{activePicker === feature && ...}` 条件，当 activePicker 变为 'textColor' 时内容消失
+
+**解决方案**:
+
+**1. 在 activePickerIndex useEffect 开头添加守卫**：
+```typescript
+useEffect(() => {
+  // 守卫：如果 activePickerIndex 为 null，说明没有数字键按下，直接返回
+  if (activePickerIndex === null || activePickerIndex === undefined) {
+    return;
+  }
+  // ... 原有逻辑
+}, [activePickerIndex, effectiveFeatures, mode, activePicker, ...]);
+```
+
+**2. 修复 textStyle Tippy 的 visible 条件**（第 599-602 行）：
+```typescript
+visible={
+  activePicker === feature || 
+  (feature === 'textStyle' && (activePicker === 'textColor' || activePicker === 'bgColor'))
+}
+```
+确保当 activePicker 是 textColor/bgColor 时，**只有 textStyle 的 Tippy** 保持显示，其他按钮（tag, emoji 等）不受影响。
+
+**3. 修复 textStyle 菜单内容渲染条件**（第 586 行）：
+```typescript
+{(activePicker === 'textStyle' || activePicker === 'textColor' || activePicker === 'bgColor') && feature === 'textStyle' && (
+  <div className="text-style-menu">
+    {/* textColor/bgColor 按钮在这里 */}
+  </div>
+)}
+```
+确保当打开颜色选择器时，textStyle 菜单内容（包括按钮）仍然渲染，避免按钮被卸载。
+
+**4. 移除不必要的 setTimeout 延时**：
+- 之前使用 `setTimeout(() => setActivePickerIndex(null), 100)` 尝试延时重置状态
+- 改为使用回调模式：`onActivePickerIndexConsumed={() => setActivePickerIndex(null)}`
+- 确保状态重置在正确的时机执行，避免 race condition
+
+**修复后的完整流程**:
+1. 用户按 5 或点击 textStyle 按钮 → `setActivePicker('textStyle')`
+2. textStyle Tippy 显示（`visible = true`），内容渲染（包括 6 个子按钮）
+3. 用户点击 textColor 按钮 → `setActivePicker('textColor')`
+4. textStyle Tippy **保持显示**（`visible = true`，因为新增的条件满足）
+5. textStyle 菜单内容**保持渲染**（条件改为检查 activePicker 是否为 textStyle/textColor/bgColor）
+6. textColor 的 Tippy 显示颜色选择器（`visible = activePicker === 'textColor'`）
+7. 用户可以正常选择颜色并应用
+
+**技术要点**:
+- **嵌套菜单的状态管理**：父菜单在打开子菜单时需要保持显示和内容渲染
+- **React 状态更新的批处理**：注意 useEffect 的依赖数组，避免不必要的重新执行
+- **Tippy.js 的 visible 控制**：使用受控模式时，需要精确控制每个 Tippy 的显示条件
+- **条件渲染的一致性**：Tippy 的 visible 和内容的渲染条件必须匹配，否则会出现"空 Tippy"（只有小三角没有内容）
+
+**影响范围**:
+- ✅ 修复了 textStyle 菜单键盘快捷键（数字 5）无法打开的问题
+- ✅ 修复了 textColor/bgColor 颜色选择器无法打开的问题
+- ✅ 确保其他按钮（tag, emoji 等）不受影响，不会出现误显示的小三角
+- ✅ 提升了整体的用户体验和交互流畅度
+
+---
+
 ## 🔗 相关文档
 
 - [PlanManager 模块 PRD](./PRD/PLANMANAGER_MODULE_PRD.md)

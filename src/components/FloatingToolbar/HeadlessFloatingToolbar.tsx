@@ -39,14 +39,22 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
   currentTags = [],
   currentIsTask = false,
   activePickerIndex,
+  onActivePickerIndexConsumed, // 🆕 数字键处理完成后的回调
   eventId,
   useTimeHub,
   onTimeApplied,
   editorMode, // 🆕 接收编辑器模式
 }) => {
   const toolbarRef = useRef<HTMLDivElement>(null);
-  const [activePicker, setActivePicker] = useState<string | null>(null);
+  const [activePickerState, setActivePickerState] = useState<string | null>(null);
   const savedSelectionRef = useRef<any>(null); // 🆕 保存选区用于预览
+  
+  // 🔍 Debug: 包装 setActivePicker 以追踪所有调用
+  const setActivePicker = (value: string | null) => {
+    console.log(`[setActivePicker 调用] 🎯 ${activePickerState} → ${value}`, new Error().stack);
+    setActivePickerState(value);
+  };
+  const activePicker = activePickerState;
 
   // 🆕 根据 mode 决定显示的功能集合（提前计算，供 useEffect 使用）
   const menuFloatingbarFeaturesBase: ToolbarFeatureType[] = ['tag', 'emoji', 'dateRange', 'addTask', 'textStyle'];
@@ -76,6 +84,15 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
 
   // 监听 activePickerIndex 变化，通过数字键激活对应的 picker
   useEffect(() => {
+    console.log(`[数字键 useEffect] activePickerIndex: ${activePickerIndex}, activePicker: ${activePicker}`);
+    
+    // 🔑 守卫：如果 activePickerIndex 为 null，说明没有数字键按下，直接返回
+    // 这样可以避免 activePicker 变化时触发不必要的逻辑
+    if (activePickerIndex === null || activePickerIndex === undefined) {
+      console.log('[数字键 useEffect] ⏭️ activePickerIndex 为 null，跳过执行');
+      return;
+    }
+    
     if (activePickerIndex !== null && activePickerIndex !== undefined) {
       // 🔧 判断当前层级：如果有 activePicker，说明在子菜单中
       if (activePicker === 'textStyle') {
@@ -86,7 +103,10 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
         if (feature) {
           
           const btnConfig = textFeatureConfig[feature as keyof typeof textFeatureConfig];
-          if (!btnConfig) return;
+          if (!btnConfig) {
+            onActivePickerIndexConsumed?.(); // 🔧 立即通知父组件重置
+            return;
+          }
           
           // 判断是否有子菜单（textColor/bgColor 有颜色选择器）
           if (feature === 'textColor' || feature === 'bgColor') {
@@ -136,18 +156,38 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
           }
         }
       }
+      
+      // 🔑 关键：立即通知父组件重置 activePickerIndex，避免重复触发
+      onActivePickerIndexConsumed?.();
     }
-  }, [activePickerIndex, effectiveFeatures, mode, activePicker, onTextFormat, onRequestClose, onTaskToggle, currentIsTask]);
+  }, [activePickerIndex, effectiveFeatures, mode, activePicker, onTextFormat, onRequestClose, onTaskToggle, currentIsTask, onActivePickerIndexConsumed]);
 
   // 🆕 FloatingBar 重新打开时重置 activePicker（避免显示上次的 Picker 状态）
+  const prevShowRef = useRef(false);
   useEffect(() => {
-    if (position.show) {
-      setActivePicker(null); // 🔧 每次打开时重置
+    console.log('[FloatingBar useEffect] 触发检查', {
+      'position.show': position.show,
+      'prevShowRef.current': prevShowRef.current,
+      'activePicker当前值': activePicker,
+      'position对象': position
+    });
+    
+    // 🔑 只在从 false → true 时重置（真正打开时）
+    if (position.show && !prevShowRef.current) {
+      console.log('[FloatingBar useEffect] 🔓 首次打开，重置 activePicker');
+      setActivePicker(null);
+    } else if (position.show && prevShowRef.current) {
+      console.log('[FloatingBar useEffect] 🔄 position 更新但保持打开状态，不重置 activePicker');
+    } else if (!position.show) {
+      console.log('[FloatingBar useEffect] 🔒 FloatingBar 关闭');
     }
+    prevShowRef.current = position.show;
   }, [position.show]);
 
   // 监听 activePicker 变化
   useEffect(() => {
+    console.log(`[activePicker useEffect] 🔄 activePicker 变化: ${activePicker}`);
+    console.log('[activePicker useEffect] 调用堆栈:', new Error().stack);
   }, [activePicker]);
 
   if (!position.show) return null;
@@ -253,7 +293,12 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
             </div>
           }
           visible={activePicker === feature}
-          onClickOutside={() => {
+          onClickOutside={(instance, event) => {
+            // 🔧 检查是否点击了嵌套的 Tippy 内容（textStyle 菜单内的颜色选择器）
+            const target = event.target as HTMLElement;
+            if (target.closest('[data-tippy-root]') || target.closest('.tippy-box')) {
+              return; // 点击的是嵌套的 Tippy，不关闭当前 picker
+            }
             setActivePicker(null);
           }}
           placement="bottom-start"
@@ -269,9 +314,12 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
             className={`headless-toolbar-btn headless-toolbar-text-btn ${
               activePicker === feature ? 'headless-toolbar-btn-active' : ''
             }`}
+            data-submenu-trigger="true"
             onClick={(e) => {
               e.stopPropagation();
-              setActivePicker(activePicker === feature ? null : feature);
+              const newValue = activePicker === feature ? null : feature;
+              console.log(`[textColor/bgColor onClick] 🎨 activePicker: ${activePicker} → ${newValue}, feature: ${feature}`);
+              setActivePicker(newValue);
             }}
           >
             {btnConfig.icon === 'svg' && btnConfig.iconSrc ? (
@@ -535,7 +583,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
             )}
 
             {/* 🆕 textStyle 菜单：显示文本格式化按钮 */}
-            {activePicker === feature && feature === 'textStyle' && (
+            {(activePicker === 'textStyle' || activePicker === 'textColor' || activePicker === 'bgColor') && feature === 'textStyle' && (
               <div className="text-style-menu">
                 <div className="text-style-buttons">
                   {['bold', 'italic', 'strikethrough', 'textColor', 'bgColor', 'clearFormat'].map((textFeature) => (
@@ -548,8 +596,41 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
             )}
           </div>
         }
-        visible={activePicker === feature}
-        onClickOutside={() => setActivePicker(null)}
+        visible={
+          activePicker === feature || 
+          (feature === 'textStyle' && (activePicker === 'textColor' || activePicker === 'bgColor'))
+        }
+        onClickOutside={(instance, event) => {
+          // 🔧 检查是否点击了嵌套的 Tippy 或子菜单触发按钮
+          const target = event.target as HTMLElement;
+          
+          console.log('[textStyle onClickOutside] 🔍', {
+            target: target.tagName,
+            className: target.className,
+            hasSubmenuTrigger: !!target.closest('[data-submenu-trigger]'),
+            hasTippyRoot: !!target.closest('[data-tippy-root]'),
+            hasTippyBox: !!target.closest('.tippy-box'),
+            hasToolbar: !!target.closest('.headless-floating-toolbar'),
+          });
+          
+          // 1. 点击了 Tippy 内容（颜色选择器等），不关闭
+          if (target.closest('[data-tippy-root]') || target.closest('.tippy-box')) {
+            return;
+          }
+          
+          // 2. 点击了子菜单触发按钮（textColor/bgColor），不关闭（允许打开子菜单）
+          if (target.closest('[data-submenu-trigger]')) {
+            return;
+          }
+          
+          // 3. 点击了 FloatingBar 的其他按钮，不关闭（允许切换菜单）
+          if (target.closest('.headless-floating-toolbar')) {
+            return;
+          }
+          
+          // 4. 点击了真正的外部区域，关闭
+          setActivePicker(null);
+        }}
         placement="bottom-start"
         interactive={true}
         offset={[0, 8]}
@@ -564,6 +645,18 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
           style={{ backgroundColor: activePicker === feature ? btnConfig.color : undefined }}
           onClick={(e) => {
             e.stopPropagation();
+            
+            console.log(`[textStyle 主按钮 onClick] 🔔 被触发！当前 activePicker: ${activePicker}, feature: ${feature}`);
+            console.log('[textStyle 主按钮 onClick] 调用堆栈:', new Error().stack);
+            
+            // 🔑 关键：如果 activePicker 已经不是 textStyle，说明子菜单按钮刚刚修改了它
+            // 这种情况下不应该再执行 textStyle 按钮的切换逻辑
+            if (activePicker !== 'textStyle' && activePicker !== null) {
+              console.log(`[textStyle 主按钮 onClick] ⏭️ activePicker 已被子菜单修改为 ${activePicker}，跳过`);
+              return;
+            }
+            
+            console.log(`[textStyle 主按钮 onClick] 切换状态: ${activePicker} → ${activePicker === feature ? null : feature}`);
             setActivePicker(activePicker === feature ? null : feature);
           }}
         >
