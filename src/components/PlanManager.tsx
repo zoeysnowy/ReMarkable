@@ -636,7 +636,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   const floatingToolbar = useFloatingToolbar({
     editorRef: editorContainerRef as React.RefObject<HTMLElement>,
     enabled: true,
-    menuItemCount: 7, // 🆕 最大菜单项数：text_floatingbar 有 7 个菜单项，menu_floatingbar 有 6 个菜单项
+    menuItemCount: 7, // 🆕 最大菜单项数：text_floatingbar 有 7 个菜单项，menu_floatingbar 有 5 个菜单项
     onMenuSelect: (menuIndex: number) => {
       setActivePickerIndex(menuIndex);
     },

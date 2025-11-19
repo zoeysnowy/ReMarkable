@@ -3356,6 +3356,10 @@ interface Event {
     updatedAt?: Date;  
   };
   
+  // 🆕 签到功能字段
+  checked?: string[];              // 签到时间戳数组（ISO格式）
+  unchecked?: string[];            // 取消签到时间戳数组（ISO格式）
+  
   // 其他现有字段
   isTimer?: boolean;
   isDeadline?: boolean;
@@ -5424,7 +5428,8 @@ type HistoryOperation =
   | 'create'        // 创建事件
   | 'update'        // 更新事件
   | 'delete'        // 删除事件（软删除）
-  | 'restore';      // 恢复已删除事件
+  | 'restore'       // 恢复已删除事件
+  | 'checkin';      // 签到/取消签到操作
 
 type HistorySource =
   | 'local-edit'    // 本地用户编辑
@@ -5600,6 +5605,54 @@ export class EventHistoryService {
     console.log(`🔄 [EventHistory] 恢复事件 ${eventId} 到版本 ${historyId}`);
     
     return restoredEvent;
+  }
+  
+  /**
+   * 🆕 记录签到操作
+   * 用于记录事件的签到和取消签到
+   */
+  logCheckin(eventId: string, eventTitle: string, metadata?: Record<string, any>): EventChangeLog {
+    const log: EventChangeLog = {
+      id: this.generateLogId(),
+      eventId,
+      operation: 'checkin',
+      timestamp: formatTimeForStorage(new Date()),
+      source: 'user',
+      metadata
+    };
+
+    this.saveLog(log);
+    console.log(`✅ [EventHistory] 记录签到: ${eventTitle}`, metadata);
+    return log;
+  }
+
+  /**
+   * 🆕 查询签到历史
+   * 获取指定时间范围内的签到记录
+   */
+  queryCheckinHistory(options: {
+    eventId?: string;
+    startTime?: string;
+    endTime?: string;
+  }): EventChangeLog[] {
+    let logs = this.getAllLogs().filter(log => log.operation === 'checkin');
+
+    // 按事件ID过滤
+    if (options.eventId) {
+      logs = logs.filter(log => log.eventId === options.eventId);
+    }
+
+    // 按时间范围过滤
+    if (options.startTime || options.endTime) {
+      logs = logs.filter(log => {
+        const logTime = log.timestamp;
+        if (options.startTime && logTime < options.startTime) return false;
+        if (options.endTime && logTime > options.endTime) return false;
+        return true;
+      });
+    }
+
+    return logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }
   
   /**
@@ -5811,6 +5864,123 @@ class EventService {
       deletedEvent,
       { source: 'local-edit' }
     );
+  }
+  
+  // 🆕 签到功能方法
+  
+  /**
+   * 事件签到 - 记录签到时间戳
+   */
+  static checkIn(eventId: string): { success: boolean; error?: string } {
+    try {
+      const event = this.getEventById(eventId);
+      if (!event) {
+        return { success: false, error: 'Event not found' };
+      }
+
+      const timestamp = new Date().toISOString();
+
+      // 初始化checked数组（如果不存在）
+      if (!event.checked) {
+        event.checked = [];
+      }
+
+      // 添加签到时间戳
+      event.checked.push(timestamp);
+      event.updatedAt = timestamp;
+
+      // 保存到localStorage
+      this.saveEvent(event);
+
+      // 记录事件历史
+      EventHistoryService.logCheckin(eventId, event.title || 'Untitled Event', { 
+        action: 'check-in', 
+        timestamp 
+      });
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  }
+
+  /**
+   * 取消事件签到 - 记录取消签到时间戳
+   */
+  static uncheck(eventId: string): { success: boolean; error?: string } {
+    try {
+      const event = this.getEventById(eventId);
+      if (!event) {
+        return { success: false, error: 'Event not found' };
+      }
+
+      const timestamp = new Date().toISOString();
+
+      // 初始化unchecked数组（如果不存在）
+      if (!event.unchecked) {
+        event.unchecked = [];
+      }
+
+      // 添加取消签到时间戳
+      event.unchecked.push(timestamp);
+      event.updatedAt = timestamp;
+
+      // 保存到localStorage
+      this.saveEvent(event);
+
+      // 记录事件历史
+      EventHistoryService.logCheckin(eventId, event.title || 'Untitled Event', { 
+        action: 'uncheck', 
+        timestamp 
+      });
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  }
+
+  /**
+   * 获取事件的签到状态
+   */
+  static getCheckInStatus(eventId: string): { 
+    isChecked: boolean; 
+    lastCheckIn?: string; 
+    lastUncheck?: string;
+    checkInCount: number;
+    uncheckCount: number;
+  } {
+    const event = this.getEventById(eventId);
+    if (!event) {
+      return { isChecked: false, checkInCount: 0, uncheckCount: 0 };
+    }
+
+    const checked = event.checked || [];
+    const unchecked = event.unchecked || [];
+    
+    // 获取最后的操作时间戳来判断当前状态
+    const lastCheckIn = checked.length > 0 ? checked[checked.length - 1] : undefined;
+    const lastUncheck = unchecked.length > 0 ? unchecked[unchecked.length - 1] : undefined;
+    
+    // 如果都没有操作，默认未签到
+    if (!lastCheckIn && !lastUncheck) {
+      return { 
+        isChecked: false, 
+        checkInCount: checked.length, 
+        uncheckCount: unchecked.length 
+      };
+    }
+    
+    // 比较最后的签到和取消签到时间
+    const isChecked = lastCheckIn && (!lastUncheck || lastCheckIn > lastUncheck);
+
+    return {
+      isChecked,
+      lastCheckIn,
+      lastUncheck,
+      checkInCount: checked.length,
+      uncheckCount: unchecked.length
+    };
   }
 }
 ```

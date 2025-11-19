@@ -3228,11 +3228,11 @@ const renderTaskNode = (node: TaskNode, depth: number) => (
 - 不同行的指示线应尽可能融合，避免视觉杂乱
 
 **颜色规则**（按 Action 类型）：
-- **New（新建）**: 蓝色 `#3B82F6`
-- **Updated（更新）**: 黄色 `#FBBF24`
-- **Done（完成）**: 绿色 `#10B981`
-- **Missed（错过/逾期）**: 红色 `#EF4444`
-- **Deleted（删除）**: 灰色 `#9CA3AF`
+- **New（新建）**: 紫色 `linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)`
+- **Updated（更新）**: 蓝色 `linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)`
+- **Done（完成/签到）**: 绿色 `linear-gradient(135deg, #10b981 0%, #059669 100%)`
+- **Missed（错过/逾期）**: 橙色 `linear-gradient(135deg, #f59e0b 0%, #d97706 100%)`
+- **Deleted（删除）**: 红色 `linear-gradient(135deg, #ef4444 0%, #dc2626 100%)`
 
 **多状态叠加规则**：
 - **单条指示线**：宽度 2px，高度与事件标题对齐（约 20px）
@@ -3247,11 +3247,17 @@ const renderTaskNode = (node: TaskNode, depth: number) => (
   - 避免在每个事件卡片上重复显示文字，减少视觉杂乱
 
 **判断逻辑**：
-- **New**: `createdAt` 在选中时间范围内
-- **Updated**: `updatedAt` 在选中时间范围内且晚于 `createdAt`
-- **Done**: `completedAt` 在选中时间范围内
-- **Missed**: `dueDate` 在选中时间范围内且早于当前时间，但 `isCompleted === false`
-- **Deleted**: `deletedAt` 在选中时间范围内（需要在 `Event` 类型中增加 `deletedAt` 字段）
+- **New**: EventHistoryService中有`create`操作记录在选中时间范围内
+- **Updated**: EventHistoryService中有`update`操作记录在选中时间范围内
+- **Done**: EventHistoryService中有`checkin`操作且`action='check-in'`在选中时间范围内，或当前事件签到状态为已签到
+- **Missed**: 事件有开始时间且已过期，但当前签到状态为未签到
+- **Deleted**: EventHistoryService中有`delete`操作记录在选中时间范围内
+
+**🆕 签到功能集成**：
+- 复选框勾选时自动调用`EventService.checkIn()`记录签到时间戳
+- 取消勾选时自动调用`EventService.uncheck()`记录取消签到时间戳
+- 签到状态通过`EventService.getCheckInStatus()`查询，基于最后操作时间判断
+- 所有签到操作通过EventHistoryService记录，用于状态线计算
 
 **2. 事件标题区域**
 - **事件类型图标**: 

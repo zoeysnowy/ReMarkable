@@ -2085,7 +2085,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap; /* 🔧 强制单行显示 */
 }
 
 .text-style-buttons .headless-toolbar-btn {
@@ -2135,4 +2135,56 @@
     opacity: 1;
     transform: scale(1) translateY(0);
   }
+}
+
+/* 🆕 Emoji Picker 键盘导航样式 */
+.headless-emoji-tippy-content {
+  position: relative;
+}
+
+.emoji-picker-hint {
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #374151;
+  text-align: center;
+  backdrop-filter: blur(10px);
+}
+
+.emoji-picker-hint span {
+  font-weight: 500;
+}
+
+.emoji-mart-emoji:focus,
+.emoji-mart-emoji[data-keyboard-selected="true"] {
+  outline: 2px solid #3b82f6 !important;
+  outline-offset: 2px !important;
+  border-radius: 4px !important;
+  z-index: 10 !important;
+}
+
+/* 确保 emoji picker 容器可以处理键盘焦点 */
+.emoji-mart {
+  outline: none;
+}
+
+.emoji-mart-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.emoji-mart-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.emoji-mart-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.emoji-mart-scroll::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 3px;
 }

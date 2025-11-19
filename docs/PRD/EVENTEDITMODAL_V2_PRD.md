@@ -13,7 +13,16 @@
 > - [TIME_ARCHITECTURE.md](../TIME_ARCHITECTURE.md)
 > - [SLATE_DEVELOPMENT_GUIDE.md](../SLATE_DEVELOPMENT_GUIDE.md)
 
-> **🔥 v2.0.0 最新更新** (2025-11-19):
+> **🔥 v2.0.1 最新更新** (2025-11-20):
+> - ✅ **完整同步机制整合**: 将 CALENDAR_SYNC_SCENARIOS_MATRIX.md 的内容完整整合到 EventEditModal v2 PRD
+> - ✅ **Private 模式支持**: 添加 send-only-private 和 bidirectional-private 模式，参与者不被邀请而作为文本添加到描述
+> - ✅ **独立事件架构**: Plan 和 Actual 永远创建独立的远程事件，使用 syncedPlanEventId 和 syncedActualEventId
+> - ✅ **9种同步场景规范**: 相同日历场景 A1-C2 完整规范，包含事件数量（1+N, 2）和典型用例
+> - ✅ **Private 模式函数**: formatParticipantsToDescription, extractParticipantsFromDescription, syncToRemoteCalendar 等核心函数
+> - ✅ **同步配置类型**: PlanSyncConfig（5种模式）和 ActualSyncConfig（4种模式，不支持 receive-only）
+> - ✅ **技术实现完善**: 更新 SyncModeSelector 组件支持 Private 模式，完善 Event 接口字段定义
+> 
+> **🔥 v2.0.0 历史更新** (2025-11-19):
 > - ✅ **子事件类型扩展**: 支持 Timer/TimeLog/OutsideApp 三种子事件类型
 >   - `isTimer`: 系统自动（用户点击开始/停止 Timer）
 >   - `isTimeLog`: 用户随手记录的笔记（会议纪要、思考、发现等）
@@ -93,7 +102,7 @@
 
 | 功能模块 | 所在区域 | 工作量估算 | 优先级 | 技术文档 |
 |---------|---------|-----------|--------|----------|
-| **日历来源 + 同步机制选择** | 左侧 - 中 Section | 5 天 | P0 | [技术分析](./CALENDAR_SYNC_CONFIG_TECHNICAL_ANALYSIS.md) + [场景矩阵](./CALENDAR_SYNC_SCENARIOS_MATRIX.md) |
+| **日历来源 + 同步机制选择** | 左侧 - 中 Section | 3-4 天 | P0 | ✅ 完整规范化：[场景矩阵](./CALENDAR_SYNC_SCENARIOS_MATRIX.md)（9种场景+Private模式+独立事件架构） |
 | **实际进展数据集成** | 左侧 - 下 Section | 2-3 天 | P0 | - |
 | **UnifiedSlateEditor 集成** | 右侧 - Event Log | 3-4 天 | P0 | - |
 | **Timer 二次计时自动升级** | 左侧 - Timer 按钮 | 2 天 | P2 | - |
@@ -2645,7 +2654,15 @@ docs/
 #### 2.4 来源日历 + 同步机制选择
 
 > **📌 技术分析文档**: [CALENDAR_SYNC_CONFIG_TECHNICAL_ANALYSIS.md](./CALENDAR_SYNC_CONFIG_TECHNICAL_ANALYSIS.md)  
-> **📌 场景矩阵分析**: [CALENDAR_SYNC_SCENARIOS_MATRIX.md](./CALENDAR_SYNC_SCENARIOS_MATRIX.md) - 详细规划相同日历 9 种场景 + Actual 多日历支持
+> **📌 场景矩阵分析**: [CALENDAR_SYNC_SCENARIOS_MATRIX.md](./CALENDAR_SYNC_SCENARIOS_MATRIX.md) - 完整场景矩阵（9种相同日历场景 + Private模式 + 独立事件架构）
+
+**🔑 核心架构原则**:
+
+1. **Plan 和 Actual 永远创建独立的远程事件** - 不共享同一个远程事件ID
+2. **Plan 支持 5 种模式**: receive-only, send-only, send-only-private, bidirectional, bidirectional-private
+3. **Actual 支持 4 种模式**: send-only, send-only-private, bidirectional, bidirectional-private（不支持 receive-only）
+4. **Private 模式机制**: 参与者不被邀请，而是作为文本添加到事件描述中
+5. **远程事件数量**: A1/A2/B1: 1+N个，B2/C1/C2: 2个独立事件，不同日历: 1+M个
 
 **位置**: 【中 Section】- 计划安排
 
@@ -2660,10 +2677,25 @@ import { OutlookIcon, GoogleCalendarIcon, ICloudIcon, SyncIcon } from '@/assets/
 const calendar = availableCalendars.find(cal => cal.id === event.calendarId);
 
 // 事件的同步配置
-type SyncConfig = {
-  mode: 'receive-only' | 'send-only' | 'bidirectional';  // 同步模式
-  targetCalendars: string[];  // 目标日历 ID 列表（实际进展专用）
+type PlanSyncConfig = {
+  mode: 'receive-only' | 'send-only' | 'send-only-private' | 'bidirectional' | 'bidirectional-private';  // 同步模式
+  targetCalendars: string[];  // 目标日历 ID 列表
 };
+
+type ActualSyncConfig = {
+  mode: 'send-only' | 'send-only-private' | 'bidirectional' | 'bidirectional-private';  // 同步模式（不支持 receive-only）
+  targetCalendars: string[];  // 目标日历 ID 列表
+} | null;  // null 表示继承 planSyncConfig
+
+/**
+ * 📌 Private 模式说明：
+ * - send-only-private: 只发送（仅自己），不邀请 participants，将 participants 作为文本添加到 description
+ * - bidirectional-private: 双向同步（仅自己），不邀请 participants，将 participants 作为文本添加到 description
+ * 
+ * 🔑 核心机制：
+ * 普通模式: { attendees: ['alice@company.com'], description: '...' }
+ * Private模式: { attendees: [], description: '📧 参与者：alice@company.com\n\n...' }
+ */
 
 // 获取同步配置（分为计划和实际）
 const planSyncConfig = event.planSyncConfig || { mode: 'receive-only', targetCalendars: [] };
@@ -2771,16 +2803,20 @@ function renderCalendarSourceWithSync(
 function SyncModeSelector({ 
   mode, 
   disabled = false, 
-  onChange 
+  onChange,
+  isActual = false 
 }: { 
-  mode: 'receive-only' | 'send-only' | 'bidirectional';
+  mode: 'receive-only' | 'send-only' | 'send-only-private' | 'bidirectional' | 'bidirectional-private';
   disabled?: boolean;
-  onChange: (mode: 'receive-only' | 'send-only' | 'bidirectional') => void;
+  onChange: (mode: any) => void;
+  isActual?: boolean;  // 是否为 Actual 模式选择器
 }) {
   const modeConfig = {
     'receive-only': { icon: '📥', label: '只接收同步', color: '#4CAF50' },
     'send-only': { icon: '📤', label: '只发送同步', color: '#2196F3' },
-    'bidirectional': { icon: '🔄', label: '双向同步', color: '#FF9800' }
+    'send-only-private': { icon: '📤🔒', label: '只发送（仅自己）', color: '#2196F3' },
+    'bidirectional': { icon: '🔄', label: '双向同步', color: '#FF9800' },
+    'bidirectional-private': { icon: '🔄🔒', label: '双向同步（仅自己）', color: '#FF9800' }
   };
   
   const current = modeConfig[mode];
@@ -4182,6 +4218,41 @@ function formatDuration(ms: number): string {
   line-height: 1.5;
 }
 ```
+
+---
+
+#### 2.4.2 日历同步场景矩阵概览
+
+> **📋 完整场景分析**: 详见 [CALENDAR_SYNC_SCENARIOS_MATRIX.md](./CALENDAR_SYNC_SCENARIOS_MATRIX.md)
+
+**相同日历的 9 种场景**（Plan 和 Actual 选择同一日历时）:
+
+| 场景编号 | Plan 模式 | Actual 模式 | 远程事件数量 | 典型用例 |
+|---------|----------|-----------|------------|----------|
+| **A1** | 只接收 | 只发送 | **1+N** 个 | 接收会议邀请，记录工作进展 |
+| **A2** | 只接收 | 双向同步 | **1+N** 个 | 接收会议邀请，允许修改原日程 |
+| **B1** | 只发送 | 只发送 | **1+N** 个 | 创建日程，记录多次实际进展 |
+| **B2** | 只发送 | 双向同步 | **2** 个独立事件 | 创建日程，实际进展合并同步 |
+| **C1** | 双向同步 | 只发送 | **2** 个独立事件 | 双向管理计划，单向记录实际 |
+| **C2** | 双向同步 | 双向同步 | **2** 个独立事件 | 完全双向同步计划和实际 |
+| **A3** | 只接收 | 只接收 | ❌ **冲突** | Actual 不支持 receive-only |
+| **B3** | 只发送 | 只接收 | ❌ **冲突** | Actual 不支持 receive-only |
+| **C3** | 双向同步 | 只接收 | ❌ **冲突** | Actual 不支持 receive-only |
+
+**Private 模式支持**:
+- **send-only-private**: 只发送（仅自己）- 参与者不被邀请，作为文本添加到描述中
+- **bidirectional-private**: 双向同步（仅自己）- 参与者不被邀请，作为文本添加到描述中
+
+**不同日历场景**（Plan 和 Actual 选择不同日历时）:
+- **Scenario D**: Plan 1个 + Actual M个（每个日历1个）
+- 自动去重与 Plan 重叠的日历
+- 支持多平台同步（Outlook + Google + iCloud）
+
+**核心架构原则**:
+1. **Plan 和 Actual 永远创建独立的远程事件** - 使用不同的事件ID
+2. **Timer 子事件继承 Actual 配置** - 每个 Timer 创建独立的远程事件
+3. **Private 模式避免通知打扰** - 参与者信息放在描述中而不发送邀请
+4. **多日历智能去重** - Actual 自动排除与 Plan 重叠的日历
 
 ---
 
@@ -7731,6 +7802,37 @@ interface Event {
    * 事件类型（用于日历同步）
    */
   type?: 'parent' | 'timer' | 'timelog' | 'outsideapp' | 'event' | 'task';
+  
+  /**
+   * 🆕 计划安排同步配置
+   * 支持 5 种模式：receive-only, send-only, send-only-private, bidirectional, bidirectional-private
+   */
+  planSyncConfig?: PlanSyncConfig;
+  
+  /**
+   * 🆕 实际进展同步配置
+   * 支持 4 种模式：send-only, send-only-private, bidirectional, bidirectional-private
+   * null 表示继承 planSyncConfig
+   */
+  actualSyncConfig?: ActualSyncConfig;
+  
+  /**
+   * 🆕 计划安排的远程事件 ID
+   * Plan 同步创建的远程事件 ID（独立于 Actual）
+   */
+  syncedPlanEventId?: string | null;
+  
+  /**
+   * 🆕 实际进展的远程事件 ID  
+   * Actual 同步创建的远程事件 ID（独立于 Plan）
+   * 对于 Timer 子事件，存储对应的远程子事件 ID
+   */
+  syncedActualEventId?: string | null;
+  
+  /**
+   * @deprecated 旧的同步事件 ID，将被 syncedPlanEventId 和 syncedActualEventId 替代
+   */
+  syncedOutlookEventId?: string | null;
 }
 ```
 
@@ -7956,7 +8058,137 @@ export async function handleCompletedChange(eventId: string, isCompleted: boolea
 
 ---
 
-### 4. 输入间隔检测实现
+### 4. Private 模式同步函数实现
+
+```typescript
+/**
+ * 将参与者格式化为描述文本（Private 模式使用）
+ * 
+ * @param participants 参与者邮箱列表
+ * @param originalDescription 原始描述内容
+ * @returns 格式化后的描述（参与者信息 + 原始内容）
+ * 
+ * @example
+ * formatParticipantsToDescription(
+ *   ['alice@company.com', 'bob@company.com'],
+ *   '讨论项目进展'
+ * )
+ * // 返回: '📧 参与者：alice@company.com, bob@company.com\n\n讨论项目进展'
+ */
+export function formatParticipantsToDescription(
+  participants: string[], 
+  originalDescription: string = ''
+): string {
+  if (!participants || participants.length === 0) {
+    return originalDescription;
+  }
+  
+  const participantsText = `📧 参与者：${participants.join(', ')}`;
+  
+  return originalDescription 
+    ? `${participantsText}\n\n${originalDescription}`
+    : participantsText;
+}
+
+/**
+ * 从描述文本中提取参与者信息（Private 模式使用）
+ * 
+ * @param description 包含参与者信息的描述
+ * @returns { participants: string[], cleanDescription: string }
+ * 
+ * @example
+ * extractParticipantsFromDescription(
+ *   '📧 参与者：alice@company.com, bob@company.com\n\n讨论项目进展'
+ * )
+ * // 返回: { 
+ * //   participants: ['alice@company.com', 'bob@company.com'], 
+ * //   cleanDescription: '讨论项目进展' 
+ * // }
+ */
+export function extractParticipantsFromDescription(description: string): {
+  participants: string[];
+  cleanDescription: string;
+} {
+  if (!description) {
+    return { participants: [], cleanDescription: '' };
+  }
+  
+  const participantsRegex = /^📧 参与者：(.+)$/m;
+  const match = description.match(participantsRegex);
+  
+  if (!match) {
+    return { participants: [], cleanDescription: description };
+  }
+  
+  const participantsText = match[1];
+  const participants = participantsText.split(',').map(email => email.trim());
+  
+  // 移除参与者行，保留其余内容
+  const cleanDescription = description
+    .replace(participantsRegex, '')
+    .replace(/^\n+/, '')  // 移除开头的空行
+    .trim();
+  
+  return { participants, cleanDescription };
+}
+
+/**
+ * 同步事件到远程日历（支持 Private 模式）
+ * 
+ * @param event 要同步的事件
+ * @param syncMode 同步模式
+ * @param calendarId 目标日历 ID  
+ * @param syncType 同步类型：'plan' 或 'actual'
+ */
+export async function syncToRemoteCalendar(
+  event: Event, 
+  syncMode: string, 
+  calendarId: string,
+  syncType: 'plan' | 'actual'
+): Promise<string | null> {
+  const isPrivateMode = syncMode.includes('-private');
+  
+  // 准备远程事件数据
+  const remoteEvent = {
+    title: event.title,
+    description: event.description || '',
+    startTime: event.startTime,
+    endTime: event.endTime,
+    location: event.location,
+    attendees: [],  // 初始为空
+  };
+  
+  // Private 模式处理
+  if (isPrivateMode && event.attendees?.length > 0) {
+    // 参与者不被邀请，而是作为文本添加到描述中
+    const participantEmails = event.attendees.map(a => a.email).filter(Boolean);
+    remoteEvent.description = formatParticipantsToDescription(
+      participantEmails, 
+      remoteEvent.description
+    );
+    // attendees 保持为空数组（不邀请任何人）
+  } else {
+    // 普通模式：正常邀请参与者
+    remoteEvent.attendees = event.attendees?.map(a => a.email).filter(Boolean) || [];
+  }
+  
+  // 执行同步
+  const remoteEventId = await CalendarService.createOrUpdateEvent(calendarId, remoteEvent);
+  
+  // 更新对应的同步事件 ID
+  if (syncType === 'plan') {
+    await EventService.updateEvent(event.id, { syncedPlanEventId: remoteEventId });
+  } else {
+    await EventService.updateEvent(event.id, { syncedActualEventId: remoteEventId });
+  }
+  
+  return remoteEventId;
+}
+```
+
+---
+
+### 5. 输入间隔检测实现
 
 ```typescript
 // 在 EventEditModal 组件中

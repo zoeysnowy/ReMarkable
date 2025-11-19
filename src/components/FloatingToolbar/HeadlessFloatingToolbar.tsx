@@ -49,6 +49,24 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [activePickerState, setActivePickerState] = useState<string | null>(null);
   const savedSelectionRef = useRef<any>(null); // 🆕 保存选区用于预览
+  const [selectedEmojiIndex, setSelectedEmojiIndex] = useState<number>(0); // 🆕 当前选中的表情索引
+
+  // 🎯 智能计算 Tippy 弹出方向
+  const getSmartPlacement = (): string => {
+    if (!toolbarRef.current) return 'bottom-start';
+    
+    const toolbarRect = toolbarRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const spaceBelow = viewportHeight - toolbarRect.bottom;
+    const spaceAbove = toolbarRect.top;
+    
+    // 如果下方空间不足（小于 300px），且上方空间更充足，则向上弹出
+    if (spaceBelow < 300 && spaceAbove > spaceBelow + 100) {
+      return 'top-start';
+    }
+    
+    return 'bottom-start';
+  };
   
   // 🔍 Debug: 包装 setActivePicker 以追踪所有调用
   const setActivePicker = (value: string | null) => {
@@ -58,13 +76,11 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
   const activePicker = activePickerState;
 
   // 🆕 根据 mode 决定显示的功能集合（提前计算，供 useEffect 使用）
-  const menuFloatingbarFeaturesBase: ToolbarFeatureType[] = ['tag', 'emoji', 'dateRange', 'addTask', 'textStyle', 'bullet'];
+  const menuFloatingbarFeaturesBase: ToolbarFeatureType[] = ['tag', 'emoji', 'dateRange', 'addTask', 'textStyle'];
   const textFloatingbarFeaturesBase: ToolbarFeatureType[] = ['bold', 'italic', 'textColor', 'bgColor', 'strikethrough', 'clearFormat', 'bullet'];
   
-  // 🔧 标题模式下隐藏 bullet 菜单（因为标题已有勾选框）
-  const menuFloatingbarFeatures = editorMode === 'title' 
-    ? menuFloatingbarFeaturesBase.filter(f => f !== 'bullet')
-    : menuFloatingbarFeaturesBase;
+  // 🔧 menu_floatingbar 已经将 bullet 放入 textStyle 子菜单，这里不需要过滤
+  const menuFloatingbarFeatures = menuFloatingbarFeaturesBase;
   
   const textFloatingbarFeatures = editorMode === 'title'
     ? textFloatingbarFeaturesBase.filter(f => f !== 'bullet')
@@ -102,7 +118,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
       // 🔧 判断当前层级：如果有 activePicker，说明在子菜单中
       if (activePicker === 'textStyle') {
         // textStyle 子菜单层级：数字键对应 textStyle 内的按钮
-        const textStyleFeaturesBase: ToolbarFeatureType[] = ['bold', 'italic', 'strikethrough', 'textColor', 'bgColor', 'clearFormat', 'bullet'];
+        const textStyleFeaturesBase: ToolbarFeatureType[] = ['bold', 'italic', 'strikethrough', 'textColor', 'bgColor', 'bullet', 'clearFormat'];
         // 🔧 标题模式下也要隐藏 bullet
         const textStyleFeatures = editorMode === 'title'
           ? textStyleFeaturesBase.filter(f => f !== 'bullet')
@@ -157,7 +173,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
             if (feature === 'addTask') {
               onTaskToggle?.(!currentIsTask);
               onRequestClose?.();
-            } 
+            }
             // 其他都有子菜单：打开对应的 Picker
             else {
               setActivePicker(feature);
@@ -202,7 +218,115 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
     const isSubPickerOpen = activePicker === 'textColor' || activePicker === 'bgColor';
     onSubPickerStateChange?.(isSubPickerOpen);
     console.log(`[activePicker useEffect] 🎨 子选择器状态: ${isSubPickerOpen ? '打开' : '关闭'}`);
+    
+    // 🆕 重置 emoji 选择索引
+    if (activePicker === 'emoji') {
+      setSelectedEmojiIndex(0);
+    } else if (activePicker !== 'emoji') {
+      // 清理之前的高亮样式
+      const emojiButtons = document.querySelectorAll('.emoji-mart-emoji');
+      emojiButtons.forEach((btn) => {
+        const button = btn as HTMLElement;
+        button.style.outline = 'none';
+        button.style.outlineOffset = '0';
+      });
+    }
   }, [activePicker, onSubPickerStateChange]);
+
+  // 🆕 emoji picker 键盘导航
+  useEffect(() => {
+    if (activePicker !== 'emoji') return;
+
+    const handleEmojiKeyDown = (e: KeyboardEvent) => {
+      // 动态获取当前可见的 emoji 按钮
+      const emojiButtons = document.querySelectorAll('.emoji-mart-emoji');
+      if (emojiButtons.length === 0) return;
+      
+      const perLine = 8; // emoji 每行数量
+      const totalEmojis = emojiButtons.length;
+      
+      switch (e.key) {
+        case 'ArrowRight':
+          e.preventDefault();
+          setSelectedEmojiIndex(prev => {
+            const next = (prev + 1) % totalEmojis;
+            return next;
+          });
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          setSelectedEmojiIndex(prev => {
+            const next = (prev - 1 + totalEmojis) % totalEmojis;
+            return next;
+          });
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          setSelectedEmojiIndex(prev => {
+            const next = Math.min(prev + perLine, totalEmojis - 1);
+            return next;
+          });
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          setSelectedEmojiIndex(prev => {
+            const next = Math.max(prev - perLine, 0);
+            return next;
+          });
+          break;
+        case 'Enter':
+          e.preventDefault();
+          // 获取当前选中的表情并选择
+          const selectedButton = emojiButtons[selectedEmojiIndex] as HTMLElement;
+          if (selectedButton) {
+            selectedButton.click();
+          }
+          break;
+        case 'Escape':
+          e.preventDefault();
+          setActivePicker(null);
+          break;
+        default:
+          // 数字键快速跳转（1-9 对应前9个表情）
+          if (e.key >= '1' && e.key <= '9') {
+            e.preventDefault();
+            const index = parseInt(e.key) - 1;
+            if (index < totalEmojis) {
+              setSelectedEmojiIndex(index);
+              // 立即选择该表情
+              const targetButton = emojiButtons[index] as HTMLElement;
+              if (targetButton) {
+                targetButton.click();
+              }
+            }
+          }
+          break;
+      }
+    };
+
+    document.addEventListener('keydown', handleEmojiKeyDown, true);
+    return () => document.removeEventListener('keydown', handleEmojiKeyDown, true);
+  }, [activePicker, selectedEmojiIndex]);
+
+  // 🆕 更新选中表情的高亮显示
+  useEffect(() => {
+    if (activePicker !== 'emoji') return;
+
+    const emojiButtons = document.querySelectorAll('.emoji-mart-emoji');
+    emojiButtons.forEach((btn, index) => {
+      const button = btn as HTMLElement;
+      if (index === selectedEmojiIndex) {
+        button.style.outline = '2px solid #3b82f6';
+        button.style.outlineOffset = '2px';
+        button.style.borderRadius = '4px';
+        // 滚动到可见区域
+        button.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      } else {
+        button.style.outline = 'none';
+        button.style.outlineOffset = '0';
+      }
+    });
+  }, [selectedEmojiIndex, activePicker]);
 
   if (!position.show) return null;
 
@@ -332,7 +456,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
             }
             setActivePicker(null);
           }}
-          placement="bottom-start"
+          placement={getSmartPlacement() as any}
           interactive={true}
           interactiveBorder={20} // 🆕 增加交互边界，防止误关闭
           interactiveDebounce={0}
@@ -443,27 +567,32 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
             <div className="headless-emoji-tippy-content">
               {/* 只在 picker 激活时才渲染 Emoji Picker */}
               {activePicker === feature && (
-                <Picker
-                  data={data}
-                  onEmojiSelect={(emoji: any) => {
-                    onEmojiSelect?.(emoji.native);
-                    setActivePicker(null);
-                    onRequestClose?.(); // 🆕 选择 Emoji 后自动关闭 FloatingBar
-                  }}
-                  theme="light"
-                  set="native"
-                  locale="zh"
-                  perLine={8}
-                  emojiSize={20}
-                  previewPosition="none"
-                  skinTonePosition="none"
-                />
+                <div>
+                  <div className="emoji-picker-hint">
+                    <span>💡 方向键导航 • Enter选择 • 1-9快选 • Esc关闭</span>
+                  </div>
+                  <Picker
+                    data={data}
+                    onEmojiSelect={(emoji: any) => {
+                      onEmojiSelect?.(emoji.native);
+                      setActivePicker(null);
+                      onRequestClose?.(); // 🆕 选择 Emoji 后自动关闭 FloatingBar
+                    }}
+                    theme="light"
+                    set="native"
+                    locale="zh"
+                    perLine={8}
+                    emojiSize={20}
+                    previewPosition="none"
+                    skinTonePosition="none"
+                  />
+                </div>
               )}
             </div>
           }
           visible={activePicker === feature}
           onClickOutside={() => setActivePicker(null)}
-          placement="bottom-start"
+          placement={getSmartPlacement() as any}
           interactive={true}
           offset={[0, 8]}
           maxWidth="none"
@@ -528,7 +657,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
           onClickOutside={() => {
             setActivePicker(null);
           }}
-          placement="bottom-start"
+          placement={getSmartPlacement() as any}
           interactive={true}
           interactiveBorder={20}
           interactiveDebounce={0}
@@ -619,7 +748,8 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
                 <div className="text-style-buttons">
                   {(() => {
                     // 🔧 根据编辑器模式决定显示的功能（标题模式下隐藏 bullet）
-                    const textStyleFeaturesBase: ToolbarFeatureType[] = ['bold', 'italic', 'strikethrough', 'textColor', 'bgColor', 'clearFormat', 'bullet'];
+                    // 🎨 调整顺序：将 clearFormat 放在最后，实现单行布局
+                    const textStyleFeaturesBase: ToolbarFeatureType[] = ['bold', 'italic', 'strikethrough', 'textColor', 'bgColor', 'bullet', 'clearFormat'];
                     const textStyleMenuFeatures = editorMode === 'title'
                       ? textStyleFeaturesBase.filter(f => f !== 'bullet')
                       : textStyleFeaturesBase;
@@ -670,7 +800,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
           // 4. 点击了真正的外部区域，关闭
           setActivePicker(null);
         }}
-        placement="bottom-start"
+        placement={getSmartPlacement() as any}
         interactive={true}
         offset={[0, 8]}
         maxWidth="none"

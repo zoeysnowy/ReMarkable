@@ -1813,6 +1813,93 @@ const handleTaskCompleted = async (eventId: string, isCompleted: boolean) => {
 | **非时间字段** (title, tags, description, emoji, etc.) | **EventHub** | `EventHub.updateFields()` |
 | **任务统计** (childTaskCount, childTaskCompletedCount) | **EventHub** | `updateParentTaskStats()` 自动计算 |
 | **协作字段** (organizer, attendees) | **EventHub** | `EventHub.updateFields()` |
+| **🆕 签到字段** (checked[], unchecked[]) | **EventService** | `EventService.checkIn()` / `EventService.uncheck()` |
+
+---
+
+### 8.4 🆕 签到功能字段（v1.7）
+
+#### 8.4.1 checked - 签到时间戳数组
+
+```typescript
+checked?: string[];  // 签到时间戳数组（ISO格式）
+```
+
+**用途**: 记录用户每次签到的精确时间戳
+
+**特性**:
+- 支持多次签到，累积记录历史
+- 时间戳采用ISO格式存储
+- 用于任务管理和定时打卡场景
+- 与EventHistoryService集成，支持历史查询
+
+**使用场景**:
+```typescript
+// 任务完成签到
+const result = EventService.checkIn('event-123');
+if (result.success) {
+  // 签到成功，时间戳已记录到 event.checked[]
+  const status = EventService.getCheckInStatus('event-123');
+  console.log(`签到成功，总签到次数: ${status.checkInCount}`);
+}
+```
+
+---
+
+#### 8.4.2 unchecked - 取消签到时间戳数组
+
+```typescript
+unchecked?: string[];  // 取消签到时间戳数组（ISO格式）
+```
+
+**用途**: 记录用户每次取消签到的精确时间戳
+
+**特性**:
+- 支持撤销错误签到
+- 与checked[]字段配合判断当前签到状态
+- 所有操作都通过EventHistoryService记录
+
+**签到状态判断逻辑**:
+```typescript
+// 获取签到状态
+const status = EventService.getCheckInStatus(eventId);
+
+// 判断逻辑：比较最后的签到和取消签到时间
+// 如果最后签到时间更晚 → isChecked = true
+// 如果最后取消签到时间更晚 → isChecked = false
+// 如果都没有操作记录 → isChecked = false
+```
+
+---
+
+#### 8.4.3 签到功能与UI集成
+
+**EventLinePrefix组件集成**:
+```typescript
+// 将签到功能集成到现有checkbox
+<input
+  type="checkbox"
+  checked={isCompleted}
+  onChange={(e) => {
+    const isChecked = e.target.checked;
+    
+    // 更新任务完成状态
+    onSave(element.eventId, { isCompleted: isChecked });
+    
+    // 🆕 同时记录签到操作
+    if (isChecked) {
+      EventService.checkIn(element.eventId);
+    } else {
+      EventService.uncheck(element.eventId);
+    }
+  }}
+/>
+```
+
+**状态线显示集成**:
+- 签到的事件显示**绿色Done状态线**
+- 取消签到且过期的事件显示**橙色Missed状态线**
+- 通过EventHistoryService查询历史记录计算状态
 
 ---
 
@@ -1882,6 +1969,121 @@ export function hasChildTasks(eventId: string): boolean {
   const childTasks = getEventsByParentId(eventId);
   return childTasks.length > 0;
 }
+
+/**
+ * 🆕 事件签到功能 - 记录签到时间戳
+ */
+static checkIn(eventId: string): { success: boolean; error?: string } {
+  try {
+    const event = this.getEventById(eventId);
+    if (!event) {
+      return { success: false, error: 'Event not found' };
+    }
+
+    const timestamp = new Date().toISOString();
+
+    // 初始化checked数组（如果不存在）
+    if (!event.checked) {
+      event.checked = [];
+    }
+
+    // 添加签到时间戳
+    event.checked.push(timestamp);
+    event.updatedAt = timestamp;
+
+    // 保存到localStorage
+    this.saveEvent(event);
+
+    // 记录事件历史
+    EventHistoryService.logCheckin(eventId, event.title || 'Untitled Event', { 
+      action: 'check-in', 
+      timestamp 
+    });
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+}
+
+/**
+ * 🆕 取消事件签到 - 记录取消签到时间戳
+ */
+static uncheck(eventId: string): { success: boolean; error?: string } {
+  try {
+    const event = this.getEventById(eventId);
+    if (!event) {
+      return { success: false, error: 'Event not found' };
+    }
+
+    const timestamp = new Date().toISOString();
+
+    // 初始化unchecked数组（如果不存在）
+    if (!event.unchecked) {
+      event.unchecked = [];
+    }
+
+    // 添加取消签到时间戳
+    event.unchecked.push(timestamp);
+    event.updatedAt = timestamp;
+
+    // 保存到localStorage
+    this.saveEvent(event);
+
+    // 记录事件历史
+    EventHistoryService.logCheckin(eventId, event.title || 'Untitled Event', { 
+      action: 'uncheck', 
+      timestamp 
+    });
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+}
+
+/**
+ * 🆕 获取事件的签到状态
+ */
+static getCheckInStatus(eventId: string): { 
+  isChecked: boolean; 
+  lastCheckIn?: string; 
+  lastUncheck?: string;
+  checkInCount: number;
+  uncheckCount: number;
+} {
+  const event = this.getEventById(eventId);
+  if (!event) {
+    return { isChecked: false, checkInCount: 0, uncheckCount: 0 };
+  }
+
+  const checked = event.checked || [];
+  const unchecked = event.unchecked || [];
+  
+  // 获取最后的操作时间戳来判断当前状态
+  const lastCheckIn = checked.length > 0 ? checked[checked.length - 1] : undefined;
+  const lastUncheck = unchecked.length > 0 ? unchecked[unchecked.length - 1] : undefined;
+  
+  // 如果都没有操作，默认未签到
+  if (!lastCheckIn && !lastUncheck) {
+    return { 
+      isChecked: false, 
+      checkInCount: checked.length, 
+      uncheckCount: unchecked.length 
+    };
+  }
+  
+  // 比较最后的签到和取消签到时间
+  const isChecked = lastCheckIn && (!lastUncheck || lastCheckIn > lastUncheck);
+
+  return {
+    isChecked,
+    lastCheckIn,
+    lastUncheck,
+    checkInCount: checked.length,
+    uncheckCount: unchecked.length
+  };
+}
 ```
 
 ### 9.4 最佳实践
@@ -1903,6 +2105,56 @@ await EventHub.createEvent(newChildTask);
 
 // ✅ 更新父任务的 childTaskCount
 await updateParentTaskStats(newChildTask.id);
+```
+
+#### ✅ 事件签到集成到checkbox
+
+```typescript
+// EventLinePrefix.tsx - 集成签到到复选框
+<input
+  type="checkbox"
+  checked={isCompleted}
+  onChange={(e) => {
+    e.stopPropagation();
+    const isChecked = e.target.checked;
+    
+    // 更新 isCompleted 状态
+    onSave(element.eventId, { isCompleted: isChecked });
+    
+    // ✅ 同时处理签到逻辑
+    if (isChecked) {
+      EventService.checkIn(element.eventId);
+    } else {
+      EventService.uncheck(element.eventId);
+    }
+  }}
+/>
+```
+
+#### ✅ 签到状态在状态线中的显示
+
+```typescript
+// PlanManager.tsx - 状态线计算
+const getEventStatus = (eventId: string) => {
+  // ... 其他状态逻辑
+  
+  case 'checkin':
+    // ✅ 检查是签到还是取消签到
+    if (latestAction.metadata?.action === 'check-in') {
+      return 'done';  // 绿色状态线
+    } else if (latestAction.metadata?.action === 'uncheck') {
+      const event = EventService.getEventById(eventId);
+      if (event && event.startTime) {
+        const eventTime = new Date(event.startTime);
+        const now = new Date();
+        if (eventTime < now) {
+          return 'missed'; // 橙色 - 过期但取消了签到
+        }
+      }
+      return 'updated'; // 蓝色 - 还没到时间或没有时间设置
+    }
+    return 'done';
+};
 ```
 
 #### ✅ 删除子任务时更新统计
@@ -1952,16 +2204,20 @@ function renderTaskProgress(event: Event): ReactNode {
 - [SYNC_MECHANISM_PRD.md](./SYNC_MECHANISM_PRD.md) - 同步机制文档
 - [EventEditModal v2 PRD](../PRD/EVENTEDITMODAL_V2_PRD.md) - EventEditModal v2 产品需求文档（包含新增字段的详细说明）
 - [TIMER_MODULE_PRD.md](../PRD/TIMER_MODULE_PRD.md) - Timer 模块文档
+- [TimeLog_&_Description_PRD.md](../PRD/TimeLog_&_Description_PRD.md) - EventHistoryService 和签到功能完整实现
+- [PLANMANAGER_MODULE_PRD.md](../PRD/PLANMANAGER_MODULE_PRD.md) - 状态线和签到功能集成
 - [naturalLanguageTimeDictionary.ts](../../src/utils/naturalLanguageTimeDictionary.ts) - 自然语言解析词典
 - [relativeDateFormatter.ts](../../src/utils/relativeDateFormatter.ts) - 相对时间动态显示
 
 ---
 
-**文档版本**: v1.3  
-**最后更新**: 2025-11-14  
+**文档版本**: v1.7  
+**最后更新**: 2025-11-20  
 **维护者**: GitHub Copilot  
 **变更记录**:
 - v1.0 (2025-11-06): 初始版本
 - v1.1 (2025-11-06): 添加 EventEditModal v2 新增字段（emoji, isTimeCalendar, isTask, isCompleted, parentTaskId, childTaskCount, childTaskCompletedCount）及任务关联功能实现指南
 - v1.2 (2025-11-14): 移除 displayHint 存储依赖，时间显示完全基于动态计算
 - v1.3 (2025-11-14): **支持 undefined 时间字段**，完善自然语言处理链路文档（从输入到显示的完整流程）
+- v1.4-v1.6 (2025-11-19): 循环更新防护、ID分配与时间系统优化
+- v1.7 (2025-11-20): **新增事件签到功能**，完整的时间戳记录、EventHistoryService集成和状态线显示
