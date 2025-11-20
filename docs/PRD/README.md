@@ -6,7 +6,7 @@
 > **生成框架**: [Copilot 驱动的 PRD 逆向工程与维护框架 v1.0](../architecture/Copilot%20驱动的%20PRD%20逆向工程与维护框架%20v1.0.md)  
 > **文档状态**: ✅ 核心模块 PRD 全部完成（7/7）
 
-> **⭐ 待审核**: [日历同步配置场景矩阵](./CALENDAR_SYNC_SCENARIOS_MATRIX.md) - 请审核后回复
+> **✅ 已完成**: 日历同步配置场景矩阵 - 已整合到 [EventEditModal v2 PRD](./EVENTEDITMODAL_V2_PRD.md)
 
 ---
 
@@ -14,9 +14,9 @@
 
 | 指标 | 数值 |
 |------|------|
-| 总文档数 | 7 个核心 PRD + 2 个技术分析 + 2 个报告 + 2 个 Issue |
-| 总字数 | ~120,000 words |
-| 代码覆盖率 | ~90% (主要组件和服务) |
+| 总文档数 | 7 个核心 PRD + 1 个技术分析 + 2 个报告 + 2 个 Issue + 1 个归档 |
+| 总字数 | ~110,000 words |
+| 代码覆盖率 | ~95% (主要组件和服务) |
 | 已发现问题 | 15 个（高 4 + 中 8 + 低 3） |
 | 预计修复工时 | 20-27 小时 |
 
@@ -26,7 +26,7 @@
 
 | 文档 | 状态 | 描述 | 创建时间 |
 |------|------|------|----------|
-| [**日历同步配置场景矩阵**](./CALENDAR_SYNC_SCENARIOS_MATRIX.md) | ⏳ **待审核** | 相同日历 9 种场景 + Actual 多日历支持的详细规划 | 2025-11-19 |
+| [日历同步配置场景矩阵](../\_archive/CALENDAR_SYNC_SCENARIOS_MATRIX_archived_20251120.md) | ✅ **已整合** | 相同日历 9 种场景 + Actual 多日历支持（已整合到 [EventEditModal v2 PRD](./EVENTEDITMODAL_V2_PRD.md)） | 2025-11-20 |
 | [**日历同步配置技术分析**](./CALENDAR_SYNC_CONFIG_TECHNICAL_ANALYSIS.md) | ⏳ **待审核** | 数据模型设计、影响范围评估、实施方案（5 天） | 2025-11-19 |
 
 **审核问题**:

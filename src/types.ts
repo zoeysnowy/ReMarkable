@@ -102,6 +102,42 @@ export type AttendeeType = 'required' | 'optional' | 'resource';
 export type AttendeeStatus = 'accepted' | 'declined' | 'tentative' | 'none';
 
 /**
+ * 计划安排同步配置类型
+ */
+export type PlanSyncMode = 
+  | 'receive-only'           // 只接收
+  | 'send-only'              // 只发送（全部参会人）
+  | 'send-only-private'      // 只发送（仅自己）⭐ 新增
+  | 'bidirectional'          // 双向同步（全部参会人）
+  | 'bidirectional-private'; // 双向同步（仅自己）⭐ 新增
+
+/**
+ * 实际进展同步配置类型  
+ */
+export type ActualSyncMode = 
+  | 'send-only'              // 只发送（全部参会人）
+  | 'send-only-private'      // 只发送（仅自己）⭐ 新增
+  | 'bidirectional'          // 双向同步（全部参会人）
+  | 'bidirectional-private'; // 双向同步（仅自己）⭐ 新增
+  // 注意：Actual 不支持 receive-only，外部信息都应该归为 Plan
+
+/**
+ * 计划安排同步配置
+ */
+export interface PlanSyncConfig {
+  mode: PlanSyncMode;
+  targetCalendars: string[];  // 目标日历 ID 列表
+}
+
+/**
+ * 实际进展同步配置
+ */
+export interface ActualSyncConfig {
+  mode: ActualSyncMode;
+  targetCalendars: string[];  // 目标日历 ID 列表
+}
+
+/**
  * 统一的联系人接口
  * 支持 ReMarkable 本地联系人和各云平台联系人
  */
@@ -239,6 +275,38 @@ export interface Event {
   // 🆕 签到功能：用于任务管理和定时打卡
   checked?: string[];       // 签到时间戳数组（ISO格式）
   unchecked?: string[];     // 取消签到时间戳数组（ISO格式）
+  
+  // 🆕 v2.1: 日历同步配置（支持 Private 模式和独立事件架构）
+  /**
+   * 计划安排同步配置
+   * 支持 5 种模式：receive-only, send-only, send-only-private, bidirectional, bidirectional-private
+   */
+  planSyncConfig?: PlanSyncConfig;
+  
+  /**
+   * 实际进展同步配置
+   * 支持 4 种模式：send-only, send-only-private, bidirectional, bidirectional-private
+   * null 表示继承 planSyncConfig
+   */
+  actualSyncConfig?: ActualSyncConfig;
+  
+  /**
+   * 计划安排的远程事件 ID
+   * Plan 同步创建的远程事件 ID（独立于 Actual）
+   */
+  syncedPlanEventId?: string | null;
+  
+  /**
+   * 实际进展的远程事件 ID  
+   * Actual 同步创建的远程事件 ID（独立于 Plan）
+   * 对于 Timer 子事件，存储对应的远程子事件 ID
+   */
+  syncedActualEventId?: string | null;
+  
+  /**
+   * @deprecated 旧的同步事件 ID，将被 syncedPlanEventId 和 syncedActualEventId 替代
+   */
+  syncedOutlookEventId?: string | null;
 }
 
 export interface Task {

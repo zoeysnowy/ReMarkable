@@ -1,7 +1,8 @@
 /**
  * EventLinePrefix - 事件行前缀渲染器
  * 
- * 渲染 Checkbox + Emoji
+ * 根据Figma设计稿实现类似Word修订模式的竖线显示
+ * 布局：状态标签 + 竖线 + Checkbox + Emoji
  */
 
 import React from 'react';
@@ -19,41 +20,85 @@ const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onS
   const isCompleted = metadata.isCompleted || false;
   const emoji = metadata.emoji;
 
-  // 🆕 状态竖线颜色映射
-  const getStatusColor = (status?: string) => {
+  // 🆕 状态配置映射 (根据用户要求的颜色方案)
+  const getStatusConfig = (status?: string) => {
     switch (status) {
       case 'new':
-        return 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)';
-      case 'updated':
-        return 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)';
+        return {
+          color: '#3B82F6', // 蓝色 - New
+          label: 'New',
+          labelColor: '#1E40AF'
+        };
       case 'done':
-        return 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+        return {
+          color: '#10B981', // 绿色 - Done
+          label: 'Done', 
+          labelColor: '#059669'
+        };
+      case 'updated':
+        return {
+          color: '#F59E0B', // 黄色 - Updated
+          label: 'Updated',
+          labelColor: '#D97706'
+        };
       case 'missed':
-        return 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+        return {
+          color: '#EF4444', // 红色 - Missed
+          label: 'Missed',
+          labelColor: '#DC2626'
+        };
       case 'deleted':
-        return 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
+        return {
+          color: '#9CA3AF', // 灰色 - Del
+          label: 'Del',
+          labelColor: '#6B7280'
+        };
       default:
-        return 'transparent';
+        return null;
     }
   };
 
+  const statusConfig = getStatusConfig(eventStatus);
+
   return (
-    <>
-      {/* 🆕 状态竖线 */}
-      {eventStatus && (
-        <div
-          className="event-status-bar"
-          style={{
-            width: '3px',
-            height: '20px',
-            background: getStatusColor(eventStatus),
-            borderRadius: '1.5px',
-            flexShrink: 0,
-            marginRight: '4px',
-          }}
-        />
+    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative' }}>
+      {/* 🆕 状态标签 + 竖线组合 (Word修订模式风格) */}
+      {statusConfig && (
+        <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+          {/* 状态标签 */}
+          <div
+            style={{
+              position: 'absolute',
+              left: '-45px', // 标签位于竖线左侧
+              top: '50%',
+              transform: 'translateY(-50%)',
+              fontSize: '10px',
+              fontWeight: '600',
+              fontStyle: 'italic',
+              color: statusConfig.labelColor,
+              fontFamily: 'Roboto, sans-serif',
+              whiteSpace: 'nowrap',
+              zIndex: 10,
+            }}
+          >
+            {statusConfig.label}
+          </div>
+          
+          {/* 状态竖线 */}
+          <div
+            style={{
+              width: '3px',
+              height: '20px',
+              backgroundColor: statusConfig.color,
+              borderRadius: '1.5px',
+              flexShrink: 0,
+              marginRight: '6px',
+            }}
+          />
+        </div>
       )}
       
+      {/* Checkbox */}
       <input
         type="checkbox"
         checked={isCompleted}
@@ -74,10 +119,21 @@ const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onS
         style={{
           cursor: 'pointer',
           opacity: 1,
+          marginRight: '4px',
         }}
       />
-      {emoji && <span style={{ fontSize: '16px', lineHeight: '1' }}>{emoji}</span>}
-    </>
+      
+      {/* Emoji */}
+      {emoji && (
+        <span style={{ 
+          fontSize: '16px', 
+          lineHeight: '1',
+          marginRight: '4px'
+        }}>
+          {emoji}
+        </span>
+      )}
+    </div>
   );
 };
 

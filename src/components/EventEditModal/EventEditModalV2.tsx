@@ -15,6 +15,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Event } from '../../types';
 import { formatTimeForStorage } from '../../utils/timeUtils';
 import { LocationInput } from '../common/LocationInput';
+import { CalendarSourceDisplay } from '../common/CalendarSourceDisplay';
 import './EventEditModalV2.css';
 
 interface EventEditModalV2Props {
@@ -157,6 +158,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
               isAllDay={formData.isAllDay}
               calendarIds={formData.calendarIds}
               syncMode={formData.syncMode}
+              event={event}
               onChange={(updates: any) => setFormData({ ...formData, ...updates })}
             />
           </section>
@@ -166,6 +168,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
             <ActualProgressSection
               event={event}
               globalTimer={globalTimer}
+              onChange={(updates: any) => setFormData({ ...formData, ...updates })}
             />
           </section>
 
@@ -462,11 +465,11 @@ const PlannedScheduleSection: React.FC<any> = ({
   isAllDay,
   calendarIds,
   syncMode,
+  event,
   onChange 
 }) => {
   const [showOrganizerPicker, setShowOrganizerPicker] = useState(false);
   const [showAttendeesPicker, setShowAttendeesPicker] = useState(false);
-  const [showSyncSettings, setShowSyncSettings] = useState(false);
 
   const formatDateTimeLocal = (isoString: string | null): string => {
     if (!isoString) return '';
@@ -491,6 +494,13 @@ const PlannedScheduleSection: React.FC<any> = ({
   return (
     <div className="planned-schedule">
       <h3 className="section-title">计划安排</h3>
+      
+      {/* 日历来源与同步设置 */}
+      <CalendarSourceDisplay
+        event={event}
+        onSyncConfigChange={(config) => onChange({ planSyncConfig: config })}
+        isActualProgress={false}
+      />
       
       {/* 组织者与参与者 */}
       <div className="organizer-attendees">
@@ -576,60 +586,12 @@ const PlannedScheduleSection: React.FC<any> = ({
         placeholder="📍 地点"
       />
 
-      {/* 日历同步设置 */}
-      <div className="sync-settings" style={{ marginTop: '12px' }}>
-        <div 
-          className="sync-toggle"
-          onClick={() => setShowSyncSettings(!showSyncSettings)}
-          style={{
-            padding: '8px 12px',
-            background: '#eff6ff',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '13px',
-            color: '#3b82f6',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}
-        >
-          <span>📅 日历同步设置</span>
-          <span>{showSyncSettings ? '▲' : '▼'}</span>
-        </div>
-        
-        {showSyncSettings && (
-          <div style={{ marginTop: '8px', padding: '12px', background: '#f9fafb', borderRadius: '6px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <input
-                type="radio"
-                name="syncMode"
-                value="receive-only"
-                checked={syncMode === 'receive-only'}
-                onChange={(e) => onChange({ syncMode: e.target.value })}
-              />
-              <span style={{ fontSize: '13px' }}>仅接收更新</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="radio"
-                name="syncMode"
-                value="bidirectional"
-                checked={syncMode === 'bidirectional'}
-                onChange={(e) => onChange({ syncMode: e.target.value })}
-              />
-              <span style={{ fontSize: '13px' }}>双向同步</span>
-            </label>
-            <div style={{ marginTop: '8px', fontSize: '12px', color: '#9ca3af' }}>
-              同步至: {calendarIds && calendarIds.length > 0 ? calendarIds.join(', ') : '未选择日历'}
-            </div>
-          </div>
-        )}
-      </div>
+
     </div>
   );
 };
 
-const ActualProgressSection: React.FC<any> = ({ event, globalTimer }) => {
+const ActualProgressSection: React.FC<any> = ({ event, globalTimer, onChange }) => {
   // 计算总时长
   const calculateTotalDuration = (): string => {
     if (!event?.segments || event.segments.length === 0) {
@@ -674,6 +636,13 @@ const ActualProgressSection: React.FC<any> = ({ event, globalTimer }) => {
         <h3 className="section-title">实际进展</h3>
         <span className="total-duration">总时长: {calculateTotalDuration()}</span>
       </div>
+
+      {/* 实际进展日历来源与同步设置 */}
+      <CalendarSourceDisplay
+        event={event}
+        onSyncConfigChange={(config) => onChange && onChange({ actualSyncConfig: config })}
+        isActualProgress={true}
+      />
 
       {event?.segments && event.segments.length > 0 ? (
         <div className="segments-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

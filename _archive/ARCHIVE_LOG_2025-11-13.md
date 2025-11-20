@@ -1,6 +1,33 @@
-# 代码库清理归档日志 - 2025-11-13
+# 代码库清理归档日志
 
-## 归档原因
+## 最新归档 - 2025-11-20
+
+### Matrix 文档整合归档
+
+**归档文件**: `CALENDAR_SYNC_SCENARIOS_MATRIX_archived_20251120.md`
+
+**归档原因**: 
+- Matrix 文档的所有内容已完整整合到 `EventEditModal v2 PRD` 中
+- 包括 9 种同步场景、Private 模式、独立事件架构、技术实现函数等
+- 原文档已无存在必要，归档保留作为历史记录
+
+**整合内容**:
+- ✅ Private 模式类型定义（send-only-private, bidirectional-private）
+- ✅ 同步场景矩阵概览（A1-C2 详细表格）
+- ✅ Event 接口字段扩展（syncedPlanEventId, syncedActualEventId）
+- ✅ 技术实现函数（formatParticipantsToDescription 等）
+- ✅ 核心架构原则（独立事件、Private 机制等）
+
+**影响文档**: 已更新所有引用该文档的地方
+- `EventEditModal_V2_PRD.md` - 移除外部引用，说明已整合
+- `CALENDAR_SYNC_CONFIG_TECHNICAL_ANALYSIS.md` - 更新引用链接
+- `docs/PRD/README.md` - 标记为已整合状态
+
+---
+
+## 历史归档 - 2025-11-13
+
+### 归档原因
 清理臃肿的根目录和 docs 目录，将调试脚本、旧版本文档、死代码归档。
 
 ---

@@ -102,7 +102,7 @@
 
 | 功能模块 | 所在区域 | 工作量估算 | 优先级 | 技术文档 |
 |---------|---------|-----------|--------|----------|
-| **日历来源 + 同步机制选择** | 左侧 - 中 Section | 3-4 天 | P0 | ✅ 完整规范化：[场景矩阵](./CALENDAR_SYNC_SCENARIOS_MATRIX.md)（9种场景+Private模式+独立事件架构） |
+| **日历来源 + 同步机制选择** | 左侧 - 中 Section | 3-4 天 | P0 | ✅ 完整规范化：9种场景+Private模式+独立事件架构（已整合在本 PRD 中） |
 | **实际进展数据集成** | 左侧 - 下 Section | 2-3 天 | P0 | - |
 | **UnifiedSlateEditor 集成** | 右侧 - Event Log | 3-4 天 | P0 | - |
 | **Timer 二次计时自动升级** | 左侧 - Timer 按钮 | 2 天 | P2 | - |
@@ -2654,7 +2654,7 @@ docs/
 #### 2.4 来源日历 + 同步机制选择
 
 > **📌 技术分析文档**: [CALENDAR_SYNC_CONFIG_TECHNICAL_ANALYSIS.md](./CALENDAR_SYNC_CONFIG_TECHNICAL_ANALYSIS.md)  
-> **📌 场景矩阵分析**: [CALENDAR_SYNC_SCENARIOS_MATRIX.md](./CALENDAR_SYNC_SCENARIOS_MATRIX.md) - 完整场景矩阵（9种相同日历场景 + Private模式 + 独立事件架构）
+> **📌 场景矩阵分析**: 9种相同日历场景 + Private模式 + 独立事件架构（已整合在本 PRD 中）
 
 **🔑 核心架构原则**:
 
@@ -4223,7 +4223,7 @@ function formatDuration(ms: number): string {
 
 #### 2.4.2 日历同步场景矩阵概览
 
-> **📋 完整场景分析**: 详见 [CALENDAR_SYNC_SCENARIOS_MATRIX.md](./CALENDAR_SYNC_SCENARIOS_MATRIX.md)
+> **📋 完整场景分析**: 详见下方同步场景矩阵概览
 
 **相同日历的 9 种场景**（Plan 和 Actual 选择同一日历时）:
 

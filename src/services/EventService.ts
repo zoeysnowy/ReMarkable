@@ -1182,6 +1182,135 @@ export class EventService {
       })
       .slice(0, limit);
   }
+
+  // ========== 日历同步相关方法 ==========
+
+  /**
+   * 同步事件到远程日历（支持 Private 模式）
+   * 
+   * @param event 要同步的事件
+   * @param syncMode 同步模式
+   * @param calendarId 目标日历 ID  
+   * @param syncType 同步类型：'plan' 或 'actual'
+   */
+  static async syncToRemoteCalendar(
+    event: Event, 
+    syncMode: string, 
+    calendarId: string,
+    syncType: 'plan' | 'actual'
+  ): Promise<string | null> {
+    try {
+      const { prepareRemoteEventData, logSyncOperation } = await import('../utils/calendarSyncUtils');
+      
+      logSyncOperation('syncToRemoteCalendar', event, { syncMode, calendarId, syncType });
+      
+      // 准备远程事件数据（处理 Private 模式）
+      const remoteEventData = prepareRemoteEventData(event, syncMode);
+      
+      // 调用同步管理器执行同步（此处需要根据实际的同步服务实现）
+      let remoteEventId: string | null = null;
+      if (syncManagerInstance) {
+        remoteEventId = await syncManagerInstance.createOrUpdateEvent(calendarId, remoteEventData);
+      }
+      
+      // 更新对应的同步事件 ID
+      const updates: Partial<Event> = {};
+      if (syncType === 'plan') {
+        updates.syncedPlanEventId = remoteEventId;
+      } else {
+        updates.syncedActualEventId = remoteEventId;
+      }
+      
+      await this.updateEvent(event.id, updates);
+      
+      eventLogger.log(`✅ [syncToRemoteCalendar] Success: ${syncType} event synced`, {
+        eventId: event.id,
+        remoteEventId,
+        syncMode
+      });
+      
+      return remoteEventId;
+    } catch (error) {
+      const { handleSyncError } = await import('../utils/calendarSyncUtils');
+      handleSyncError('syncToRemoteCalendar', event, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 更新事件的同步配置
+   */
+  static async updateSyncConfig(
+    eventId: string, 
+    planConfig?: import('../types').PlanSyncConfig, 
+    actualConfig?: import('../types').ActualSyncConfig
+  ): Promise<void> {
+    const updates: Partial<Event> = {};
+    
+    if (planConfig !== undefined) {
+      updates.planSyncConfig = planConfig;
+    }
+    
+    if (actualConfig !== undefined) {
+      updates.actualSyncConfig = actualConfig;
+    }
+    
+    await this.updateEvent(eventId, updates);
+    
+    eventLogger.log('🔧 [updateSyncConfig] Updated sync configuration', {
+      eventId,
+      planConfig,
+      actualConfig
+    });
+  }
+
+  /**
+   * 检查事件是否需要同步
+   */
+  static shouldSyncEvent(event: Event, syncType: 'plan' | 'actual'): boolean {
+    const { shouldSyncEvent } = require('../utils/calendarSyncUtils');
+    return shouldSyncEvent(event, syncType);
+  }
+
+  /**
+   * 获取事件的同步状态摘要
+   */
+  static getSyncStatusSummary(event: Event): {
+    planStatus: 'not-configured' | 'synced' | 'pending' | 'error';
+    actualStatus: 'not-configured' | 'synced' | 'pending' | 'error';
+    remoteEventCount: number;
+  } {
+    const { calculateRemoteEventCount, getEffectivePlanSyncConfig, getEffectiveActualSyncConfig } = require('../utils/calendarSyncUtils');
+    
+    const planConfig = getEffectivePlanSyncConfig(event);
+    const actualConfig = getEffectiveActualSyncConfig(event);
+    
+    // 计算 Plan 状态
+    let planStatus: 'not-configured' | 'synced' | 'pending' | 'error' = 'not-configured';
+    if (planConfig) {
+      if (event.syncedPlanEventId) {
+        planStatus = 'synced';
+      } else {
+        planStatus = 'pending';
+      }
+    }
+    
+    // 计算 Actual 状态
+    let actualStatus: 'not-configured' | 'synced' | 'pending' | 'error' = 'not-configured';
+    if (actualConfig) {
+      if (event.syncedActualEventId) {
+        actualStatus = 'synced';
+      } else {
+        actualStatus = 'pending';
+      }
+    }
+    
+    return {
+      planStatus,
+      actualStatus,
+      remoteEventCount: calculateRemoteEventCount(event)
+    };
+  }
 }
 
 // 暴露到全局用于调试

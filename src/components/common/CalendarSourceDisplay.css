@@ -1,0 +1,170 @@
+/* CalendarSourceDisplay.css - 日历来源显示组件样式 */
+
+.calendar-source-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.calendar-source {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.source-label {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+  min-width: 40px;
+}
+
+.calendar-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.source-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.source-emoji {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.source-name {
+  font-size: 14px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.source-sync-selector {
+  margin-left: 12px;
+}
+
+/* 设置同步按钮 */
+.setup-sync-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px dashed #d1d5db;
+  border-radius: 6px;
+  background: #f9fafb;
+  cursor: pointer;
+  font-size: 13px;
+  color: #6b7280;
+  transition: all 0.2s ease;
+}
+
+.setup-sync-button:hover {
+  border-color: #9ca3af;
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.setup-sync-button:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.setup-icon {
+  font-size: 14px;
+}
+
+.setup-text {
+  font-weight: 500;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .calendar-source-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .source-sync-selector {
+    margin-left: 0;
+    align-self: stretch;
+  }
+  
+  .setup-sync-button {
+    align-self: stretch;
+    justify-content: center;
+  }
+}
+
+/* 特殊来源样式 */
+.calendar-source[data-source="outlook"] .source-name {
+  color: #0078d4;
+}
+
+.calendar-source[data-source="google"] .source-name {
+  color: #4285f4;
+}
+
+.calendar-source[data-source="icloud"] .source-name {
+  color: #007aff;
+}
+
+.calendar-source[data-source="remarkable"] .source-name {
+  color: #059669;
+}
+
+/* 暗色主题支持 */
+@media (prefers-color-scheme: dark) {
+  .calendar-source-row {
+    border-bottom-color: #374151;
+  }
+  
+  .source-label {
+    color: #9ca3af;
+  }
+  
+  .source-name {
+    color: #f3f4f6;
+  }
+  
+  .setup-sync-button {
+    background: #374151;
+    border-color: #4b5563;
+    color: #9ca3af;
+  }
+  
+  .setup-sync-button:hover {
+    background: #4b5563;
+    border-color: #6b7280;
+    color: #f3f4f6;
+  }
+}
+
+/* 禁用状态 */
+.calendar-source-row.disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* 加载状态 */
+.calendar-source-row.loading .source-name::after {
+  content: '...';
+  animation: loadingDots 1.5s infinite;
+}
+
+@keyframes loadingDots {
+  0%, 20% { content: '...'; }
+  40% { content: '..'; }
+  60% { content: '.'; }
+  80%, 100% { content: ''; }
+}

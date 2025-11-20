@@ -5,7 +5,7 @@
 > **更新时间**: 2025-11-19  
 > **负责人**: Zoey & AI Assistant  
 > **关联 PRD**: [EVENTEDITMODAL_V2_PRD.md](./EVENTEDITMODAL_V2_PRD.md#24-来源日历--同步机制选择)  
-> **⚠️ 必读**: [场景矩阵分析文档](./CALENDAR_SYNC_SCENARIOS_MATRIX.md) - 详细规划了相同日历 9 种场景和 Actual 多日历支持
+> **⚠️ 必读**: 场景矩阵分析已整合到 [EventEditModal v2 PRD](./EVENTEDITMODAL_V2_PRD.md#242-日历同步场景矩阵概览) - 详细规划了相同日历 9 种场景和 Actual 多日历支持
 
 ---
 
@@ -150,7 +150,7 @@ deleteEvent(eventId: string): void
 
 ## 3. 数据模型设计
 
-> **📌 基于**: [场景矩阵分析](./CALENDAR_SYNC_SCENARIOS_MATRIX.md) - 严格规划的相同日历 9 种场景 + Actual 多日历支持
+> **📌 基于**: [场景矩阵分析](./EVENTEDITMODAL_V2_PRD.md#242-日历同步场景矩阵概览) - 严格规划的相同日历 9 种场景 + Actual 多日历支持（已整合到 EventEditModal v2 PRD）
 
 ### 3.1 核心数据模型
 
