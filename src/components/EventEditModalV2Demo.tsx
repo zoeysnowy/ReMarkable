@@ -15,10 +15,10 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
-import Tippy from '@tippyjs/react';
-import 'tippy.js/dist/tippy.css';
+
 import { TagService } from '../services/TagService';
 import { EventService } from '../services/EventService';
 import { ContactService } from '../services/ContactService';
@@ -27,6 +27,10 @@ import { HierarchicalTagPicker } from './HierarchicalTagPicker/HierarchicalTagPi
 import UnifiedDateTimePicker from './FloatingToolbar/pickers/UnifiedDateTimePicker';
 import { AttendeeDisplay } from './common/AttendeeDisplay';
 import { LocationInput } from './common/LocationInput';
+import { CalendarPicker } from '../features/Calendar/components/CalendarPicker';
+import { SimpleCalendarDropdown } from './EventEditModalV2Demo/SimpleCalendarDropdown';
+import { SyncModeDropdown } from './EventEditModalV2Demo/SyncModeDropdown';
+import { getAvailableCalendarsForSettings, getCalendarGroupColor } from '../utils/calendarUtils';
 import './EventEditModalV2Demo.css';
 
 // Import SVG icons
@@ -137,9 +141,53 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
   const [showTagPicker, setShowTagPicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [isEditingLocation, setIsEditingLocation] = useState(false);
+  const [showSourceCalendarPicker, setShowSourceCalendarPicker] = useState(false);
+  const [showSyncCalendarPicker, setShowSyncCalendarPicker] = useState(false);
+  const [showSourceSyncModePicker, setShowSourceSyncModePicker] = useState(false);
+  const [showSyncSyncModePicker, setShowSyncSyncModePicker] = useState(false);
   const [isDetailView, setIsDetailView] = useState(true);
   const [tagPickerPosition, setTagPickerPosition] = useState({ top: 0, left: 0, width: 0 });
   const [currentTime, setCurrentTime] = useState<number>(Date.now());
+
+  // 获取真实的可用日历数据
+  const availableCalendars = getAvailableCalendarsForSettings();
+
+  // 日历来源状态 - 使用真实日历的第一个作为默认值
+  const [sourceCalendarId, setSourceCalendarId] = useState(() => availableCalendars[0]?.id || 'local-created');
+  const [syncCalendarId, setSyncCalendarId] = useState(() => availableCalendars[1]?.id || availableCalendars[0]?.id || 'not-synced');
+
+  // 同步模式数据
+  const syncModes = [
+    { id: 'receive-only', name: '只接收同步', emoji: '📥' },
+    { id: 'send-only', name: '只发送同步', emoji: '📤' },
+    { id: 'send-only-private', name: '只发送（仅自己）', emoji: '📤🔒' },
+    { id: 'bidirectional', name: '双向同步', emoji: '🔄' },
+    { id: 'bidirectional-private', name: '双向同步（仅自己）', emoji: '🔄🔒' },
+  ];
+  const [sourceSyncMode, setSourceSyncMode] = useState('receive-only');
+  const [syncSyncMode, setSyncSyncMode] = useState('bidirectional');
+
+  // 获取日历显示信息
+  const getCalendarInfo = (calendarId: string) => {
+    const calendar = availableCalendars.find(c => c.id === calendarId);
+    if (!calendar) return { name: 'Unknown', subName: '', color: '#999999' };
+    
+    // 从 calendar.name 中解析名称，去除 emoji 前缀（使用兼容的正则表达式）
+    const cleanName = calendar.name.replace(/^[\uD83C-\uDBFF\uDC00-\uDFFF]+\s*/, ''); // 去除 emoji
+    const [mainName, subName] = cleanName.includes(': ') ? cleanName.split(': ') : [cleanName, ''];
+    
+    return {
+      name: mainName,
+      subName: subName ? `: ${subName}` : '',
+      color: calendar.color
+    };
+  };
+
+  // 获取同步模式显示信息
+  const getSyncModeInfo = (modeId: string) => {
+    const mode = syncModes.find(m => m.id === modeId);
+    return mode || { id: 'unknown', name: '未知模式', emoji: '❓' };
+  };
 
   // 初始化时手动提取演示数据的联系人到联系人库
   useEffect(() => {
@@ -152,6 +200,10 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
   const tagPickerRef = useRef<HTMLDivElement>(null);
   const tagRowRef = useRef<HTMLDivElement>(null);
   const tagPickerDropdownRef = useRef<HTMLDivElement>(null);
+  const sourceCalendarRef = useRef<HTMLDivElement>(null);
+  const sourceSyncModeRef = useRef<HTMLDivElement>(null);
+  const syncCalendarRef = useRef<HTMLDivElement>(null);
+  const syncSyncModeRef = useRef<HTMLDivElement>(null);
 
   // 动态调整标题输入框宽度
   const autoResizeInput = useCallback((input: HTMLInputElement | null) => {
@@ -173,27 +225,55 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
     autoResizeInput(titleInputRef.current);
   }, [formData.title, autoResizeInput]);
 
-  // 点击外部关闭标签选择器
+  // 点击外部关闭各种选择器
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
-      const clickedInside = 
+      
+      // 检查标签选择器
+      const clickedInTagPicker = 
         (tagPickerRef.current && tagPickerRef.current.contains(target)) ||
         (tagPickerDropdownRef.current && tagPickerDropdownRef.current.contains(target));
       
-      if (!clickedInside) {
+      if (!clickedInTagPicker && showTagPicker) {
         setShowTagPicker(false);
       }
+
+      // 检查来源日历选择器
+      const clickedInSourceCalendar = sourceCalendarRef.current?.parentElement?.contains(target);
+      if (!clickedInSourceCalendar && showSourceCalendarPicker) {
+        setShowSourceCalendarPicker(false);
+      }
+
+      // 检查来源同步模式选择器
+      const clickedInSourceSyncMode = sourceSyncModeRef.current?.parentElement?.contains(target);
+      if (!clickedInSourceSyncMode && showSourceSyncModePicker) {
+        setShowSourceSyncModePicker(false);
+      }
+
+      // 检查同步日历选择器
+      const clickedInSyncCalendar = syncCalendarRef.current?.parentElement?.contains(target);
+      if (!clickedInSyncCalendar && showSyncCalendarPicker) {
+        setShowSyncCalendarPicker(false);
+      }
+
+      // 检查同步模式选择器
+      const clickedInSyncSyncMode = syncSyncModeRef.current?.parentElement?.contains(target);
+      if (!clickedInSyncSyncMode && showSyncSyncModePicker) {
+        setShowSyncSyncModePicker(false);
+      }
+
+      // 时间选择器通过遮罩层处理点击外部关闭，这里不需要额外处理
     };
 
-    if (showTagPicker) {
+    if (showTagPicker || showSourceCalendarPicker || showSyncCalendarPicker || showSourceSyncModePicker || showSyncSyncModePicker) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showTagPicker]);
+  }, [showTagPicker, showSourceCalendarPicker, showSyncCalendarPicker, showSourceSyncModePicker, showSyncSyncModePicker]);
 
   // Timer 状态检测
   const isCurrentEventRunning = globalTimer?.isRunning && globalTimer?.parentEventId === formData.id;
@@ -761,72 +841,76 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
                 />
 
                 {/* 时间显示 */}
-                <Tippy
-                  content={
+                <div 
+                  className="eventmodal-v2-plan-row" 
+                  onClick={() => setShowTimePicker(true)} 
+                  style={{ cursor: 'pointer' }}
+                >
+                  <img src={datetimeIcon} alt="" className="eventmodal-v2-plan-icon" />
+                  <div className="eventmodal-v2-plan-content" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    {(() => {
+                      const timeInfo = formatTimeDisplay(formData.startTime, formData.endTime);
+                      if (!timeInfo) {
+                        return <span style={{ color: '#9ca3af' }}>添加时间...</span>;
+                      }
+                      
+                      return (
+                        <>
+                          <span>{timeInfo.dateStr} ({timeInfo.weekday}) {timeInfo.startTimeStr}</span>
+                          {timeInfo.endTimeStr && timeInfo.duration && (
+                            <>
+                              <div className="time-arrow-section">
+                                <span className="duration-text">{timeInfo.duration}</span>
+                                <img src={arrowBlueIcon} alt="" className="arrow-icon" />
+                              </div>
+                              <span>{timeInfo.endTimeStr}</span>
+                            </>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* 时间选择器弹出层 */}
+                {showTimePicker && (
+                  <div
+                    style={{
+                      position: 'fixed',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      zIndex: 1000,
+                      backgroundColor: 'white',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                    }}
+                  >
                     <UnifiedDateTimePicker
                       initialStart={formData.startTime || undefined}
                       initialEnd={formData.endTime || undefined}
                       onApplied={handleTimeApplied}
                       onClose={() => setShowTimePicker(false)}
                     />
-                  }
-                  visible={showTimePicker}
-                  onClickOutside={() => setShowTimePicker(false)}
-                  interactive={true}
-                  placement="bottom"
-                  popperOptions={{
-                    strategy: 'fixed',
-                    modifiers: [
-                      {
-                        name: 'flip',
-                        enabled: false, // 禁止自动翻转到上方
-                      },
-                      {
-                        name: 'preventOverflow',
-                        options: {
-                          altAxis: true,
-                          tether: false, // 允许超出边界
-                        },
-                      },
-                    ],
-                  }}
-                  theme="light"
-                  arrow={false}
-                  offset={[0, 8]}
-                  appendTo={document.body}
-                  maxWidth="none"
-                >
-                  <div 
-                    className="eventmodal-v2-plan-row" 
-                    onClick={() => setShowTimePicker(true)} 
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <img src={datetimeIcon} alt="" className="eventmodal-v2-plan-icon" />
-                    <div className="eventmodal-v2-plan-content" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      {(() => {
-                        const timeInfo = formatTimeDisplay(formData.startTime, formData.endTime);
-                        if (!timeInfo) {
-                          return <span style={{ color: '#9ca3af' }}>添加时间...</span>;
-                        }
-                        
-                        return (
-                          <>
-                            <span>{timeInfo.dateStr} ({timeInfo.weekday}) {timeInfo.startTimeStr}</span>
-                            {timeInfo.endTimeStr && timeInfo.duration && (
-                              <>
-                                <div className="time-arrow-section">
-                                  <span className="duration-text">{timeInfo.duration}</span>
-                                  <img src={arrowBlueIcon} alt="" className="arrow-icon" />
-                                </div>
-                                <span>{timeInfo.endTimeStr}</span>
-                              </>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </div>
                   </div>
-                </Tippy>
+                )}
+
+                {/* 时间选择器背景遮罩 */}
+                {showTimePicker && (
+                  <div
+                    style={{
+                      position: 'fixed',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                      zIndex: 999
+                    }}
+                    onClick={() => setShowTimePicker(false)}
+                  />
+                )}
 
                 {/* 地点 */}
                 <div className="eventmodal-v2-plan-row" style={{ cursor: 'pointer' }}>
@@ -852,21 +936,121 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
                 </div>
 
                 {/* 日历来源和同步模式 */}
-                <div className="eventmodal-v2-plan-row" style={{ marginTop: '4px' }}>
+                <div className="eventmodal-v2-plan-row" style={{ marginTop: '4px', position: 'relative' }}>
                   <span style={{ flexShrink: 0, color: '#6b7280' }}>来自</span>
                   <div className="eventmodal-v2-plan-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        <span style={{ width: '8px', height: '8px', background: '#ef4444', borderRadius: '50%' }}></span>
-                        <strong style={{ color: '#1f2937' }}>Outlook</strong>
-                      </span>
-                      <span style={{ color: '#6b7280' }}>: 默认</span>
+                    {/* 日历选择区域 */}
+                    <div style={{ position: 'relative' }}>
+                      <div 
+                        ref={sourceCalendarRef}
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '6px',
+                          cursor: 'pointer',
+                          padding: '2px 4px',
+                          borderRadius: '4px',
+                          transition: 'background-color 0.15s'
+                        }}
+                        onClick={() => setShowSourceCalendarPicker(!showSourceCalendarPicker)}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ 
+                            width: '8px', 
+                            height: '8px', 
+                            background: getCalendarInfo(sourceCalendarId).color, 
+                            borderRadius: '50%' 
+                          }}></span>
+                          <strong style={{ color: '#1f2937' }}>{getCalendarInfo(sourceCalendarId).name}</strong>
+                        </span>
+                        <span style={{ color: '#6b7280' }}>{getCalendarInfo(sourceCalendarId).subName}</span>
+                      </div>
+                      
+                      {showSourceCalendarPicker && createPortal(
+                        <div 
+                          style={{
+                            position: 'fixed',
+                            top: sourceCalendarRef.current ? (sourceCalendarRef.current.getBoundingClientRect().bottom + 4) : '50%',
+                            left: sourceCalendarRef.current ? sourceCalendarRef.current.getBoundingClientRect().left : '50%',
+                            zIndex: 9999,
+                            minWidth: '200px',
+                            backgroundColor: '#ffffff',
+                            border: '1px solid #e5e7eb',
+                            borderRadius: '8px',
+                            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                          }}
+                        >
+                          <SimpleCalendarDropdown
+                            availableCalendars={availableCalendars}
+                            selectedCalendarId={sourceCalendarId}
+                            onSelectionChange={(calendarId) => {
+                              setSourceCalendarId(calendarId);
+                              setShowSourceCalendarPicker(false);
+                            }}
+                            onClose={() => setShowSourceCalendarPicker(false)}
+                            title="选择来源日历"
+                          />
+                        </div>,
+                        document.body
+                      )}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#6b7280', fontSize: '13px' }}>
-                      <span>📥</span>
-                      <span>只接收同步</span>
+                    
+                    {/* 同步模式选择区域 */}
+                    <div style={{ position: 'relative' }}>
+                      <div 
+                        ref={sourceSyncModeRef}
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '6px', 
+                          color: '#6b7280', 
+                          fontSize: '13px',
+                          cursor: 'pointer',
+                          padding: '2px 4px',
+                          borderRadius: '4px',
+                          transition: 'background-color 0.15s'
+                        }}
+                        onClick={() => setShowSourceSyncModePicker(!showSourceSyncModePicker)}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
+                        <span>{getSyncModeInfo(sourceSyncMode).emoji}</span>
+                        <span>{getSyncModeInfo(sourceSyncMode).name}</span>
+                      </div>
+                      
+                      {showSourceSyncModePicker && createPortal(
+                        <div 
+                          style={{
+                            position: 'fixed',
+                            top: sourceSyncModeRef.current ? (sourceSyncModeRef.current.getBoundingClientRect().bottom + 4) : '50%',
+                            right: sourceSyncModeRef.current ? (window.innerWidth - sourceSyncModeRef.current.getBoundingClientRect().right) : 'auto',
+                            left: sourceSyncModeRef.current ? 'auto' : '50%',
+                            zIndex: 9999,
+                            minWidth: '200px',
+                            backgroundColor: '#ffffff',
+                            border: '1px solid #e5e7eb',
+                            borderRadius: '8px',
+                            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                          }}
+                        >
+                          <SyncModeDropdown
+                            availableModes={syncModes}
+                            selectedModeId={sourceSyncMode}
+                            onSelectionChange={(modeId) => {
+                              setSourceSyncMode(modeId);
+                              setShowSourceSyncModePicker(false);
+                            }}
+                            onClose={() => setShowSourceSyncModePicker(false)}
+                            title="选择同步模式"
+                          />
+                        </div>,
+                        document.body
+                      )}
                     </div>
                   </div>
+
                 </div>
 
                 {/* 实际进展区域 */}
@@ -903,21 +1087,121 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
                   </div>
 
                   {/* 同步状态 */}
-                  <div className="eventmodal-v2-plan-row" style={{ marginTop: '12px' }}>
+                  <div className="eventmodal-v2-plan-row" style={{ marginTop: '12px', position: 'relative' }}>
                     <span style={{ flexShrink: 0, color: '#6b7280' }}>同步</span>
                     <div className="eventmodal-v2-plan-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <span style={{ width: '8px', height: '8px', background: '#ef4444', borderRadius: '50%' }}></span>
-                          <strong style={{ color: '#1f2937' }}>Outlook</strong>
-                        </span>
-                        <span style={{ color: '#6b7280' }}>: 工作等</span>
+                      {/* 日历选择区域 */}
+                      <div style={{ position: 'relative' }}>
+                        <div 
+                          ref={syncCalendarRef}
+                          style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '6px',
+                            cursor: 'pointer',
+                            padding: '2px 4px',
+                            borderRadius: '4px',
+                            transition: 'background-color 0.15s'
+                          }}
+                          onClick={() => setShowSyncCalendarPicker(!showSyncCalendarPicker)}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ 
+                              width: '8px', 
+                              height: '8px', 
+                              background: getCalendarInfo(syncCalendarId).color, 
+                              borderRadius: '50%' 
+                            }}></span>
+                            <strong style={{ color: '#1f2937' }}>{getCalendarInfo(syncCalendarId).name}</strong>
+                          </span>
+                          <span style={{ color: '#6b7280' }}>{getCalendarInfo(syncCalendarId).subName}</span>
+                        </div>
+                        
+                        {showSyncCalendarPicker && createPortal(
+                          <div 
+                            style={{
+                              position: 'fixed',
+                              top: syncCalendarRef.current ? (syncCalendarRef.current.getBoundingClientRect().bottom + 4) : '50%',
+                              left: syncCalendarRef.current ? syncCalendarRef.current.getBoundingClientRect().left : '50%',
+                              zIndex: 9999,
+                              minWidth: '200px',
+                              backgroundColor: '#ffffff',
+                              border: '1px solid #e5e7eb',
+                              borderRadius: '8px',
+                              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                            }}
+                          >
+                            <SimpleCalendarDropdown
+                              availableCalendars={availableCalendars}
+                              selectedCalendarId={syncCalendarId}
+                              onSelectionChange={(calendarId) => {
+                                setSyncCalendarId(calendarId);
+                                setShowSyncCalendarPicker(false);
+                              }}
+                              onClose={() => setShowSyncCalendarPicker(false)}
+                              title="选择同步日历"
+                            />
+                          </div>,
+                          document.body
+                        )}
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#6b7280', fontSize: '13px' }}>
-                        <span>🔄</span>
-                        <span>双向同步</span>
+                      
+                      {/* 同步模式选择区域 */}
+                      <div style={{ position: 'relative' }}>
+                        <div 
+                          ref={syncSyncModeRef}
+                          style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '6px', 
+                            color: '#6b7280', 
+                            fontSize: '13px',
+                            cursor: 'pointer',
+                            padding: '2px 4px',
+                            borderRadius: '4px',
+                            transition: 'background-color 0.15s'
+                          }}
+                          onClick={() => setShowSyncSyncModePicker(!showSyncSyncModePicker)}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
+                          <span>{getSyncModeInfo(syncSyncMode).emoji}</span>
+                          <span>{getSyncModeInfo(syncSyncMode).name}</span>
+                        </div>
+                        
+                        {showSyncSyncModePicker && createPortal(
+                          <div 
+                            style={{
+                              position: 'fixed',
+                              top: syncSyncModeRef.current ? (syncSyncModeRef.current.getBoundingClientRect().bottom + 4) : '50%',
+                              right: syncSyncModeRef.current ? (window.innerWidth - syncSyncModeRef.current.getBoundingClientRect().right) : 'auto',
+                              left: syncSyncModeRef.current ? 'auto' : '50%',
+                              zIndex: 9999,
+                              minWidth: '200px',
+                              backgroundColor: '#ffffff',
+                              border: '1px solid #e5e7eb',
+                              borderRadius: '8px',
+                              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                            }}
+                          >
+                            <SyncModeDropdown
+                              availableModes={syncModes}
+                              selectedModeId={syncSyncMode}
+                              onSelectionChange={(modeId) => {
+                                setSyncSyncMode(modeId);
+                                setShowSyncSyncModePicker(false);
+                              }}
+                              onClose={() => setShowSyncSyncModePicker(false)}
+                              title="选择同步模式"
+                            />
+                          </div>,
+                          document.body
+                        )}
                       </div>
                     </div>
+
                   </div>
 
                   {/* 对比信息 */}

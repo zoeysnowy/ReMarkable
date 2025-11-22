@@ -183,6 +183,14 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
     const lastDay = new Date(year, month + 1, 0);
     const startingDayOfWeek = firstDay.getDay();
     const daysInMonth = lastDay.getDate();
+    
+    // 今日日期判断
+    const today = new Date();
+    const isToday = (date: Date) => {
+      return date.getFullYear() === today.getFullYear() &&
+             date.getMonth() === today.getMonth() &&
+             date.getDate() === today.getDate();
+    };
 
     const weeks: (number | null)[][] = [];
     let week: (number | null)[] = new Array(startingDayOfWeek).fill(null);
@@ -237,6 +245,10 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
                   key={dayIndex}
                   className={`calendar-day ${
                     day === null ? 'calendar-day-empty' : ''
+                  } ${
+                    day && isToday(new Date(year, month, day))
+                      ? 'calendar-day-today'
+                      : ''
                   } ${
                     day && isDateInRange(new Date(year, month, day))
                       ? 'calendar-day-in-range'

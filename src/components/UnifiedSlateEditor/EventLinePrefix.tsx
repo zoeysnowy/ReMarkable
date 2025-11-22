@@ -1,8 +1,9 @@
 /**
  * EventLinePrefix - 事件行前缀渲染器
  * 
- * 根据Figma设计稿实现类似Word修订模式的竖线显示
- * 布局：状态标签 + 竖线 + Checkbox + Emoji
+ * 根据Figma设计稿实现统一缩进的竖线布局
+ * 竖线由容器统一渲染，此组件只处理缩进和标签
+ * 布局：统一缩进的 Checkbox + Emoji + 状态标签
  */
 
 import React from 'react';
@@ -61,44 +62,8 @@ const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onS
   const statusConfig = getStatusConfig(eventStatus);
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative' }}>
-      {/* 🆕 状态标签 + 竖线组合 (Word修订模式风格) */}
-      {statusConfig && (
-        <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
-          {/* 状态标签 */}
-          <div
-            style={{
-              position: 'absolute',
-              left: '-45px', // 标签位于竖线左侧
-              top: '50%',
-              transform: 'translateY(-50%)',
-              fontSize: '10px',
-              fontWeight: '600',
-              fontStyle: 'italic',
-              color: statusConfig.labelColor,
-              fontFamily: 'Roboto, sans-serif',
-              whiteSpace: 'nowrap',
-              zIndex: 10,
-            }}
-          >
-            {statusConfig.label}
-          </div>
-          
-          {/* 状态竖线 */}
-          <div
-            style={{
-              width: '3px',
-              height: '20px',
-              backgroundColor: statusConfig.color,
-              borderRadius: '1.5px',
-              flexShrink: 0,
-              marginRight: '6px',
-            }}
-          />
-        </div>
-      )}
-      
-      {/* Checkbox */}
+    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+      {/* Checkbox - 统一缩进由StatusLineContainer的padding-left控制 */}
       <input
         type="checkbox"
         checked={isCompleted}

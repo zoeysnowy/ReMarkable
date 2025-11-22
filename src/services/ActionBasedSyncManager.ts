@@ -2122,7 +2122,22 @@ private getUserSettings(): any {
           const isCalendarValid = await this.microsoftService.validateCalendarExists(syncTargetCalendarId);
           
           if (!isCalendarValid) {
-            const fallbackCalendarId = this.microsoftService.getSelectedCalendarId();
+            let fallbackCalendarId = this.microsoftService.getSelectedCalendarId();
+            
+            // 🔧 如果选定日历也无效或为null，获取实际默认日历
+            if (!fallbackCalendarId) {
+              try {
+                const defaultCalendar = await this.microsoftService.getDefaultCalendar();
+                fallbackCalendarId = defaultCalendar.id;
+                // 保存为默认选择
+                this.microsoftService.setSelectedCalendar(fallbackCalendarId);
+                console.log('📅 [CALENDAR FALLBACK] Auto-set default calendar:', fallbackCalendarId);
+              } catch (error) {
+                console.error('❌ [CALENDAR FALLBACK] Failed to get default calendar:', error);
+                throw new Error('无法获取默认日历，请检查网络连接或重新登录');
+              }
+            }
+            
             console.warn('⚠️ [CALENDAR VALIDATION] Target calendar not found, falling back to default:', {
               invalidCalendarId: syncTargetCalendarId,
               fallbackCalendarId: fallbackCalendarId,
@@ -2141,7 +2156,12 @@ private getUserSettings(): any {
             syncTargetCalendarId = fallbackCalendarId;
           }
           
-          const newEventId = await this.microsoftService.syncEventToCalendar(eventData, syncTargetCalendarId || 'primary');
+          // 🔧 最后检查：确保有有效的日历ID
+          if (!syncTargetCalendarId) {
+            throw new Error('无法确定目标日历ID，事件同步失败');
+          }
+          
+          const newEventId = await this.microsoftService.syncEventToCalendar(eventData, syncTargetCalendarId);
           
           if (newEventId) {
             this.updateLocalEventExternalId(action.entityId, newEventId, createDescription);
@@ -2284,7 +2304,12 @@ private getUserSettings(): any {
               isAllDay: action.data.isAllDay || false
             };
             
-            const newEventId = await this.microsoftService.syncEventToCalendar(eventData, syncTargetCalendarId || 'primary');
+            // 🔧 确保有有效的日历ID
+            if (!syncTargetCalendarId) {
+              throw new Error('无法确定目标日历ID，事件同步失败');
+            }
+            
+            const newEventId = await this.microsoftService.syncEventToCalendar(eventData, syncTargetCalendarId);
             
             if (newEventId) {
               this.updateLocalEventExternalId(action.entityId, newEventId, createDescription);
@@ -2523,7 +2548,12 @@ private getUserSettings(): any {
                 isAllDay: action.data.isAllDay || false
               };
               
-                const recreatedEventId = await this.microsoftService.syncEventToCalendar(recreateEventData, createCalendarId || 'primary');
+                // 🔧 确保有有效的日历ID
+                if (!createCalendarId) {
+                  throw new Error('无法确定创建目标日历ID，事件重建失败');
+                }
+                
+                const recreatedEventId = await this.microsoftService.syncEventToCalendar(recreateEventData, createCalendarId);
                 
                 if (recreatedEventId) {
                   this.updateLocalEventExternalId(action.entityId, recreatedEventId, recreateDescription);

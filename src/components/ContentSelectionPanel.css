@@ -273,6 +273,13 @@
   cursor: default;
 }
 
+.calendar-day-today {
+  background: rgba(59, 130, 246, 0.15) !important;
+  color: #3b82f6 !important;
+  font-weight: 700 !important;
+  border: 2px solid rgba(59, 130, 246, 0.3) !important;
+}
+
 .calendar-day-selected {
   background: linear-gradient(to right, #22d3ee, #3b82f6);
   color: white;

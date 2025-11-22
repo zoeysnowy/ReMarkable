@@ -1,0 +1,156 @@
+import React from 'react';
+
+interface Calendar {
+  id: string;
+  name: string;
+  color: string;
+}
+
+interface SimpleCalendarDropdownProps {
+  availableCalendars: Calendar[];
+  selectedCalendarId: string;
+  onSelectionChange: (calendarId: string) => void;
+  onClose?: () => void;
+  title?: string;
+}
+
+/**
+ * 简化的日历选择下拉组件 - 只显示下拉列表，不显示 chips
+ */
+export const SimpleCalendarDropdown: React.FC<SimpleCalendarDropdownProps> = ({
+  availableCalendars,
+  selectedCalendarId,
+  onSelectionChange,
+  onClose,
+  title = "选择日历"
+}) => {
+
+  // 获取日历显示名称
+  const getCalendarName = (calendar: Calendar) => {
+    // 从 calendar.name 中解析名称，去除 emoji 前缀（使用兼容的正则表达式）
+    const cleanName = calendar.name.replace(/^[\uD83C-\uDBFF\uDC00-\uDFFF]+\s*/, '');
+    return cleanName;
+  };
+
+  const getCalendarColor = (calendar: Calendar) => {
+    return calendar.color || '#3498db';
+  };
+
+  return (
+    <div style={{
+      padding: '12px'
+    }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '12px',
+        paddingBottom: '8px',
+        borderBottom: '1px solid #e5e7eb'
+      }}>
+        <span style={{
+          fontSize: '14px',
+          fontWeight: '500',
+          color: '#374151'
+        }}>{title}</span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose?.();
+          }}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#9CA3AF',
+            fontSize: '18px',
+            cursor: 'pointer',
+            padding: '0',
+            width: '20px',
+            height: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: '4px'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = '#6B7280';
+            e.currentTarget.style.backgroundColor = '#f3f4f6';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = '#9CA3AF';
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+        >
+          ✕
+        </button>
+      </div>
+
+      <div style={{
+        maxHeight: '200px',
+        overflowY: 'auto'
+      }}>
+        {availableCalendars.map(calendar => {
+          const isSelected = selectedCalendarId === calendar.id;
+          const isDisabled = false; // 在单选模式下不需要禁用
+
+          return (
+            <label
+              key={calendar.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                padding: '8px 12px',
+                cursor: isDisabled ? 'not-allowed' : 'pointer',
+                borderRadius: '6px',
+                marginBottom: '4px',
+                backgroundColor: isSelected ? '#f3f4f6' : 'transparent',
+                opacity: isDisabled ? 0.5 : 1,
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                if (!isDisabled) {
+                  e.currentTarget.style.backgroundColor = isSelected ? '#f3f4f6' : '#f9fafb';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = isSelected ? '#f3f4f6' : 'transparent';
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => !isDisabled && onSelectionChange(calendar.id)}
+                disabled={isDisabled}
+                style={{
+                  marginRight: '8px',
+                  accentColor: '#3b82f6'
+                }}
+              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {/* 颜色圆点 */}
+                <span 
+                  style={{ 
+                    backgroundColor: getCalendarColor(calendar),
+                    width: '12px',
+                    height: '12px',
+                    borderRadius: '50%',
+                    display: 'inline-block',
+                    flexShrink: 0
+                  }}
+                ></span>
+                
+                {/* 日历名称 */}
+                <span style={{ 
+                  fontSize: '14px',
+                  color: '#374151',
+                  fontWeight: isSelected ? '500' : '400'
+                }}>{getCalendarName(calendar)}</span>
+              </div>
+            </label>
+          );
+        })} 
+      </div>
+    </div>
+  );
+};

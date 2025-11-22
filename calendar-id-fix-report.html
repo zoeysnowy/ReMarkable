@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日历ID错误修复验证</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .problem {
+            background: #fee;
+            border-left: 4px solid #dc2626;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .solution {
+            background: #efe;
+            border-left: 4px solid #10b981;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .code {
+            background: #f8f8f8;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            margin: 10px 0;
+        }
+        .log {
+            background: #f0f9ff;
+            border: 1px solid #e0f2fe;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #666;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 日历ID "Id is malformed" 错误修复</h1>
+        
+        <div class="problem">
+            <h2>❌ 问题描述</h2>
+            <ul>
+                <li>TimeCalendar页面创建事件时出现 <strong>"Id is malformed"</strong> 错误</li>
+                <li>错误原因：使用了无效的日历ID <code>'primary'</code></li>
+                <li>Microsoft Graph API 不支持 <code>'primary'</code> 这个特殊值</li>
+            </ul>
+            
+            <h3>错误日志:</h3>
+            <div class="log">
+logger.ts:53 [MSCalendar] ⚠️ [validateCalendarExists] Empty calendarId provided
+ActionBasedSyncManager.ts:2126 ⚠️ [CALENDAR VALIDATION] Target calendar not found, falling back to default: 
+  {invalidCalendarId: null, fallbackCalendarId: null, eventTitle: '🏷️个人', eventId: 'local-1763806255595'}
+MicrosoftCalendarService.ts:2384 POST https://graph.microsoft.com/v1.0/me/calendars/primary/events 400 (Bad Request)
+logger.ts:56 [MSCalendar] ❌ Graph API Error Response: 
+  {"error":{"code":"ErrorInvalidIdMalformed","message":"Id is malformed."}}
+            </div>
+        </div>
+
+        <div class="solution">
+            <h2>✅ 修复方案</h2>
+            
+            <h3>1. 增强fallback逻辑</h3>
+            <p>当选定的日历ID为null或无效时，自动获取实际的默认日历：</p>
+            <div class="code">
+// 🔧 如果选定日历也无效或为null，获取实际默认日历
+if (!fallbackCalendarId) {
+  try {
+    const defaultCalendar = await this.microsoftService.getDefaultCalendar();
+    fallbackCalendarId = defaultCalendar.id;
+    // 保存为默认选择
+    this.microsoftService.setSelectedCalendar(fallbackCalendarId);
+  } catch (error) {
+    throw new Error('无法获取默认日历，请检查网络连接或重新登录');
+  }
+}
+            </div>
+
+            <h3>2. 移除'primary'字符串</h3>
+            <p>所有使用 <code>|| 'primary'</code> 的地方改为严格检查：</p>
+            <div class="code">
+// ❌ 之前: 使用无效的'primary'
+const newEventId = await this.microsoftService.syncEventToCalendar(eventData, syncTargetCalendarId || 'primary');
+
+// ✅ 现在: 确保有有效的日历ID
+if (!syncTargetCalendarId) {
+  throw new Error('无法确定目标日历ID，事件同步失败');
+}
+const newEventId = await this.microsoftService.syncEventToCalendar(eventData, syncTargetCalendarId);
+            </div>
+
+            <h3>3. 新增便捷方法</h3>
+            <p>在 MicrosoftCalendarService 中添加 <code>getValidCalendarId()</code> 方法：</p>
+            <div class="code">
+async getValidCalendarId(): Promise&lt;string&gt; {
+  let calendarId = this.getSelectedCalendarId();
+  
+  if (!calendarId) {
+    // 获取默认日历并保存
+    const defaultCalendar = await this.getDefaultCalendar();
+    calendarId = defaultCalendar.id;
+    this.setSelectedCalendar(calendarId);
+  }
+  
+  return calendarId;
+}
+            </div>
+        </div>
+
+        <div class="solution">
+            <h2>🎯 修复效果</h2>
+            
+            <h3>修改的文件：</h3>
+            <ul>
+                <li><code>ActionBasedSyncManager.ts</code> - 增强日历ID验证和fallback逻辑</li>
+                <li><code>MicrosoftCalendarService.ts</code> - 添加便捷的获取有效日历ID方法</li>
+            </ul>
+
+            <h3>预期结果：</h3>
+            <ul>
+                <li>✅ 创建事件时自动获取有效的日历ID</li>
+                <li>✅ 不再出现 "Id is malformed" 错误</li>
+                <li>✅ 自动设置默认日历，避免后续问题</li>
+                <li>✅ 提供清晰的错误提示，便于用户理解</li>
+            </ul>
+        </div>
+
+        <div class="solution" style="background: #fff3cd; border-left-color: #f59e0b;">
+            <h2>🔍 测试步骤</h2>
+            <ol>
+                <li>重新启动应用程序</li>
+                <li>在TimeCalendar页面尝试创建新事件</li>
+                <li>确认事件能够成功创建而不出现错误</li>
+                <li>检查控制台日志，应该看到自动设置默认日历的消息</li>
+                <li>验证事件正确同步到 Outlook 日历</li>
+            </ol>
+        </div>
+
+        <div class="problem" style="background: #f0f9ff; border-left-color: #3b82f6;">
+            <h2>📚 技术要点</h2>
+            
+            <h3>Microsoft Graph API 日历ID规范：</h3>
+            <ul>
+                <li>必须使用实际的日历ID (如: <code>AQMkADVj...AAAA</code>)</li>
+                <li>不支持 <code>'primary'</code>、<code>'default'</code> 等特殊值</li>
+                <li>可通过 <code>/me/calendar</code> 获取默认日历</li>
+                <li>可通过 <code>/me/calendars</code> 获取所有日历</li>
+            </ul>
+
+            <h3>错误处理最佳实践：</h3>
+            <ul>
+                <li>提前验证必需的参数</li>
+                <li>提供有意义的错误消息</li>
+                <li>自动fallback到安全的默认值</li>
+                <li>记录详细的调试信息</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        console.log('✅ 日历ID错误修复已完成');
+        console.log('📝 现在可以测试事件创建功能了');
+    </script>
+</body>
+</html>

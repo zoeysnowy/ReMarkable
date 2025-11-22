@@ -83,6 +83,649 @@ useEffect(() => {
 
 ---
 
+## 🎨 v2.2 状态竖线可视化系统 (2025-11-20)
+
+### 功能概述
+
+**需求**: 在Snapshot快照模式下，通过竖线和标签展示事件的变化状态（新建、更新、完成、错过、删除）
+**参考**: [Figma设计稿](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=290-2646&m=dev)
+**状态**: ✅ 已实现
+
+### 核心组件
+
+#### StatusLineContainer（状态竖线容器 - 多线并行版本）
+
+**v2.2.1 更新 (2025-11-21)**: 重构为支持多条并行竖线和自适应缩进
+
+```typescript
+// src/components/StatusLineContainer.tsx
+interface StatusLineSegment {
+  startIndex: number;      // 起始行索引
+  endIndex: number;        // 结束行索引
+  status: 'new' | 'updated' | 'done' | 'missed' | 'deleted';
+  label: string;           // 显示标签（New/Done/Updated/Missed/Del）
+}
+
+interface StatusLineContainerProps {
+  children: React.ReactNode;
+  segments: StatusLineSegment[];  // 竖线段数组
+  lineHeight?: number;             // 每行高度（默认32px）
+  totalLines?: number;             // 总行数
+}
+```
+
+**核心特性**:
+
+1. **多条并行竖线**
+   - 每行可能有多个不同状态的竖线并行显示
+   - 自动分配竖线列位置，避免重叠
+   - 竖线宽度：2px，间距：5px（Figma规范）
+
+2. **自适应缩进**
+   - 根据实际显示的最大竖线数量动态计算内容缩进
+   - 无竖线时：0px缩进（不浪费空间）
+   - 有竖线时：`16px + 竖线数量 × 7px + 12px`
+   - 示例：4条竖线 = 16 + 4×7 + 12 = 56px
+
+3. **智能标签定位**
+   - 每个状态（颜色）只显示一次标签
+   - 优先规则：
+     a. 如果竖线在最左侧（column 0），标签显示在该竖线左侧
+     b. 如果竖线不在最左侧，标签堆叠在第一个最左侧标签下方
+   - 标签位置：竖线起始行的垂直居中位置
+   - 标签与竖线间距：8px
+
+**布局参数**:
+```typescript
+const LINE_WIDTH = 2;      // 竖线宽度
+const LINE_SPACING = 5;    // 竖线间距
+const LABEL_SPACING = 8;   // 标签与竖线的间距
+const BASE_LEFT = 16;      // 基础左边距
+```
+
+### 竖线显示逻辑
+
+#### 1. 事件状态计算（getEventStatus）
+
+**数据源**: `EventHistoryService` - 事件变更历史记录服务
+
+**计算流程**:
+```typescript
+const getEventStatus = (eventId: string, dateRange: {start: Date, end: Date}) => {
+  // 前置条件：必须选择时间范围
+  if (!dateRange) return undefined;
+  
+  // 步骤1: 查询指定时间段的历史记录
+  const history = EventHistoryService.queryHistory({
+    eventId,
+    startTime: formatTimeForStorage(dateRange.start),  // 时间段开始 - 使用本地时间格式
+    endTime: formatTimeForStorage(dateRange.end)       // 时间段结束 - 使用本地时间格式
+  });
+  
+  // 步骤2: 无历史记录 → 不显示竖线
+  if (!history || history.length === 0) return undefined;
+  
+  // 步骤3: 按时间排序，取最新操作
+  const latestAction = history.sort((a, b) => 
+    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  )[0];
+  
+  // 步骤4: 根据操作类型返回状态
+  switch (latestAction.operation) {
+    case 'create':  
+      return 'new';      // 在时间段内创建
+      
+    case 'update':  
+      return 'updated';  // 在时间段内修改
+      
+    case 'delete':  
+      return 'deleted';  // 在时间段内删除
+      
+    case 'checkin': 
+      // 签到操作需要进一步判断
+      if (latestAction.metadata?.action === 'check-in') {
+        return 'done';   // 签到完成
+      } 
+      else if (latestAction.metadata?.action === 'uncheck') {
+        // 取消签到 → 需要判断是否已过期
+        const event = EventService.getEventById(eventId);
+        if (event?.startTime) {
+          const eventTime = new Date(event.startTime);
+          const now = new Date();
+          if (eventTime < now) {
+            return 'missed';  // 已过期但未完成
+          }
+        }
+        return 'updated';   // 还未到期或无时间设置
+      }
+      return 'done';
+      
+    default:
+      // 默认情况：检查当前状态
+      const event = EventService.getEventById(eventId);
+      if (event) {
+        const checkInStatus = EventService.getCheckInStatus(eventId);
+        
+        // 已签到 → done
+        if (checkInStatus.isChecked) {
+          return 'done';
+        }
+        
+        // 有计划时间但未完成 → 判断是否过期
+        if (event.startTime) {
+          const eventTime = new Date(event.startTime);
+          const now = new Date();
+          if (eventTime < now && !checkInStatus.isChecked) {
+            return 'missed';  // 过期未完成
+          }
+        }
+      }
+      return 'updated';  // 其他情况视为已更新
+  }
+};
+```
+
+### 时间判断逻辑详解
+
+#### ⚠️ 关键提醒：时间格式规范
+
+**本模块严格遵守时间字段规范（见文档开头 "⚠️ 时间字段规范" 章节）**
+
+所有时间操作必须使用 `timeUtils.ts` 中的工具函数：
+- ✅ **转换为存储格式**: `formatTimeForStorage(date)` → `"2025-11-20 14:30:00"`
+- ✅ **解析时间字符串**: `parseLocalTimeString(timeString)` → `Date对象`
+- ❌ **严禁使用**: `date.toISOString()` - 会产生UTC时区偏移
+
+**代码示例（正确）**:
+```typescript
+// ✅ 正确：使用本地时间格式
+const startTime = formatTimeForStorage(dateRange.start);  // "2025-11-20 14:30:00"
+const history = EventHistoryService.queryHistory({ eventId, startTime, endTime });
+
+// ✅ 正确：解析时间进行比较
+const eventTime = parseLocalTimeString(event.startTime);
+if (eventTime < new Date()) { /* 已过期 */ }
+```
+
+**代码示例（错误）**:
+```typescript
+// ❌ 错误：使用ISO格式会导致时区转换
+const startTime = dateRange.start.toISOString();  // "2025-11-20T06:30:00.000Z" (UTC时间)
+// 结果：本地14:30的事件会被转为UTC 06:30，导致8小时偏差
+```
+
+#### 关键时间点
+1. **dateRange.start** - 快照时间段的开始时间（用户选择的Date对象）
+2. **dateRange.end** - 快照时间段的结束时间（用户选择的Date对象）
+3. **latestAction.timestamp** - 历史操作发生的时间（本地时间字符串格式）
+4. **event.startTime** - 事件计划的开始时间（本地时间字符串格式）
+5. **now** - 当前时间（Date对象）
+
+**⚠️ 时间格式规范**:
+- 所有存储的时间字段使用 `formatTimeForStorage(date)` 生成本地时间字符串
+- 格式示例: `"2025-11-20 14:30:00"` (空格分隔符，非ISO的T分隔符)
+- 所有时间比较前使用 `parseLocalTimeString(timeString)` 转换为Date对象
+- **禁止使用** `toISOString()` - 会导致时区转换问题
+
+#### 判断规则矩阵
+
+| 操作类型 | 历史记录时间 | 事件计划时间 | 当前时间 | 签到状态 | 最终状态 |
+|---------|-------------|------------|---------|---------|---------|
+| create | 在时间段内 | - | - | - | **new** |
+| update | 在时间段内 | - | - | - | **updated** |
+| delete | 在时间段内 | - | - | - | **deleted** |
+| checkin (check-in) | 在时间段内 | - | - | isChecked=true | **done** |
+| checkin (uncheck) | 在时间段内 | startTime < now | now | isChecked=false | **missed** |
+| checkin (uncheck) | 在时间段内 | startTime >= now | now | isChecked=false | **updated** |
+| checkin (uncheck) | 在时间段内 | 无startTime | now | isChecked=false | **updated** |
+| (无操作) | - | startTime < now | now | isChecked=true | **done** |
+| (无操作) | - | startTime < now | now | isChecked=false | **missed** |
+| (无操作) | - | startTime >= now | now | - | **updated** |
+
+#### 时间段筛选原理
+
+**EventHistoryService.queryHistory 的时间过滤**:
+```typescript
+// 只返回在指定时间段内的历史记录
+// 注意：startTime和endTime都是本地时间字符串格式（如 "2025-11-20 14:30:00"）
+logs = logs.filter(log => {
+  const logTime = parseLocalTimeString(log.timestamp).getTime();
+  const startMs = parseLocalTimeString(startTime).getTime();
+  const endMs = parseLocalTimeString(endTime).getTime();
+  return logTime >= startMs && logTime <= endMs;
+});
+```
+
+**示例场景**:
+```
+用户选择时间段: 2025-11-13 00:00 ~ 2025-11-20 23:59
+(内部转换: formatTimeForStorage(dateRange.start) → "2025-11-13 00:00:00")
+(内部转换: formatTimeForStorage(dateRange.end) → "2025-11-20 23:59:59")
+
+事件A: 
+  - timestamp: "2025-11-14 10:00:00" 创建 ✅ 在时间段内 → new
+  - timestamp: "2025-11-15 14:00:00" 修改 ✅ 在时间段内 → updated (最新操作)
+
+事件B:
+  - timestamp: "2025-11-10 08:00:00" 创建 ❌ 不在时间段内
+  - timestamp: "2025-11-16 09:00:00" 签到 ✅ 在时间段内 → done
+
+事件C:
+  - timestamp: "2025-11-05 12:00:00" 创建 ❌ 不在时间段内
+  - 无其他操作在时间段内 → undefined (不显示竖线)
+
+事件D:
+  - timestamp: "2025-11-17 15:00:00" 创建，startTime="2025-11-18 10:00:00"
+  - timestamp: "2025-11-18 09:00:00" 取消签到 ✅ 在时间段内
+  - 当前时间 2025-11-20 12:00:00 > startTime → missed
+
+时间比较示例:
+  parseLocalTimeString("2025-11-18 09:00:00").getTime() >= 
+  parseLocalTimeString("2025-11-13 00:00:00").getTime() ✅ 在时间段内
+```
+
+#### 边界情况处理
+
+**情况1: 跨时间段的操作**
+```typescript
+// 只看时间段内的操作，忽略时间段外的
+事件创建: timestamp="2025-11-01 10:00:00" (不在时间段内)
+事件修改: timestamp="2025-11-15 14:00:00" (在时间段内) → 显示 updated
+```
+
+**情况2: 多次操作**
+```typescript
+// 取最新的操作（按timestamp排序）
+timestamp="2025-11-13 10:00:00" 创建 (create)
+timestamp="2025-11-15 16:00:00" 修改 (update)  ← 取这个（最新）
+timestamp="2025-11-14 12:00:00" 修改 (update)
+最终状态: updated
+```
+
+**情况3: 未来事件**
+```typescript
+// 未到期的事件取消签到
+event.startTime = "2025-11-25 10:00:00" (未来)
+latestAction.timestamp = "2025-11-20 15:00:00"
+latestAction.operation = "checkin", action = "uncheck"
+now = parseLocalTimeString("2025-11-20 15:00:00")
+eventTime = parseLocalTimeString("2025-11-25 10:00:00")
+eventTime > now → 结果: updated (还未过期)
+```
+
+**情况4: 过期事件**
+```typescript
+// 已过期但未完成
+event.startTime = "2025-11-18 10:00:00" (过去)
+latestAction.timestamp = "2025-11-19 09:00:00"
+latestAction.operation = "checkin", action = "uncheck"
+now = parseLocalTimeString("2025-11-20 12:00:00")
+eventTime = parseLocalTimeString("2025-11-18 10:00:00")
+eventTime < now && !isChecked → 结果: missed (已过期)
+```
+
+#### 状态优先级（按代码执行顺序）
+1. **前置检查**: dateRange存在？历史记录存在？
+2. **操作类型判断**: create > update > delete > checkin > default
+3. **时间判断**: 仅在checkin和default分支中使用
+   - checkin + uncheck: `event.startTime < now` → missed
+   - default: `event.startTime < now && !isChecked` → missed
+4. **兜底状态**: 无法判断时返回 updated
+
+#### 2. 竖线段计算（statusLineSegments）
+
+**原理**: 连续相同状态的事件合并为一个竖线段
+
+```typescript
+const statusLineSegments = useMemo(() => {
+  const segments: StatusLineSegment[] = [];
+  let currentStatus: string | undefined;
+  let startIndex = 0;
+  
+  editorItems.forEach((item, index) => {
+    const eventStatus = getEventStatus(item.id);
+    
+    // 状态变化时，结束上一段，开始新段
+    if (eventStatus !== currentStatus) {
+      if (currentStatus && index > startIndex) {
+        segments.push({
+          startIndex,
+          endIndex: index - 1,
+          status: currentStatus,
+          label: getStatusConfig(currentStatus).label
+        });
+      }
+      currentStatus = eventStatus;
+      startIndex = index;
+    }
+  });
+  
+  // 处理最后一段
+  if (currentStatus && editorItems.length > startIndex) {
+    segments.push({
+      startIndex,
+      endIndex: editorItems.length - 1,
+      status: currentStatus,
+      label: getStatusConfig(currentStatus).label
+    });
+  }
+  
+  return segments;
+}, [editorItems, getEventStatus]);
+```
+
+**示例**:
+```
+行0: event-1 (new)     →  段1: 0-2, status=new
+行1: event-2 (new)     ↗
+行2: event-3 (new)     ↗
+行3: event-4 (done)    →  段2: 3-4, status=done
+行4: event-5 (done)    ↗
+行5: event-6 (updated) →  段3: 5-5, status=updated
+```
+
+#### 3. 标签去重逻辑
+
+**原则**: 每种状态只显示一次标签（显示在该状态第一次出现的竖线段上）
+
+```typescript
+const statusLabels = useMemo(() => {
+  const seenStatuses = new Set<string>();
+  
+  return segments
+    .filter(segment => {
+      if (seenStatuses.has(segment.status)) {
+        return false; // 已显示过此状态
+      }
+      seenStatuses.add(segment.status);
+      return true;
+    })
+    .map(segment => ({
+      ...segment,
+      top: ((segment.startIndex + segment.endIndex) / 2) * lineHeight + lineHeight / 2
+    }));
+}, [segments, lineHeight]);
+```
+
+#### 4. 多线并行布局算法 (v2.2.1)
+
+**问题**: 不同事件可能有不同状态，需要在同一水平位置显示多条竖线
+
+**解决方案**: 列分配算法（Column Allocation）
+
+```typescript
+// 步骤1: 为每个segment分配列位置
+const segmentColumns = useMemo(() => {
+  const columnMap = new Map<StatusLineSegment, number>();
+  const sortedSegments = [...segments].sort((a, b) => a.startIndex - b.startIndex);
+  
+  sortedSegments.forEach(segment => {
+    let column = 0;
+    const occupiedColumns = new Set<number>();
+    
+    // 检查与当前segment重叠的其他segments占用了哪些列
+    sortedSegments.forEach(other => {
+      if (other === segment) return;
+      if (columnMap.has(other)) {
+        const overlaps = !(other.endIndex < segment.startIndex || other.startIndex > segment.endIndex);
+        if (overlaps) {
+          occupiedColumns.add(columnMap.get(other)!);
+        }
+      }
+    });
+    
+    // 找到第一个未被占用的列
+    while (occupiedColumns.has(column)) {
+      column++;
+    }
+    
+    columnMap.set(segment, column);
+  });
+  
+  return columnMap;
+}, [segments]);
+
+// 步骤2: 计算每条竖线的left位置
+const renderedSegments = segments.map(segment => {
+  const column = segmentColumns.get(segment) || 0;
+  const left = BASE_LEFT + column * (LINE_WIDTH + LINE_SPACING);
+  // BASE_LEFT=16, LINE_WIDTH=2, LINE_SPACING=5
+  // column 0: left=16px
+  // column 1: left=23px (16+7)
+  // column 2: left=30px (16+14)
+  // column 3: left=37px (16+21)
+  return { ...segment, column, left };
+});
+```
+
+**示例场景**:
+```
+行0: segment-A (new, 0-2)      column=0, left=16px
+行1: segment-B (done, 1-3)     column=1, left=23px (与A重叠)
+行2: segment-C (updated, 2-4)  column=2, left=30px (与A,B重叠)
+行3: segment-D (missed, 3-5)   column=1, left=23px (与C重叠，但A已结束，可复用column 1)
+
+可视化:
+行0: |new          (只有A)
+行1: |new |done    (A和B并行)
+行2: |new |done |updated (A,B,C并行)
+行3:      |done |updated |missed (B,C,D并行，A已结束)
+行4:            |updated |missed (C,D并行)
+行5:                     |missed (只有D)
+```
+
+#### 5. 智能标签定位算法 (v2.2.1)
+
+**规则**:
+1. 每个状态（颜色）只显示一次标签
+2. 优先在最左侧（column 0）显示标签
+3. 非最左侧的标签堆叠在第一个最左侧标签下方
+
+```typescript
+const smartLabels = useMemo(() => {
+  const labels: Array<{
+    status: string;
+    label: string;
+    left: number;
+    top: number;
+    isLeftmost: boolean;
+  }> = [];
+  
+  const seenStatuses = new Map<string, boolean>();
+  
+  // 按column和startIndex排序，优先处理最左侧和最早出现的
+  const sortedSegments = [...renderedSegments].sort((a, b) => {
+    if (a.column !== b.column) return a.column - b.column;
+    return a.startIndex - b.startIndex;
+  });
+  
+  sortedSegments.forEach(segment => {
+    if (!seenStatuses.has(segment.status)) {
+      seenStatuses.set(segment.status, segment.column === 0);
+      
+      const centerLine = segment.startIndex;
+      const top = centerLine * lineHeight + lineHeight / 2;
+      const left = segment.left - LABEL_SPACING;
+      
+      labels.push({
+        status: segment.status,
+        label: segment.label,
+        left,
+        top,
+        isLeftmost: segment.column === 0
+      });
+    }
+  });
+  
+  // 非最左侧的标签堆叠在最左侧标签下方
+  const leftmostLabels = labels.filter(l => l.isLeftmost);
+  const otherLabels = labels.filter(l => !l.isLeftmost);
+  
+  otherLabels.forEach((label, index) => {
+    if (leftmostLabels.length > 0) {
+      label.left = leftmostLabels[0].left;
+      label.top = leftmostLabels[0].top + (index + 1) * 16; // 16px行高
+    }
+  });
+  
+  return labels;
+}, [renderedSegments, lineHeight]);
+```
+
+**示例**:
+```
+segment-A: column=0, status=new    → 标签显示在竖线左侧 (left=8px)
+segment-B: column=1, status=done   → 标签堆叠在new下方 (left=8px, top=new.top+16)
+segment-C: column=0, status=updated → 标签显示在竖线左侧 (left=8px)
+segment-D: column=2, status=missed → 标签堆叠在updated下方 (left=8px, top=updated.top+16)
+
+可视化标签位置:
+New      |new
+Done          |done (堆叠在New下方)
+Updated  |updated
+Missed        |missed (堆叠在Updated下方)
+```
+
+#### 6. 自适应缩进计算
+
+**公式**: `contentPaddingLeft = BASE_LEFT + maxLinesCount × (LINE_WIDTH + LINE_SPACING) + 12`
+
+```typescript
+const contentPaddingLeft = useMemo(() => {
+  if (maxLinesCount === 0) return 0; // 无竖线时不缩进
+  return BASE_LEFT + maxLinesCount * (LINE_WIDTH + LINE_SPACING) + 12;
+}, [maxLinesCount]);
+
+// 示例计算:
+// 0条竖线: 0px
+// 1条竖线: 16 + 1×7 + 12 = 35px
+// 2条竖线: 16 + 2×7 + 12 = 42px
+// 3条竖线: 16 + 3×7 + 12 = 49px
+// 4条竖线: 16 + 4×7 + 12 = 56px
+```
+
+### 视觉规范（基于Figma设计稿）
+
+#### 竖线规格
+- **宽度**: 2px
+- **位置**: 距离容器左侧 66px
+- **颜色**:
+  - New: `#3B82F6` (蓝色)
+  - Done: `#10B981` (绿色)
+  - Updated: `#F59E0B` (黄色)
+  - Missed: `#EF4444` (红色)
+  - Del: `#9CA3AF` (灰色)
+- **多条竖线间距**: 5px（可并列显示3条）
+
+#### 标签规格
+- **字体**: 10px, 600 weight, italic, 'Roboto'
+- **位置**: 竖线左侧 8px（右对齐）
+- **颜色**: 与竖线颜色一致
+- **内容**: New / Done / Updated / Missed / Del
+- **显示规则**: 每种状态只显示一次，位于该状态段的中心位置
+
+#### 布局结构
+```
+┌─────────────────────────────────────────┐
+│ ← 66px → ← 21px →                       │
+│  标签区   竖线  内容区                   │
+│          │                              │
+│  New     │ ☑ 测试 #🔮Remarkable开发    │
+│          │ ☑ 好的                       │
+│          │ ☐ 很好                       │
+│  Done    │ ☑ 好的，谢谢                 │
+│          │ ☐ 还是有点问题 📅 明天       │
+│  Updated │ ☐ 测试                       │
+│          │                              │
+└─────────────────────────────────────────┘
+```
+
+### 触发条件
+
+**Snapshot模式启用条件**:
+1. 用户在界面上选择了特定的时间范围（`dateRange`不为空）
+2. EventHistoryService中存在该时间段的历史记录
+3. 事件在该时间段内发生过变更（create/update/delete/checkin）
+
+**不显示竖线的情况**:
+- 未选择时间范围（dateRange为null）
+- 事件在该时间段内无任何变更历史
+- 事件不属于显示的筛选条件范围
+
+### 性能优化
+
+#### 1. useMemo缓存
+```typescript
+// 竖线段计算使用useMemo，仅在editorItems或dateRange变化时重新计算
+const statusLineSegments = useMemo(() => {...}, [editorItems, getEventStatus]);
+```
+
+#### 2. 标签去重
+```typescript
+// 避免重复渲染相同状态的标签
+const seenStatuses = new Set<string>();
+segments.filter(s => !seenStatuses.has(s.status));
+```
+
+#### 3. CSS优化
+```css
+/* 使用绝对定位，避免影响布局流 */
+.status-line-background {
+  position: absolute;
+  pointer-events: none; /* 不阻挡鼠标事件 */
+}
+
+/* 使用transform代替top/left动画 */
+.status-label {
+  transform: translateY(-50%);
+}
+```
+
+### 数据流
+
+```mermaid
+graph LR
+    A[用户选择时间范围] --> B[dateRange更新]
+    B --> C[getEventStatus计算]
+    C --> D[EventHistoryService查询]
+    D --> E[返回事件状态]
+    E --> F[statusLineSegments计算]
+    F --> G[合并连续状态段]
+    G --> H[标签去重]
+    H --> I[StatusLineContainer渲染]
+    I --> J[显示竖线和标签]
+```
+
+### 相关文件
+
+| 文件 | 职责 | 代码行数 |
+|------|------|----------|
+| `StatusLineContainer.tsx` | 竖线容器组件，渲染竖线和标签 | ~90 lines |
+| `StatusLineContainer.css` | 竖线样式定义 | ~67 lines |
+| `PlanManager.tsx` | 计算statusLineSegments，传递给容器 | ~50 lines |
+| `EventHistoryService.ts` | 提供历史记录查询接口 | ~387 lines |
+
+### 未来扩展
+
+#### 多竖线并列显示
+```typescript
+// 支持同时显示多个时间段的状态对比
+<StatusLineContainer
+  segments={[
+    { segments: week1Segments, position: 0 },    // 第1条竖线（66px）
+    { segments: week2Segments, position: 5 },    // 第2条竖线（71px）
+    { segments: week3Segments, position: 10 }    // 第3条竖线（76px）
+  ]}
+/>
+```
+
+#### 交互增强
+- 点击竖线段展开该时间段的详细变更历史
+- 悬停显示tooltip，展示变更摘要
+- 支持筛选特定状态的事件
+
+---
+
 ## 🎉 v2.0 循环更新防护机制 (2025-11-19)
 
 ### 重大修复

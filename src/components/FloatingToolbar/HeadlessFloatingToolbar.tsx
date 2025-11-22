@@ -50,6 +50,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
   const [activePickerState, setActivePickerState] = useState<string | null>(null);
   const savedSelectionRef = useRef<any>(null); // 🆕 保存选区用于预览
   const [selectedEmojiIndex, setSelectedEmojiIndex] = useState<number>(0); // 🆕 当前选中的表情索引
+  const [emojiPickerFocusArea, setEmojiPickerFocusArea] = useState<'nav' | 'search' | 'emojis'>('emojis'); // 🆕 Emoji Picker 焦点区域
 
   // 🎯 智能计算 Tippy 弹出方向
   const getSmartPlacement = (): string => {
@@ -219,9 +220,20 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
     onSubPickerStateChange?.(isSubPickerOpen);
     console.log(`[activePicker useEffect] 🎨 子选择器状态: ${isSubPickerOpen ? '打开' : '关闭'}`);
     
-    // 🆕 重置 emoji 选择索引
+    // 🆕 重置 emoji 选择索引和焦点区域
     if (activePicker === 'emoji') {
       setSelectedEmojiIndex(0);
+      setEmojiPickerFocusArea('emojis'); // 默认焦点在 emoji 选择区
+      
+      // 🎯 初始化标签页第一个按钮的高亮
+      setTimeout(() => {
+        const emojiPicker = document.querySelector('em-emoji-picker');
+        const shadowRoot = (emojiPicker as any)?.shadowRoot;
+        const navButtons = shadowRoot?.querySelectorAll('nav button');
+        if (navButtons && navButtons.length > 0) {
+          navButtons[0].setAttribute('data-keyboard-selected', 'true');
+        }
+      }, 100);
     } else if (activePicker !== 'emoji') {
       // 清理之前的高亮样式
       const emojiButtons = document.querySelectorAll('.emoji-mart-emoji');
@@ -233,49 +245,179 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
     }
   }, [activePicker, onSubPickerStateChange]);
 
-  // 🆕 emoji picker 键盘导航
+  // 🎨 emoji picker 焦点区域视觉反馈
+  useEffect(() => {
+    if (activePicker !== 'emoji') return;
+    
+    const timer = setTimeout(() => {
+      const emojiPicker = document.querySelector('em-emoji-picker');
+      const shadowRoot = (emojiPicker as any)?.shadowRoot;
+      if (!shadowRoot) return;
+      
+      const nav = shadowRoot.querySelector('nav');
+      const searchContainer = shadowRoot.querySelector('.search');
+      
+      // 清除所有区域的高亮
+      if (nav) {
+        (nav as HTMLElement).style.removeProperty('box-shadow');
+        (nav as HTMLElement).style.removeProperty('background-color');
+      }
+      if (searchContainer) {
+        (searchContainer as HTMLElement).style.removeProperty('box-shadow');
+        (searchContainer as HTMLElement).style.removeProperty('background-color');
+      }
+      
+      // 高亮当前焦点区域
+      if (emojiPickerFocusArea === 'nav' && nav) {
+        (nav as HTMLElement).style.setProperty('box-shadow', '0 0 0 2px rgba(59, 130, 246, 0.3)', 'important');
+        (nav as HTMLElement).style.setProperty('background-color', 'rgba(59, 130, 246, 0.05)', 'important');
+      } else if (emojiPickerFocusArea === 'search' && searchContainer) {
+        (searchContainer as HTMLElement).style.setProperty('box-shadow', '0 0 0 2px rgba(59, 130, 246, 0.3)', 'important');
+        (searchContainer as HTMLElement).style.setProperty('background-color', 'rgba(59, 130, 246, 0.05)', 'important');
+        
+        // 自动聚焦到搜索框
+        const searchInput = shadowRoot.querySelector('input[type="search"]') as HTMLInputElement;
+        if (searchInput) {
+          searchInput.focus();
+        }
+      }
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }, [activePicker, emojiPickerFocusArea]);
+
+  // 🆕 emoji picker 键盘导航（增强版：支持 Tab 切换焦点区域）
   useEffect(() => {
     if (activePicker !== 'emoji') return;
 
     const handleEmojiKeyDown = (e: KeyboardEvent) => {
-      // 动态获取当前可见的 emoji 按钮
-      const emojiButtons = document.querySelectorAll('.emoji-mart-emoji');
-      if (emojiButtons.length === 0) return;
+      const emojiPicker = document.querySelector('em-emoji-picker');
+      const shadowRoot = (emojiPicker as any)?.shadowRoot;
+      
+      // 🔄 Tab 键：切换焦点区域
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        
+        if (e.shiftKey) {
+          // Shift+Tab: 反向切换
+          setEmojiPickerFocusArea(prev => {
+            if (prev === 'emojis') return 'search';
+            if (prev === 'search') return 'nav';
+            return 'emojis';
+          });
+        } else {
+          // Tab: 正向切换
+          setEmojiPickerFocusArea(prev => {
+            if (prev === 'nav') return 'search';
+            if (prev === 'search') return 'emojis';
+            return 'nav';
+          });
+        }
+        return;
+      }
+      
+      // 📍 在 nav 区域：左右方向键切换标签页
+      if (emojiPickerFocusArea === 'nav') {
+        if (['ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          
+          const navButtons = shadowRoot?.querySelectorAll('nav button');
+          if (!navButtons || navButtons.length === 0) return;
+          
+          // 找到当前选中的标签页
+          let currentIndex = -1;
+          navButtons.forEach((btn, idx) => {
+            if (btn.getAttribute('data-keyboard-selected') === 'true') {
+              currentIndex = idx;
+            }
+          });
+          
+          if (currentIndex === -1) currentIndex = 0;
+          
+          if (e.key === 'ArrowRight') {
+            currentIndex = (currentIndex + 1) % navButtons.length;
+          } else if (e.key === 'ArrowLeft') {
+            currentIndex = (currentIndex - 1 + navButtons.length) % navButtons.length;
+          } else if (e.key === 'Enter') {
+            // Enter 键点击当前选中的标签
+            (navButtons[currentIndex] as HTMLElement).click();
+            return;
+          }
+          
+          // 更新高亮
+          navButtons.forEach((btn, idx) => {
+            if (idx === currentIndex) {
+              btn.setAttribute('data-keyboard-selected', 'true');
+              (btn as HTMLElement).style.setProperty('outline', '2px solid #3b82f6', 'important');
+              (btn as HTMLElement).style.setProperty('outline-offset', '2px', 'important');
+              (btn as HTMLElement).style.setProperty('border-radius', '4px', 'important');
+            } else {
+              btn.removeAttribute('data-keyboard-selected');
+              (btn as HTMLElement).style.removeProperty('outline');
+              (btn as HTMLElement).style.removeProperty('outline-offset');
+              (btn as HTMLElement).style.removeProperty('border-radius');
+            }
+          });
+        }
+        return;
+      }
+      
+      // 🔍 在 search 区域：不拦截键盘输入（让用户正常输入）
+      if (emojiPickerFocusArea === 'search') {
+        // 只拦截 Escape 键
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          setActivePicker(null);
+          onRequestClose?.();
+        }
+        // Enter 键让搜索框自己处理
+        if (e.key === 'Enter') {
+          // 聚焦到搜索框
+          const searchInput = shadowRoot?.querySelector('input[type="search"]') as HTMLInputElement;
+          if (searchInput) {
+            searchInput.focus();
+          }
+        }
+        return;
+      }
+      
+      // 😀 在 emojis 区域：方向键导航 emoji
+      const isNavigationKey = ['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key) ||
+                              (e.key >= '1' && e.key <= '9');
+      
+      if (!isNavigationKey) return;
+
+      const emojiButtons = shadowRoot?.querySelectorAll('button[aria-label]');
+      if (!emojiButtons || emojiButtons.length === 0) return;
+      
+      // 🛑 阻止事件传播到 Slate 编辑器
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
       
       const perLine = 8; // emoji 每行数量
       const totalEmojis = emojiButtons.length;
       
       switch (e.key) {
         case 'ArrowRight':
-          e.preventDefault();
-          setSelectedEmojiIndex(prev => {
-            const next = (prev + 1) % totalEmojis;
-            return next;
-          });
+          setSelectedEmojiIndex(prev => (prev + 1) % totalEmojis);
           break;
         case 'ArrowLeft':
-          e.preventDefault();
-          setSelectedEmojiIndex(prev => {
-            const next = (prev - 1 + totalEmojis) % totalEmojis;
-            return next;
-          });
+          setSelectedEmojiIndex(prev => (prev - 1 + totalEmojis) % totalEmojis);
           break;
         case 'ArrowDown':
-          e.preventDefault();
-          setSelectedEmojiIndex(prev => {
-            const next = Math.min(prev + perLine, totalEmojis - 1);
-            return next;
-          });
+          setSelectedEmojiIndex(prev => Math.min(prev + perLine, totalEmojis - 1));
           break;
         case 'ArrowUp':
-          e.preventDefault();
-          setSelectedEmojiIndex(prev => {
-            const next = Math.max(prev - perLine, 0);
-            return next;
-          });
+          setSelectedEmojiIndex(prev => Math.max(prev - perLine, 0));
           break;
         case 'Enter':
-          e.preventDefault();
           // 获取当前选中的表情并选择
           const selectedButton = emojiButtons[selectedEmojiIndex] as HTMLElement;
           if (selectedButton) {
@@ -283,13 +425,12 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
           }
           break;
         case 'Escape':
-          e.preventDefault();
           setActivePicker(null);
+          onRequestClose?.();
           break;
         default:
           // 数字键快速跳转（1-9 对应前9个表情）
           if (e.key >= '1' && e.key <= '9') {
-            e.preventDefault();
             const index = parseInt(e.key) - 1;
             if (index < totalEmojis) {
               setSelectedEmojiIndex(index);
@@ -304,28 +445,70 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
       }
     };
 
-    document.addEventListener('keydown', handleEmojiKeyDown, true);
-    return () => document.removeEventListener('keydown', handleEmojiKeyDown, true);
-  }, [activePicker, selectedEmojiIndex]);
+    // 使用 capture 阶段捕获事件，优先级高于 Slate
+    document.addEventListener('keydown', handleEmojiKeyDown, { capture: true });
+    return () => document.removeEventListener('keydown', handleEmojiKeyDown, { capture: true });
+  }, [activePicker, selectedEmojiIndex, emojiPickerFocusArea, onRequestClose]);
 
   // 🆕 更新选中表情的高亮显示
   useEffect(() => {
     if (activePicker !== 'emoji') return;
 
-    const emojiButtons = document.querySelectorAll('.emoji-mart-emoji');
-    emojiButtons.forEach((btn, index) => {
-      const button = btn as HTMLElement;
-      if (index === selectedEmojiIndex) {
-        button.style.outline = '2px solid #3b82f6';
-        button.style.outlineOffset = '2px';
-        button.style.borderRadius = '4px';
-        // 滚动到可见区域
-        button.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-      } else {
-        button.style.outline = 'none';
-        button.style.outlineOffset = '0';
+    // 等待 emoji picker 渲染完成
+    const timer = setTimeout(() => {
+      // 🔍 查找 em-emoji-picker（Web Component with Shadow DOM）
+      const emojiPicker = document.querySelector('em-emoji-picker');
+      
+      if (!emojiPicker) {
+        console.warn('[Emoji Navigation] 未找到 em-emoji-picker 元素');
+        return;
       }
-    });
+      
+      // 🔑 访问 Shadow DOM
+      const shadowRoot = (emojiPicker as any).shadowRoot;
+      if (!shadowRoot) {
+        console.warn('[Emoji Navigation] em-emoji-picker 没有 shadowRoot');
+        return;
+      }
+      
+      // 🎯 在 Shadow DOM 内查找 emoji 按钮
+      // 根据审查元素的结构：<button aria-label="😀" ...>
+      const emojiButtons = shadowRoot.querySelectorAll('button[aria-label]');
+      
+      console.log(`[Emoji Navigation] 在 Shadow DOM 中找到 ${emojiButtons.length} 个 emoji 按钮，当前选中索引: ${selectedEmojiIndex}`);
+      
+      emojiButtons.forEach((btn, index) => {
+        const button = btn as HTMLElement;
+        if (index === selectedEmojiIndex) {
+          // 使用多种方式确保高亮显示
+          button.style.setProperty('outline', '2px solid #3b82f6', 'important');
+          button.style.setProperty('outline-offset', '2px', 'important');
+          button.style.setProperty('border-radius', '4px', 'important');
+          button.style.setProperty('box-shadow', '0 0 8px rgba(59, 130, 246, 0.4)', 'important');
+          button.style.setProperty('background-color', 'rgba(59, 130, 246, 0.1)', 'important');
+          button.style.setProperty('transform', 'scale(1.1)', 'important');
+          button.style.setProperty('z-index', '10', 'important');
+          
+          // 添加自定义属性用于 CSS 选择器
+          button.setAttribute('data-keyboard-selected', 'true');
+          
+          // 滚动到可见区域
+          button.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+          
+          console.log(`[Emoji Navigation] ✅ 高亮第 ${index} 个 emoji:`, button);
+        } else {
+          button.style.removeProperty('outline');
+          button.style.removeProperty('outline-offset');
+          button.style.removeProperty('box-shadow');
+          button.style.removeProperty('background-color');
+          button.style.removeProperty('transform');
+          button.style.removeProperty('z-index');
+          button.removeAttribute('data-keyboard-selected');
+        }
+      });
+    }, 100);
+
+    return () => clearTimeout(timer);
   }, [selectedEmojiIndex, activePicker]);
 
   if (!position.show) return null;
@@ -568,9 +751,6 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
               {/* 只在 picker 激活时才渲染 Emoji Picker */}
               {activePicker === feature && (
                 <div>
-                  <div className="emoji-picker-hint">
-                    <span>💡 方向键导航 • Enter选择 • 1-9快选 • Esc关闭</span>
-                  </div>
                   <Picker
                     data={data}
                     onEmojiSelect={(emoji: any) => {

@@ -18,7 +18,7 @@ import {
 } from '../types/eventHistory';
 import { STORAGE_KEYS } from '../constants/storage';
 import { logger } from '../utils/logger';
-import { formatTimeForStorage } from '../utils/timeUtils';
+import { formatTimeForStorage, parseLocalTimeString } from '../utils/timeUtils';
 
 const historyLogger = logger.module('EventHistory');
 
@@ -43,7 +43,13 @@ const FIELD_DISPLAY_NAMES: Record<string, string> = {
   emoji: '图标',
   reminder: '提醒',
   content: '内容',
-  notes: '备注'
+  notes: '备注',
+  eventLog: '时间日志', // 🆕 添加：追踪时间日志变化
+  simpleTitle: '简单标题',
+  fullTitle: '富文本标题',
+  timeSpec: '时间规范',
+  displayHint: '显示提示',
+  dueDate: '截止日期'
 };
 
 export class EventHistoryService {
@@ -62,6 +68,12 @@ export class EventHistoryService {
     };
 
     this.saveLog(log);
+    console.log('[EventHistoryService] ✅ logCreate:', {
+      eventId: event.id?.slice(-10),
+      timestamp: log.timestamp,
+      title: event.title,
+      source
+    });
     historyLogger.log('📝 [Create] 记录创建:', event.title);
     return log;
   }
@@ -151,18 +163,18 @@ export class EventHistoryService {
         logs = logs.filter(log => options.operations!.includes(log.operation));
       }
 
-      // 按时间范围过滤
+      // 按时间范围过滤 - 使用 parseLocalTimeString 确保本地时间解析
       if (options.startTime) {
-        const startMs = new Date(options.startTime).getTime();
-        logs = logs.filter(log => new Date(log.timestamp).getTime() >= startMs);
+        const startMs = parseLocalTimeString(options.startTime).getTime();
+        logs = logs.filter(log => parseLocalTimeString(log.timestamp).getTime() >= startMs);
       }
       if (options.endTime) {
-        const endMs = new Date(options.endTime).getTime();
-        logs = logs.filter(log => new Date(log.timestamp).getTime() <= endMs);
+        const endMs = parseLocalTimeString(options.endTime).getTime();
+        logs = logs.filter(log => parseLocalTimeString(log.timestamp).getTime() <= endMs);
       }
 
       // 按时间倒序排序（最新的在前）
-      logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      logs.sort((a, b) => parseLocalTimeString(b.timestamp).getTime() - parseLocalTimeString(a.timestamp).getTime());
 
       // 分页
       if (options.offset !== undefined) {
@@ -183,7 +195,18 @@ export class EventHistoryService {
    * 获取指定时间段的所有变更
    */
   static getChangesByTimeRange(startTime: string, endTime: string): EventChangeLog[] {
-    return this.queryHistory({ startTime, endTime });
+    const result = this.queryHistory({ startTime, endTime });
+    console.log('[EventHistoryService] 📊 getChangesByTimeRange:', {
+      startTime,
+      endTime,
+      结果数量: result.length,
+      示例: result.slice(0, 3).map(log => ({
+        operation: log.operation,
+        eventId: log.eventId?.slice(-10),
+        timestamp: log.timestamp
+      }))
+    });
+    return result;
   }
 
   /**
@@ -252,7 +275,7 @@ export class EventHistoryService {
       const beforeCount = allLogs.length;
 
       const filteredLogs = allLogs.filter(log => {
-        return new Date(log.timestamp).getTime() >= cutoffMs;
+        return parseLocalTimeString(log.timestamp).getTime() >= cutoffMs;
       });
 
       localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(filteredLogs));
@@ -329,6 +352,13 @@ export class EventHistoryService {
     try {
       const logs = this.getAllLogs();
       logs.push(log);
+      
+      console.log('[EventHistoryService] 💾 saveLog:', {
+        operation: log.operation,
+        eventId: log.eventId?.slice(-10),
+        timestamp: log.timestamp,
+        历史总数: logs.length
+      });
       
       // 如果记录太多，自动清理旧记录
       if (logs.length > 10000) {

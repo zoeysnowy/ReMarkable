@@ -6,6 +6,7 @@ import 'tippy.js/dist/tippy.css';
 import type { Event } from '../types';
 import { UnifiedSlateEditor } from './UnifiedSlateEditor/UnifiedSlateEditor';
 import { insertTag, insertEmoji, insertDateMention, applyTextFormat, extractTagsFromLine } from './UnifiedSlateEditor/helpers';
+import { StatusLineContainer, StatusLineSegment } from './StatusLineContainer';
 import { useFloatingToolbar } from './FloatingToolbar/useFloatingToolbar';
 import { HeadlessFloatingToolbar } from './FloatingToolbar/HeadlessFloatingToolbar';
 import { ToolbarConfig } from './FloatingToolbar/types';
@@ -65,16 +66,6 @@ const PlanItemTimeDisplay = React.memo<{
   // 直接使用 item.id 订阅 TimeHub
   const eventTime = useEventTime(item.id);
   
-  // 🔍 [DEBUG] 诊断日志
-  console.log('[PlanItemTimeDisplay] 渲染', {
-    eventId: item.id.slice(-10),
-    'eventTime.start': eventTime.start,
-    'eventTime.end': eventTime.end,
-    'item.startTime': item.startTime,
-    'item.endTime': item.endTime,
-    'item.dueDate': item.dueDate
-  });
-  
   // 悬浮卡片状态管理
   const [showHoverCard, setShowHoverCard] = useState(false);
   const hoverTimerRef = useRef<number | null>(null);
@@ -99,14 +90,6 @@ const PlanItemTimeDisplay = React.memo<{
   const startTimeStr = (eventTime.start && eventTime.start !== '') ? eventTime.start : (item.startTime || null);
   const endTimeStr = (eventTime.end && eventTime.end !== '') ? eventTime.end : (item.endTime || null);
   const dueDateStr = item.dueDate || null;
-  
-  // 🔍 [DEBUG] 检查 return null 条件
-  console.log('[PlanItemTimeDisplay] 时间检查', {
-    eventId: item.id.slice(-10),
-    startTime: startTime,
-    dueDate: dueDate,
-    willReturnNull: !startTime && !dueDate
-  });
   
   // 清理定时器
   useEffect(() => {
@@ -300,7 +283,14 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   
   const [items, setItems] = useState<Event[]>(() => {
     if (initialItemsRef.current) {
-      console.log('[PlanManager] 使用缓存的初始数据');
+      console.log('[PlanManager] 使用缓存的初始数据:', {
+        数量: initialItemsRef.current.length,
+        示例: initialItemsRef.current.slice(0, 3).map(e => ({
+          id: e.id?.slice(-10),
+          title: e.title?.slice(0, 20),
+          isPlan: e.isPlan
+        }))
+      });
       return initialItemsRef.current;
     }
     
@@ -431,44 +421,59 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   const [hiddenTags, setHiddenTags] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   
-  // 🆕 事件状态计算函数
+  // 🆕 强制 snapshot 重新计算的版本号
+  const [snapshotVersion, setSnapshotVersion] = useState(0);
+  
+  // 🚀 性能优化: 缓存事件状态查询结果
+  const eventStatusCacheRef = useRef<Map<string, { status: 'new' | 'updated' | 'done' | 'missed' | 'deleted' | undefined, timestamp: number }>>(new Map());
+  
+  // 🆕 事件状态计算函数 (带缓存)
   const getEventStatus = useCallback((eventId: string): 'new' | 'updated' | 'done' | 'missed' | 'deleted' | undefined => {
     if (!dateRange) return undefined;
     
+    // 🚀 检查缓存 (5秒内有效)
+    const cached = eventStatusCacheRef.current.get(eventId);
+    if (cached && Date.now() - cached.timestamp < 5000) {
+      return cached.status;
+    }
+    
     try {
       // 从EventHistoryService获取事件在指定时间段的历史记录
-      const startTime = dateRange.start.toISOString();
-      const endTime = dateRange.end.toISOString();
+      const startTime = formatTimeForStorage(dateRange.start);
+      const endTime = formatTimeForStorage(dateRange.end);
       const history = EventHistoryService.queryHistory({ 
         eventId, 
         startTime, 
         endTime 
       });
       
-      // 🔍 Debug: 检查历史记录
-      console.log(`[getEventStatus] 事件 ${eventId.substring(0, 8)} 在时间段 ${startTime.substring(5, 10)} - ${endTime.substring(5, 10)} 的历史:`, history);
-      
       if (!history || history.length === 0) {
-        console.log(`[getEventStatus] 事件 ${eventId.substring(0, 8)} 无历史记录`);
-        return undefined;
+        const result = undefined;
+        eventStatusCacheRef.current.set(eventId, { status: result, timestamp: Date.now() });
+        return result;
       }
       
-      // 按时间排序，最新的在前
-      const sortedHistory = history.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      // 按时间排序，最新的在前 - 使用 parseLocalTimeString 确保本地时间解析
+      const sortedHistory = history.sort((a, b) => parseLocalTimeString(b.timestamp).getTime() - parseLocalTimeString(a.timestamp).getTime());
       const latestAction = sortedHistory[0];
       
       // 根据最新操作确定状态
+      let status: 'new' | 'updated' | 'done' | 'missed' | 'deleted' | undefined;
+      
       switch (latestAction.operation) {
         case 'create':
-          return 'new';
+          status = 'new';
+          break;
         case 'update':
-          return 'updated';
+          status = 'updated';
+          break;
         case 'delete':
-          return 'deleted';
+          status = 'deleted';
+          break;
         case 'checkin':
           // 检查checkin历史的具体action来判断是签到还是取消签到
           if (latestAction.metadata?.action === 'check-in') {
-            return 'done';
+            status = 'done';
           } else if (latestAction.metadata?.action === 'uncheck') {
             // 取消签到后，需要进一步判断事件状态
             const event = EventService.getEventById(eventId);
@@ -476,12 +481,17 @@ const PlanManager: React.FC<PlanManagerProps> = ({
               const eventTime = new Date(event.startTime);
               const now = new Date();
               if (eventTime < now) {
-                return 'missed'; // 过了时间但取消了签到
+                status = 'missed'; // 过了时间但取消了签到
+              } else {
+                status = 'updated'; // 还没到时间或没有时间设置
               }
+            } else {
+              status = 'updated';
             }
-            return 'updated'; // 还没到时间或没有时间设置
+          } else {
+            status = 'done';
           }
-          return 'done';
+          break;
         default:
           // 检查事件的当前签到状态
           const event = EventService.getEventById(eventId);
@@ -519,7 +529,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   const onChangeTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingUpdatedItemsRef = useRef<any[] | null>(null);
   
-  // 清理定时器
+  // 清理定时器和缓存
   useEffect(() => {
     // 🔍 组件挂载
     if (isDebugEnabled()) {
@@ -530,6 +540,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       if (onChangeTimerRef.current) {
         clearTimeout(onChangeTimerRef.current);
       }
+      // 🧹 清理缓存
+      eventStatusCacheRef.current.clear();
+      snapshotCacheRef.current = null;
     };
   }, []);
   
@@ -553,19 +566,40 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       // ✅ 确认为外部更新，执行同步
       console.log('📡 [PlanManager] 外部更新，执行同步', { eventId: eventId?.slice(-10), source, originComponent });
       
+      // 🧹 清除该事件的状态缓存
+      eventStatusCacheRef.current.delete(eventId);
+      snapshotCacheRef.current = null;
+      
       if (isDeleted) {
         // 增量删除
         setItems(prev => prev.filter(event => event.id !== eventId));
+        setSnapshotVersion(v => v + 1); // 强制更新 snapshot
       } else if (isNewEvent) {
         // 增量添加
         const newEvent = EventService.getEventById(eventId);
+        console.log('[PlanManager] 新建事件检查:', {
+          eventId: eventId?.slice(-10),
+          找到事件: !!newEvent,
+          isPlan: newEvent?.isPlan,
+          parentEventId: newEvent?.parentEventId,
+          isTimeCalendar: newEvent?.isTimeCalendar,
+          endTime: newEvent?.endTime,
+          满足条件: newEvent && newEvent.isPlan && !newEvent.parentEventId
+        });
+        
         if (newEvent && newEvent.isPlan && !newEvent.parentEventId) {
           const now = new Date();
           // 检查是否应该显示
           if (!newEvent.isTimeCalendar || (newEvent.endTime && now < new Date(newEvent.endTime))) {
+            console.log('[PlanManager] ✅ 添加新事件到列表:', eventId?.slice(-10));
             setItems(prev => [...prev, newEvent]);
+          } else {
+            console.log('[PlanManager] ❌ 新事件不满足显示条件 (TimeCalendar已过期)');
           }
+        } else {
+          console.log('[PlanManager] ❌ 新事件不满足基本条件');
         }
+        setSnapshotVersion(v => v + 1); // 强制更新 snapshot
       } else {
         // 增量更新
         const updatedEvent = EventService.getEventById(eventId);
@@ -574,6 +608,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             return prev.map((e: Event) => e.id === eventId ? updatedEvent : e);
           });
         }
+        setSnapshotVersion(v => v + 1); // 强制更新 snapshot
       }
     };
     
@@ -1123,7 +1158,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     }, 300);
   }, [immediateStateSync, executeBatchUpdate]);
 
-  // 🆕 生成事件变更快照
+  // 🆕 生成事件变更快照 (带缓存)
+  const snapshotCacheRef = useRef<{ snapshot: any, timestamp: number, dateRangeKey: string } | null>(null);
+  
   const generateEventSnapshot = useCallback(() => {
     if (!dateRange) {
       return {
@@ -1133,31 +1170,71 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     
     try {
       // 从EventHistoryService获取指定时间范围的历史记录
+      const startTimeStr = formatTimeForStorage(dateRange.start);
+      const endTimeStr = formatTimeForStorage(dateRange.end);
+      const dateRangeKey = `${startTimeStr}-${endTimeStr}`;
+      
+      // 🚀 检查缓存 (3秒内有效)
+      if (snapshotCacheRef.current && 
+          snapshotCacheRef.current.dateRangeKey === dateRangeKey &&
+          Date.now() - snapshotCacheRef.current.timestamp < 3000) {
+        return snapshotCacheRef.current.snapshot;
+      }
+      
+      console.log('[PlanManager] 生成 Snapshot:', {
+        dateRange: {
+          start: startTimeStr,
+          end: endTimeStr
+        },
+        snapshotVersion
+      });
+      
       const snapshot = EventHistoryService.getChangesByTimeRange(
-        dateRange.start.toISOString(),
-        dateRange.end.toISOString()
+        startTimeStr,
+        endTimeStr
       );
       
-      return {
+      console.log('[PlanManager] Snapshot 历史记录:', {
+        总数: snapshot.length,
+        示例: snapshot.slice(0, 3).map((log: any) => ({
+          operation: log.operation,
+          timestamp: log.timestamp,
+          eventId: log.eventId?.slice(-10),
+          title: log.after?.title || log.before?.title
+        }))
+      });
+      
+      const result = {
         created: snapshot.filter((log: any) => log.operation === 'create').length,
         updated: snapshot.filter((log: any) => log.operation === 'update').length,
         completed: snapshot.filter((log: any) => 
           log.operation === 'update' && 
           log.changes?.some((change: any) => 
             change.field === 'isCompleted' && 
-            change.after === true
+            change.newValue === true
           )
         ).length,
         deleted: snapshot.filter((log: any) => log.operation === 'delete').length,
         details: snapshot
       };
+      
+      console.log('[PlanManager] Snapshot 统计:', result);
+      
+      // 🚀 缓存结果
+      snapshotCacheRef.current = {
+        snapshot: result,
+        timestamp: Date.now(),
+        dateRangeKey
+      };
+      
+      return result;
     } catch (error) {
-      console.warn('[PlanManager] EventHistoryService not available, using fallback');
+      console.warn('[PlanManager] EventHistoryService not available, using fallback', error);
       return {
         created: 0, updated: 0, completed: 0, deleted: 0, details: []
       };
     }
-  }, [dateRange]);
+  }, [dateRange, snapshotVersion]); // 添加 snapshotVersion 依赖
   
   // 🆕 过滤后的事件列表
   const filteredItems = useMemo(() => {
@@ -1214,6 +1291,86 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     
     return result;
   }, [items, pendingEmptyItems]);
+
+  // 🆕 状态配置映射函数
+  const getStatusConfig = useCallback((status?: string) => {
+    switch (status) {
+      case 'new':
+        return { label: 'New', color: '#3B82F6' };
+      case 'done':
+        return { label: 'Done', color: '#10B981' };
+      case 'updated':
+        return { label: 'Updated', color: '#F59E0B' };
+      case 'missed':
+        return { label: 'Missed', color: '#EF4444' };
+      case 'deleted':
+        return { label: 'Del', color: '#9CA3AF' };
+      default:
+        return null;
+    }
+  }, []);
+
+  // 🆕 计算状态竖线段
+  const statusLineSegments = useMemo((): StatusLineSegment[] => {
+    const segments: StatusLineSegment[] = [];
+    let currentStatus: string | undefined;
+    let startIndex = 0;
+    
+    console.log('[PlanManager] 🔍 计算 statusLineSegments:', {
+      editorItems数量: editorItems.length,
+      dateRange有效: !!dateRange,
+      dateRange: dateRange ? {
+        start: formatTimeForStorage(dateRange.start),
+        end: formatTimeForStorage(dateRange.end)
+      } : null
+    });
+    
+    editorItems.forEach((item, index) => {
+      const eventStatus = item.id ? getEventStatus?.(item.id) : undefined;
+      
+      if (index < 3) {
+        console.log(`[PlanManager] 事件 ${index} 状态:`, {
+          id: item.id?.slice(-10),
+          title: item.title?.slice(0, 20),
+          eventStatus
+        });
+      }
+      
+      if (eventStatus !== currentStatus) {
+        // 状态变化，结束上一段
+        if (currentStatus && index > startIndex) {
+          const statusConfig = getStatusConfig(currentStatus);
+          if (statusConfig) {
+            segments.push({
+              startIndex,
+              endIndex: index - 1,
+              status: currentStatus as any,
+              label: statusConfig.label
+            });
+          }
+        }
+        
+        // 开始新段
+        currentStatus = eventStatus;
+        startIndex = index;
+      }
+    });
+    
+    // 处理最后一段
+    if (currentStatus && editorItems.length > startIndex) {
+      const statusConfig = getStatusConfig(currentStatus);
+      if (statusConfig) {
+        segments.push({
+          startIndex,
+          endIndex: editorItems.length - 1,
+          status: currentStatus as any,
+          label: statusConfig.label
+        });
+      }
+    }
+    
+    return segments;
+  }, [editorItems, getEventStatus, getStatusConfig]);
 
   // 处理编辑器内容变化
   const handleLinesChange = (newLines: FreeFormLine<Event>[]) => {
@@ -1662,10 +1819,15 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       </div>
 
       <div className="plan-list-scroll-container" ref={editorContainerRef}>
-        <UnifiedSlateEditor
-          items={editorItems}
-          onChange={debouncedOnChange}
-          getEventStatus={getEventStatus}
+        <StatusLineContainer 
+          segments={statusLineSegments}
+          lineHeight={32}
+          totalLines={editorItems.length}
+        >
+          <UnifiedSlateEditor
+            items={editorItems}
+            onChange={debouncedOnChange}
+            getEventStatus={getEventStatus}
           onFocus={(lineId) => {
             // ✅ 重构: 直接从 lineId 判断模式
             setCurrentFocusedLineId(lineId);
@@ -1750,6 +1912,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             }
           }}
         />
+        </StatusLineContainer>
       </div>
 
       {/* 右侧编辑面板 - 使用 EventEditModal */}

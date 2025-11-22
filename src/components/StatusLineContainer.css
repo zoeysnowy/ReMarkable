@@ -1,0 +1,72 @@
+/* 竖线状态容器 - 多线并行版本 */
+.status-line-container {
+  position: relative;
+  background: white;
+  border-radius: 8px;
+}
+
+/* 竖线层 - 支持多条并行竖线 */
+.status-line-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* 单条竖线 */
+.status-line {
+  position: absolute;
+  border-radius: 1px;
+  transition: background-color 0.2s ease;
+}
+
+/* 状态颜色 - 与标签颜色一致 */
+.status-line.new { background-color: #3B82F6; } /* 蓝色 */
+.status-line.done { background-color: #10B981; } /* 绿色 */
+.status-line.updated { background-color: #F59E0B; } /* 黄色 */
+.status-line.missed { background-color: #EF4444; } /* 红色 */
+.status-line.deleted { background-color: #9CA3AF; } /* 灰色 */
+
+/* 标签层 */
+.status-label-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  pointer-events: none;
+  overflow: visible; /* 允许溢出，不裁剪 */
+}
+
+/* 状态标签 - 智能定位版本 */
+.status-label {
+  position: absolute;
+  font-size: 10px;
+  font-weight: 600;
+  font-style: italic; /* Figma设计：斜体 */
+  font-family: 'Roboto', sans-serif;
+  white-space: nowrap;
+  transform: translateY(-50%); /* 只垂直居中 */
+  text-align: left;
+  padding-right: 0;
+  /* 宽度由内容自动决定 */
+}
+
+/* 标签颜色与竖线颜色完全一致 */
+.status-label.new { color: #3B82F6; } /* 蓝色 - 与竖线一致 */
+.status-label.done { color: #10B981; } /* 绿色 - 与竖线一致 */
+.status-label.updated { color: #F59E0B; } /* 黄色 - 与竖线一致 */
+.status-label.missed { color: #EF4444; } /* 红色 - 与竖线一致 */
+.status-label.deleted { color: #9CA3AF; } /* 灰色 - 与竖线一致 */
+
+/* 编辑器内容层 - 自适应缩进（通过style动态设置padding-left） */
+.status-line-content {
+  position: relative;
+  z-index: 2;
+  /* padding-left 由组件动态计算 */
+  transition: padding-left 0.2s ease;
+}

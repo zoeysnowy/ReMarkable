@@ -677,7 +677,7 @@ export class EventService {
       eventLogger.log('💾 [EventService] Event updated in localStorage');
       
       // 记录事件历史
-      EventHistoryService.logUpdate(eventId, filteredUpdates);
+      EventHistoryService.logUpdate(eventId, originalEvent, filteredUpdates, options?.source || 'user-edit');
       
       // ✨ 自动提取并保存联系人（如果 organizer 或 attendees 有更新）
       if (updates.organizer !== undefined || updates.attendees !== undefined) {
@@ -789,7 +789,7 @@ export class EventService {
       eventLogger.log('💾 [EventService] Event deleted from localStorage');
       
       // 记录事件历史
-      EventHistoryService.logDelete(eventId);
+      EventHistoryService.logDelete(deletedEvent, 'user-edit');
 
       // 触发全局更新事件
       console.log(`🔔 [EventService] About to dispatch eventsUpdated...`);

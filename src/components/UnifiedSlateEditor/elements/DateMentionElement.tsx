@@ -507,23 +507,9 @@ const DateMentionElementComponent: React.FC<RenderElementProps> = ({ attributes,
   
   // 🆕 v2.4: Popover 内容 - 显示时间变化和操作按钮（hover 触发）
   const outdatedPopoverContent = useMemo(() => {
-    console.log('[DateMentionElement] 🔍 计算 outdatedPopoverContent', {
-      eventId,
-      timeDiff,
-      timeDiffType: typeof timeDiff,
-      timeDiffValue: timeDiff?.value,
-      timeDiffUnit: timeDiff?.unit,
-      isOutdated,
-      start,
-      end,
-    });
-    
     if (!timeDiff) {
-      console.log('[DateMentionElement] ⚠️ outdatedPopoverContent 为 null - timeDiff 为空', { timeDiff });
       return null;
     }
-    
-    console.log('[DateMentionElement] ✅ outdatedPopoverContent 将返回 JSX 内容');
     
     return (
       <div style={{ 
@@ -820,16 +806,7 @@ const DateMentionElementComponent: React.FC<RenderElementProps> = ({ attributes,
         const shouldShowPopover = (isOutdated && outdatedPopoverContent) || (isTimeDeleted && deletedPopoverContent);
         const popoverContent = isTimeDeleted ? deletedPopoverContent : outdatedPopoverContent;
         
-        console.log('[DateMentionElement] 🔍 Popover 渲染条件', {
-          eventId,
-          isOutdated,
-          isTimeDeleted,
-          hasOutdatedContent: !!outdatedPopoverContent,
-          hasDeletedContent: !!deletedPopoverContent,
-          shouldShowPopover,
-          popoverContentType: typeof popoverContent,
-          popoverContentIsNull: popoverContent === null,
-        });
+
         
         if (shouldShowPopover) {
           return (

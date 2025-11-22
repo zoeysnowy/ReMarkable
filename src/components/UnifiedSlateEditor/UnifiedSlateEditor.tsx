@@ -10,9 +10,15 @@
  * 🔍 调试模式：在浏览器控制台运行以下命令开启详细日志
  * ```javascript
  * window.SLATE_DEBUG = true
+ * localStorage.setItem('SLATE_VERBOSE_LOG', 'true') // 开启详细日志
+ * localStorage.removeItem('SLATE_VERBOSE_LOG') // 关闭详细日志
  * ```
  * 然后刷新页面或在编辑器中输入内容，查看详细的调试日志
  */
+
+// 🔧 日志控制开关 - 可在控制台动态调整
+const ENABLE_VERBOSE_LOG = typeof window !== 'undefined' && localStorage.getItem('SLATE_VERBOSE_LOG') === 'true';
+const vlog = ENABLE_VERBOSE_LOG ? console.log.bind(console) : () => {};
 
 import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { createEditor, Descendant, Editor, Transforms, Range, Point, Node, Element as SlateElement, Text as SlateText, Path } from 'slate';
@@ -536,7 +542,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   
   const enhancedValue = useMemo(() => {
     // 🚨 DIAGNOSIS: 记录 enhancedValue 计算过程
-    console.log('🔍 [诊断] enhancedValue 重新计算:', {
+    vlog('🔍 [诊断] enhancedValue 重新计算:', {
       items数量: items.length,
       itemsHash: itemsHash.substring(0, 50) + '...',
       时间戳: new Date().toISOString()
@@ -546,7 +552,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     
     // 🚨 DIAGNOSIS: 检测 planItemsToSlateNodes 返回空数组
     if (baseNodes.length === 0 && items.length > 0) {
-      console.error('🔴 [诊断] planItemsToSlateNodes 返回空数组！', {
+      vlog('🔴 [诊断] planItemsToSlateNodes 返回空数组！', {
         items数量: items.length,
         items示例: items.slice(0, 3).map(i => ({ id: i.id, title: i.title?.substring(0, 20) }))
       });
@@ -574,7 +580,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     const result = [...baseNodes, placeholderLine];
     
     // 🚨 DIAGNOSIS: 记录 enhancedValue 最终结果
-    console.log('📊 [诊断] enhancedValue 计算完成:', {
+    vlog('📊 [诊断] enhancedValue 计算完成:', {
       baseNodes数量: baseNodes.length,
       最终数量: result.length,
       items数量: items.length
@@ -651,7 +657,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   const isInitializedRef = React.useRef(false);
   useEffect(() => {
     // 🚨 DIAGNOSIS: 记录初始化过程
-    console.log('🔍 [诊断] 初始化 useEffect 执行:', {
+    vlog('🔍 [诊断] 初始化 useEffect 执行:', {
       isInitialized: isInitializedRef.current,
       items数量: items.length,
       enhancedValue数量: enhancedValue.length,
@@ -664,7 +670,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       
       // 🚨 DIAGNOSIS: 检测 enhancedValue 异常
       if (enhancedValue.length === 0 || (enhancedValue.length === 1 && enhancedValue[0].eventId === '__placeholder__')) {
-        console.error('🔴 [诊断] enhancedValue 异常为空！', {
+        vlog('🔴 [诊断] enhancedValue 异常为空！', {
           items数量: items.length,
           enhancedValue: enhancedValue,
           items示例: items.slice(0, 3).map(i => ({ id: i.id, title: i.title?.substring(0, 20) }))

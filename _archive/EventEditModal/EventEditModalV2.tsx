@@ -15,7 +15,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Event } from '../../types';
 import { formatTimeForStorage } from '../../utils/timeUtils';
 import { LocationInput } from '../common/LocationInput';
-import { CalendarSourceDisplay } from '../common/CalendarSourceDisplay';
 import './EventEditModalV2.css';
 
 interface EventEditModalV2Props {
@@ -495,13 +494,6 @@ const PlannedScheduleSection: React.FC<any> = ({
     <div className="planned-schedule">
       <h3 className="section-title">计划安排</h3>
       
-      {/* 日历来源与同步设置 */}
-      <CalendarSourceDisplay
-        event={event}
-        onSyncConfigChange={(config) => onChange({ planSyncConfig: config })}
-        isActualProgress={false}
-      />
-      
       {/* 组织者与参与者 */}
       <div className="organizer-attendees">
         <div className="field-row" style={{ marginBottom: '8px' }}>
@@ -636,13 +628,6 @@ const ActualProgressSection: React.FC<any> = ({ event, globalTimer, onChange }) 
         <h3 className="section-title">实际进展</h3>
         <span className="total-duration">总时长: {calculateTotalDuration()}</span>
       </div>
-
-      {/* 实际进展日历来源与同步设置 */}
-      <CalendarSourceDisplay
-        event={event}
-        onSyncConfigChange={(config) => onChange && onChange({ actualSyncConfig: config })}
-        isActualProgress={true}
-      />
 
       {event?.segments && event.segments.length > 0 ? (
         <div className="segments-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

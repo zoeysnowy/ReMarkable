@@ -2142,28 +2142,24 @@
   position: relative;
 }
 
-.emoji-picker-hint {
-  background: rgba(59, 130, 246, 0.1);
-  border: 1px solid rgba(59, 130, 246, 0.2);
-  border-radius: 6px;
-  padding: 6px 10px;
-  margin-bottom: 8px;
-  font-size: 12px;
-  color: #374151;
-  text-align: center;
-  backdrop-filter: blur(10px);
-}
 
-.emoji-picker-hint span {
-  font-weight: 500;
-}
 
+/* 多种 emoji 选择器以确保兼容性 */
 .emoji-mart-emoji:focus,
-.emoji-mart-emoji[data-keyboard-selected="true"] {
+.emoji-mart-emoji[data-keyboard-selected="true"],
+[data-emoji][data-keyboard-selected="true"],
+button[data-emoji][data-keyboard-selected="true"],
+.emoji-mart-emoji-native[data-keyboard-selected="true"],
+.emoji-button[data-keyboard-selected="true"] {
   outline: 2px solid #3b82f6 !important;
   outline-offset: 2px !important;
-  border-radius: 4px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.4) !important;
+  background-color: rgba(59, 130, 246, 0.1) !important;
+  transform: scale(1.1) !important;
   z-index: 10 !important;
+  position: relative !important;
+  transition: all 0.2s ease !important;
 }
 
 /* 确保 emoji picker 容器可以处理键盘焦点 */
