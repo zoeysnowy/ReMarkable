@@ -74,25 +74,7 @@ function App() {
       // 初始化标签系统（独立于日历连接）
       await TagService.initialize();
       
-      // 🆕 v1.8.1: EventLog 数据迁移（从 string 格式迁移到 EventLog 对象）
-      try {
-        const EventLogMigrationService = (await import('./services/EventLogMigrationService')).EventLogMigrationService;
-        const migrationStats = await EventLogMigrationService.migrateAllEvents();
-        
-        if (migrationStats.migrated > 0) {
-          console.log('✅ [App] EventLog migration completed:', {
-            total: migrationStats.total,
-            migrated: migrationStats.migrated,
-            skipped: migrationStats.skipped,
-            failed: migrationStats.failed,
-          });
-        } else if (migrationStats.total > 0) {
-          console.log('✅ [App] EventLog migration skipped (all events already in new format)');
-        }
-      } catch (migrationError) {
-        console.error('❌ [App] EventLog migration failed:', migrationError);
-        // 迁移失败不影响应用启动
-      }
+      // 🆕 v1.8.1: EventLog 数据迁移已完成，不需要重复执行
       
       // 暴露调试工具到全局
       if (typeof window !== 'undefined') {

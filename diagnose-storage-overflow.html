@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LocalStorage 诊断工具</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .large { color: red; font-weight: bold; }
+        .medium { color: orange; }
+        .small { color: green; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔍 LocalStorage 存储分析</h1>
+    
+    <h2>1. 存储使用情况</h2>
+    <div id="storage-usage"></div>
+    
+    <h2>2. 同步队列分析</h2>
+    <div id="sync-queue"></div>
+    
+    <h2>3. 清理操作</h2>
+    <button onclick="clearOldActions()">清理旧的同步操作</button>
+    <button onclick="clearDuplicateActions()">清理重复操作</button>
+    <button onclick="resetSyncQueue()">重置整个队列</button>
+    
+    <h2>4. 匹配逻辑测试</h2>
+    <div id="match-test"></div>
+    
+    <script>
+        // 分析存储使用
+        function analyzeStorage() {
+            const usage = document.getElementById('storage-usage');
+            let totalSize = 0;
+            const items = [];
+            
+            for (let key in localStorage) {
+                if (localStorage.hasOwnProperty(key)) {
+                    const value = localStorage[key];
+                    const size = (value.length + key.length) * 2; // 估算字节数
+                    totalSize += size;
+                    items.push({ key, size, valueLength: value.length });
+                }
+            }
+            
+            items.sort((a, b) => b.size - a.size);
+            
+            let html = `<p>总使用: <strong>${(totalSize / 1024 / 1024).toFixed(2)} MB</strong></p>`;
+            html += `<p>剩余空间: <strong>${((10 * 1024 * 1024 - totalSize) / 1024 / 1024).toFixed(2)} MB</strong></p>`;
+            html += '<h3>大存储项:</h3><ul>';
+            
+            items.slice(0, 10).forEach(item => {
+                const sizeKB = item.size / 1024;
+                const className = sizeKB > 500 ? 'large' : sizeKB > 100 ? 'medium' : 'small';
+                html += `<li class="${className}">${item.key}: ${sizeKB.toFixed(2)} KB (${item.valueLength} 字符)</li>`;
+            });
+            
+            html += '</ul>';
+            usage.innerHTML = html;
+        }
+        
+        // 分析同步队列
+        function analyzeSyncQueue() {
+            const queueDiv = document.getElementById('sync-queue');
+            
+            try {
+                const actions = JSON.parse(localStorage.getItem('remarkable-sync-actions') || '[]');
+                
+                let html = `<p>队列总数: <strong>${actions.length}</strong></p>`;
+                
+                // 统计类型
+                const types = {};
+                const sources = {};
+                const entities = {};
+                
+                actions.forEach(action => {
+                    types[action.type] = (types[action.type] || 0) + 1;
+                    sources[action.source] = (sources[action.source] || 0) + 1;
+                    
+                    const entityKey = `${action.type}-${action.entityType}-${action.entityId}`;
+                    entities[entityKey] = (entities[entityKey] || 0) + 1;
+                });
+                
+                html += '<h4>按类型统计:</h4><pre>' + JSON.stringify(types, null, 2) + '</pre>';
+                html += '<h4>按来源统计:</h4><pre>' + JSON.stringify(sources, null, 2) + '</pre>';
+                
+                // 查找重复操作
+                const duplicates = Object.entries(entities).filter(([k, v]) => v > 1);
+                if (duplicates.length > 0) {
+                    html += '<h4>重复操作 (前20个):</h4><ul>';
+                    duplicates.slice(0, 20).forEach(([key, count]) => {
+                        html += `<li class="medium">${key}: ${count} 次</li>`;
+                    });
+                    html += '</ul>';
+                }
+                
+                queueDiv.innerHTML = html;
+            } catch (e) {
+                queueDiv.innerHTML = `<p style="color: red;">解析队列失败: ${e.message}</p>`;
+            }
+        }
+        
+        // 清理旧操作
+        function clearOldActions() {
+            try {
+                const actions = JSON.parse(localStorage.getItem('remarkable-sync-actions') || '[]');
+                const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+                
+                const filtered = actions.filter(action => {
+                    const timestamp = new Date(action.timestamp).getTime();
+                    return timestamp > oneDayAgo;
+                });
+                
+                localStorage.setItem('remarkable-sync-actions', JSON.stringify(filtered));
+                console.log(`清理了 ${actions.length - filtered.length} 个旧操作`);
+                analyzeSyncQueue();
+                analyzeStorage();
+            } catch (e) {
+                console.error('清理失败:', e);
+            }
+        }
+        
+        // 清理重复操作
+        function clearDuplicateActions() {
+            try {
+                const actions = JSON.parse(localStorage.getItem('remarkable-sync-actions') || '[]');
+                const seen = new Set();
+                const filtered = [];
+                
+                // 只保留每个实体的最新操作
+                actions.reverse().forEach(action => {
+                    const key = `${action.type}-${action.entityType}-${action.entityId}`;
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        filtered.push(action);
+                    }
+                });
+                
+                filtered.reverse();
+                localStorage.setItem('remarkable-sync-actions', JSON.stringify(filtered));
+                console.log(`清理了 ${actions.length - filtered.length} 个重复操作`);
+                analyzeSyncQueue();
+                analyzeStorage();
+            } catch (e) {
+                console.error('清理失败:', e);
+            }
+        }
+        
+        // 重置队列
+        function resetSyncQueue() {
+            if (confirm('确定要重置整个同步队列吗？这将清除所有待同步的操作。')) {
+                localStorage.removeItem('remarkable-sync-actions');
+                console.log('已重置同步队列');
+                analyzeSyncQueue();
+                analyzeStorage();
+            }
+        }
+        
+        // 测试匹配逻辑
+        function testMatchLogic() {
+            const testDiv = document.getElementById('match-test');
+            
+            try {
+                const events = JSON.parse(localStorage.getItem('remarkable-events') || '[]');
+                
+                // 查找没有 externalId 的本地事件
+                const localEvents = events.filter(e => !e.externalId && (e.id.startsWith('local-') || e.remarkableSource));
+                
+                // 查找有 externalId 但可能重复的事件
+                const externalEvents = events.filter(e => e.externalId);
+                
+                let html = `<p>没有 externalId 的本地事件: <strong>${localEvents.length}</strong></p>`;
+                html += `<p>有 externalId 的事件: <strong>${externalEvents.length}</strong></p>`;
+                
+                if (localEvents.length > 0) {
+                    html += '<h4>最近的本地事件:</h4><ul>';
+                    localEvents.slice(0, 10).forEach(event => {
+                        html += `<li>${event.id} - ${event.title} (${event.createdAt})</li>`;
+                    });
+                    html += '</ul>';
+                }
+                
+                testDiv.innerHTML = html;
+            } catch (e) {
+                testDiv.innerHTML = `<p style="color: red;">分析事件失败: ${e.message}</p>`;
+            }
+        }
+        
+        // 页面加载时执行分析
+        window.onload = function() {
+            analyzeStorage();
+            analyzeSyncQueue();
+            testMatchLogic();
+        };
+    </script>
+</body>
+</html>

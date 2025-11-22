@@ -413,8 +413,10 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     const today = new Date();
     const weekStart = new Date(today);
     weekStart.setDate(today.getDate() - today.getDay()); // 本周开始
+    weekStart.setHours(0, 0, 0, 0); // 设置为 00:00:00
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6); // 本周结束
+    weekEnd.setHours(23, 59, 59, 999); // 设置为 23:59:59
     return { start: weekStart, end: weekEnd };
   });
   const [activeFilter, setActiveFilter] = useState<'tags' | 'tasks' | 'favorites' | 'new'>('tags');
@@ -498,7 +500,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           if (event) {
             const checkInStatus = EventService.getCheckInStatus(eventId);
             if (checkInStatus.isChecked) {
-              return 'done';
+              status = 'done';
+              break;
             }
             
             // 检查是否有计划时间但未完成（missed）
@@ -506,12 +509,18 @@ const PlanManager: React.FC<PlanManagerProps> = ({
               const eventTime = new Date(event.startTime);
               const now = new Date();
               if (eventTime < now && !checkInStatus.isChecked) {
-                return 'missed';
+                status = 'missed';
+                break;
               }
             }
           }
-          return 'updated';
+          status = 'updated';
+          break;
       }
+      
+      // 缓存并返回状态
+      eventStatusCacheRef.current.set(eventId, { status, timestamp: Date.now() });
+      return status;
     } catch (error) {
       console.warn(`[getEventStatus] Error getting status for event ${eventId}:`, error);
       return undefined;
@@ -1310,67 +1319,186 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     }
   }, []);
 
-  // 🆕 计算状态竖线段
+  // 🆕 获取事件的所有状态（支持多状态）
+  const getEventStatuses = useCallback((eventId: string): Array<'new' | 'updated' | 'done' | 'missed' | 'deleted'> => {
+    if (!dateRange) return [];
+    
+    try {
+      const startTime = formatTimeForStorage(dateRange.start);
+      const endTime = formatTimeForStorage(dateRange.end);
+      
+      // 获取事件基本信息
+      const event = EventService.getEventById(eventId);
+      const eventTitle = event?.title?.substring(0, 15) || 'Unknown';
+      
+      // 🔍 检查事件的实际打勾状态
+      const checkInStatus = EventService.getCheckInStatus(eventId);
+      console.log(`[getEventStatuses] 🔍 ${eventTitle} 完整事件信息:`, {
+        事件ID: eventId,
+        标题: event?.title,
+        isCompleted: event?.isCompleted, // 旧的完成状态字段
+        checked数组: event?.checked,
+        unchecked数组: event?.unchecked,
+        已打勾: checkInStatus.isChecked,
+        打勾次数: checkInStatus.checkInCount,
+        取消次数: checkInStatus.uncheckCount,
+        最后打勾时间: checkInStatus.lastCheckIn,
+        最后取消时间: checkInStatus.lastUncheck
+      });
+      
+      // 查询历史记录（已经按时间范围过滤）
+      const history = EventHistoryService.queryHistory({ 
+        eventId, 
+        startTime, 
+        endTime 
+      });
+      
+      console.log(`[getEventStatuses] 📊 ${eventTitle} 历史记录 (${startTime} ~ ${endTime}):`, {
+        历史记录数: history.length,
+        记录详情: history.map(log => ({
+          时间: log.timestamp,
+          操作: log.operation,
+          完整metadata: log.metadata, // 🔍 显示完整 metadata
+          action: log.metadata?.action,
+          changes: log.changes?.slice(0, 5) // 只显示前5个 changes，避免太长
+        }))
+      });
+      
+      if (!history || history.length === 0) {
+        console.log(`[getEventStatuses] ❌ ${eventTitle}: 无历史记录`);
+        return [];
+      }
+      
+      // 收集所有独特的状态
+      const statuses = new Set<'new' | 'updated' | 'done' | 'missed' | 'deleted'>();
+      const rangeStart = new Date(startTime);
+      const rangeEnd = new Date(endTime);
+      
+      // ✅ 使用 EventService.getCheckInStatus() 判断当前是否已勾选
+      // 该方法内部已经合并并比较了 checked 和 unchecked 数组
+      const checkStatus = EventService.getCheckInStatus(eventId);
+      const isCurrentlyChecked = checkStatus.isChecked;
+      
+      console.log(`[getEventStatuses]   📌 ${eventTitle}: 勾选状态:`, {
+        已勾选: isCurrentlyChecked,
+        最后打勾: checkStatus.lastCheckIn,
+        最后取消: checkStatus.lastUncheck
+      });
+      
+      // 遍历历史记录（这些记录已经被 queryHistory 按时间范围过滤过了）
+      history.forEach(log => {
+        const logTime = new Date(log.timestamp);
+        
+        console.log(`[getEventStatuses]   - ${eventTitle}: ${log.operation} at ${log.timestamp}`, {
+          在范围内: logTime >= rangeStart && logTime <= rangeEnd,
+          action: log.metadata?.action
+        });
+        
+        switch (log.operation) {
+          case 'create':
+            statuses.add('new');
+            console.log(`[getEventStatuses]   ✅ ${eventTitle}: 添加 NEW 状态`);
+            break;
+          case 'update':
+            statuses.add('updated');
+            console.log(`[getEventStatuses]   ✅ ${eventTitle}: 添加 UPDATED 状态`);
+            break;
+          case 'delete':
+            statuses.add('deleted');
+            console.log(`[getEventStatuses]   ✅ ${eventTitle}: 添加 DELETED 状态`);
+            break;
+          case 'checkin':
+            // 不在这里判断，等循环结束后根据最后一次操作判断
+            break;
+        }
+      });
+      
+      // ✅ 根据当前勾选状态决定是否添加 Done 状态
+      if (isCurrentlyChecked) {
+        statuses.add('done');
+        console.log(`[getEventStatuses]   ✅ ${eventTitle}: 添加 DONE 状态（当前已勾选）`);
+      } else {
+        console.log(`[getEventStatuses]   ⏭️ ${eventTitle}: 不添加 DONE（当前未勾选）`);
+      }
+      
+      // 🔧 判断 "missed" 状态：事件时间已过（< 范围结束时间），且在范围内没有完成
+      if (event && event.startTime) {
+        const eventTime = new Date(event.startTime);
+        
+        console.log(`[getEventStatuses]   🕐 ${eventTitle}: 检查 MISSED 状态`, {
+          事件时间: event.startTime,
+          范围结束: endTime,
+          事件时间已过: eventTime < rangeEnd,
+          已有DONE: statuses.has('done')
+        });
+        
+        // 事件时间已过（相对于范围结束时间）且没有 DONE 状态
+        if (eventTime < rangeEnd && !statuses.has('done')) {
+          statuses.add('missed');
+          console.log(`[getEventStatuses]   ✅ ${eventTitle}: 添加 MISSED 状态（事件时间 < 范围结束，且未完成）`);
+        } else {
+          console.log(`[getEventStatuses]   ⏭️ ${eventTitle}: 不算 MISSED（事件未到期或已完成）`);
+        }
+      }
+      
+      const result = Array.from(statuses);
+      console.log(`[getEventStatuses] ✅ ${eventTitle}: 最终状态 = ${JSON.stringify(result)}`);
+      return result;
+    } catch (error) {
+      console.error('[getEventStatuses] ❌ 错误:', error);
+      return [];
+    }
+  }, [dateRange]);
+
+  // 🆕 计算状态竖线段 - 支持多状态显示
   const statusLineSegments = useMemo((): StatusLineSegment[] => {
     const segments: StatusLineSegment[] = [];
-    let currentStatus: string | undefined;
-    let startIndex = 0;
     
-    console.log('[PlanManager] 🔍 计算 statusLineSegments:', {
-      editorItems数量: editorItems.length,
-      dateRange有效: !!dateRange,
+    console.log('[PlanManager] 📊 开始生成segments:', {
       dateRange: dateRange ? {
         start: formatTimeForStorage(dateRange.start),
         end: formatTimeForStorage(dateRange.end)
-      } : null
+      } : null,
+      editorItems数量: editorItems.length,
+      前3个: editorItems.slice(0, 3).map((item, idx) => ({
+        index: idx,
+        id: item.id?.substring(0, 10),
+        title: item.title?.substring(0, 20)
+      }))
     });
     
     editorItems.forEach((item, index) => {
-      const eventStatus = item.id ? getEventStatus?.(item.id) : undefined;
+      if (!item.id) return;
       
-      if (index < 3) {
-        console.log(`[PlanManager] 事件 ${index} 状态:`, {
-          id: item.id?.slice(-10),
-          title: item.title?.slice(0, 20),
-          eventStatus
-        });
-      }
+      const eventStatuses = getEventStatuses(item.id);
       
-      if (eventStatus !== currentStatus) {
-        // 状态变化，结束上一段
-        if (currentStatus && index > startIndex) {
-          const statusConfig = getStatusConfig(currentStatus);
-          if (statusConfig) {
-            segments.push({
-              startIndex,
-              endIndex: index - 1,
-              status: currentStatus as any,
-              label: statusConfig.label
-            });
-          }
+      console.log(`[PlanManager] Event[${index}] ${item.title?.substring(0, 20)}: ${eventStatuses.length}个状态 ${JSON.stringify(eventStatuses)}`);
+      
+      // 为每个状态创建一个segment
+      eventStatuses.forEach(status => {
+        const statusConfig = getStatusConfig(status);
+        if (statusConfig) {
+          segments.push({
+            startIndex: index,
+            endIndex: index,
+            status: status,
+            label: statusConfig.label
+          });
         }
-        
-        // 开始新段
-        currentStatus = eventStatus;
-        startIndex = index;
-      }
+      });
     });
     
-    // 处理最后一段
-    if (currentStatus && editorItems.length > startIndex) {
-      const statusConfig = getStatusConfig(currentStatus);
-      if (statusConfig) {
-        segments.push({
-          startIndex,
-          endIndex: editorItems.length - 1,
-          status: currentStatus as any,
-          label: statusConfig.label
-        });
-      }
-    }
+    console.log('[PlanManager] 📊 生成segments详情:', {
+      总数: segments.length,
+      详细列表: segments.map(s => ({
+        index: s.startIndex,
+        status: s.status,
+        label: s.label
+      }))
+    });
     
     return segments;
-  }, [editorItems, getEventStatus, getStatusConfig]);
+  }, [editorItems, getEventStatuses, getStatusConfig, dateRange]);
 
   // 处理编辑器内容变化
   const handleLinesChange = (newLines: FreeFormLine<Event>[]) => {
@@ -1778,8 +1906,13 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           console.log('[PlanManager] 选择日期:', date);
         }}
         onDateRangeChange={(start, end) => {
-          setDateRange({ start, end });
-          console.log('[PlanManager] 日期范围变更:', { start, end });
+          // 标准化时间：start 设为 00:00:00，end 设为 23:59:59
+          const normalizedStart = new Date(start);
+          normalizedStart.setHours(0, 0, 0, 0);
+          const normalizedEnd = new Date(end);
+          normalizedEnd.setHours(23, 59, 59, 999);
+          setDateRange({ start: normalizedStart, end: normalizedEnd });
+          console.log('[PlanManager] 日期范围变更:', { start: normalizedStart, end: normalizedEnd });
         }}
         onTagVisibilityChange={(tagId, visible) => {
           setHiddenTags(prev => {
@@ -1821,6 +1954,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       <div className="plan-list-scroll-container" ref={editorContainerRef}>
         <StatusLineContainer 
           segments={statusLineSegments}
+          editorItems={editorItems}
           lineHeight={32}
           totalLines={editorItems.length}
         >

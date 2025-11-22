@@ -152,6 +152,7 @@ export class EventHistoryService {
   static queryHistory(options: HistoryQueryOptions = {}): EventChangeLog[] {
     try {
       let logs = this.getAllLogs();
+      const initialCount = logs.length;
 
       // 按事件ID过滤
       if (options.eventId) {

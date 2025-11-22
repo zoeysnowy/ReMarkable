@@ -10,6 +10,7 @@ import { ConflictDetectionService, ConflictInfo } from '../services/ConflictDete
 import { ContactService } from '../services/ContactService';
 import './EventEditModal.css';
 import { useEventTime } from '../hooks/useEventTime';
+import { LightSlateEditor } from './LightSlateEditor';
 
 /**
  * 简单的防抖函数实现
@@ -1050,14 +1051,19 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
             />
           </div>
 
-          {/* 描述（放在位置下方，与位置输入框宽度一致） */}
+          {/* 描述（TimeLog - 使用 LightSlateEditor 支持 timestamp 插入） */}
           <div className="form-group form-group-inline form-group-description">
-            <label>描述</label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              rows={4}
-            />
+            <label>TimeLog</label>
+            <div className="slate-editor-wrapper">
+              <LightSlateEditor
+                content={formData.description}
+                parentEventId={eventId || 'new-event'}
+                enableTimestamp={true}
+                placeholder="记录时间轴..."
+                onChange={(content) => setFormData({ ...formData, description: content })}
+                className="timelog-editor"
+              />
+            </div>
           </div>
 
           {/* 组织者 */}

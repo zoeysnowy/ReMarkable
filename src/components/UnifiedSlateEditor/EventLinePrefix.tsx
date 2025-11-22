@@ -18,7 +18,11 @@ export interface EventLinePrefixProps {
 
 const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onSave, eventStatus }) => {
   const metadata = element.metadata || {};
-  const isCompleted = metadata.isCompleted || false;
+  
+  // ✅ 使用新的 check-in 机制，而不是旧的 isCompleted 字段
+  const checkInStatus = EventService.getCheckInStatus(element.eventId);
+  const isCompleted = checkInStatus.isChecked;
+  
   const emoji = metadata.emoji;
 
   // 🆕 状态配置映射 (根据用户要求的颜色方案)
@@ -71,15 +75,15 @@ const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onS
           e.stopPropagation();
           const isChecked = e.target.checked;
           
-          // 更新 isCompleted 状态
-          onSave(element.eventId, { isCompleted: isChecked });
-          
-          // 同时处理签到逻辑
+          // ✅ 只使用新的 check-in 机制，不再更新 isCompleted 字段
           if (isChecked) {
             EventService.checkIn(element.eventId);
           } else {
             EventService.uncheck(element.eventId);
           }
+          
+          // 触发重新渲染
+          onSave(element.eventId, {});
         }}
         style={{
           cursor: 'pointer',
@@ -106,7 +110,12 @@ export const EventLinePrefix = React.memo(EventLinePrefixComponent, (prevProps, 
   // 只在关键属性变化时才重新渲染
   const prevMetadata = prevProps.element.metadata || {};
   const nextMetadata = nextProps.element.metadata || {};
-  return prevMetadata.isCompleted === nextMetadata.isCompleted &&
+  
+  // ✅ 比较 check-in 状态而不是 isCompleted
+  const prevChecked = EventService.getCheckInStatus(prevProps.element.eventId).isChecked;
+  const nextChecked = EventService.getCheckInStatus(nextProps.element.eventId).isChecked;
+  
+  return prevChecked === nextChecked &&
          prevMetadata.emoji === nextMetadata.emoji &&
          prevProps.eventStatus === nextProps.eventStatus;
 });

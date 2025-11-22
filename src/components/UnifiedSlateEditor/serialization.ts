@@ -47,6 +47,33 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
         };
       })
     });
+    
+    // 🔍 详细检查前10个事件的 eventlog 和 description
+    const checkCount = Math.min(10, items.length);
+    console.log(`[planItemsToSlateNodes] 🔎 前${checkCount}个事件详情:`);
+    for (let i = 0; i < checkCount; i++) {
+      const item = items[i];
+      const eventlogType = typeof item.eventlog;
+      let eventlogContent = '';
+      
+      if (item.eventlog) {
+        if (eventlogType === 'object' && item.eventlog !== null) {
+          eventlogContent = item.eventlog.descriptionHtml || item.eventlog.descriptionPlainText || '';
+        } else {
+          eventlogContent = item.eventlog;
+        }
+      }
+      
+      console.log(`  [${i}] ${item.title?.substring(0, 30)}`, {
+        hasEventlog: !!item.eventlog,
+        eventlogType,
+        eventlogLength: eventlogContent.length,
+        eventlogPreview: eventlogContent.substring(0, 50),
+        hasDescription: !!item.description,
+        descriptionLength: (item.description || '').length,
+        descriptionPreview: (item.description || '').substring(0, 50)
+      });
+    }
   }
   
   items.forEach(item => {
@@ -105,9 +132,10 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
     };
     nodes.push(titleNode);
     
-    // Description 行（只有存在时才创建）
-    // 🆕 v1.8: 优先使用 eventlog (富文本)，回退到 description (纯文本)
+    // EventLog 行（只有 eventlog 字段存在且不为空时才创建）
+    // 🆕 v1.8: 使用 eventlog (富文本)
     // 🔧 v1.8.1: 支持 EventLog 对象格式
+    // ⚠️ 不回退到 description - description 是后台同步用的纯文本，不在UI显示
     let descriptionContent = '';
     if (item.eventlog) {
       if (typeof item.eventlog === 'object' && item.eventlog !== null) {
@@ -117,11 +145,10 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
         // 旧格式：字符串
         descriptionContent = item.eventlog;
       }
-    } else if (item.description) {
-      descriptionContent = item.description;
     }
+    // 注意：不使用 description 字段！它是后台字段，仅用于 Outlook 同步
     
-    if (descriptionContent) {
+    if (descriptionContent && descriptionContent.trim()) {
       // 🆕 v1.8.3: 解析 HTML，为每个不同 level 的段落创建独立的 EventLineNode
       const paragraphsWithLevel = parseHtmlToParagraphsWithLevel(descriptionContent);
       

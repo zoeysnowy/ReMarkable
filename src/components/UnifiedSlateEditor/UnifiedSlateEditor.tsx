@@ -28,6 +28,7 @@ import { EventLineNode, ParagraphNode, TagNode, DateMentionNode, TextNode, Custo
 import { EventLineElement } from './EventLineElement';
 import { TagElementComponent } from './elements/TagElement';
 import DateMentionElement from './elements/DateMentionElement';
+import { TimestampDividerElement } from './elements/TimestampDividerElement';
 import UnifiedDateTimePicker from '../FloatingToolbar/pickers/UnifiedDateTimePicker';
 import { SlateErrorBoundary } from './ErrorBoundary';
 import { EventService } from '../../services/EventService';
@@ -40,6 +41,7 @@ import {
   parseExternalHtml,
 } from './serialization';
 import { insertDateMention } from './helpers';
+import { EventLogTimestampService } from './timestampService';
 import { formatTimeForStorage } from '../../utils/timeUtils';
 import {
   initDebug,
@@ -122,6 +124,8 @@ export interface UnifiedSlateEditorProps {
   onTimeClick?: (eventId: string, anchor: HTMLElement) => void;  // 🆕 时间点击回调
   onMoreClick?: (eventId: string) => void;  // 🆕 More 图标点击回调
   getEventStatus?: (eventId: string) => 'new' | 'updated' | 'done' | 'missed' | 'deleted' | undefined; // 🆕 获取事件状态
+  eventId?: string;  // 🆕 当前编辑的事件ID（用于 timestamp 功能）
+  enableTimestamp?: boolean;  // 🆕 是否启用 timestamp 自动插入
   className?: string;
 }
 
@@ -146,7 +150,7 @@ const withCustom = (editor: CustomEditor) => {
 
   editor.isVoid = element => {
     const e = element as any;
-    return (e.type === 'tag' || e.type === 'dateMention') ? true : isVoid(element);
+    return (e.type === 'tag' || e.type === 'dateMention' || e.type === 'timestamp-divider') ? true : isVoid(element);
   };
 
   // 🆕 拦截 insertBreak（Enter 键）以继承 bullet 属性
@@ -498,8 +502,24 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   onTimeClick,  // 🆕 时间点击回调
   onMoreClick,  // 🆕 More 图标点击回调
   getEventStatus,  // 🆕 获取事件状态
+  eventId,  // 🆕 当前事件ID
+  enableTimestamp = false,  // 🆕 是否启用 timestamp
   className = '',
 }) => {
+  // 🆕 Debug: 检查 timestamp 相关的 props
+  console.log('[UnifiedSlateEditor] 初始化参数:', {
+    eventId,
+    enableTimestamp,
+    hasItems: !!items,
+    itemsLength: items?.length || 0,
+    eventIdType: typeof eventId,
+    enableTimestampType: typeof enableTimestamp
+  });
+  
+  // 🆕 Debug: 监听 eventId 和 enableTimestamp 的变化
+  React.useEffect(() => {
+    console.log('[UnifiedSlateEditor] Props 变化:', { eventId, enableTimestamp });
+  }, [eventId, enableTimestamp]);
   // 🔍 组件挂载日志
   React.useEffect(() => {
     if (isDebugEnabled()) {
@@ -935,6 +955,23 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   // 🆕 v1.8: 跟踪最近保存的事件ID，避免增量更新覆盖
   const recentlySavedEventsRef = React.useRef<Set<string>>(new Set());
   
+  // 🕐 Timestamp 服务
+  const timestampServiceRef = useRef(new EventLogTimestampService());
+  
+  // 🧪 Manual timestamp insertion for testing (expose to window for debugging)
+  useEffect(() => {
+    if (isDebugEnabled() && typeof window !== 'undefined') {
+      (window as any).insertTimestamp = (eventId: string) => {
+        try {
+          timestampServiceRef.current.insertTimestamp(editor, eventId);
+        } catch (error) {
+          console.error('[Timestamp Debug] 插入失败:', error);
+        }
+      };
+      console.log('%c💡 调试命令可用: window.insertTimestamp("test-event-id")', 'color: #FF9800; font-weight: bold;');
+    }
+  }, [editor]);
+  
   const handleEditorChange = useCallback((newValue: Descendant[]) => {
     const timestamp = new Date().toISOString().split('T')[1].slice(0, 12);
     
@@ -1270,6 +1307,57 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       onChange(planItems);
       pendingChangesRef.current = null;
     }
+    
+    // 🕐 Timestamp 自动插入检测
+    const hasTextInsertion = editor.operations.some(op => 
+      op.type === 'insert_text' && (op as any).text.trim().length > 0
+    );
+    
+    console.log('[Timestamp Debug] 操作检测:', {
+      operations: editor.operations.map(op => ({ type: op.type, text: op.type === 'insert_text' ? (op as any).text : undefined })),
+      hasTextInsertion,
+      hasSelection: !!editor.selection,
+      enableTimestamp,
+      eventId
+    });
+    
+    // 🆕 逐一检查所有条件
+    console.log('[Timestamp Debug] 条件检查:', {
+      hasTextInsertion,
+      enableTimestamp,
+      eventId,
+      eventIdTruthy: !!eventId,
+      allConditionsMet: hasTextInsertion && enableTimestamp && eventId
+    });
+
+    if (hasTextInsertion && enableTimestamp && eventId) {
+      console.log('[Timestamp Debug] 所有条件满足，进行 eventId 检查:', {
+        eventId,
+        isPlaceholder: eventId === '__placeholder__',
+        shouldInsert: timestampServiceRef.current.shouldInsertTimestamp(eventId)
+      });
+      
+      if (eventId !== '__placeholder__' && timestampServiceRef.current.shouldInsertTimestamp(eventId)) {
+        console.log('[Timestamp] 需要插入时间戳', { eventId: eventId.slice(-8) });
+        
+        // 延迟插入以避免与当前操作冲突
+        setTimeout(() => {
+          try {
+            timestampServiceRef.current.insertTimestamp(editor, eventId);
+          } catch (error) {
+            console.error('[Timestamp] 插入失败:', error);
+          }
+        }, 100);
+      } else {
+        console.log('[Timestamp Debug] 跳过插入:', {
+          isPlaceholder: eventId === '__placeholder__',
+          shouldInsert: timestampServiceRef.current.shouldInsertTimestamp(eventId)
+        });
+      }
+    } else {
+      console.log('[Timestamp Debug] 条件不满足，跳过时间戳检测');
+    }
+    
   }, [onChange]);
   
   // 通知编辑器就绪（传递带 syncFromExternal 和 flushPendingChanges 方法的对象）
@@ -2156,6 +2244,8 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
         return <TagElementComponent {...props} />;
       case 'dateMention':
         return <DateMentionElement {...props} />;
+      case 'timestamp-divider':
+        return <TimestampDividerElement {...props} />;
       default:
         return <div {...props.attributes}>{props.children}</div>;
     }
@@ -2256,6 +2346,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     }
   }, [editor]);
   
+
   return (
     <SlateErrorBoundary>
       <div 

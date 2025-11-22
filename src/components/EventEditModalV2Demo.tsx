@@ -31,6 +31,11 @@ import { CalendarPicker } from '../features/Calendar/components/CalendarPicker';
 import { SimpleCalendarDropdown } from './EventEditModalV2Demo/SimpleCalendarDropdown';
 import { SyncModeDropdown } from './EventEditModalV2Demo/SyncModeDropdown';
 import { getAvailableCalendarsForSettings, getCalendarGroupColor } from '../utils/calendarUtils';
+// TimeLog 相关导入
+import { UnifiedSlateEditor } from './UnifiedSlateEditor/UnifiedSlateEditor';
+import { insertTag, insertEmoji, insertDateMention } from './UnifiedSlateEditor/helpers';
+import { parseExternalHtml, slateNodesToRichHtml } from './UnifiedSlateEditor/serialization';
+import { formatTimeForStorage } from '../utils/timeUtils';
 import './EventEditModalV2Demo.css';
 
 // Import SVG icons
@@ -64,6 +69,8 @@ interface MockEvent {
   location?: string;
   organizer?: Contact;
   attendees?: Contact[];
+  eventlog?: string; // Slate JSON string for TimeLog content
+  description?: string; // HTML export for Outlook sync
 }
 
 interface EventEditModalV2DemoProps {
@@ -148,6 +155,22 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
   const [isDetailView, setIsDetailView] = useState(true);
   const [tagPickerPosition, setTagPickerPosition] = useState({ top: 0, left: 0, width: 0 });
   const [currentTime, setCurrentTime] = useState<number>(Date.now());
+  
+  // TimeLog 相关状态
+  const [slateItems, setSlateItems] = useState(() => {
+    // 创建符合 Slate Descendant 格式的初始数据
+    if (formData.eventlog) {
+      try {
+        const parsed = JSON.parse(formData.eventlog);
+        return Array.isArray(parsed) ? parsed : [{ type: 'paragraph', children: [{ text: '' }] }];
+      } catch {
+        return [{ type: 'paragraph', children: [{ text: '' }] }];
+      }
+    }
+    return [{ type: 'paragraph', children: [{ text: '' }] }];
+  });
+  
+  const [activePickerIndex, setActivePickerIndex] = useState(-1);
 
   // 获取真实的可用日历数据
   const availableCalendars = getAvailableCalendarsForSettings();
@@ -163,6 +186,20 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
     { id: 'send-only-private', name: '只发送（仅自己）', emoji: '📤🔒' },
     { id: 'bidirectional', name: '双向同步', emoji: '🔄' },
     { id: 'bidirectional-private', name: '双向同步（仅自己）', emoji: '🔄🔒' },
+  ];
+
+  // TimeLog 相关 refs
+  const rightPanelRef = useRef<HTMLDivElement>(null);
+  const slateEditorRef = useRef<any>(null);
+  
+  // FloatingBar 图标配置
+  const floatingBarIcons = [
+    { icon: '😀', alt: '表情' },
+    { icon: '#', alt: '标签' },
+    { icon: '📅', alt: '日期' },
+    { icon: '•', alt: '列表' },
+    { icon: '🎨', alt: '颜色' },
+    { icon: '+', alt: '添加任务' }
   ];
   const [sourceSyncMode, setSourceSyncMode] = useState('receive-only');
   const [syncSyncMode, setSyncSyncMode] = useState('bidirectional');
@@ -325,9 +362,9 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
   }, [globalTimer]);
 
   /**
-   * 选择 emoji
+   * 选择 emoji（标题用）
    */
-  const handleEmojiSelect = (emoji: any) => {
+  const handleTitleEmojiSelect = (emoji: any) => {
     // 1. 移除标题中现有的 emoji
     let newTitle = formData.title;
     const existingEmoji = extractFirstEmoji(newTitle);
@@ -544,6 +581,76 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
     setFormData({ ...formData, isTask: checked });
   };
 
+  // ==================== TimeLog 处理函数 ====================
+  
+  /**
+   * Slate 编辑器内容变化处理
+   */
+  const handleSlateChange = (newItems: any[]) => {
+    setSlateItems(newItems);
+    // 将 Slate 数据序列化为 JSON 保存到 formData
+    const serializedData = JSON.stringify(newItems);
+    // 同时生成 HTML 用于同步到 Outlook
+    const htmlContent = slateNodesToRichHtml(newItems);
+    setFormData({
+      ...formData,
+      eventlog: serializedData,
+      description: htmlContent
+    });
+  };
+
+  /**
+   * Slate 编辑器就绪回调
+   */
+  const handleSlateEditorReady = (editor: any) => {
+    slateEditorRef.current = editor;
+  };
+
+  /**
+   * FloatingToolbar 表情选择
+   */
+  const handleEmojiSelect = (emoji: any) => {
+    if (slateEditorRef.current) {
+      insertEmoji(slateEditorRef.current, emoji.native);
+    }
+    setActivePickerIndex(-1); // 关闭 picker
+  };
+
+  /**
+   * FloatingToolbar 标签选择
+   */
+  const handleTagSelect = (tagId: string) => {
+    if (slateEditorRef.current) {
+      const tag = TagService.getTagById(tagId);
+      if (tag) {
+        insertTag(
+          slateEditorRef.current,
+          tagId,
+          tag.name,
+          tag.color || '#999999',
+          tag.emoji || '',
+          false // mentionOnly
+        );
+      }
+    }
+    setActivePickerIndex(-1); // 关闭 picker
+  };
+
+  /**
+   * FloatingToolbar 日期范围选择
+   */
+  const handleDateRangeSelect = (startDate: string, endDate?: string) => {
+    if (slateEditorRef.current) {
+      insertDateMention(
+        slateEditorRef.current,
+        startDate,
+        endDate,
+        false // mentionOnly
+      );
+    }
+    setActivePickerIndex(-1); // 关闭 picker
+  };
+
   // ==================== 渲染函数 ====================
 
   return (
@@ -627,7 +734,7 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
                       <div className="emoji-picker-wrapper" onClick={(e) => e.stopPropagation()}>
                         <Picker
                           data={data}
-                          onEmojiSelect={handleEmojiSelect}
+                          onEmojiSelect={handleTitleEmojiSelect}
                           theme="light"
                           locale="zh"
                           perLine={8}
@@ -1243,58 +1350,60 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
                     <span>上级任务：Project Ace (5/7)</span>
                   </div>
 
-                  {/* Slate 编辑区 */}
-                  <div style={{ flex: 1, background: 'white', display: 'flex', flexDirection: 'column' }}>
+                  {/* TimeLog 编辑区 */}
+                  <div ref={rightPanelRef} style={{ flex: 1, background: 'white', display: 'flex', flexDirection: 'column' }}>
+                    <UnifiedSlateEditor
+                      items={slateItems}
+                      onChange={handleSlateChange}
+                      onEditorReady={handleSlateEditorReady}
+                      eventId={formData.id}
+                      enableTimestamp={true}
+                      className="eventlog-editor"
+                    />
                     
-                    {/* 第一条日志 */}
-                    <div style={{ position: 'relative', paddingLeft: '8px', marginBottom: '24px' }}>
-                      {/* 左侧竖线 */}
-                      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '2px', background: '#e5e7eb' }}></div>
-                      
-                      {/* 时间戳 */}
-                      <p style={{ fontSize: '16px', color: '#e5e7eb', lineHeight: 1, margin: '0 0 8px 0', padding: 0, fontFamily: "'Microsoft YaHei', Arial" }}>
-                        2025-10-19 10:21:18
-                      </p>
-
-                      <p style={{ color: '#6b7280', fontSize: '14px', lineHeight: 1.6, margin: 0, fontFamily: "'Inter', 'Microsoft YaHei', Arial" }}>
-                        处理完了一些出差的logistics，还有报销整理，现在终于可以开干了！<br />
-                        准备先一个提纲丢给GPT，看看情况
-                      </p>
+                    {/* 简单的 FloatingToolbar 演示 */}
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '20px',
+                      right: '20px',
+                      background: '#ffffff',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                      padding: '8px',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                      display: 'flex',
+                      gap: '4px'
+                    }}>
+                      {floatingBarIcons.map((iconConfig, index) => (
+                        <button
+                          key={index}
+                          style={{
+                            background: activePickerIndex === index ? '#f3f4f6' : 'transparent',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '8px',
+                            cursor: 'pointer',
+                            fontSize: '16px',
+                            minWidth: '36px',
+                            minHeight: '36px'
+                          }}
+                          onClick={() => {
+                            // 简单的功能演示
+                            if (index === 0) { // 表情
+                              handleEmojiSelect({ native: '😊' });
+                            } else if (index === 1) { // 标签
+                              handleTagSelect('work'); // 假设有个工作标签
+                            } else if (index === 2) { // 日期
+                              handleDateRangeSelect(new Date().toISOString());
+                            }
+                            setActivePickerIndex(activePickerIndex === index ? -1 : index);
+                          }}
+                          title={iconConfig.alt}
+                        >
+                          {iconConfig.icon}
+                        </button>
+                      ))}
                     </div>
-
-                    {/* 第二条日志 */}
-                    <div style={{ position: 'relative', paddingLeft: '8px', marginBottom: '24px' }}>
-                      {/* 左侧竖线 */}
-                      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '2px', background: '#e5e7eb' }}></div>
-                      
-                      {/* 时间戳 */}
-                      <p style={{ fontSize: '16px', color: '#e5e7eb', lineHeight: 1, margin: '0 0 8px 0', padding: 0, fontFamily: "'Microsoft YaHei', Arial" }}>
-                        2025-10-19 10:35:18 | 16min later
-                      </p>
-
-                      <p style={{ color: '#6b7280', fontSize: '14px', lineHeight: 1.6, margin: 0, fontFamily: "'Inter', 'Microsoft YaHei', Arial" }}>
-                        太强了！居然直接成稿了，那现在就只要做些检查了<br />
-                        感觉主要是一些流程和逻辑错误，语言上没有太多可以修缮的，文采比我好太多了QUQ
-                      </p>
-                    </div>
-
-                    {/* 第三条日志 - 可编辑区域 */}
-                    <div style={{ position: 'relative', paddingLeft: '8px', marginBottom: '24px' }}>
-                      {/* 左侧竖线 */}
-                      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '2px', background: '#e5e7eb' }}></div>
-                      
-                      {/* 时间戳 */}
-                      <p style={{ fontSize: '16px', color: '#e5e7eb', lineHeight: 1, margin: '0 0 8px 0', padding: 0, fontFamily: "'Microsoft YaHei', Arial" }}>
-                        2025-10-19 10:35:18 | 16min later
-                      </p>
-
-                      {/* 可编辑区域提示文字 */}
-                      <p style={{ color: '#9ca3af', fontSize: '14px', lineHeight: 1.6, margin: 0, fontFamily: "'Inter', 'Microsoft YaHei', Arial" }}>
-                        双击"Alt"召唤表情、格式等，点击右下方问号浮窗查看更多高效快捷键哦
-                      </p>
-                    </div>
-
-                    {/* FloatingBar 组件将在这里引入 */}
                   </div>
                 </div>
               )}

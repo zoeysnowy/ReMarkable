@@ -125,9 +125,27 @@ export interface DateMentionNode {
   children: [{ text: '' }];
 }
 
+/**
+ * TimestampDivider - 时间戳分隔线元素
+ * 
+ * 用于 EventLog 记录编辑时间，自动插入：
+ * - 当天首次编辑 → 完整时间戳（如 "2025-10-19 10:21:18"）
+ * - 距上次编辑超过 5 分钟 → 相对时间戳（如 "16min later"）
+ */
+export interface TimestampDividerElement {
+  type: 'timestamp-divider';
+  timestamp: string;           // ISO 8601 格式
+  isFirstOfDay?: boolean;      // 是否为当天首次
+  minutesSinceLast?: number;   // 距上次间隔（分钟）
+  displayText: string;         // UI 显示文本
+  children: [{ text: '' }];    // Slate Void 节点要求
+}
+
+// TimelineSegmentElement removed - using simpler timestamp approach to prevent path resolution issues
+
 // ==================== 类型导出 ====================
 
-export type CustomElement = EventLineNode | ParagraphNode | TagNode | DateMentionNode;
+export type CustomElement = EventLineNode | ParagraphNode | TagNode | DateMentionNode | TimestampDividerElement;
 export type CustomText = TextNode;
 
 // ==================== 工具类型 ====================

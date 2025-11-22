@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>标签映射诊断工具</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 4px;
+        }
+        .info { background: #e3f2fd; border-left: 4px solid #2196f3; }
+        .warning { background: #fff3e0; border-left: 4px solid #ff9800; }
+        .error { background: #ffebee; border-left: 4px solid #f44336; }
+        .success { background: #e8f5e8; border-left: 4px solid #4caf50; }
+        .code {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            margin: 10px 0;
+            white-space: pre-wrap;
+        }
+        button {
+            background: #2196f3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #1976d2;
+        }
+        #results {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 标签到日历映射诊断工具</h1>
+        
+        <div class="section info">
+            <h2>问题描述</h2>
+            <p>TimeCalendar创建事件时出现"Empty calendarId provided"错误，需要检查标签映射配置。</p>
+        </div>
+
+        <div class="section warning">
+            <h2>诊断步骤</h2>
+            <p>点击以下按钮逐步检查系统状态：</p>
+            <button onclick="checkTagStorage()">1. 检查标签存储</button>
+            <button onclick="checkPersonalTag()">2. 检查"个人"标签映射</button>
+            <button onclick="checkAllMappings()">3. 检查所有日历映射</button>
+            <button onclick="checkCalendarCache()">4. 检查日历缓存</button>
+            <button onclick="runFullDiagnosis()">🔬 完整诊断</button>
+        </div>
+
+        <div id="results">
+            <!-- 结果将在这里显示 -->
+        </div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `section ${type}`;
+            div.innerHTML = `<div class="code">${message}</div>`;
+            results.appendChild(div);
+            results.scrollTop = results.scrollHeight;
+        }
+
+        function checkTagStorage() {
+            log('=== 检查标签存储 ===');
+            
+            try {
+                const tagsKey = 'remarkable-hierarchical-tags';
+                const tagsData = localStorage.getItem(tagsKey);
+                
+                if (!tagsData) {
+                    log('❌ 未找到标签数据: ' + tagsKey, 'error');
+                    return;
+                }
+                
+                const tags = JSON.parse(tagsData);
+                log(`✅ 找到标签数据，共 ${Array.isArray(tags) ? tags.length : 'N/A'} 个根标签`, 'success');
+                
+                // 展平标签
+                function flattenTags(tags, result = [], level = 0) {
+                    tags.forEach(tag => {
+                        result.push({...tag, level});
+                        if (tag.children) {
+                            flattenTags(tag.children, result, level + 1);
+                        }
+                    });
+                    return result;
+                }
+                
+                const flatTags = flattenTags(tags);
+                log(`📋 展平后共 ${flatTags.length} 个标签`, 'info');
+                
+                // 显示前几个标签
+                flatTags.slice(0, 5).forEach(tag => {
+                    const indent = '  '.repeat(tag.level);
+                    log(`${indent}- ${tag.name} (ID: ${tag.id})${tag.calendarMapping ? ' [有映射]' : ''}`, 'info');
+                });
+                
+                if (flatTags.length > 5) {
+                    log(`... 还有 ${flatTags.length - 5} 个标签`, 'info');
+                }
+                
+            } catch (error) {
+                log('❌ 检查标签存储失败: ' + error.message, 'error');
+            }
+        }
+
+        function checkPersonalTag() {
+            log('=== 检查"个人"标签映射 ===');
+            
+            try {
+                const tagsData = JSON.parse(localStorage.getItem('remarkable-hierarchical-tags') || '[]');
+                
+                function findTagByName(tags, name) {
+                    for (const tag of tags) {
+                        if (tag.name === name) return tag;
+                        if (tag.children) {
+                            const found = findTagByName(tag.children, name);
+                            if (found) return found;
+                        }
+                    }
+                    return null;
+                }
+                
+                const personalTag = findTagByName(tagsData, '个人');
+                
+                if (!personalTag) {
+                    log('❌ 未找到"个人"标签', 'error');
+                    return;
+                }
+                
+                log(`✅ 找到"个人"标签: ID=${personalTag.id}`, 'success');
+                
+                if (personalTag.calendarMapping) {
+                    log(`📅 日历映射配置:
+  - 日历ID: ${personalTag.calendarMapping.calendarId}
+  - 日历名称: ${personalTag.calendarMapping.calendarName}`, 'success');
+                } else {
+                    log('❌ "个人"标签没有配置日历映射', 'error');
+                }
+                
+            } catch (error) {
+                log('❌ 检查"个人"标签失败: ' + error.message, 'error');
+            }
+        }
+
+        function checkAllMappings() {
+            log('=== 检查所有日历映射 ===');
+            
+            try {
+                const tagsData = JSON.parse(localStorage.getItem('remarkable-hierarchical-tags') || '[]');
+                
+                function flattenTags(tags, result = []) {
+                    tags.forEach(tag => {
+                        result.push(tag);
+                        if (tag.children) {
+                            flattenTags(tag.children, result);
+                        }
+                    });
+                    return result;
+                }
+                
+                const allTags = flattenTags(tagsData);
+                const mappedTags = allTags.filter(tag => tag.calendarMapping && tag.calendarMapping.calendarId);
+                
+                if (mappedTags.length === 0) {
+                    log('❌ 没有找到任何配置了日历映射的标签', 'error');
+                    return;
+                }
+                
+                log(`✅ 找到 ${mappedTags.length} 个有日历映射的标签:`, 'success');
+                
+                mappedTags.forEach(tag => {
+                    log(`📌 ${tag.name} (${tag.id})
+   → ${tag.calendarMapping.calendarName} (${tag.calendarMapping.calendarId})`, 'info');
+                });
+                
+            } catch (error) {
+                log('❌ 检查所有映射失败: ' + error.message, 'error');
+            }
+        }
+
+        function checkCalendarCache() {
+            log('=== 检查日历缓存 ===');
+            
+            try {
+                const calendarsKey = 'remarkable-calendars-cache';
+                const calendarsData = localStorage.getItem(calendarsKey);
+                
+                if (!calendarsData) {
+                    log('❌ 未找到日历缓存数据', 'error');
+                    return;
+                }
+                
+                const calendars = JSON.parse(calendarsData);
+                log(`✅ 找到 ${calendars.length} 个缓存日历:`, 'success');
+                
+                calendars.forEach(calendar => {
+                    log(`📅 ${calendar.name} (${calendar.id})`, 'info');
+                });
+                
+                // 检查映射的日历ID是否存在于缓存中
+                const tagsData = JSON.parse(localStorage.getItem('remarkable-hierarchical-tags') || '[]');
+                function flattenTags(tags, result = []) {
+                    tags.forEach(tag => {
+                        result.push(tag);
+                        if (tag.children) flattenTags(tag.children, result);
+                    });
+                    return result;
+                }
+                
+                const allTags = flattenTags(tagsData);
+                const mappedTags = allTags.filter(tag => tag.calendarMapping?.calendarId);
+                
+                log('\\n=== 映射验证 ===', 'info');
+                mappedTags.forEach(tag => {
+                    const calendarId = tag.calendarMapping.calendarId;
+                    const exists = calendars.some(cal => cal.id === calendarId);
+                    const status = exists ? '✅' : '❌';
+                    log(`${status} ${tag.name} → ${calendarId} ${exists ? '(存在)' : '(不存在)'}`, exists ? 'success' : 'error');
+                });
+                
+            } catch (error) {
+                log('❌ 检查日历缓存失败: ' + error.message, 'error');
+            }
+        }
+
+        function runFullDiagnosis() {
+            document.getElementById('results').innerHTML = '';
+            log('🔬 开始完整诊断...', 'info');
+            
+            setTimeout(() => checkTagStorage(), 100);
+            setTimeout(() => checkPersonalTag(), 500);
+            setTimeout(() => checkAllMappings(), 900);
+            setTimeout(() => checkCalendarCache(), 1300);
+            
+            setTimeout(() => {
+                log('\\n=== 诊断总结 ===', 'info');
+                log('如果发现问题，可能的解决方案:', 'warning');
+                log('1. 重新配置标签的日历映射', 'info');
+                log('2. 刷新日历缓存', 'info');
+                log('3. 检查Microsoft Graph API认证状态', 'info');
+                log('4. 验证日历ID格式是否正确', 'info');
+            }, 1700);
+        }
+
+        // 页面加载时显示说明
+        window.onload = function() {
+            log('👋 欢迎使用标签映射诊断工具！\\n点击上方按钮开始诊断。', 'info');
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+/**
+ * LightSlateEditor 样式
+ * 复用 UnifiedSlateEditor 的核心样式，移除 PlanManager 特定样式
+ */
+
+.light-slate-editor {
+  position: relative;
+  width: 100%;
+  min-height: 120px;
+}
+
+.light-slate-editor .slate-editable {
+  outline: none;
+  padding: 12px;
+  line-height: 1.6;
+  font-size: 14px;
+  color: #333;
+  background: transparent;
+  border-radius: 4px;
+  min-height: 100px;
+}
+
+.light-slate-editor .slate-editable:focus {
+  background-color: #fafafa;
+}
+
+/* 段落样式 */
+.light-slate-editor .slate-paragraph {
+  margin: 8px 0;
+  padding: 4px 0;
+}
+
+.light-slate-editor .slate-paragraph:first-child {
+  margin-top: 0;
+}
+
+.light-slate-editor .slate-paragraph:last-child {
+  margin-bottom: 0;
+}
+
+/* 空段落样式 */
+.light-slate-editor .slate-paragraph:empty::before {
+  content: attr(data-placeholder);
+  color: #999;
+  font-style: italic;
+}
+
+/* Timestamp divider 样式 */
+.light-slate-editor .timestamp-divider {
+  display: flex;
+  align-items: center;
+  margin: 16px 0;
+  opacity: 0.7;
+  user-select: none;
+}
+
+.light-slate-editor .timestamp-divider .preline {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, #ddd 20%, #ddd 80%, transparent);
+  margin-right: 12px;
+}
+
+.light-slate-editor .timestamp-divider .timestamp-text {
+  font-size: 12px;
+  color: #666;
+  background: #f5f5f5;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+/* inline element 样式会从各自的组件文件中继承 */
+
+/* FloatingToolbar 位置调整 */
+.light-slate-editor .floating-toolbar {
+  z-index: 1000;
+}
+
+/* 选中状态 */
+.light-slate-editor .slate-editable [data-slate-selected="true"] {
+  background-color: rgba(0, 123, 255, 0.1);
+  border-radius: 2px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .light-slate-editor .slate-editable {
+    padding: 8px;
+    font-size: 13px;
+  }
+  
+  .light-slate-editor .timestamp-divider {
+    margin: 12px 0;
+  }
+}

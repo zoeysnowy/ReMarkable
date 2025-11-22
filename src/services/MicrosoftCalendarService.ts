@@ -2323,24 +2323,6 @@ export class MicrosoftCalendarService {
     
     return calendarId;
   }
-  
-  /**
-   * 获取有效的日历ID，如果没有选定的日历，则异步获取默认日历
-   * @returns Promise<string> 有效的日历ID
-   */
-  async getValidCalendarId(): Promise<string> {
-    let calendarId = this.getSelectedCalendarId();
-    
-    if (!calendarId) {
-      // 获取默认日历并保存
-      const defaultCalendar = await this.getDefaultCalendar();
-      calendarId = defaultCalendar.id;
-      this.setSelectedCalendar(calendarId);
-      MSCalendarLogger.log('📅 自动设置默认日历:', calendarId);
-    }
-    
-    return calendarId;
-  }
 
   /**
    * 同步事件到指定日历

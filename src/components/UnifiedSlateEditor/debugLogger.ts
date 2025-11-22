@@ -119,7 +119,7 @@ export const logSelection = (editor: Editor, selection: Range) => {
       
       console.log('📍 光标位置:', {
         '节点路径': path,
-        'Line ID': eventLine.lineId.slice(-10) + '...',
+        'Line ID': eventLine.lineId ? eventLine.lineId.slice(-10) + '...' : '(无ID)',
         '显示模式': eventLine.mode === 'title' ? '标题行' : '描述行',
         '缩进层级': eventLine.level,
         '当前文本': text ? `"${text}"` : '(空)',

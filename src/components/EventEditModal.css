@@ -146,6 +146,40 @@
   font-size: 13px;
 }
 
+/* LightSlateEditor 样式 - TimeLog 编辑器 */
+.slate-editor-wrapper {
+  flex: 1;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+  overflow: hidden;
+}
+
+.timelog-editor {
+  width: 100%;
+}
+
+.timelog-editor .slate-editable {
+  min-height: 260px;
+  max-height: 400px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 12px;
+  border: none;
+  background: transparent;
+}
+
+.timelog-editor .slate-editable:focus {
+  outline: none;
+  background-color: #fafafa;
+}
+
+/* 确保 FloatingToolbar 在 modal 中的层级正确 */
+.event-edit-modal .floating-toolbar {
+  z-index: 10001;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;

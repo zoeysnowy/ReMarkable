@@ -2098,19 +2098,34 @@ private getUserSettings(): any {
             isAllDay: action.data.isAllDay || false
           };
           
-          // 🔍 [FIXED] 获取目标日历ID - 按需求定义处理
-          syncTargetCalendarId = action.data.calendarId;
+          // 🔍 [FIXED] 获取目标日历ID - 数组格式处理
           
-          if (action.data.tagId) {
-            // 如果有标签，通过标签映射获取日历ID
-            const mappedCalendarId = this.getCalendarIdForTag(action.data.tagId);
+          // 🔧 优先从 tags 数组中获取第一个标签的日历映射
+          if (action.data.tags && Array.isArray(action.data.tags) && action.data.tags.length > 0) {
+            const mappedCalendarId = this.getCalendarIdForTag(action.data.tags[0]);
             if (mappedCalendarId) {
               syncTargetCalendarId = mappedCalendarId;
-            } else {
+              // console.log('🔍 [SYNC] Using calendar from tag mapping:', {
+              //   tagId: action.data.tags[0],
+              //   mappedCalendarId,
+              //   eventTitle: action.data.title
+              // });
             }
-          } else {
-            // 🚨 关键修复：如果没有标签，保持在原日历，不要移动到默认日历
           }
+          
+          // 🔧 如果没有标签映射，从 calendarIds 数组中获取第一个日历ID
+          if (!syncTargetCalendarId && action.data.calendarIds && Array.isArray(action.data.calendarIds) && action.data.calendarIds.length > 0) {
+            syncTargetCalendarId = action.data.calendarIds[0];
+            // console.log('🔍 [SYNC] Using direct calendar ID from array:', syncTargetCalendarId);
+          }
+          
+          // console.log('🔍 [SYNC] Calendar ID resolution:', {
+          //   eventId: action.entityId,
+          //   eventTitle: action.data.title,
+          //   calendarIds: action.data.calendarIds,
+          //   tags: action.data.tags,
+          //   finalCalendarId: syncTargetCalendarId
+          // });
           
           // 🚨 只有在真的没有任何日历信息时才使用默认日历（全新创建的事件）
           if (!syncTargetCalendarId) {
@@ -2254,18 +2269,25 @@ private getUserSettings(): any {
               }
             }
             
-            // 🔍 [FIXED] 获取目标日历ID - 按需求定义处理（UPDATE → CREATE转换）
-            syncTargetCalendarId = action.data.calendarId;
+            // 🔍 [FIXED] 获取目标日历ID - 数组格式处理（UPDATE → CREATE转换）
             
-            if (action.data.tagId) {
-              // 如果有标签，通过标签映射获取日历ID
-              const mappedCalendarId = this.getCalendarIdForTag(action.data.tagId);
+            // 🔧 优先从 tags 数组中获取第一个标签的日历映射
+            if (action.data.tags && Array.isArray(action.data.tags) && action.data.tags.length > 0) {
+              const mappedCalendarId = this.getCalendarIdForTag(action.data.tags[0]);
               if (mappedCalendarId) {
                 syncTargetCalendarId = mappedCalendarId;
-              } else {
+                // console.log('🔍 [SYNC-UPDATE] Using calendar from tag mapping:', {
+                //   tagId: action.data.tags[0],
+                //   mappedCalendarId,
+                //   eventTitle: action.data.title
+                // });
               }
-            } else {
-              // 🚨 关键修复：如果没有标签，保持在原日历
+            }
+            
+            // 🔧 如果没有标签映射，从 calendarIds 数组中获取第一个日历ID
+            if (!syncTargetCalendarId && action.data.calendarIds && Array.isArray(action.data.calendarIds) && action.data.calendarIds.length > 0) {
+              syncTargetCalendarId = action.data.calendarIds[0];
+              // console.log('🔍 [SYNC-UPDATE] Using direct calendar ID from array:', syncTargetCalendarId);
             }
             
             // 🚨 只有在真的没有任何日历信息时才使用默认日历
@@ -2506,15 +2528,23 @@ private getUserSettings(): any {
                   // 🔍 [FIXED] 获取重建事件的日历ID - 按需求定义处理
                 let createCalendarId = syncTargetCalendarId;
                 
-                if (action.data.tagId) {
-                  // 如果有标签，通过标签映射获取日历ID
-                  const mappedCalendarId = this.getCalendarIdForTag(action.data.tagId);
+                // 🔧 优先从 tags 数组中获取标签映射的日历ID
+                if (action.data.tags && Array.isArray(action.data.tags) && action.data.tags.length > 0) {
+                  const mappedCalendarId = this.getCalendarIdForTag(action.data.tags[0]);
                   if (mappedCalendarId) {
                     createCalendarId = mappedCalendarId;
-                  } else {
+                    // console.log('🔍 [SYNC-RECREATE] Using calendar from tag mapping:', {
+                    //   tagId: action.data.tags[0],
+                    //   mappedCalendarId,
+                    //   eventTitle: action.data.title
+                    // });
                   }
-                } else {
-                  // 🚨 关键修复：如果没有标签，保持在原日历
+                }
+                
+                // 🔧 如果没有标签映射，从 calendarIds 数组中获取日历ID
+                if (!createCalendarId && action.data.calendarIds && Array.isArray(action.data.calendarIds) && action.data.calendarIds.length > 0) {
+                  createCalendarId = action.data.calendarIds[0];
+                  // console.log('🔍 [SYNC-RECREATE] Using direct calendar ID from array:', createCalendarId);
                 }
                 
                 // 🚨 只有在真的没有任何日历信息时才使用默认日历
@@ -2764,13 +2794,13 @@ private getUserSettings(): any {
           }
         }
         
-        // 🎯 [STEP 2] 如果没找到，尝试通过 ReMarkable 创建签名匹配 Timer 事件
-        // 场景：Timer 事件刚同步到 Outlook，本地还没有 externalId，Outlook 返回时需要匹配本地事件
+        // 🎯 [STEP 2] 如果没找到，尝试通过 ReMarkable 创建签名匹配本地事件
+        // 场景：本地事件刚同步到 Outlook，本地还没有 externalId，Outlook 返回时需要匹配本地事件
         if (!existingEvent && newEvent.remarkableSource) {
           const createTime = this.extractOriginalCreateTime(newEvent.description);
           
           if (createTime) {
-            // 在本地事件中查找相同创建时间的 Timer 事件
+            // 🔍 先尝试匹配 Timer 事件
             existingEvent = events.find((e: any) => 
               e.isTimer &&                    // ✅ 必须是 Timer 事件
               !e.externalId &&                 // ✅ 还没有同步过(没有 externalId)
@@ -2785,6 +2815,26 @@ private getUserSettings(): any {
                 title: newEvent.title,
                 createTime: formatTimeForStorage(createTime)
               });
+            }
+            
+            // 🆕 如果没有匹配到 Timer 事件，尝试匹配普通事件
+            if (!existingEvent) {
+              existingEvent = events.find((e: any) => 
+                !e.isTimer &&                   // ✅ 非 Timer 事件
+                !e.externalId &&                // ✅ 还没有同步过(没有 externalId)
+                (e.remarkableSource === true || e.id.startsWith('local-')) && // ✅ ReMarkable 创建的或本地创建的
+                e.title === newEvent.title &&   // ✅ 标题匹配
+                Math.abs(new Date(e.createdAt).getTime() - createTime.getTime()) < 5000 // ✅ 创建时间匹配(5秒容差)
+              );
+              
+              if (existingEvent) {
+                console.log(`🎯 [Event Dedupe] 通过 ReMarkable 签名匹配到本地事件:`, {
+                  localId: existingEvent.id,
+                  remoteId: newEvent.externalId,
+                  title: newEvent.title,
+                  createTime: formatTimeForStorage(createTime)
+                });
+              }
             }
           }
         }

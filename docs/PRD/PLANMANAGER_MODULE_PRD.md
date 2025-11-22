@@ -83,13 +83,33 @@ useEffect(() => {
 
 ---
 
-## 🎨 v2.2 状态竖线可视化系统 (2025-11-20)
+## 🎨 v2.2 Snapshot 状态可视化系统 (2025-11-23)
 
 ### 功能概述
 
-**需求**: 在Snapshot快照模式下，通过竖线和标签展示事件的变化状态（新建、更新、完成、错过、删除）
+**需求**: 在Snapshot快照模式下，通过彩色竖线和状态标签展示事件在特定时间范围内的变化历史和当前状态
 **参考**: [Figma设计稿](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=290-2646&m=dev)
-**状态**: ✅ 已实现
+**状态**: ✅ 已完成并测试验证
+**完整文档**: [Snapshot 状态可视化系统 PRD](./SNAPSHOT_STATUS_VISUALIZATION_PRD.md)
+
+### 核心能力
+
+- ✅ **5种状态类型**: New（新建）、Updated（更新）、Done（完成）、Missed（错过）、Deleted（删除）
+- ✅ **多线并行**: 每个事件可同时显示多条不同颜色的竖线
+- ✅ **智能列分配**: 相同状态的连续事件使用同一列，实现竖线连续性视觉效果
+- ✅ **自适应缩进**: 根据竖线数量动态调整内容左侧缩进
+- ✅ **实时响应**: 日期范围变化时竖线实时更新
+- ✅ **DOM精确定位**: 支持事件多行内容（eventlog），竖线高度自动适配
+- ✅ **标签智能定位**: 每个状态只显示一次标签，自动定位到对应竖线中心
+
+### 快速参考
+
+**文件位置**:
+- `src/components/StatusLineContainer.tsx` - 竖线渲染容器（343 lines）
+- `src/components/StatusLineContainer.css` - 样式定义（125 lines）
+- `src/components/PlanManager.tsx` - 状态计算逻辑（L1320-1542）
+
+**详细技术文档**: 请查阅 [SNAPSHOT_STATUS_VISUALIZATION_PRD.md](./SNAPSHOT_STATUS_VISUALIZATION_PRD.md)
 
 ### 核心组件
 

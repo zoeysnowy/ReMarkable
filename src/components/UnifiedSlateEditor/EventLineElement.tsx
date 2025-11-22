@@ -52,6 +52,7 @@ export const EventLineElement: React.FC<EventLineElementProps> = ({
     <div
       {...attributes}
       className={`unified-event-line ${isEventlogMode ? 'eventlog-mode' : ''}${isPlaceholder ? ' placeholder-line' : ''}`}
+      data-event-line="true"
       data-line-id={element.lineId}
       data-event-id={element.eventId || ''}
       data-level={element.level}
