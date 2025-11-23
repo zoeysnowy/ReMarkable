@@ -592,9 +592,9 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 24px 40px 24px 0;
+  padding: 24px;
   overflow-y: auto;
-  background: white;
+  background: transparent;
   border-left: none !important; /* 覆盖 EventEditModalV2.css 中的左边框 */
 }
 
