@@ -127,7 +127,29 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         location: event.location || '',
         organizer: event.organizer,
         attendees: event.attendees || [],
-        eventlog: typeof event.eventlog === 'string' ? event.eventlog : JSON.stringify(event.eventlog?.content || []),
+        eventlog: (() => {
+          // 处理 eventlog 字段的多种格式
+          if (!event.eventlog) return '[]';
+          
+          if (typeof event.eventlog === 'string') {
+            // 如果是字符串，尝试解析看是否是 Slate JSON
+            try {
+              const parsed = JSON.parse(event.eventlog);
+              // 如果是数组，直接返回
+              if (Array.isArray(parsed)) return event.eventlog;
+              // 如果是对象且有 content 字段，提取 content
+              if (parsed.content) return JSON.stringify(parsed.content);
+              // 其他情况返回原字符串
+              return event.eventlog;
+            } catch {
+              // JSON 解析失败，返回空数组
+              return '[]';
+            }
+          }
+          
+          // 如果是 EventLog 对象，提取 content
+          return JSON.stringify(event.eventlog.content || []);
+        })(),
         description: event.description || '',
       };
     }
@@ -264,7 +286,23 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         location: event.location || '',
         organizer: event.organizer,
         attendees: event.attendees || [],
-        eventlog: typeof event.eventlog === 'string' ? event.eventlog : JSON.stringify(event.eventlog?.content || []),
+        eventlog: (() => {
+          // 处理 eventlog 字段的多种格式
+          if (!event.eventlog) return '[]';
+          
+          if (typeof event.eventlog === 'string') {
+            try {
+              const parsed = JSON.parse(event.eventlog);
+              if (Array.isArray(parsed)) return event.eventlog;
+              if (parsed.content) return JSON.stringify(parsed.content);
+              return event.eventlog;
+            } catch {
+              return '[]';
+            }
+          }
+          
+          return JSON.stringify(event.eventlog.content || []);
+        })(),
         description: event.description || '',
       });
     }

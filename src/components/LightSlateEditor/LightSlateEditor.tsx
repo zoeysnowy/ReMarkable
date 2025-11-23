@@ -111,12 +111,12 @@ export const LightSlateEditor: React.FC<LightSlateEditorProps> = ({
   }, []);
   
   // 将 Slate JSON 字符串转换为 Slate nodes
-  // 只在首次挂载时初始化
-  const initialValue = useMemo(() => {
+  // 初始化时使用 content，但不在依赖数组中（避免每次都重新初始化）
+  const [initialValue] = useState(() => {
     const nodes = jsonToSlateNodes(content);
     console.log('[LightSlateEditor] 初始化节点:', nodes);
     return nodes;
-  }, []); // 空依赖数组，只初始化一次
+  });
   
   // 自动保存定时器
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
