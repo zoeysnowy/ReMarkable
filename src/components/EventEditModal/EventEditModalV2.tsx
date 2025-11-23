@@ -1316,32 +1316,24 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                     </button>
                   </div>
                   
-                  {/* 标签区域 - 显示事件标签 */}
-                  {formData.tags && formData.tags.length > 0 && (
-                    <div className="tags-area">
-                      {formData.tags.map(tagId => {
-                        const tag = TagService.getTagById(tagId);
-                        if (!tag) return null;
-                        
-                        // 构建完整层级路径
-                        const buildTagPath = (t: any): string => {
-                          const path: string[] = [];
-                          let current = t;
-                          while (current) {
-                            path.unshift(`${current.emoji || ''}${current.name}`);
-                            current = current.parentId ? TagService.getTagById(current.parentId) : null;
-                          }
-                          return '#' + path.join('/#');
-                        };
-                        
-                        return (
-                          <span key={tagId} className="tag-mention" style={{ color: tag.color }}>
-                            {buildTagPath(tag)}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
+                  {/* 标签区域 */}
+                  <div className="tags-area">
+                    <span className="tag-mention tag-work">#🔗工作/#📝文档编辑</span>
+                    <span className="tag-mention tag-client">#📮重点客户/#📮腾讯</span>
+                  </div>
+
+                  {/* Plan 提示区域 */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#6b7280', marginBottom: '12px', lineHeight: '26px' }}>
+                    <img src={taskGrayIcon} style={{ width: '16px', height: '16px' }} alt="" />
+                    <img src={ddlWarnIcon} style={{ width: '20px', height: '20px' }} alt="" />
+                    <span>创建于 12h前，ddl 还有 2h30min</span>
+                  </div>
+
+                  {/* 关联区域 */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#6b7280', marginBottom: '16px', lineHeight: '26px' }}>
+                    <img src={linkColorIcon} style={{ width: '20px', height: '20px' }} alt="" />
+                    <span>上级任务：Project Ace (5/7)</span>
+                  </div>
 
                   {/* TimeLog 编辑区 */}
                   <div ref={rightPanelRef} style={{ flex: 1, background: 'white', display: 'flex', flexDirection: 'column', minHeight: '200px', padding: '16px' }}>
