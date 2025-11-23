@@ -163,7 +163,23 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   const [currentTime, setCurrentTime] = useState<number>(Date.now());
   
   // TimeLog 相关状态 - 使用 Slate JSON 字符串
-  const timelogContent = formData.eventlog || '[]'; // 默认空的 Slate JSON 数组
+  // 确保 timelogContent 是有效的 Slate JSON 字符串
+  const timelogContent = React.useMemo(() => {
+    const log = formData.eventlog;
+    if (!log) return '[]';
+    // 如果已经是字符串且看起来像 JSON，直接返回
+    if (typeof log === 'string') {
+      try {
+        JSON.parse(log);
+        return log;
+      } catch {
+        // 如果不是有效 JSON，返回空数组
+        return '[]';
+      }
+    }
+    // 如果是对象，序列化为字符串
+    return '[]';
+  }, [formData.eventlog]);
   
   const [activePickerIndex, setActivePickerIndex] = useState(-1);
 
@@ -1283,9 +1299,11 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
               {/* 右侧：Event Log（仅详情视图） */}
               {isDetailView && (
                 <div className="event-log">
-                  <button className="back-button" onClick={() => setIsDetailView(false)}>
-                    ← back
-                  </button>
+                  <div className="event-log-header">
+                    <button className="back-button" onClick={() => setIsDetailView(false)}>
+                      ← back
+                    </button>
+                  </div>
                   
                   {/* 标签区域 */}
                   <div className="tags-area">
