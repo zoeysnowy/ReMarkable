@@ -1342,7 +1342,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                   </div>
 
                   {/* TimeLog 编辑区 */}
-                  <div ref={rightPanelRef} style={{ flex: 1, background: 'white', display: 'flex', flexDirection: 'column', minHeight: '200px', padding: '16px' }}>
+                  <div ref={rightPanelRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '200px' }}>
                     <LightSlateEditor
                       key={`editor-${formData.id}-${timelogContent.length}`}
                       content={timelogContent}
