@@ -207,6 +207,19 @@
 /* 复用 test-eventeditmodal-v2.html 的样式 */
 /* 这些样式与测试页面保持一致 */
 
+.event-edit-modal-v2-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
 .event-edit-modal-v2 {
   background: #FFF;
   box-shadow: 0 10px 10px 0 rgba(0, 0, 0, 0.10);
