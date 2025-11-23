@@ -184,35 +184,19 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   const [tagPickerPosition, setTagPickerPosition] = useState({ top: 0, left: 0, width: 0 });
   const [currentTime, setCurrentTime] = useState<number>(Date.now());
   
-  // TimeLog 相关状态 - 使用 Slate JSON 字符串
-  // 确保 timelogContent 是有效的 Slate JSON 字符串
-  const timelogContent = React.useMemo(() => {
-    const log = formData.eventlog;
-    console.log('[EventEditModalV2] eventlog 原始值:', log, 'type:', typeof log);
-    
-    if (!log) {
-      console.log('[EventEditModalV2] eventlog 为空，返回空数组');
-      return '[]';
-    }
-    
-    // 如果已经是字符串
-    if (typeof log === 'string') {
-      try {
-        const parsed = JSON.parse(log);
-        console.log('[EventEditModalV2] JSON 解析成功:', parsed);
-        return log;
-      } catch (e) {
-        console.error('[EventEditModalV2] JSON 解析失败:', e);
-        console.error('[EventEditModalV2] 原始字符串:', log);
-        // 如果不是有效 JSON，返回空数组
-        return '[]';
-      }
-    }
-    
-    // 如果是对象，序列化为字符串
-    console.log('[EventEditModalV2] eventlog 是对象，需要序列化');
-    return '[]';
-  }, [formData.eventlog]);
+  // 打印接收到的原始 event 数据
+  React.useEffect(() => {
+    console.log('==================== EventEditModalV2 Debug ====================');
+    console.log('📥 props.event:', event);
+    console.log('📥 props.event.eventlog:', event?.eventlog);
+    console.log('📥 eventlog type:', typeof event?.eventlog);
+    console.log('📦 formData.eventlog:', formData.eventlog);
+    console.log('📦 formData.eventlog type:', typeof formData.eventlog);
+    console.log('================================================================');
+  }, [event, formData.eventlog]);
+
+  // TimeLog 相关状态 - 直接使用 formData.eventlog
+  const timelogContent = formData.eventlog || '[]';
   
   const [activePickerIndex, setActivePickerIndex] = useState(-1);
 
