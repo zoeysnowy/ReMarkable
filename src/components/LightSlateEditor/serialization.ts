@@ -97,12 +97,13 @@ export function jsonToSlateNodes(slateJson: string): Descendant[] {
     } as ParagraphNode];
     
   } catch (error) {
-    console.warn('[LightSlateEditor] JSON 解析失败，作为纯文本处理:', error);
+    console.error('[LightSlateEditor] JSON 解析失败，返回空段落。错误:', error);
+    console.error('[LightSlateEditor] 原始内容:', slateJson);
     
-    // JSON 解析失败，作为纯文本处理
+    // JSON 解析失败，返回空段落而不是显示原始 JSON
     return [{
       type: 'paragraph',
-      children: [{ text: slateJson }]
+      children: [{ text: '' }]
     } as ParagraphNode];
   }
 }
