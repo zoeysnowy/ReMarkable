@@ -1,0 +1,452 @@
+/**
+ * EventEditModal v2 样式
+ * 
+ * 布局架构：
+ * - 详情视图：左侧 Event Overview (360px) + 右侧 Event Log (flex: 1, min-width: 360px)
+ * - 收缩视图：仅显示 Event Overview (383px)
+ * 
+ * @version 2.0.0
+ */
+
+/* ==================== Overlay & Container ==================== */
+
+.event-edit-modal-v2-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.event-edit-modal-v2 {
+  background: white;
+  display: flex;
+  max-height: 90vh;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+}
+
+/* 详情视图：左右分栏 */
+.event-edit-modal-v2.detail-view {
+  border-radius: 12px;
+  min-width: 720px; /* 360px + 360px */
+}
+
+/* 收缩视图：单栏卡片 */
+.event-edit-modal-v2.compact-view {
+  border-radius: 45px;
+  width: 383px;
+  height: 730px;
+}
+
+/* ==================== 左侧：Event Overview ==================== */
+
+.event-overview {
+  width: 360px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.overview-section {
+  margin-bottom: 24px;
+}
+
+/* 上 Section - 事件标识 */
+.section-top {
+  border-bottom: 1px solid #f3f4f6;
+  padding-bottom: 16px;
+}
+
+.identity-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.emoji-large {
+  font-size: 60px;
+  text-align: center;
+  padding: 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.emoji-large:hover {
+  background: #f3f4f6;
+}
+
+.title-input {
+  font-size: 18px;
+  font-weight: 600;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 0;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.title-input:focus {
+  border-bottom-color: #3b82f6;
+}
+
+.title-input::placeholder {
+  color: #d1d5db;
+}
+
+.tags-display {
+  color: #6b7280;
+  font-size: 14px;
+  padding: 8px 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.tags-display:hover {
+  background: #f3f4f6;
+}
+
+.task-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+.task-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+/* 计时按钮区域 */
+.timer-button-section {
+  margin: 16px 0;
+}
+
+.timer-button-start {
+  width: 100%;
+  padding: 16px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+.timer-button-start:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+  transform: translateY(-1px);
+}
+
+.timer-buttons-group {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.timer-button-circle {
+  width: 42px;
+  height: 42px;
+  border: none;
+  border-radius: 50%;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.timer-button-circle.gray {
+  background: #f3f4f6;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.timer-button-circle.gradient-red {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+}
+
+.timer-button-circle:hover {
+  transform: scale(1.05);
+}
+
+/* 中 Section - 计划安排 */
+.section-middle {
+  border-bottom: 1px solid #f3f4f6;
+  padding-bottom: 16px;
+}
+
+.planned-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 8px 0;
+}
+
+.time-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.time-row input[type="datetime-local"] {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.time-row input[type="datetime-local"]:focus {
+  border-color: #3b82f6;
+}
+
+.arrow {
+  color: #9ca3af;
+  font-weight: 600;
+}
+
+.location-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.location-input:focus {
+  border-color: #3b82f6;
+}
+
+/* 下 Section - 实际进展 */
+.section-bottom {
+  flex: 1;
+}
+
+.actual-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.total-duration {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.placeholder-text {
+  color: #9ca3af;
+  font-size: 14px;
+  font-style: italic;
+  margin: 0;
+}
+
+/* 收缩视图底部按钮 */
+.compact-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 16px 0 0 0;
+  border-top: 1px solid #f3f4f6;
+  margin-top: auto;
+}
+
+.footer-btn-text {
+  font-family: 'Istok Web', sans-serif;
+  font-size: 15px;
+  color: #6b7280;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  transition: color 0.2s;
+}
+
+.footer-btn-text:hover {
+  color: #3b82f6;
+}
+
+.expand-log-btn {
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+/* ==================== 右侧：Event Log ==================== */
+
+.event-log {
+  flex: 1;
+  min-width: 360px;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  border-left: 1px solid #e5e7eb;
+  background: #fafafa;
+  overflow-y: auto;
+}
+
+.event-log-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.back-button {
+  background: none;
+  border: none;
+  color: #6b7280;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.back-button:hover {
+  background: #f3f4f6;
+  color: #1f2937;
+}
+
+.event-log-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.event-log-tag {
+  padding: 4px 12px;
+  background: #e0e7ff;
+  color: #4338ca;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.event-log-plan-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: #fef3c7;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #92400e;
+  margin-bottom: 16px;
+}
+
+.plan-icon {
+  font-size: 16px;
+}
+
+.event-log-relation {
+  padding: 12px;
+  background: #e0f2fe;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #075985;
+  margin-bottom: 16px;
+}
+
+.event-log-editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.temp-editor {
+  flex: 1;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.event-log-floating-bar {
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+  padding: 12px;
+  background: white;
+  border-radius: 8px;
+}
+
+/* 详情视图底部按钮 */
+.detail-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.footer-btn-cancel,
+.footer-btn-save {
+  font-family: 'Istok Web', sans-serif;
+  font-size: 15px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px 16px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.footer-btn-cancel {
+  color: #6b7280;
+}
+
+.footer-btn-cancel:hover {
+  background: #f3f4f6;
+  color: #1f2937;
+}
+
+.footer-btn-save {
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+.footer-btn-save:hover {
+  background: #eff6ff;
+}
