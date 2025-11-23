@@ -166,18 +166,29 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   // 确保 timelogContent 是有效的 Slate JSON 字符串
   const timelogContent = React.useMemo(() => {
     const log = formData.eventlog;
-    if (!log) return '[]';
-    // 如果已经是字符串且看起来像 JSON，直接返回
+    console.log('[EventEditModalV2] eventlog 原始值:', log, 'type:', typeof log);
+    
+    if (!log) {
+      console.log('[EventEditModalV2] eventlog 为空，返回空数组');
+      return '[]';
+    }
+    
+    // 如果已经是字符串
     if (typeof log === 'string') {
       try {
-        JSON.parse(log);
+        const parsed = JSON.parse(log);
+        console.log('[EventEditModalV2] JSON 解析成功:', parsed);
         return log;
-      } catch {
+      } catch (e) {
+        console.error('[EventEditModalV2] JSON 解析失败:', e);
+        console.error('[EventEditModalV2] 原始字符串:', log);
         // 如果不是有效 JSON，返回空数组
         return '[]';
       }
     }
+    
     // 如果是对象，序列化为字符串
+    console.log('[EventEditModalV2] eventlog 是对象，需要序列化');
     return '[]';
   }, [formData.eventlog]);
   
@@ -1305,33 +1316,35 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                     </button>
                   </div>
                   
-                  {/* 标签区域 */}
-                  <div className="tags-area">
-                    <span className="tag-mention tag-work">#🔗工作/#📝文档编辑</span>
-                    <span className="tag-mention tag-client">#📮重点客户/#📮腾讯</span>
-                  </div>
-
-                  {/* Plan 提示区域 */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#6b7280', marginBottom: '12px', lineHeight: '26px' }}>
-                    <img src={taskGrayIcon} style={{ width: '16px', height: '16px' }} alt="" />
-                    <img src={ddlWarnIcon} style={{ width: '20px', height: '20px' }} alt="" />
-                    <span>创建于 12h前，ddl 还有 2h30min</span>
-                  </div>
-
-                  {/* 关联区域 */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#6b7280', marginBottom: '16px', lineHeight: '26px' }}>
-                    <img src={linkColorIcon} style={{ width: '20px', height: '20px' }} alt="" />
-                    <span>上级任务：Project Ace (5/7)</span>
-                  </div>
+                  {/* 标签区域 - 显示事件标签 */}
+                  {formData.tags && formData.tags.length > 0 && (
+                    <div className="tags-area">
+                      {formData.tags.map(tagId => {
+                        const tag = TagService.getTagById(tagId);
+                        if (!tag) return null;
+                        
+                        // 构建完整层级路径
+                        const buildTagPath = (t: any): string => {
+                          const path: string[] = [];
+                          let current = t;
+                          while (current) {
+                            path.unshift(`${current.emoji || ''}${current.name}`);
+                            current = current.parentId ? TagService.getTagById(current.parentId) : null;
+                          }
+                          return '#' + path.join('/#');
+                        };
+                        
+                        return (
+                          <span key={tagId} className="tag-mention" style={{ color: tag.color }}>
+                            {buildTagPath(tag)}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   {/* TimeLog 编辑区 */}
                   <div ref={rightPanelRef} style={{ flex: 1, background: 'white', display: 'flex', flexDirection: 'column', minHeight: '200px', padding: '16px' }}>
-                    {/* 调试信息 */}
-                    {process.env.NODE_ENV === 'development' && (
-                      <div style={{ fontSize: '10px', color: '#999', marginBottom: '8px' }}>
-                        TimeLog内容长度: {timelogContent?.length || 0}
-                      </div>
-                    )}
                     <LightSlateEditor
                       content={timelogContent}
                       parentEventId={formData.id || 'new-event'}
