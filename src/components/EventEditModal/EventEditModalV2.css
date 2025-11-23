@@ -2,8 +2,8 @@
 
 .eventmodal-v2-demo-container {
   min-height: 100vh;
-  background: #f3f4f6;
-  padding: 20px;
+  background: transparent;
+  padding: 0;
 }
 
 .demo-header {
