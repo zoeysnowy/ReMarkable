@@ -9,7 +9,6 @@ import {
   CustomElement,
   TimestampDividerElement,
   TagNode,
-  EmojiNode,
   DateMentionNode
 } from '../UnifiedSlateEditor/types';
 
@@ -141,15 +140,11 @@ export function slateNodesToHtml(nodes: Descendant[]): string {
           
           case 'tag':
             const tagElement = node as TagNode;
-            return `<span class="tag" data-tag-id="${tagElement.tagId}">${tagElement.name}</span>`;
-          
-          case 'emoji':
-            const emojiElement = node as EmojiNode;
-            return emojiElement.emoji;
+            return `<span class="tag" data-tag-id="${tagElement.tagId}">${tagElement.tagName}</span>`;
           
           case 'date-mention':
             const dateElement = node as DateMentionNode;
-            return `<span class="date-mention" data-date="${dateElement.date}">${dateElement.displayText || dateElement.text}</span>`;
+            return `<span class="date-mention" data-date="${dateElement.startDate}">${dateElement.originalText || dateElement.startDate}</span>`;
           
           default:
             return extractTextFromNode(node);
