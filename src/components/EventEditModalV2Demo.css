@@ -413,10 +413,15 @@
   transition: all 0.2s;
   margin: 24px 0; /* 上下间距各24px */
   outline: none;
+  box-shadow: none !important; /* 覆盖 EventEditModalV2.css 中的阴影 */
+  border-radius: 0 !important; /* 移除 border-radius */
 }
 
 .timer-button-start:hover {
   opacity: 0.8;
+  box-shadow: none !important; /* 覆盖 EventEditModalV2.css 中的 hover 阴影 */
+  transform: none !important; /* 移除 transform 效果 */
+  background: transparent !important; /* 保持透明背景 */
 }
 
 .timer-button-start:disabled {
@@ -589,6 +594,8 @@
   flex-direction: column;
   padding: 24px 40px 24px 0;
   overflow-y: auto;
+  background: white;
+  border-left: none !important; /* 覆盖 EventEditModalV2.css 中的左边框 */
 }
 
 .back-button {

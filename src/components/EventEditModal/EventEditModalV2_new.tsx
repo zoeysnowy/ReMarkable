@@ -1,7 +1,7 @@
 /**
- * EventEditModal v2 - 双视图事件编辑模态框
+ * EventEditModal v2 Demo Page
  * 
- * 完整的事件编辑器，支持详情视图和收缩视图
+ * 独立的测试页面，用于开发和测试 EventEditModal v2 的交互功能
  * 
  * 功能：
  * 1. 左侧事件标识区（Emoji、标题、标签、任务勾选）
@@ -19,42 +19,42 @@ import { createPortal } from 'react-dom';
 import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
 
-import { TagService } from '../../services/TagService';
-import { EventService } from '../../services/EventService';
-import { ContactService } from '../../services/ContactService';
-import { Event, Contact } from '../../types';
-import { HierarchicalTagPicker } from '../HierarchicalTagPicker/HierarchicalTagPicker';
-import UnifiedDateTimePicker from '../FloatingToolbar/pickers/UnifiedDateTimePicker';
-import { AttendeeDisplay } from '../common/AttendeeDisplay';
-import { LocationInput } from '../common/LocationInput';
-import { CalendarPicker } from '../../features/Calendar/components/CalendarPicker';
-import { SimpleCalendarDropdown } from '../EventEditModalV2Demo/SimpleCalendarDropdown';
-import { SyncModeDropdown } from '../EventEditModalV2Demo/SyncModeDropdown';
-import { getAvailableCalendarsForSettings, getCalendarGroupColor } from '../../utils/calendarUtils';
+import { TagService } from '../services/TagService';
+import { EventService } from '../services/EventService';
+import { ContactService } from '../services/ContactService';
+import { Event, Contact } from '../types';
+import { HierarchicalTagPicker } from './HierarchicalTagPicker/HierarchicalTagPicker';
+import UnifiedDateTimePicker from './FloatingToolbar/pickers/UnifiedDateTimePicker';
+import { AttendeeDisplay } from './common/AttendeeDisplay';
+import { LocationInput } from './common/LocationInput';
+import { CalendarPicker } from '../features/Calendar/components/CalendarPicker';
+import { SimpleCalendarDropdown } from './EventEditModalV2Demo/SimpleCalendarDropdown';
+import { SyncModeDropdown } from './EventEditModalV2Demo/SyncModeDropdown';
+import { getAvailableCalendarsForSettings, getCalendarGroupColor } from '../utils/calendarUtils';
 // TimeLog 相关导入
-import { LightSlateEditor } from '../LightSlateEditor';
-// import { insertTag, insertEmoji, insertDateMention } from '../UnifiedSlateEditor/helpers';
-// import { parseExternalHtml, slateNodesToRichHtml } from '../UnifiedSlateEditor/serialization';
-import { formatTimeForStorage } from '../../utils/timeUtils';
-import './EventEditModalV2.css';
+import { LightSlateEditor } from './LightSlateEditor';
+// import { insertTag, insertEmoji, insertDateMention } from './UnifiedSlateEditor/helpers';
+// import { parseExternalHtml, slateNodesToRichHtml } from './UnifiedSlateEditor/serialization';
+import { formatTimeForStorage } from '../utils/timeUtils';
+import './EventEditModalV2Demo.css';
 
 // Import SVG icons
-import timerStartIcon from '../../assets/icons/timer_start.svg';
-import pauseIcon from '../../assets/icons/pause.svg';
-import stopIcon from '../../assets/icons/stop.svg';
-import cancelIcon from '../../assets/icons/cancel.svg';
-import rotationColorIcon from '../../assets/icons/rotation_color.svg';
-import attendeeIcon from '../../assets/icons/Attendee.svg';
-import datetimeIcon from '../../assets/icons/datetime.svg';
-import locationIcon from '../../assets/icons/Location.svg';
-import arrowBlueIcon from '../../assets/icons/Arrow_blue.svg';
-import timerCheckIcon from '../../assets/icons/timer_check.svg';
-import addTaskColorIcon from '../../assets/icons/Add_task_color.svg';
-import ddlAddIcon from '../../assets/icons/ddl_add.svg';
-import ddlCheckedIcon from '../../assets/icons/ddl_checked.svg';
-import taskGrayIcon from '../../assets/icons/task_gray.svg';
-import ddlWarnIcon from '../../assets/icons/ddl_warn.svg';
-import linkColorIcon from '../../assets/icons/link_color.svg';
+import timerStartIcon from '../assets/icons/timer_start.svg';
+import pauseIcon from '../assets/icons/pause.svg';
+import stopIcon from '../assets/icons/stop.svg';
+import cancelIcon from '../assets/icons/cancel.svg';
+import rotationColorIcon from '../assets/icons/rotation_color.svg';
+import attendeeIcon from '../assets/icons/Attendee.svg';
+import datetimeIcon from '../assets/icons/datetime.svg';
+import locationIcon from '../assets/icons/Location.svg';
+import arrowBlueIcon from '../assets/icons/Arrow_blue.svg';
+import timerCheckIcon from '../assets/icons/timer_check.svg';
+import addTaskColorIcon from '../assets/icons/Add_task_color.svg';
+import ddlAddIcon from '../assets/icons/ddl_add.svg';
+import ddlCheckedIcon from '../assets/icons/ddl_checked.svg';
+import taskGrayIcon from '../assets/icons/task_gray.svg';
+import ddlWarnIcon from '../assets/icons/ddl_warn.svg';
+import linkColorIcon from '../assets/icons/link_color.svg';
 
 interface MockEvent {
   id: string;
@@ -73,80 +73,74 @@ interface MockEvent {
   description?: string; // HTML export for Outlook sync
 }
 
-interface EventEditModalV2Props {
-  event: Event | null;
-  isOpen: boolean;
-  onClose: () => void;
-  onSave: (updatedEvent: Event) => void;
-  onDelete?: (eventId: string) => void;
-  hierarchicalTags: any[];
+interface EventEditModalV2DemoProps {
   globalTimer?: {
-    startTime: number;
-    originalStartTime?: number;
-    elapsedTime: number;
     isRunning: boolean;
-    isPaused?: boolean;
+    tagId: string;
+    tagIds: string[];
+    tagName: string;
+    tagEmoji?: string;
+    tagColor?: string;
+    startTime: number;
+    originalStartTime: number;
+    elapsedTime: number;
+    isPaused: boolean;
+    eventEmoji?: string;
+    eventTitle?: string;
     eventId?: string;
     parentEventId?: string;
   } | null;
-  onStartTimeChange?: (newStartTime: number) => void;
-  onTimerAction?: (action: 'start' | 'pause' | 'stop' | 'cancel', eventId?: string) => void;
-  // v1 兼容 props（保留但不使用）
-  microsoftService?: any;
-  availableCalendars?: any[];
-  availableTodoLists?: any[];
-  draggable?: boolean;
-  resizable?: boolean;
+  onTimerStart?: (tagIds?: string | string[], parentEventId?: string) => void;
+  onTimerPause?: () => void;
+  onTimerResume?: () => void;
+  onTimerStop?: () => void;
+  onTimerCancel?: () => void;
 }
 
-export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
-  event,
-  isOpen,
-  onClose,
-  onSave,
-  onDelete,
-  hierarchicalTags,
+export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
   globalTimer,
-  onTimerAction,
+  onTimerStart,
+  onTimerPause,
+  onTimerResume,
+  onTimerStop,
+  onTimerCancel
 }) => {
-  // 如果modal未打开，不渲染
-  if (!isOpen) return null;
-  // 从 props.event 初始化表单数据
-  const [formData, setFormData] = useState<MockEvent>(() => {
-    if (event) {
-      return {
-        id: event.id,
-        title: event.title || '',
-        tags: event.tags || [],
-        isTask: event.isTask || false,
-        isTimer: event.isTimer || false,
-        parentEventId: event.parentEventId || null,
-        startTime: event.startTime || null,
-        endTime: event.endTime || null,
-        allDay: event.isAllDay || false,
-        location: event.location || '',
-        organizer: event.organizer,
-        attendees: event.attendees || [],
-        eventlog: typeof event.eventlog === 'string' ? event.eventlog : JSON.stringify(event.eventlog?.content || []),
-        description: event.description || '',
-      };
-    }
-    // 新建事件时的默认值
-    return {
-      id: `event-${Date.now()}`,
-      title: '',
-      tags: [],
-      isTask: false,
-      isTimer: false,
-      parentEventId: null,
-      startTime: null,
-      endTime: null,
-      allDay: false,
-      location: '',
-      attendees: [],
-      eventlog: '[]',
-      description: '',
-    };
+  // 模拟事件数据
+  const [formData, setFormData] = useState<MockEvent>({
+    id: 'event-1',
+    title: '',
+    tags: [],
+    isTask: true,
+    isTimer: false,
+    parentEventId: null,
+    startTime: '2025-10-18T10:00:00',
+    endTime: '2025-10-18T12:30:00',
+    allDay: false,
+    organizer: {
+      id: 'organizer-001',
+      name: 'Zoey Gong',
+      email: 'zoey.gong@company.com',
+      organization: '产品部',
+      position: '产品经理',
+      isOutlook: true,
+    },
+    attendees: [
+      {
+        id: 'attendee-001',
+        name: 'Jenny Wong',
+        email: 'jenny.wong@company.com',
+        organization: '设计部',
+        position: '设计师',
+        isGoogle: true,
+      },
+      {
+        id: 'attendee-002',
+        name: 'Cindy Cai',
+        email: 'cindy.cai@company.com',
+        organization: '研发部',
+        isReMarkable: true,
+      },
+    ],
   });
 
   // UI 状态
@@ -163,23 +157,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   const [currentTime, setCurrentTime] = useState<number>(Date.now());
   
   // TimeLog 相关状态 - 使用 Slate JSON 字符串
-  // 确保 timelogContent 是有效的 Slate JSON 字符串
-  const timelogContent = React.useMemo(() => {
-    const log = formData.eventlog;
-    if (!log) return '[]';
-    // 如果已经是字符串且看起来像 JSON，直接返回
-    if (typeof log === 'string') {
-      try {
-        JSON.parse(log);
-        return log;
-      } catch {
-        // 如果不是有效 JSON，返回空数组
-        return '[]';
-      }
-    }
-    // 如果是对象，序列化为字符串
-    return '[]';
-  }, [formData.eventlog]);
+  const timelogContent = formData.eventlog || '[]'; // 默认空的 Slate JSON 数组
   
   const [activePickerIndex, setActivePickerIndex] = useState(-1);
 
@@ -237,31 +215,9 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     return mode || { id: 'unknown', name: '未知模式', emoji: '❓' };
   };
 
-  // 当 event 变化时同步到 formData
-  useEffect(() => {
-    if (event) {
-      setFormData({
-        id: event.id,
-        title: event.title || '',
-        tags: event.tags || [],
-        isTask: event.isTask || false,
-        isTimer: event.isTimer || false,
-        parentEventId: event.parentEventId || null,
-        startTime: event.startTime || null,
-        endTime: event.endTime || null,
-        allDay: event.isAllDay || false,
-        location: event.location || '',
-        organizer: event.organizer,
-        attendees: event.attendees || [],
-        eventlog: typeof event.eventlog === 'string' ? event.eventlog : JSON.stringify(event.eventlog?.content || []),
-        description: event.description || '',
-      });
-    }
-  }, [event?.id]); // 只在 event.id 变化时执行
-
   // 初始化时手动提取演示数据的联系人到联系人库
   useEffect(() => {
-    console.log('[EventEditModalV2] 初始化：手动提取联系人');
+    console.log('[EventEditModalV2Demo] 初始化：手动提取演示联系人');
     ContactService.extractAndAddFromEvent(formData.organizer, formData.attendees);
   }, []); // 只在挂载时执行一次
 
@@ -685,13 +641,69 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   // ==================== 渲染函数 ====================
 
   return (
-    <div className="event-edit-modal-v2-overlay" onClick={onClose}>
-      <div 
-        className={`event-edit-modal-v2 ${isDetailView ? 'detail-view' : 'compact-view'}`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-content">
-          {/* 左侧：Event Overview */}
+    <div className="eventmodal-v2-demo-container">
+      <div className="demo-header">
+        <h1>🎨 EventEditModal v2 交互开发</h1>
+        <div className="demo-actions">
+          <button 
+            className={`view-switch-btn ${isDetailView ? 'active' : ''}`}
+            onClick={() => setIsDetailView(true)}
+          >
+            📋 详情视图
+          </button>
+          <button 
+            className={`view-switch-btn ${!isDetailView ? 'active' : ''}`}
+            onClick={() => setIsDetailView(false)}
+          >
+            📱 收缩视图
+          </button>
+        </div>
+      </div>
+
+      <div className="demo-content">
+        {/* 左侧：说明面板 */}
+        <div className="demo-info-panel">
+          <h2>🛠️ 开发说明</h2>
+          <div className="info-section">
+            <h3>✅ 已实现功能</h3>
+            <ul>
+              <li>Emoji 选择（emoji-mart）</li>
+              <li>标题输入与自动提取 emoji</li>
+              <li>标签显示与层级路径</li>
+              <li>任务勾选框</li>
+            </ul>
+          </div>
+
+          <div className="info-section">
+            <h3>🚧 开发中功能</h3>
+            <ul>
+              <li>HierarchicalTagPicker 集成</li>
+              <li>Timer 计时按钮交互</li>
+              <li>UnifiedDateTimePicker 集成</li>
+              <li>Slate 编辑器集成</li>
+            </ul>
+          </div>
+
+          <div className="info-section">
+            <h3>📚 参考文档</h3>
+            <ul>
+              <li><code>docs/PRD/EVENTEDITMODAL_V2_PRD.md</code></li>
+              <li><code>src/components/FloatingToolbar/</code></li>
+              <li><code>src/components/HierarchicalTagPicker/</code></li>
+            </ul>
+          </div>
+
+          <div className="info-section">
+            <h3>🎯 当前数据</h3>
+            <pre>{JSON.stringify(formData, null, 2)}</pre>
+          </div>
+        </div>
+
+        {/* 右侧：模态框预览 */}
+        <div className="demo-preview-panel">
+          <div className={`event-edit-modal-v2 ${isDetailView ? 'detail-view' : 'compact-view'}`}>
+            <div className="modal-content">
+              {/* 左侧：Event Overview */}
               <div className="event-overview">
                 {/* 上 Section - 事件标识区 */}
                 <div className="section-identity">
@@ -823,8 +835,9 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                       <button 
                         className="timer-button-start"
                         onClick={() => {
-                          if (onTimerAction) {
-                            onTimerAction('start', formData.id);
+                          if (onTimerStart) {
+                            // 如果有标签就传标签，否则传空数组
+                            onTimerStart(formData.tags.length > 0 ? formData.tags : [], formData.id);
                           }
                         }}
                         title="开始计时"
@@ -841,8 +854,10 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                       <button 
                         className="timer-btn pause-btn"
                         onClick={() => {
-                          if (onTimerAction) {
-                            onTimerAction(isPaused ? 'pause' : 'pause', formData.id);
+                          if (isPaused && onTimerResume) {
+                            onTimerResume();
+                          } else if (!isPaused && onTimerPause) {
+                            onTimerPause();
                           }
                         }}
                         title={isPaused ? '继续' : '暂停'}
@@ -852,8 +867,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                       <button 
                         className="timer-btn stop-btn"
                         onClick={() => {
-                          if (onTimerAction && window.confirm('确定要结束计时并保存吗？')) {
-                            onTimerAction('stop', formData.id);
+                          if (onTimerStop && window.confirm('确定要结束计时并保存吗？')) {
+                            onTimerStop();
                           }
                         }}
                         title="停止并保存"
@@ -863,8 +878,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                       <button 
                         className="timer-btn cancel-btn"
                         onClick={() => {
-                          if (onTimerAction && window.confirm('确定要取消计时吗？当前计时将不会被保存。')) {
-                            onTimerAction('cancel', formData.id);
+                          if (onTimerCancel && window.confirm('确定要取消计时吗？当前计时将不会被保存。')) {
+                            onTimerCancel();
                           }
                         }}
                         title="取消计时"
@@ -1299,11 +1314,9 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
               {/* 右侧：Event Log（仅详情视图） */}
               {isDetailView && (
                 <div className="event-log">
-                  <div className="event-log-header">
-                    <button className="back-button" onClick={() => setIsDetailView(false)}>
-                      ← back
-                    </button>
-                  </div>
+                  <button className="back-button" onClick={() => setIsDetailView(false)}>
+                    ← back
+                  </button>
                   
                   {/* 标签区域 */}
                   <div className="tags-area">
@@ -1325,20 +1338,13 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                   </div>
 
                   {/* TimeLog 编辑区 */}
-                  <div ref={rightPanelRef} style={{ flex: 1, background: 'white', display: 'flex', flexDirection: 'column', minHeight: '200px', padding: '16px' }}>
-                    {/* 调试信息 */}
-                    {process.env.NODE_ENV === 'development' && (
-                      <div style={{ fontSize: '10px', color: '#999', marginBottom: '8px' }}>
-                        TimeLog内容长度: {timelogContent?.length || 0}
-                      </div>
-                    )}
+                  <div ref={rightPanelRef} style={{ flex: 1, background: 'white', display: 'flex', flexDirection: 'column' }}>
                     <LightSlateEditor
                       content={timelogContent}
                       parentEventId={formData.id || 'new-event'}
                       enableTimestamp={true}
                       placeholder="记录时间轴..."
                       onChange={(slateJson) => {
-                        console.log('[EventEditModalV2] TimeLog onChange:', slateJson);
                         setFormData({ ...formData, eventlog: slateJson });
                       }}
                       className="eventlog-editor"
@@ -1391,75 +1397,23 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                 </div>
               )}
             </div>
-            {/* modal-content 结束 */}
 
             {/* 底部按钮 */}
             {isDetailView ? (
               <div className="detail-footer">
-                <button 
-                  className="eventmodal-v2-footer-btn eventmodal-v2-footer-btn-cancel"
-                  onClick={onClose}
-                >
-                  取消
-                </button>
-                <button 
-                  className="eventmodal-v2-footer-btn eventmodal-v2-footer-btn-save"
-                  onClick={() => {
-                    // 保存时转换 formData 为 Event
-                    const updatedEvent: Event = {
-                      ...event,
-                      ...formData,
-                      id: formData.id,
-                      title: formData.title,
-                      tags: formData.tags,
-                      isTask: formData.isTask,
-                      isTimer: formData.isTimer,
-                      parentEventId: formData.parentEventId,
-                      startTime: formData.startTime,
-                      endTime: formData.endTime,
-                      allDay: formData.allDay,
-                      location: formData.location,
-                      organizer: formData.organizer,
-                      attendees: formData.attendees,
-                      eventlog: formData.eventlog,
-                      description: formData.description,
-                    } as Event;
-                    onSave(updatedEvent);
-                  }}
-                >
-                  保存
-                </button>
+                <button className="eventmodal-v2-footer-btn eventmodal-v2-footer-btn-cancel">取消</button>
+                <button className="eventmodal-v2-footer-btn eventmodal-v2-footer-btn-save">保存</button>
               </div>
             ) : (
               <div className="compact-footer">
-                <button 
-                  className="eventmodal-v2-footer-btn eventmodal-v2-footer-btn-cancel"
-                  onClick={onClose}
-                >
-                  取消
-                </button>
-                <button 
-                  className="eventmodal-v2-footer-btn" 
-                  style={{ color: '#3b82f6' }}
-                  onClick={() => setIsDetailView(true)}
-                >
-                  📝 展开日志
-                </button>
-                <button 
-                  className="footer-btn footer-btn-save"
-                  onClick={() => {
-                    const updatedEvent: Event = {
-                      ...event,
-                      ...formData,
-                    } as Event;
-                    onSave(updatedEvent);
-                  }}
-                >
-                  保存
-                </button>
+                <button className="eventmodal-v2-footer-btn eventmodal-v2-footer-btn-cancel">取消</button>
+                <button className="eventmodal-v2-footer-btn" style={{ color: '#3b82f6' }}>📝 展开日志</button>
+                <button className="footer-btn footer-btn-save">保存</button>
               </div>
             )}
+          </div>
         </div>
       </div>
-    );
+    </div>
+  );
 };
