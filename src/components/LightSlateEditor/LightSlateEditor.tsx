@@ -111,30 +111,37 @@ export const LightSlateEditor: React.FC<LightSlateEditorProps> = ({
   }, []);
   
   // 将 Slate JSON 字符串转换为 Slate nodes
-  // 初始化时使用 content，但不在依赖数组中（避免每次都重新初始化）
-  const [initialValue] = useState(() => {
+  const initialValue = useMemo(() => {
     const nodes = jsonToSlateNodes(content);
-    console.log('[LightSlateEditor] 初始化节点:', nodes);
+    console.log('[LightSlateEditor] 解析内容为节点:', { content, nodes });
     return nodes;
-  });
+  }, [content]); // 依赖 content，内容变化时重新解析
   
   // 自动保存定时器
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastContentRef = useRef<string>(content);
   
   // 监听外部 content 变化，同步到编辑器
-  // 但要避免循环更新：只有当外部 content 与上次保存的不同时才更新
   useEffect(() => {
-    if (content !== lastContentRef.current) {
+    // 避免循环更新：只有当外部 content 与当前编辑器内容不同时才更新
+    const currentContent = slateNodesToJson(editor.children);
+    if (content && content !== currentContent && content !== lastContentRef.current) {
+      console.log('[LightSlateEditor] 外部 content 变化，更新编辑器');
+      console.log('旧内容:', currentContent);
+      console.log('新内容:', content);
+      
       const nodes = jsonToSlateNodes(content);
-      // 只有当节点真的不同时才更新（避免不必要的重渲染）
-      const currentContent = slateNodesToJson(editor.children);
-      if (content !== currentContent) {
-        console.log('[LightSlateEditor] 外部 content 变化，同步到编辑器');
-        editor.children = nodes;
-        editor.onChange();
-        lastContentRef.current = content;
-      }
+      
+      // 使用 Transforms 来更新内容（推荐的方式）
+      Transforms.delete(editor, {
+        at: {
+          anchor: Editor.start(editor, []),
+          focus: Editor.end(editor, [])
+        }
+      });
+      
+      Transforms.insertNodes(editor, nodes, { at: [0] });
+      lastContentRef.current = content;
     }
   }, [content, editor]);
   
