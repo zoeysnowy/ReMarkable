@@ -30,6 +30,8 @@ export function jsonToSlateNodes(slateJson: string): Descendant[] {
   try {
     // 尝试解析 JSON
     const parsed = JSON.parse(slateJson);
+    console.log('[jsonToSlateNodes] 解析成功:', parsed);
+    console.log('[jsonToSlateNodes] 是否为数组:', Array.isArray(parsed));
     
     // 如果是数组
     if (Array.isArray(parsed)) {
