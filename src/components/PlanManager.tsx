@@ -15,7 +15,8 @@ import UnifiedDateTimePicker from './FloatingToolbar/pickers/UnifiedDateTimePick
 import dayjs from 'dayjs';
 import 'dayjs/locale/zh-cn';
 import { formatDateDisplay } from '../utils/dateParser';
-import { EventEditModal } from './EventEditModal';
+import { EventEditModal } from './EventEditModal'; // v1 - 待迁移
+import { EventEditModalV2 } from './EventEditModal/EventEditModalV2'; // v2 - 新版本
 import { EventHub } from '../services/EventHub'; // 🎯 使用 EventHub 而不是 EventService
 import { EventService } from '../services/EventService'; // 🔧 仅用于查询（getEventById）
 import { EventHistoryService } from '../services/EventHistoryService'; // 🆕 用于事件历史快照
@@ -2130,9 +2131,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         </StatusLineContainer>
       </div>
 
-      {/* 右侧编辑面板 - 使用 EventEditModal */}
+      {/* 右侧编辑面板 - 使用 EventEditModalV2 */}
       {selectedItemId && editingItem && (
-        <EventEditModal
+        <EventEditModalV2
           event={convertPlanItemToEvent(editingItem)}
           isOpen={true}
           onClose={() => {
@@ -2141,7 +2142,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           }}
           onSave={(updatedEvent) => {
             // 🔍 调试：检查 todoListIds 是否被正确传递
-            console.log('🔍 [PlanManager] EventEditModal onSave:', {
+            console.log('🔍 [PlanManager] EventEditModalV2 onSave:', {
               updatedEvent_todoListIds: updatedEvent.todoListIds,
               updatedEvent_calendarIds: updatedEvent.calendarIds,
               editingItem_todoListIds: editingItem.todoListIds,
@@ -2172,10 +2173,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             setEditingItem(null);
           }}
           hierarchicalTags={existingTags}
-          microsoftService={microsoftService} // 🆕 传递 Microsoft 服务
-          // 移除 availableCalendars - 让 SyncTargetPicker 自己从 microsoftService 加载
-          draggable={true}
-          resizable={true}
+          globalTimer={null} // PlanManager 不使用 Timer
         />
       )}
 

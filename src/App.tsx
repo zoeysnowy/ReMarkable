@@ -17,7 +17,8 @@ import { PersistentStorage, PERSISTENT_OPTIONS } from './utils/persistentStorage
 import { TagService } from './services/TagService';
 import { EventService } from './services/EventService';
 import ClickTracker from './components/ClickTracker';
-import { EventEditModal } from './components/EventEditModal';
+import { EventEditModal } from './components/EventEditModal'; // v1 - 待迁移
+import { EventEditModalV2 } from './components/EventEditModal/EventEditModalV2'; // v2 - 新版本
 import SettingsModal from './components/SettingsModal';
 import { SyncNotification } from './components/SyncNotification';
 import './App.css';
@@ -1791,9 +1792,9 @@ function App() {
         onClose={() => setShowSettingsModal(false)} 
       />
 
-      {/* 计时器事件编辑模态框 */}
+      {/* 计时器事件编辑模态框 - 使用 EventEditModalV2 */}
       {timerEditModal.isOpen && timerEditModal.event && (
-        <EventEditModal
+        <EventEditModalV2
           event={timerEditModal.event}
           isOpen={timerEditModal.isOpen}
           onClose={() => setTimerEditModal({ isOpen: false, event: null })}
@@ -1801,7 +1802,6 @@ function App() {
           hierarchicalTags={hierarchicalTags}
           onStartTimeChange={handleStartTimeChange}
           globalTimer={globalTimer}
-          availableCalendars={availableCalendars}
         />
       )}
 

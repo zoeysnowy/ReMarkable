@@ -11,7 +11,8 @@
 
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import ToastUIReactCalendar, { ToastUIReactCalendarType } from './components/ToastUIReactCalendar';
-import { EventEditModal } from '../../components/EventEditModal';
+// import { EventEditModal } from '../../components/EventEditModal'; // v1 - 已替换为 v2
+import { EventEditModalV2 } from '../../components/EventEditModal/EventEditModalV2';
 import CalendarSettingsPanel, { CalendarSettings } from './components/CalendarSettingsPanel';
 import type { EventObject } from '@toast-ui/calendar';
 import '@toast-ui/calendar/dist/toastui-calendar.css';
@@ -2757,8 +2758,8 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         )}
       </div>
 
-      {/* ✏️ 事件编辑弹窗 */}
-      <EventEditModal
+      {/* ✏️ 事件编辑弹窗 - 使用 EventEditModalV2 */}
+      <EventEditModalV2
         event={editingEvent}
         isOpen={showEventEditModal}
         onClose={() => {
@@ -2775,8 +2776,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         onSave={handleSaveEventFromModal}
         onDelete={handleDeleteEventFromModal}
         hierarchicalTags={getAvailableTagsForSettings()}
-        availableCalendars={getAvailableCalendarsForSettings()}
-        microsoftService={microsoftService}
+        globalTimer={null} // TimeCalendar 不使用 Timer
       />
 
       {/* ⚙️ 设置面板 */}
