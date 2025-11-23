@@ -55,6 +55,7 @@ import ddlCheckedIcon from '../../assets/icons/ddl_checked.svg';
 import taskGrayIcon from '../../assets/icons/task_gray.svg';
 import ddlWarnIcon from '../../assets/icons/ddl_warn.svg';
 import linkColorIcon from '../../assets/icons/link_color.svg';
+import backIcon from '../../assets/icons/back.svg';
 
 interface MockEvent {
   id: string;
@@ -1316,11 +1317,10 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
               {/* 右侧：Event Log（仅详情视图） */}
               {isDetailView && (
                 <div className="event-log">
-                  <div className="event-log-header">
-                    <button className="back-button" onClick={() => setIsDetailView(false)}>
-                      ← back
-                    </button>
-                  </div>
+                  {/* 收起按钮 - 固定在右侧中间 */}
+                  <button className="collapse-button" onClick={() => setIsDetailView(false)}>
+                    <img src={backIcon} alt="收起" className="collapse-icon" />
+                  </button>
                   
                   {/* 标签区域 */}
                   <div className="tags-area">

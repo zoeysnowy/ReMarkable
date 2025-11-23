@@ -28,7 +28,6 @@ import TagManager from './components/TagManager';
 import TimeCalendar from './features/Calendar/TimeCalendar';
 import PlanManager from './components/PlanManager';
 import { AIDemo } from './components/AIDemo';
-import { EventEditModalV2Demo } from './components/EventEditModalV2Demo';
 
 import { logger } from './utils/logger';
 
@@ -1717,21 +1716,6 @@ function App() {
         content = (
           <PageContainer title="AI Demo" subtitle="测试 AI 事件提取功能">
             <AIDemo />
-          </PageContainer>
-        );
-        break;
-
-      case 'eventmodal-v2-demo':
-        content = (
-          <PageContainer title="EventEditModal v2 Demo" subtitle="交互开发测试">
-            <EventEditModalV2Demo 
-              globalTimer={globalTimer}
-              onTimerStart={handleTimerStart}
-              onTimerPause={handleTimerPause}
-              onTimerResume={handleTimerResume}
-              onTimerStop={handleTimerStop}
-              onTimerCancel={handleTimerCancel}
-            />
           </PageContainer>
         );
         break;

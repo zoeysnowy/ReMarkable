@@ -602,30 +602,43 @@
 
 /* Event Log */
 .event-log {
+  position: relative; /* 为 collapse-button 提供定位上下文 */
   flex: 1;
   display: flex;
   flex-direction: column;
   padding: 24px;
+  padding-right: 98px; /* 36px (到按钮距离) + 26px (按钮宽度) + 36px (按钮到边缘) */
   overflow-y: auto;
   background: transparent;
   border-left: none !important; /* 覆盖 EventEditModalV2.css 中的左边框 */
 }
 
-.back-button {
-  align-self: flex-start;
+/* 收起按钮 - 固定在右侧中间 */
+.collapse-button {
+  position: absolute;
+  right: 36px;
+  top: 50%;
+  transform: translateY(-50%);
   background: none;
   border: none;
-  color: #6b7280;
-  font-size: 14px;
   cursor: pointer;
-  padding: 6px 12px;
-  margin-bottom: 16px;
-  border-radius: 6px;
-  transition: background 0.2s;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s;
+  z-index: 10;
+  opacity: 0.5;
+  outline: none;
 }
 
-.back-button:hover {
-  background: #f3f4f6;
+.collapse-button:hover {
+  opacity: 0.8;
+}
+
+.collapse-button .collapse-icon {
+  width: 26px;
+  height: 40px;
 }
 
 .tags-area {
@@ -651,7 +664,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 12px 48px 40px 48px;
-  border-top: 1px solid #f3f4f6;
+  border-top: none;
 }
 
 .eventmodal-v2-footer-btn {
