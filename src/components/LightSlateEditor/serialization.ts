@@ -14,43 +14,114 @@ import {
 } from '../UnifiedSlateEditor/types';
 
 /**
- * 将 HTML 字符串转换为 Slate nodes
- * 简化版本：主要处理段落、timestamp、inline elements
+ * 将 Slate JSON 字符串转换为 Slate nodes
+ * 处理从 eventlog 字段读取的 JSON 数据
  */
-export function htmlToSlateNodes(html: string): Descendant[] {
-  if (!html?.trim()) {
+export function jsonToSlateNodes(slateJson: string): Descendant[] {
+  // 处理空值或空字符串
+  if (!slateJson?.trim()) {
+    console.log('[LightSlateEditor] 空内容，返回默认段落');
     return [{
       type: 'paragraph',
       children: [{ text: '' }]
     } as ParagraphNode];
   }
 
-  // TODO: 实现完整的 HTML 解析
-  // 当前简化实现：将 HTML 按行分割处理
-  const lines = html.split('\n').filter(line => line.trim());
-  
-  if (lines.length === 0) {
-    return [{
-      type: 'paragraph',
-      children: [{ text: '' }]
-    } as ParagraphNode];
-  }
-
-  return lines.map(line => {
-    // 移除基本的 HTML 标签（简化处理）
-    const cleanText = line
-      .replace(/<[^>]*>/g, '') // 移除所有HTML标签
-      .trim();
+  try {
+    // 尝试解析 JSON
+    const parsed = JSON.parse(slateJson);
     
-    return {
+    // 如果是数组
+    if (Array.isArray(parsed)) {
+      // 验证数组内容，确保每个节点都有有效的结构
+      if (parsed.length === 0) {
+        console.log('[LightSlateEditor] 空数组，返回默认段落');
+        return [{
+          type: 'paragraph',
+          children: [{ text: '' }]
+        } as ParagraphNode];
+      }
+      
+      // 验证并修复每个节点
+      const validatedNodes = parsed.map((node, index) => {
+        if (typeof node !== 'object' || node === null) {
+          console.warn(`[LightSlateEditor] 节点 ${index} 无效，转换为段落:`, node);
+          return {
+            type: 'paragraph',
+            children: [{ text: String(node) }]
+          } as ParagraphNode;
+        }
+        
+        // 确保节点有 type 和 children
+        if (!node.type) {
+          node.type = 'paragraph';
+        }
+        
+        if (!node.children || !Array.isArray(node.children)) {
+          node.children = [{ text: '' }];
+        }
+        
+        // 确保 children 中至少有一个文本节点
+        if (node.children.length === 0) {
+          node.children = [{ text: '' }];
+        }
+        
+        return node;
+      });
+      
+      console.log('[LightSlateEditor] 解析 JSON 成功，节点数量:', validatedNodes.length);
+      return validatedNodes as Descendant[];
+    }
+    
+    // 如果是单个对象，包装成数组
+    if (typeof parsed === 'object' && parsed !== null) {
+      const node = { ...parsed };
+      
+      // 确保节点结构有效
+      if (!node.type) {
+        node.type = 'paragraph';
+      }
+      if (!node.children || !Array.isArray(node.children)) {
+        node.children = [{ text: '' }];
+      }
+      
+      console.log('[LightSlateEditor] 单个对象转换为节点数组');
+      return [node] as Descendant[];
+    }
+    
+    // 其他情况，作为纯文本处理
+    console.log('[LightSlateEditor] 非对象类型，转换为文本段落:', typeof parsed);
+    return [{
       type: 'paragraph',
-      children: [{ text: cleanText }]
-    } as ParagraphNode;
-  });
+      children: [{ text: String(parsed) }]
+    } as ParagraphNode];
+    
+  } catch (error) {
+    console.warn('[LightSlateEditor] JSON 解析失败，作为纯文本处理:', error);
+    
+    // JSON 解析失败，作为纯文本处理
+    return [{
+      type: 'paragraph',
+      children: [{ text: slateJson }]
+    } as ParagraphNode];
+  }
 }
 
 /**
- * 将 Slate nodes 转换为 HTML 字符串
+ * 将 Slate nodes 转换为 JSON 字符串
+ * 保存到 eventlog 字段
+ */
+export function slateNodesToJson(nodes: Descendant[]): string {
+  try {
+    return JSON.stringify(nodes, null, 0); // 紧凑格式
+  } catch (error) {
+    console.error('[LightSlateEditor] Slate nodes 序列化失败:', error);
+    return '[]'; // 返回空数组的 JSON
+  }
+}
+
+/**
+ * 将 Slate nodes 转换为 HTML 字符串（用于 description 字段同步）
  */
 export function slateNodesToHtml(nodes: Descendant[]): string {
   return nodes

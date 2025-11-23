@@ -218,6 +218,175 @@ export class EventHistoryService {
   }
 
   /**
+   * 查询截止指定时间点还存在的所有事件
+   * @param timestamp 时间点（ISO字符串或格式化字符串）
+   * @returns 在该时间点存在的事件ID集合
+   * 
+   * 逻辑说明：
+   * 1. 从当前存在的事件开始（基准状态）
+   * 2. 过滤掉"在目标时间之后才创建"的事件
+   * 3. 添加回"在目标时间之后才删除"的事件（它们在目标时间时还存在）
+   */
+  static getExistingEventsAtTime(timestamp: string): Set<string> {
+    const targetTime = parseLocalTimeString(timestamp);
+    const allLogs = this.getAllLogs();
+    
+    // 🔧 步骤1：从当前存在的事件开始
+    const EventService = (window as any).EventService;
+    const allCurrentEvents = EventService?.getAllEvents() || [];
+    const existingEvents = new Set<string>(allCurrentEvents.map((e: any) => e.id));
+    
+    console.log('[EventHistoryService] 📊 getExistingEventsAtTime 步骤1:', {
+      timestamp,
+      targetTime: targetTime.toISOString(),
+      当前事件总数: existingEvents.size,
+      历史记录总数: allLogs.length
+    });
+    
+    // 🔧 步骤2：分析每个事件的完整生命周期
+    const eventLifecycle = new Map<string, { createTime?: Date; deleteTime?: Date }>();
+    
+    allLogs.forEach(log => {
+      const logTime = parseLocalTimeString(log.timestamp);
+      
+      if (!eventLifecycle.has(log.eventId)) {
+        eventLifecycle.set(log.eventId, {});
+      }
+      
+      const lifecycle = eventLifecycle.get(log.eventId)!;
+      
+      if (log.operation === 'create') {
+        lifecycle.createTime = logTime;
+      } else if (log.operation === 'delete') {
+        lifecycle.deleteTime = logTime;
+      }
+    });
+    
+    // 🔧 步骤3：根据生命周期调整事件集合
+    const createAfterTarget: string[] = [];
+    const deleteAfterTarget: string[] = [];
+    
+    eventLifecycle.forEach((lifecycle, eventId) => {
+      const createdAfter = lifecycle.createTime && lifecycle.createTime > targetTime;
+      const deletedAfter = lifecycle.deleteTime && lifecycle.deleteTime > targetTime;
+      const createdBefore = !lifecycle.createTime || lifecycle.createTime <= targetTime;
+      
+      if (createdAfter) {
+        // 创建时间晚于目标时间 → 目标时间时不存在
+        if (existingEvents.has(eventId)) {
+          existingEvents.delete(eventId);
+          createAfterTarget.push(eventId);
+        }
+      } else if (deletedAfter && createdBefore) {
+        // 删除时间晚于目标时间 && 创建时间早于或等于目标时间
+        // → 目标时间时还存在
+        if (!existingEvents.has(eventId)) {
+          existingEvents.add(eventId);
+          deleteAfterTarget.push(eventId);
+        }
+      }
+    });
+    
+    console.log('[EventHistoryService] 📊 getExistingEventsAtTime 步骤2调整:', {
+      移除的事件: createAfterTarget.length + ' 个（创建时间晚于目标时间）',
+      添加的事件: deleteAfterTarget.length + ' 个（删除时间晚于目标时间）',
+      移除示例: createAfterTarget.slice(0, 3).map(id => id?.slice(-8) || 'undefined'),
+      添加示例: deleteAfterTarget.slice(0, 3).map(id => id?.slice(-8) || 'undefined')
+    });
+    
+    console.log('[EventHistoryService] 📊 getExistingEventsAtTime 最终结果:', {
+      timestamp,
+      existingCount: existingEvents.size,
+      示例: Array.from(existingEvents).slice(0, 5).map(id => id?.slice(-8) || 'undefined')
+    });
+    
+    return existingEvents;
+  }
+
+  /**
+   * 获取时间范围内的事件操作摘要（用于 Snapshot 功能）
+   * @returns 包含 created/updated/completed/deleted 事件列表的对象
+   */
+  static getEventOperationsSummary(startTime: string, endTime: string): {
+    created: EventChangeLog[];
+    updated: EventChangeLog[];
+    completed: EventChangeLog[];
+    deleted: EventChangeLog[];
+    missed: EventChangeLog[];
+  } {
+    const logs = this.queryHistory({ startTime, endTime });
+    
+    const created = logs.filter(l => l.operation === 'create');
+    const deleted = logs.filter(l => l.operation === 'delete');
+    
+    // updated: 有实质性变更的 update 操作（排除 completed）
+    const updated = logs.filter(l => 
+      l.operation === 'update' && 
+      !l.changes?.some(c => 
+        c.field === 'isCompleted' || 
+        c.field === 'checked' || 
+        c.field === 'unchecked'
+      )
+    );
+    
+    // completed: 标记为完成的操作
+    const completed = logs.filter(l => 
+      l.operation === 'update' && 
+      l.changes?.some(c => 
+        (c.field === 'isCompleted' && c.newValue === true) ||
+        (c.field === 'checked' && Array.isArray(c.newValue) && c.newValue.length > 0)
+      )
+    );
+    
+    // missed: 过期未完成的事件（这个需要结合当前时间和事件的 endTime 判断）
+    // TODO: 实现 missed 逻辑
+    const missed: EventChangeLog[] = [];
+    
+    console.log('[EventHistoryService] 📊 getEventOperationsSummary:', {
+      timeRange: `${startTime} ~ ${endTime}`,
+      created: created.length,
+      updated: updated.length,
+      completed: completed.length,
+      deleted: deleted.length,
+      missed: missed.length
+    });
+    
+    return { created, updated, completed, deleted, missed };
+  }
+
+  /**
+   * 批量获取事件在时间范围内的状态
+   * @returns Map<eventId, EventChangeLog[]> 每个事件在该时间范围内的历史记录
+   */
+  static getEventStatusesInRange(
+    eventIds: string[], 
+    startTime: string, 
+    endTime: string
+  ): Map<string, EventChangeLog[]> {
+    const logs = this.queryHistory({ startTime, endTime });
+    const statusMap = new Map<string, EventChangeLog[]>();
+    
+    // 初始化所有事件的空数组
+    eventIds.forEach(id => statusMap.set(id, []));
+    
+    // 按事件ID分组
+    logs.forEach(log => {
+      if (statusMap.has(log.eventId)) {
+        statusMap.get(log.eventId)!.push(log);
+      }
+    });
+    
+    console.log('[EventHistoryService] 📊 getEventStatusesInRange:', {
+      timeRange: `${startTime} ~ ${endTime}`,
+      eventCount: eventIds.length,
+      logsFound: logs.length,
+      eventsWithHistory: Array.from(statusMap.values()).filter(arr => arr.length > 0).length
+    });
+    
+    return statusMap;
+  }
+
+  /**
    * 获取历史统计信息
    */
   static getStatistics(startTime?: string, endTime?: string): HistoryStatistics {
@@ -393,7 +562,13 @@ export class EventHistoryService {
     const allKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
 
     // 忽略的字段（自动更新的元数据）
-    const ignoredFields = new Set(['updatedAt', 'localVersion', 'lastLocalChange', 'lastSyncTime']);
+    const ignoredFields = new Set([
+      'updatedAt', 
+      'localVersion', 
+      'lastLocalChange', 
+      'lastSyncTime',
+      'position'  // ✅ position 只是排序字段，不应触发历史记录
+    ]);
 
     allKeys.forEach(key => {
       if (ignoredFields.has(key)) return;

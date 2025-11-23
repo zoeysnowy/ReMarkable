@@ -296,7 +296,14 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     
     // 初始化：从 EventService 加载 Plan 事件
     const now = new Date();
-    const allEvents = EventService.getAllEvents();
+    const rawEvents = EventService.getAllEvents();
+    
+    // 🛡️ 过滤掉 ghost 事件（带 _isDeleted 标记的临时事件）
+    const allEvents = rawEvents.filter(e => !(e as any)._isDeleted);
+    
+    if (rawEvents.length !== allEvents.length) {
+      console.warn('[PlanManager] 🚨 发现并过滤了', rawEvents.length - allEvents.length, '个 ghost 事件！');
+    }
     
     // 🔍 DEBUG: 检查 EventService 返回的数据
     console.log('[PlanManager] 初始化 - 从 EventService 加载:', {
@@ -872,6 +879,17 @@ const PlanManager: React.FC<PlanManagerProps> = ({
 
   // 🆕 v1.5: 批处理执行函数（从 onChange 中提取）
   const executeBatchUpdate = useCallback((updatedItems: any[]) => {
+    // 🔧 过滤掉 ghost events（Snapshot 模式的虚拟事件，不应该保存）
+    const realItems = updatedItems.filter(item => !(item as any)._isDeleted);
+    
+    if (realItems.length < updatedItems.length) {
+      console.log('[executeBatchUpdate] 🔧 过滤掉 ghost events:', {
+        原始数量: updatedItems.length,
+        过滤后: realItems.length,
+        过滤掉: updatedItems.length - realItems.length
+      });
+    }
+    
     // 🆕 v1.5 批处理器架构 + 透传模式
     const actions = {
       delete: [] as string[],    // 待删除的 IDs
@@ -881,7 +899,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     
     // ===== 阶段 1: 跨行删除检测 =====
     const currentItemIds = items.map(i => i.id);
-    const updatedItemIds = updatedItems.map((i: any) => i.id);
+    const updatedItemIds = realItems.map((i: any) => i.id);
     const crossDeletedIds = currentItemIds.filter(id => !updatedItemIds.includes(id));
     
     if (crossDeletedIds.length > 0) {
@@ -890,7 +908,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     }
     
     // ===== 阶段 2: 内容处理（更新、空白删除） =====
-    updatedItems.forEach((updatedItem: any) => {
+    realItems.forEach((updatedItem: any) => {
       const existingItem = itemsMap[updatedItem.id];
       
       // 🔧 v1.5: 直接使用 updatedItem（包含完整字段，无需合并）
@@ -1198,33 +1216,18 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         snapshotVersion
       });
       
-      const snapshot = EventHistoryService.getChangesByTimeRange(
+      // 使用 EventHistoryService 的新方法获取结构化的操作摘要
+      const summary = EventHistoryService.getEventOperationsSummary(
         startTimeStr,
         endTimeStr
       );
       
-      console.log('[PlanManager] Snapshot 历史记录:', {
-        总数: snapshot.length,
-        示例: snapshot.slice(0, 3).map((log: any) => ({
-          operation: log.operation,
-          timestamp: log.timestamp,
-          eventId: log.eventId?.slice(-10),
-          title: log.after?.title || log.before?.title
-        }))
-      });
-      
       const result = {
-        created: snapshot.filter((log: any) => log.operation === 'create').length,
-        updated: snapshot.filter((log: any) => log.operation === 'update').length,
-        completed: snapshot.filter((log: any) => 
-          log.operation === 'update' && 
-          log.changes?.some((change: any) => 
-            change.field === 'isCompleted' && 
-            change.newValue === true
-          )
-        ).length,
-        deleted: snapshot.filter((log: any) => log.operation === 'delete').length,
-        details: snapshot
+        created: summary.created.length,
+        updated: summary.updated.length,
+        completed: summary.completed.length,
+        deleted: summary.deleted.length,
+        details: [...summary.created, ...summary.updated, ...summary.completed, ...summary.deleted]
       };
       
       console.log('[PlanManager] Snapshot 统计:', result);
@@ -1275,8 +1278,82 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   
   // 将 Event[] 转换为 FreeFormLine<Event>[]
   // ✅ 重构: 直接准备 Event[] 给 UnifiedSlateEditor，移除 FreeFormLine 中间层
+  // 🆕 Snapshot 模式：添加已删除的事件
   const editorItems = useMemo(() => {
-    const allItems = filteredItems;
+    let allItems = filteredItems;
+    
+    // 🚨 诊断：检查 filteredItems 是否包含 ghost 事件
+    const ghostsInFiltered = filteredItems.filter((item: any) => item._isDeleted);
+    if (ghostsInFiltered.length > 0) {
+      console.error('[PlanManager] 🚨 filteredItems 中发现', ghostsInFiltered.length, '个 ghost 事件！', 
+        ghostsInFiltered.map((item: any) => ({
+          id: item.id?.slice(-8),
+          title: item.title?.substring(0, 20) || item.content?.substring(0, 20),
+          _isDeleted: item._isDeleted,
+          _deletedAt: item._deletedAt ? new Date(item._deletedAt).toLocaleString() : 'N/A'
+        }))
+      );
+    }
+    
+    // ✅ Snapshot 模式：最简单的逻辑
+    // 1. startDateTime 时刻存在的所有事件（基准状态）
+    // 2. startDateTime 到 endDateTime 期间的所有操作（显示变化）
+    if (dateRange) {
+      const startTime = formatTimeForStorage(dateRange.start);
+      const endTime = formatTimeForStorage(dateRange.end);
+      
+      // 1️⃣ 获取起点时刻的所有事件
+      const existingAtStart = EventHistoryService.getExistingEventsAtTime(startTime);
+      console.log('[PlanManager] 📊 Snapshot 时间范围:', {
+        起点: new Date(startTime).toLocaleString(),
+        终点: new Date(endTime).toLocaleString(),
+        起点存在事件数: existingAtStart.size
+      });
+      
+      // 2️⃣ 筛选出起点时存在的事件（未删除的）
+      allItems = filteredItems.filter(item => existingAtStart.has(item.id));
+      console.log('[PlanManager] ✅ 起点存在且未删除:', allItems.length, '个');
+      
+      // 3️⃣ 查询时间范围内的所有操作
+      const operations = EventHistoryService.queryHistory({
+        startTime,
+        endTime
+      });
+      console.log('[PlanManager] 📝 时间范围内操作:', operations.length, '条');
+      
+      // 4️⃣ 添加范围内删除的事件为 ghost
+      const deleteOpsInRange = operations.filter(op => op.operation === 'delete' && op.before);
+      console.log('[PlanManager] 🗑️ 范围内删除操作:', deleteOpsInRange.length, '条');
+      
+      const deletedInRange = deleteOpsInRange.filter(op => existingAtStart.has(op.eventId));
+      console.log('[PlanManager] 🎯 其中在起点存在的:', deletedInRange.length, '条');
+      
+      deletedInRange.forEach(log => {
+        console.log('[PlanManager] 👻 添加 ghost:', {
+          eventId: log.eventId.slice(-8),
+          title: log.before?.title,
+          content: log.before?.content,
+          simpleTitle: log.before?.simpleTitle,
+          fullTitle: log.before?.fullTitle,
+          删除于: new Date(log.timestamp).toLocaleString(),
+          before完整信息: log.before
+        });
+        allItems.push({
+          ...log.before,
+          _isDeleted: true,
+          _deletedAt: log.timestamp
+        } as any);
+      });
+      
+      // 记录被跳过的删除操作
+      const skippedDeletes = deleteOpsInRange.filter(op => !existingAtStart.has(op.eventId));
+      if (skippedDeletes.length > 0) {
+        console.log('[PlanManager] ⏭️ 跳过不在起点的删除:', skippedDeletes.length, '条', 
+          skippedDeletes.map(op => `${op.eventId.slice(-8)}-${op.before?.title?.substring(0, 15)}`));
+      }
+      
+      console.log('[PlanManager] 📊 Snapshot 完成：最终', allItems.length, '个事件', `(${allItems.filter((i: any) => i._isDeleted).length} ghost)`);
+    }
     
     // 排序确保新建行按期望顺序显示
     const result = allItems
@@ -1299,7 +1376,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     }
     
     return result;
-  }, [items, pendingEmptyItems]);
+  }, [items, pendingEmptyItems, dateRange]);
 
   // 🆕 状态配置映射函数
   const getStatusConfig = useCallback((status?: string) => {
@@ -1590,14 +1667,17 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         
         // 🔧 变更检测：只更新真正变化的字段
         const existingItem = itemsMap[itemId];
-        const isChanged = !existingItem || 
+        const isContentChanged = !existingItem || 
           existingItem.title !== updatedItem.title ||
           existingItem.content !== updatedItem.content ||
           existingItem.description !== updatedItem.description ||
           existingItem.mode !== updatedItem.mode ||
           JSON.stringify(existingItem.tags) !== JSON.stringify(updatedItem.tags);
         
-        if (isChanged) {
+        // ✅ position 变化时也需要保存（自动被 EventHistoryService 忽略）
+        const isPositionChanged = existingItem && (existingItem as any).position !== (updatedItem as any).position;
+        
+        if (isContentChanged || isPositionChanged) {
           changedItems.push(updatedItem);
         } else {
           unchangedItemIds.add(itemId);
@@ -1959,6 +2039,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           totalLines={editorItems.length}
         >
           <UnifiedSlateEditor
+            key={dateRange ? `snapshot-${dateRange.start.getTime()}-${dateRange.end.getTime()}` : 'normal'}
             items={editorItems}
             onChange={debouncedOnChange}
             getEventStatus={getEventStatus}

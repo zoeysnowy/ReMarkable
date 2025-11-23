@@ -34,6 +34,7 @@ export const EventLineElement: React.FC<EventLineElementProps> = ({
 }) => {
   const isEventlogMode = element.mode === 'eventlog';
   const isPlaceholder = (element.metadata as any)?.isPlaceholder || element.eventId === '__placeholder__';
+  const isDeleted = (element.metadata as any)?._isDeleted || eventStatus === 'deleted';
   
   const paddingLeft = isEventlogMode
     ? `${(element.level + 1) * 24}px`
@@ -51,7 +52,7 @@ export const EventLineElement: React.FC<EventLineElementProps> = ({
   return (
     <div
       {...attributes}
-      className={`unified-event-line ${isEventlogMode ? 'eventlog-mode' : ''}${isPlaceholder ? ' placeholder-line' : ''}`}
+      className={`unified-event-line ${isEventlogMode ? 'eventlog-mode' : ''}${isPlaceholder ? ' placeholder-line' : ''}${isDeleted ? ' deleted-line' : ''}`}
       data-event-line="true"
       data-line-id={element.lineId}
       data-event-id={element.eventId || ''}
@@ -64,6 +65,9 @@ export const EventLineElement: React.FC<EventLineElementProps> = ({
         alignItems: isEventlogMode ? 'flex-start' : 'center',
         gap: '8px',
         minHeight: isEventlogMode ? '20px' : '32px', // 🔧 eventlog 模式更紧凑
+        textDecoration: isDeleted ? 'line-through' : 'none',  // ✅ 删除线
+        opacity: isDeleted ? 0.6 : 1,  // ✅ 降低透明度
+        pointerEvents: isDeleted ? 'none' : 'auto',  // ✅ 禁止交互
       }}
     >
       {/* 前缀装饰 (Checkbox、Emoji 等) - Eventlog 模式不显示 */}

@@ -32,9 +32,9 @@ import { SimpleCalendarDropdown } from './EventEditModalV2Demo/SimpleCalendarDro
 import { SyncModeDropdown } from './EventEditModalV2Demo/SyncModeDropdown';
 import { getAvailableCalendarsForSettings, getCalendarGroupColor } from '../utils/calendarUtils';
 // TimeLog 相关导入
-import { UnifiedSlateEditor } from './UnifiedSlateEditor/UnifiedSlateEditor';
-import { insertTag, insertEmoji, insertDateMention } from './UnifiedSlateEditor/helpers';
-import { parseExternalHtml, slateNodesToRichHtml } from './UnifiedSlateEditor/serialization';
+import { LightSlateEditor } from './LightSlateEditor';
+// import { insertTag, insertEmoji, insertDateMention } from './UnifiedSlateEditor/helpers';
+// import { parseExternalHtml, slateNodesToRichHtml } from './UnifiedSlateEditor/serialization';
 import { formatTimeForStorage } from '../utils/timeUtils';
 import './EventEditModalV2Demo.css';
 
@@ -156,19 +156,8 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
   const [tagPickerPosition, setTagPickerPosition] = useState({ top: 0, left: 0, width: 0 });
   const [currentTime, setCurrentTime] = useState<number>(Date.now());
   
-  // TimeLog 相关状态
-  const [slateItems, setSlateItems] = useState(() => {
-    // 创建符合 Slate Descendant 格式的初始数据
-    if (formData.eventlog) {
-      try {
-        const parsed = JSON.parse(formData.eventlog);
-        return Array.isArray(parsed) ? parsed : [{ type: 'paragraph', children: [{ text: '' }] }];
-      } catch {
-        return [{ type: 'paragraph', children: [{ text: '' }] }];
-      }
-    }
-    return [{ type: 'paragraph', children: [{ text: '' }] }];
-  });
+  // TimeLog 相关状态 - 使用 Slate JSON 字符串
+  const timelogContent = formData.eventlog || '[]'; // 默认空的 Slate JSON 数组
   
   const [activePickerIndex, setActivePickerIndex] = useState(-1);
 
@@ -584,18 +573,13 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
   // ==================== TimeLog 处理函数 ====================
   
   /**
-   * Slate 编辑器内容变化处理
+   * TimeLog 内容变化处理（LightSlateEditor）
    */
-  const handleSlateChange = (newItems: any[]) => {
-    setSlateItems(newItems);
-    // 将 Slate 数据序列化为 JSON 保存到 formData
-    const serializedData = JSON.stringify(newItems);
-    // 同时生成 HTML 用于同步到 Outlook
-    const htmlContent = slateNodesToRichHtml(newItems);
+  const handleTimelogChange = (htmlContent: string) => {
     setFormData({
       ...formData,
-      eventlog: serializedData,
-      description: htmlContent
+      description: htmlContent,
+      eventlog: htmlContent // 保持向后兼容
     });
   };
 
@@ -607,32 +591,34 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
   };
 
   /**
-   * FloatingToolbar 表情选择
+   * FloatingToolbar 表情选择 - 暂时禁用
    */
   const handleEmojiSelect = (emoji: any) => {
-    if (slateEditorRef.current) {
-      insertEmoji(slateEditorRef.current, emoji.native);
-    }
+    // TODO: 重新实现 LightSlateEditor 的 emoji 插入
+    // if (slateEditorRef.current) {
+    //   insertEmoji(slateEditorRef.current, emoji.native);
+    // }
     setActivePickerIndex(-1); // 关闭 picker
   };
 
   /**
-   * FloatingToolbar 标签选择
+   * FloatingToolbar 标签选择 - 暂时禁用
    */
   const handleTagSelect = (tagId: string) => {
-    if (slateEditorRef.current) {
-      const tag = TagService.getTagById(tagId);
-      if (tag) {
-        insertTag(
-          slateEditorRef.current,
-          tagId,
-          tag.name,
-          tag.color || '#999999',
-          tag.emoji || '',
-          false // mentionOnly
-        );
-      }
-    }
+    // TODO: 重新实现 LightSlateEditor 的 tag 插入
+    // if (slateEditorRef.current) {
+    //   const tag = TagService.getTagById(tagId);
+    //   if (tag) {
+    //     insertTag(
+    //       slateEditorRef.current,
+    //       tagId,
+    //       tag.name,
+    //       tag.color || '#999999',
+    //       tag.emoji || '',
+    //       false // mentionOnly
+    //     );
+    //   }
+    // }
     setActivePickerIndex(-1); // 关闭 picker
   };
 
@@ -640,14 +626,15 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
    * FloatingToolbar 日期范围选择
    */
   const handleDateRangeSelect = (startDate: string, endDate?: string) => {
-    if (slateEditorRef.current) {
-      insertDateMention(
-        slateEditorRef.current,
-        startDate,
-        endDate,
-        false // mentionOnly
-      );
-    }
+    // TODO: 重新实现 LightSlateEditor 的 date mention 插入
+    // if (slateEditorRef.current) {
+    //   insertDateMention(
+    //     slateEditorRef.current,
+    //     startDate,
+    //     endDate,
+    //     false // mentionOnly
+    //   );
+    // }
     setActivePickerIndex(-1); // 关闭 picker
   };
 
@@ -1352,12 +1339,14 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
 
                   {/* TimeLog 编辑区 */}
                   <div ref={rightPanelRef} style={{ flex: 1, background: 'white', display: 'flex', flexDirection: 'column' }}>
-                    <UnifiedSlateEditor
-                      items={slateItems}
-                      onChange={handleSlateChange}
-                      onEditorReady={handleSlateEditorReady}
-                      eventId={formData.id}
+                    <LightSlateEditor
+                      content={timelogContent}
+                      parentEventId={formData.id || 'new-event'}
                       enableTimestamp={true}
+                      placeholder="记录时间轴..."
+                      onChange={(slateJson) => {
+                        setFormData({ ...formData, eventlog: slateJson });
+                      }}
                       className="eventlog-editor"
                     />
                     

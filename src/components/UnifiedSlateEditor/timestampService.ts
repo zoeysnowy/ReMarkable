@@ -60,23 +60,27 @@ export class EventLogTimestampService {
   
   /**
    * 检查是否需要插入 timestamp
-   * @param editor Slate Editor 实例（新增参数，用于 LightSlateEditor 模式）
-   * @param value 当前 Slate 值（新增参数，用于检测内容变化）
-   * @param eventId Event ID（可选，用于传统模式）
+   * @param params 参数对象
    * @returns 是否需要插入
    */
-  shouldInsertTimestamp(editor: Editor, value?: any[], eventId?: string): boolean {
-    // 如果没有提供 eventId，使用默认的 'light-editor' 作为key
-    const contextId = eventId || 'light-editor';
+  shouldInsertTimestamp(params: { 
+    contextId?: string; 
+    eventId?: string; 
+    editor?: Editor; 
+    value?: any[] 
+  }): boolean {
+    // 使用 contextId 或 eventId
+    const contextId = params.contextId || params.eventId || 'light-editor';
     const lastEdit = this.lastEditTimestamp.get(contextId);
     const now = new Date();
     
     console.log('[TimestampService] shouldInsertTimestamp 检查:', {
       contextId,
-      eventId,
+      params,
       lastEdit,
       now,
-      hasLastEdit: !!lastEdit
+      hasLastEdit: !!lastEdit,
+      allKeys: Array.from(this.lastEditTimestamp.keys())
     });
     
     // 情况1：当天首次编辑
@@ -85,9 +89,9 @@ export class EventLogTimestampService {
       return true;
     }
     
-    // 情况2：距上次编辑超过 15 分钟（减少频率）
+    // 情况2：距上次编辑超过 5 分钟
     const minutesElapsed = (now.getTime() - lastEdit.getTime()) / 1000 / 60;
-    const shouldInsert = minutesElapsed >= 15;
+    const shouldInsert = minutesElapsed >= 5;
     console.log('[TimestampService] 检查时间间隔:', { minutesElapsed, shouldInsert });
     return shouldInsert;
   }
@@ -156,30 +160,103 @@ export class EventLogTimestampService {
         if (match) {
           const [, paragraphPath] = match;
           console.log('[TimestampService] 在段落路径插入:', paragraphPath);
-          Transforms.insertNodes(editor, timestampNode as any, { at: paragraphPath });
+          Transforms.insertNodes(editor, [timestampNode] as any, { at: paragraphPath });
+          
+          // 插入后，将光标移动到 timestamp 后面的段落的文本节点
+          const nextParagraphPath = [paragraphPath[0] + 1, 0]; // [段落索引, 文本节点索引]
+          try {
+            Transforms.select(editor, { 
+              anchor: { path: nextParagraphPath, offset: 0 },
+              focus: { path: nextParagraphPath, offset: 0 }
+            });
+            console.log('[TimestampService] 光标已移动到:', nextParagraphPath);
+          } catch (error) {
+            console.warn('[TimestampService] 无法移动光标:', error);
+          }
         } else {
           // 回退到在选择点前插入
           console.log('[TimestampService] 在选择点插入');
-          Transforms.insertNodes(editor, timestampNode as any);
+          Transforms.insertNodes(editor, [timestampNode] as any);
         }
       } else {
         // 没有选择时，在文档开头插入
         console.log('[TimestampService] 在文档开头插入');
-        Transforms.insertNodes(editor, timestampNode as any, { at: [0] });
+        Transforms.insertNodes(editor, [timestampNode] as any, { at: [0] });
+        
+        // 将光标移动到 timestamp 后面的段落的文本节点
+        try {
+          Transforms.select(editor, { 
+            anchor: { path: [1, 0], offset: 0 }, // [第二个节点（段落）, 文本节点]
+            focus: { path: [1, 0], offset: 0 }
+          });
+          console.log('[TimestampService] 光标已移动到文档第二段');
+        } catch (error) {
+          console.warn('[TimestampService] 无法移动光标:', error);
+        }
       }
       
       console.log('[TimestampService] timestamp 插入成功');
       
+      // 插入成功后立即更新时间戳 - 使用 eventId
+      if (eventId) {
+        this.lastEditTimestamp.set(eventId, new Date());
+        console.log('[TimestampService] 更新最后编辑时间完成:', eventId);
+      }
+      
     } catch (error) {
       console.error('[Timestamp] 插入失败:', error);
     }
-    
-    // 更新最后编辑时间
-    const contextId = eventId || 'light-editor';
-    this.lastEditTimestamp.set(contextId, new Date());
-    console.log('[TimestampService] 更新最后编辑时间完成:', contextId);
   }
   
+  /**
+   * 清理空的 timestamp（用户未输入内容时）
+   * 只清理最后一个 timestamp，并且只在它后面没有任何内容时清理
+   */
+  removeEmptyTimestamp(editor: any): boolean {
+    try {
+      const children = editor.children;
+      let removed = false;
+      
+      // 只检查最后一个 timestamp
+      for (let i = children.length - 1; i >= 0; i--) {
+        const node = children[i] as any;
+        if (node.type === 'timestamp-divider') {
+          // 检查 timestamp 后是否有任何非空内容
+          const hasContentAfter = children.slice(i + 1).some((nextNode: any) => {
+            return nextNode.type === 'paragraph' && 
+                   nextNode.children?.[0]?.text?.trim();
+          });
+          
+          if (!hasContentAfter) {
+            // 移除空的 timestamp
+            Transforms.removeNodes(editor, { at: [i] });
+            removed = true;
+            console.log('[TimestampService] 移除空的 timestamp');
+          }
+          
+          // 只处理最后一个 timestamp，不继续循环
+          break;
+        }
+      }
+      
+      return removed;
+    } catch (error) {
+      console.error('[TimestampService] 清理空 timestamp 失败:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 更新最后编辑时间（手动调用，防止短时间内重复插入）
+   * @param eventId Event ID
+   */
+  updateLastEditTime(eventId: string): void {
+    if (eventId) {
+      this.lastEditTimestamp.set(eventId, new Date());
+      console.log('[TimestampService] 手动更新最后编辑时间:', eventId);
+    }
+  }
+
   /**
    * 重置某个 Event 的时间戳记录（用于清空 eventlog 时）
    * @param eventId Event ID

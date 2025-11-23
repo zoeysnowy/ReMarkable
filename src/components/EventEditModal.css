@@ -172,7 +172,7 @@
 
 .timelog-editor .slate-editable:focus {
   outline: none;
-  background-color: #fafafa;
+  background-color: transparent;
 }
 
 /* 确保 FloatingToolbar 在 modal 中的层级正确 */

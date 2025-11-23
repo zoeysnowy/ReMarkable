@@ -1057,7 +1057,7 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
             <div className="slate-editor-wrapper">
               <LightSlateEditor
                 content={formData.description}
-                parentEventId={eventId || 'new-event'}
+                parentEventId={event?.id || 'new-event'}
                 enableTimestamp={true}
                 placeholder="记录时间轴..."
                 onChange={(content) => setFormData({ ...formData, description: content })}

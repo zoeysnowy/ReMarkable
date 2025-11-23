@@ -112,7 +112,11 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
       // 时间戳
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
-    };
+      
+      // ✅ Snapshot 模式：已删除标记（仅用于 Slate 显示，executeBatchUpdate 会过滤）
+      _isDeleted: item._isDeleted,
+      _deletedAt: item._deletedAt,
+    } as any;
     
     // Title 行（始终创建，即使内容为空）
     // ✅ v2.8: 使用 fullTitle（富文本）优先，回退到 simpleTitle/title
