@@ -669,30 +669,13 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   // ==================== 渲染函数 ====================
 
   return (
-    <>
-      {/* Modal 覆盖层 */}
-      <div className="modal-overlay" onClick={onClose}>
-        <div className="eventmodal-v2-demo-container" onClick={(e) => e.stopPropagation()}>
-          {/* 顶部视图切换按钮 */}
-          <div className="view-switch-header">
-            <button 
-              className={`view-switch-btn ${isDetailView ? 'active' : ''}`}
-              onClick={() => setIsDetailView(true)}
-            >
-              📋 详情视图
-            </button>
-            <button 
-              className={`view-switch-btn ${!isDetailView ? 'active' : ''}`}
-              onClick={() => setIsDetailView(false)}
-            >
-              📱 收缩视图
-            </button>
-          </div>
-
-          {/* Modal 主内容 */}
-          <div className={`event-edit-modal-v2 ${isDetailView ? 'detail-view' : 'compact-view'}`}>
-            <div className="modal-content">
-              {/* 左侧：Event Overview */}
+    <div className="event-edit-modal-v2-overlay" onClick={onClose}>
+      <div 
+        className={`event-edit-modal-v2 ${isDetailView ? 'detail-view' : 'compact-view'}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-content">
+          {/* 左侧：Event Overview */}
               <div className="event-overview">
                 {/* 上 Section - 事件标识区 */}
                 <div className="section-identity">
@@ -1383,6 +1366,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                 </div>
               )}
             </div>
+            {/* modal-content 结束 */}
 
             {/* 底部按钮 */}
             {isDetailView ? (
@@ -1450,9 +1434,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                 </button>
               </div>
             )}
-          </div>
         </div>
       </div>
-    </>
-  );
+    );
 };
