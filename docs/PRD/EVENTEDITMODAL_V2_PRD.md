@@ -92,7 +92,7 @@
 | **参会人搜索与编辑** | 左侧 - 中 Section | AttendeeDisplay + ContactModal | 2025-11-18 |
 | **时间选择器 Tippy 集成** | 左侧 - 中 Section | Tippy + UnifiedDateTimePicker | 2025-11-19 |
 | **地址智能输入** | 左侧 - 中 Section | LocationInput | 2025-11-19 |
-| **日历来源显示** | 左侧 - 中 Section | 静态 UI | 2025-11-15 |
+| **日历来源显示** | 左侧 - 中 Section | 6层优先级逻辑 + 多选日历 UI | 2025-11-25 |
 | **标签区域静态显示** | 右侧 - Event Log | 静态 UI | 2025-11-15 |
 | **Plan 提示区域** | 右侧 - Event Log | 静态 UI | 2025-11-15 |
 | **时间戳分隔线自动生成** | 右侧 - Event Log | EventLogTimestampService | 2025-11-24 |
@@ -159,7 +159,11 @@
 
 **第三阶段**（后续优化）- P2 功能:
 5. ⏳ **Timer 二次计时自动升级** - 2 天
-6. ⏳ **日历同步机制选择器** - 3-4 天
+6. ✅ **日历同步机制选择器** - 已完成 (2025-11-25)
+   - ✅ 6层优先级来源显示（Timer子事件→外部日历→独立Timer→Plan→TimeCalendar→本地）
+   - ✅ 多选日历 UI（显示"第一个+等"）
+   - ✅ Private 模式参与者处理（格式化为📧文本）
+   - ✅ 标签自动映射（Outlook→工作, Google→生活, iCloud→个人）
 
 ---
 
@@ -2681,9 +2685,15 @@ docs/
 
 **位置**: 【中 Section】- 计划安排
 
+**✅ 已实现功能 (2025-11-25)**:
+- ✅ **6层优先级来源显示**: Timer子事件→外部日历→独立Timer→Plan→TimeCalendar→本地事件
+- ✅ **多选日历 UI**: "来自"区域只读显示，"同步到"区域支持多选，显示"第一个日历+等"
+- ✅ **Private 模式**: send-only-private 和 bidirectional-private 参与者格式化为📧文本
+- ✅ **标签自动映射**: 根据目标日历自动添加标签（Outlook→工作, Google→生活, iCloud→个人）
+
 **设计理念**:
-- **"来自"** 表示事件的原始数据源（不可更改，只读显示）
-- **同步机制** 允许用户选择该计划与外部日历的同步方式
+- **"来自"** 表示事件的原始数据源（6层优先级自动判断，只读显示）
+- **"同步到"** 支持多选日历，允许用户选择该计划与外部日历的同步方式
 
 **数据来源**: 
 ```typescript
@@ -2717,95 +2727,131 @@ const planSyncConfig = event.planSyncConfig || { mode: 'receive-only', targetCal
 const actualSyncConfig = event.actualSyncConfig || null;  // null 表示继承计划配置
 ```
 
-**显示逻辑**:
+**显示逻辑（✅ 已实现 6层优先级 + 多选日历）**:
 ```typescript
+/**
+ * ✅ 6层优先级来源显示逻辑
+ * 优先级：Timer子事件 → 外部日历 → 独立Timer → Plan → TimeCalendar → 本地事件
+ */
+function getEventSourceInfo(event: Event): { 
+  icon?: string, 
+  name: string, 
+  emoji?: string 
+} {
+  // 1️⃣ 最高优先级：Timer 子事件（递归获取父事件来源）
+  if (event.isTimer && event.parentEventId) {
+    const parentEvent = EventService.getEventById(event.parentEventId);
+    if (parentEvent) {
+      return getEventSourceInfo(parentEvent);  // 递归查找
+    }
+  }
+  
+  // 2️⃣ 外部日历同步的事件
+  if (event.calendarIds && event.calendarIds.length > 0) {
+    const cal = availableCalendars.find(c => event.calendarIds!.includes(c.id));
+    if (cal) {
+      if (cal.source === 'outlook') {
+        return { icon: OutlookIcon, name: `Outlook: ${cal.name}` };
+      } else if (cal.source === 'google') {
+        return { icon: GoogleCalendarIcon, name: `Google: ${cal.name}` };
+      } else if (cal.source === 'icloud') {
+        return { icon: ICloudIcon, name: `iCloud: ${cal.name}` };
+      }
+    }
+  }
+  
+  // 3️⃣ 独立 Timer 事件（没有父事件的 Timer）
+  if (event.isTimer && !event.parentEventId) {
+    return { emoji: '⏱️', name: 'ReMarkable计时' };
+  }
+  
+  // 4️⃣ 由 Plan 模块创建
+  if (event.isPlan) {
+    return { emoji: '✅', name: 'ReMarkable计划' };
+  }
+  
+  // 5️⃣ 由 TimeCalendar 页面创建
+  if (event.isTimeCalendar) {
+    return { emoji: '🚀', name: 'ReMarkable日历' };
+  }
+  
+  // 6️⃣ 兜底：本地事件
+  return { emoji: '🚀', name: 'ReMarkable' };
+}
+
+/**
+ * ✅ 多选日历显示函数
+ * 显示"第一个日历+等"
+ */
+function getMultiCalendarDisplayInfo(
+  calendarIds: string[],
+  availableCalendars: Calendar[]
+): { firstCalendar: Calendar | null, remainCount: number } {
+  if (!calendarIds || calendarIds.length === 0) {
+    return { firstCalendar: null, remainCount: 0 };
+  }
+  
+  const firstCalendar = availableCalendars.find(c => c.id === calendarIds[0]) || null;
+  const remainCount = calendarIds.length - 1;
+  
+  return { firstCalendar, remainCount };
+}
+
+// UI 渲染示例
 function renderCalendarSourceWithSync(
   event: Event, 
-  calendar?: Calendar,
   syncConfig?: SyncConfig,
   isActualProgress: boolean = false
 ): ReactNode {
-  // 1. 获取事件来源信息
-  const getEventSource = (): { icon: string, name: string, emoji?: string } => {
-    // 🆕 特殊情况：Timer 子事件，显示父事件的来源
-    if (event.isTimer && event.parentEventId) {
-      const parentEvent = EventService.getEventById(event.parentEventId);
-      if (parentEvent) {
-        return getEventSourceForEvent(parentEvent);
-      }
-    }
-    
-    return getEventSourceForEvent(event);
-  };
+  // 1. 获取事件来源信息（6层优先级）
+  const source = getEventSourceInfo(event);
+  const label = isActualProgress ? '同步到' : '来自';
   
-  // 辅助函数：获取指定事件的来源
-  const getEventSourceForEvent = (evt: Event): { icon: string, name: string, emoji?: string } => {
-    // 外部日历同步的事件（优先判断）
-    if (evt.source === 'outlook' || evt.source === 'google' || evt.source === 'icloud') {
-      const cal = availableCalendars.find(c => c.id === evt.calendarId) || calendar;
-      switch (evt.source) {
-        case 'outlook':
-          return { icon: OutlookIcon, name: `Outlook: ${cal?.name || '默认'}` };
-        case 'google':
-          return { icon: GoogleCalendarIcon, name: `Google: ${cal?.name || '默认'}` };
-        case 'icloud':
-          return { icon: ICloudIcon, name: `iCloud: ${cal?.name || '默认'}` };
-      }
-    }
-    
-    // ReMarkable 本地创建的事件
-    if (evt.source === 'local' || evt.remarkableSource) {
-      // 独立 Timer 事件（没有父事件的 Timer）
-      if (evt.isTimer && !evt.parentEventId) {
-        return { emoji: '⏱️', name: 'ReMarkable计时' };
-      }
-      // 由 Plan 模块创建
-      if (evt.isPlan) {
-        return { emoji: '✅', name: 'ReMarkable计划' };
-      }
-      // 由 TimeCalendar 页面创建
-      if (evt.isTimeCalendar) {
-        return { emoji: '🚀', name: 'ReMarkable' };
-      }
-      // 其他本地事件
-      return { emoji: '🚀', name: 'ReMarkable' };
-    }
-    
-    // 兜底：显示 ReMarkable
-    return { emoji: '🚀', name: 'ReMarkable' };
-  };
-  
-  const source = getEventSource();
-  const label = isActualProgress ? '同步' : '来自';
-  
-  // 2. 渲染来源/同步 + 同步机制选择器
-  return (
-    <div className="calendar-source-row">
-      {/* 左侧：来源/同步日历显示 */}
-      <div className="calendar-source">
+  // 2. "来自"区域：只读显示
+  if (!isActualProgress) {
+    return (
+      <div className="calendar-source-row">
         <span className="label">{label}</span>
-        {calendar && (
-          <span 
-            className="calendar-dot" 
-            style={{ backgroundColor: calendar.color }}
-          >
-            ●
-          </span>
-        )}
         {source.emoji && (
           <span className="source-emoji">{source.emoji}</span>
         )}
         {source.icon && (
-          <img src={source.icon} alt={event.source || 'remarkable'} className="icon-platform" />
+          <img src={source.icon} alt="calendar" className="icon-platform" />
         )}
         <span className="source-name">{source.name}</span>
       </div>
+    );
+  }
+  
+  // 3. "同步到"区域：多选日历 + 同步模式选择器
+  const { firstCalendar, remainCount } = getMultiCalendarDisplayInfo(
+    syncConfig?.targetCalendars || [],
+    availableCalendars
+  );
+  
+  return (
+    <div className="calendar-sync-row">
+      {/* 日历多选下拉 */}
+      <SimpleCalendarDropdown
+        multiSelect={true}
+        selectedCalendarIds={syncConfig?.targetCalendars || []}
+        onMultiSelectionChange={(ids) => handleCalendarIdsChange(ids)}
+        availableCalendars={availableCalendars}
+      />
+      {/* 显示"第一个日历+等" */}
+      {firstCalendar && (
+        <div className="calendar-display">
+          <span className="calendar-dot" style={{ backgroundColor: firstCalendar.color }}>●</span>
+          <span>{firstCalendar.name}</span>
+          {remainCount > 0 && <span className="remain-count">+等</span>}
+        </div>
+      )}
       
-      {/* 右侧：同步机制选择器 */}
+      {/* 同步模式选择器 */}
       <SyncModeSelector
-        mode={syncConfig?.mode || 'receive-only'}
-        disabled={!isActualProgress && event.source !== 'local'}  // 计划安排外部事件来源不可更改
-        onChange={(newMode) => handleSyncModeChange(newMode, isActualProgress)}
+        mode={syncConfig?.mode || 'send-only'}
+        isActual={isActualProgress}
+        onChange={(newMode) => handleSyncModeChange(newMode)}
       />
     </div>
   );
@@ -2902,8 +2948,39 @@ function cycleSyncMode(
 **UI 样式**:
 
 ```css
-/* 来源日历 + 同步机制选择器行 */
+/* ✅ "来自"区域：只读显示（6层优先级） */
 .calendar-source-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #f5f5f5;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.calendar-source-row .label {
+  font-weight: 500;
+  color: #666;
+  min-width: 40px;
+}
+
+.calendar-source-row .source-emoji {
+  font-size: 16px;
+}
+
+.calendar-source-row .icon-platform {
+  width: 16px;
+  height: 16px;
+}
+
+.calendar-source-row .source-name {
+  font-weight: 500;
+  color: #333;
+}
+
+/* ✅ "同步到"区域：多选日历 + 同步模式选择器 */
+.calendar-sync-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -2913,40 +2990,25 @@ function cycleSyncMode(
   margin-bottom: 12px;
 }
 
-/* 左侧：来源/同步日历显示 */
-.calendar-source {
+.calendar-sync-row .calendar-display {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex: 1;
 }
 
-.calendar-source .label {
-  font-weight: 500;
-  color: #666;
-  min-width: 40px;
-}
-
-.calendar-source .calendar-dot {
+.calendar-sync-row .calendar-dot {
   font-size: 14px;
   line-height: 1;
 }
 
-.calendar-source .source-emoji {
-  font-size: 16px;
+.calendar-sync-row .remain-count {
+  font-size: 12px;
+  color: #999;
+  margin-left: 4px;
 }
 
-.calendar-source .icon-platform {
-  width: 16px;
-  height: 16px;
-}
-
-.calendar-source .source-name {
-  font-weight: 500;
-  color: #333;
-}
-
-/* 右侧：同步模式选择器 */
+/* 同步模式选择器 */
 .sync-mode-selector {
   flex-shrink: 0;
 }
@@ -8077,66 +8139,82 @@ export async function handleCompletedChange(eventId: string, isCompleted: boolea
 
 ```typescript
 /**
- * 将参与者格式化为描述文本（Private 模式使用）
+ * ✅ 将参与者格式化为描述文本（Private 模式使用）
+ * 已实现于 EventEditModalV2.tsx Line 626-641
  * 
- * @param participants 参与者邮箱列表
- * @param originalDescription 原始描述内容
- * @returns 格式化后的描述（参与者信息 + 原始内容）
+ * @param attendees 参与者联系人列表
+ * @returns 格式化后的文本（📧 参与者：email1, email2）
  * 
  * @example
- * formatParticipantsToDescription(
- *   ['alice@company.com', 'bob@company.com'],
- *   '讨论项目进展'
- * )
- * // 返回: '📧 参与者：alice@company.com, bob@company.com\n\n讨论项目进展'
+ * formatParticipantsToDescription([
+ *   { email: 'alice@company.com', name: 'Alice' },
+ *   { email: 'bob@company.com', name: 'Bob' }
+ * ])
+ * // 返回: '📧 参与者：alice@company.com, bob@company.com\n\n'
  */
 export function formatParticipantsToDescription(
-  participants: string[], 
-  originalDescription: string = ''
+  attendees: Contact[]
 ): string {
-  if (!participants || participants.length === 0) {
-    return originalDescription;
+  if (!attendees || attendees.length === 0) {
+    return '';
   }
   
-  const participantsText = `📧 参与者：${participants.join(', ')}`;
+  const emails = attendees
+    .map(contact => contact.email)
+    .filter(Boolean)
+    .join(', ');
   
-  return originalDescription 
-    ? `${participantsText}\n\n${originalDescription}`
-    : participantsText;
+  return emails ? `📧 参与者：${emails}\n\n` : '';
 }
 
 /**
- * 从描述文本中提取参与者信息（Private 模式使用）
+ * ✅ 从描述文本中提取参与者信息（Private 模式使用）
+ * 已实现于 EventEditModalV2.tsx Line 643-663
  * 
  * @param description 包含参与者信息的描述
- * @returns { participants: string[], cleanDescription: string }
+ * @returns { attendees: Contact[], cleanDescription: string }
  * 
  * @example
  * extractParticipantsFromDescription(
  *   '📧 参与者：alice@company.com, bob@company.com\n\n讨论项目进展'
  * )
  * // 返回: { 
- * //   participants: ['alice@company.com', 'bob@company.com'], 
+ * //   attendees: [
+ * //     { email: 'alice@company.com', name: '', phone: '', ... },
+ * //     { email: 'bob@company.com', name: '', phone: '', ... }
+ * //   ], 
  * //   cleanDescription: '讨论项目进展' 
  * // }
  */
 export function extractParticipantsFromDescription(description: string): {
-  participants: string[];
+  attendees: Contact[];
   cleanDescription: string;
 } {
   if (!description) {
-    return { participants: [], cleanDescription: '' };
+    return { attendees: [], cleanDescription: '' };
   }
   
   const participantsRegex = /^📧 参与者：(.+)$/m;
   const match = description.match(participantsRegex);
   
   if (!match) {
-    return { participants: [], cleanDescription: description };
+    return { attendees: [], cleanDescription: description };
   }
   
   const participantsText = match[1];
-  const participants = participantsText.split(',').map(email => email.trim());
+  const emails = participantsText.split(',').map(email => email.trim());
+  
+  // 转换为 Contact 对象
+  const attendees: Contact[] = emails.map(email => ({
+    email,
+    name: '',
+    phone: '',
+    company: '',
+    title: '',
+    address: '',
+    avatar: '',
+    source: 'remarkable' as const
+  }));
   
   // 移除参与者行，保留其余内容
   const cleanDescription = description
@@ -8144,7 +8222,7 @@ export function extractParticipantsFromDescription(description: string): {
     .replace(/^\n+/, '')  // 移除开头的空行
     .trim();
   
-  return { participants, cleanDescription };
+  return { attendees, cleanDescription };
 }
 
 /**

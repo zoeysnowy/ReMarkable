@@ -33,7 +33,7 @@ interface UpcomingEventsPanelProps {
 }
 
 const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({ 
-  events,
+  events = [], // 默认空数组
   onTimeFilterChange,
   onEventClick,
   onCheckboxChange

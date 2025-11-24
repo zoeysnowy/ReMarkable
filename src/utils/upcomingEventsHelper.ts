@@ -111,6 +111,10 @@ export function getEventTimeDiff(event: Event, now: Date = new Date()): number {
  * 对事件进行排序：即将开始的优先，然后是过期事件
  */
 export function sortEvents(events: Event[], now: Date = new Date()): Event[] {
+  if (!events || !Array.isArray(events)) {
+    return [];
+  }
+  
   return events.sort((a, b) => {
     const aExpired = isEventExpired(a, now);
     const bExpired = isEventExpired(b, now);
@@ -141,6 +145,11 @@ export function filterAndSortEvents(
   filter: TimeFilter,
   now: Date = new Date()
 ): { upcoming: Event[]; expired: Event[] } {
+  // 防御性检查：如果 events 未定义或不是数组，返回空结果
+  if (!events || !Array.isArray(events)) {
+    return { upcoming: [], expired: [] };
+  }
+
   const { start, end } = getTimeRange(filter, now);
 
   // 筛选在范围内的事件
