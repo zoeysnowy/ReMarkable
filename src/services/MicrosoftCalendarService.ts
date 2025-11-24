@@ -1369,7 +1369,6 @@ export class MicrosoftCalendarService {
           calendarIds: ['microsoft'], // 🔧 使用数组格式，与类型定义保持一致
           source: 'outlook',
           remarkableSource: true,
-          category: 'ongoing',
           syncStatus: 'synced'
         };
       }).filter(Boolean);
@@ -1572,7 +1571,6 @@ export class MicrosoftCalendarService {
           calendarIds: [calendarId], // 🔧 使用数组格式，与类型定义保持一致
           source: 'outlook',
           remarkableSource: true,
-          category: 'ongoing',
           syncStatus: 'synced'
         };
       }).filter(Boolean);

@@ -173,7 +173,6 @@ export interface EventTag {
   id: string;
   name: string;
   color: string;
-  category: 'personal' | 'work' | 'study' | 'ongoing' | 'other';
   createdAt: string;     // 🔧 修改：使用字符串存储本地时间
 }
 

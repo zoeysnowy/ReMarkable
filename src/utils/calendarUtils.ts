@@ -411,7 +411,6 @@ export function convertFromCalendarEvent(
     isAllDay: calendarEvent.isAllday || false,
     location: calendarEvent.location || '',
     tags: calendarEvent.calendarId !== 'default' ? [calendarEvent.calendarId] : [],
-    category: originalEvent?.category || 'planning',
     // 继承原始事件的同步信息
     externalId: originalEvent?.externalId,
     syncStatus: originalEvent?.syncStatus,
@@ -445,9 +444,8 @@ export function convertToCalendarEvents(
  */
 export function createCalendarsFromTags(tags: any[]): any[] {
   const flatTags = flattenTags(tags);
-  const eventTags = flatTags.filter(
-    tag => tag.category === 'ongoing' || tag.category === 'planning'
-  );
+  // 使用所有标签创建日历分组
+  const eventTags = flatTags;
   
   return [
     {

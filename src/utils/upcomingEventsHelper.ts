@@ -153,7 +153,6 @@ export function filterAndSortEvents(
   // 1. checkType 不为 'none'
   // 2. 在时间范围内
   // 3. 排除 isTimer、isOutsideApp、isEventLog（纯粹的计时/外部APP/时间日志笔记）
-  // 4. 排除带有 #ongoing 标签的计时事件
   const filteredEvents = events.filter(event => {
     // 排除 checkType 为 'none' 的事件
     if (event.checkType === 'none') {
@@ -162,15 +161,11 @@ export function filterAndSortEvents(
     
     // 排除纯计时器、外部APP、时间日志事件
     if (event.isTimer || event.isOutsideApp || event.isTimeLog) {
-      return false;
-    }
-    
-    // 排除带有 #ongoing 标签的计时事件（额外防护）
-    if (event.tags?.some(tagId => {
-      const tag = TagService.getTagById(tagId);
-      return tag?.name === 'ongoing';
-    })) {
-      console.warn('⏱️ 过滤计时事件:', event.title || event.simpleTitle, 'isTimer:', event.isTimer);
+      console.log('🚫 过滤事件:', event.title || event.simpleTitle, {
+        isTimer: event.isTimer,
+        isOutsideApp: event.isOutsideApp,
+        isTimeLog: event.isTimeLog
+      });
       return false;
     }
     

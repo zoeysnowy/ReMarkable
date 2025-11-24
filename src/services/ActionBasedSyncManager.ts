@@ -3408,8 +3408,7 @@ private getUserSettings(): any {
       calendarIds: remoteEvent.calendarIds || ['microsoft'], // 🔧 使用数组格式，与类型定义保持一致
       source: 'outlook', // 🔧 设置source字段
       syncStatus: 'synced',
-      remarkableSource: isReMarkableCreated, // 根据描述内容判断来源
-      category: 'ongoing'
+      remarkableSource: isReMarkableCreated // 根据描述内容判断来源
     };
   }
 

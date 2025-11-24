@@ -851,7 +851,6 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
             emoji: updatedEvent.emoji,
             color: updatedEvent.color,
             priority: updatedEvent.priority,
-            category: updatedEvent.category,
             isCompleted: updatedEvent.isCompleted,
             isTask: updatedEvent.isTask,
             type: updatedEvent.type,

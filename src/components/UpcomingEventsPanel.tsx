@@ -135,7 +135,7 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
     const primaryTag = primaryTagId ? TagService.getTagById(primaryTagId) : null;
     const tagColor = primaryTag?.color || event.color || '#6b7280';
     const tagEmoji = primaryTag?.emoji;
-    const tagName = primaryTag?.name || event.category;
+    const tagName = primaryTag?.name;
     
     // 移除标签和日期mention的纯文本标题（用于显示）
     const rawTitle = event.simpleTitle || event.title || '';

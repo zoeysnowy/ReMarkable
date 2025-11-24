@@ -1943,7 +1943,6 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       createdAt: formatTimeForStorage(new Date()),
       updatedAt: formatTimeForStorage(new Date()),
       isTask: isTask,
-      category: `priority-${item.priority}`,
       remarkableSource: true,
     };
 

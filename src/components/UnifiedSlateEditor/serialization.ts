@@ -92,7 +92,6 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
       
       // 业务字段
       priority: item.priority,
-      category: item.category,
       isCompleted: item.isCompleted,
       isTask: item.isTask,
       type: item.type,
@@ -435,7 +434,6 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
         color: metadata.color,
         
         priority: metadata.priority || 'medium',
-        category: metadata.category,
         isCompleted: metadata.isCompleted || false,
         isTask: metadata.isTask ?? true,
         type: metadata.type || 'todo',

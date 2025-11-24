@@ -1628,22 +1628,31 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                   <span style={{ flexShrink: 0, color: '#6b7280' }}>来自</span>
                   <div className="eventmodal-v2-plan-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     {/* 只读显示事件来源（6层优先级）*/}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', maxWidth: '180px', minWidth: '120px' }}>
                       {(() => {
                         const sourceInfo = getEventSourceInfo(event);
                         return (
                           <>
                             {sourceInfo.emoji && (
-                              <span style={{ fontSize: '16px' }}>{sourceInfo.emoji}</span>
+                              <span style={{ fontSize: '16px', flexShrink: 0 }}>{sourceInfo.emoji}</span>
                             )}
                             {sourceInfo.icon && (
                               typeof sourceInfo.icon === 'string' && sourceInfo.icon.endsWith('.svg') ? (
-                                <img src={sourceInfo.icon} alt="" style={{ width: '16px', height: '16px' }} />
+                                <img src={sourceInfo.icon} alt="" style={{ width: '16px', height: '16px', flexShrink: 0 }} />
                               ) : (
-                                <span style={{ fontSize: '16px' }}>{sourceInfo.icon}</span>
+                                <span style={{ fontSize: '16px', flexShrink: 0 }}>{sourceInfo.icon}</span>
                               )
                             )}
-                            <span style={{ fontSize: '14px', color: '#374151', fontWeight: 500 }}>
+                            <span style={{ 
+                              fontSize: 'clamp(10px, 2vw, 14px)', 
+                              color: '#374151', 
+                              fontWeight: 500,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              flex: 1,
+                              minWidth: 0
+                            }}>
                               {sourceInfo.name}
                             </span>
                           </>
@@ -1752,7 +1761,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                     <span style={{ flexShrink: 0, color: '#6b7280' }}>同步</span>
                     <div className="eventmodal-v2-plan-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       {/* 日历选择区域 */}
-                      <div style={{ position: 'relative' }}>
+                      <div style={{ position: 'relative', maxWidth: '200px', minWidth: '140px' }}>
                         <div 
                           ref={syncCalendarRef}
                           style={{ 
@@ -1762,25 +1771,42 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                             cursor: 'pointer',
                             padding: '2px 4px',
                             borderRadius: '4px',
-                            transition: 'background-color 0.15s'
+                            transition: 'background-color 0.15s',
+                            maxWidth: '100%'
                           }}
                           onClick={() => setShowSyncCalendarPicker(!showSyncCalendarPicker)}
                           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
                           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                         >
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flex: 1, minWidth: 0 }}>
                             <span style={{ 
                               width: '8px', 
                               height: '8px', 
                               background: getMultiCalendarDisplayInfo(syncCalendarIds).color, 
-                              borderRadius: '50%' 
+                              borderRadius: '50%',
+                              flexShrink: 0
                             }}></span>
-                            <strong style={{ color: '#1f2937' }}>{getMultiCalendarDisplayInfo(syncCalendarIds).displayText}</strong>
+                            <strong style={{ 
+                              color: '#1f2937',
+                              fontSize: 'clamp(10px, 2vw, 14px)',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              flex: 1,
+                              minWidth: 0
+                            }}>{getMultiCalendarDisplayInfo(syncCalendarIds).displayText}</strong>
                             {getMultiCalendarDisplayInfo(syncCalendarIds).hasMore && (
-                              <span style={{ color: '#6b7280', fontSize: '13px' }}>等</span>
+                              <span style={{ color: '#6b7280', fontSize: '13px', flexShrink: 0 }}>等</span>
                             )}
                           </span>
-                          <span style={{ color: '#6b7280' }}>{getMultiCalendarDisplayInfo(syncCalendarIds).subName}</span>
+                          <span style={{ 
+                            color: '#6b7280',
+                            fontSize: 'clamp(10px, 2vw, 13px)',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            maxWidth: '60px'
+                          }}>{getMultiCalendarDisplayInfo(syncCalendarIds).subName}</span>
                         </div>
                         
                         {showSyncCalendarPicker && createPortal(
@@ -1820,7 +1846,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                       </div>
                       
                       {/* 同步模式选择区域 */}
-                      <div style={{ position: 'relative' }}>
+                      <div style={{ position: 'relative', flexShrink: 0 }}>
                         <div 
                           ref={syncSyncModeRef}
                           style={{ 
@@ -1832,14 +1858,15 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                             cursor: 'pointer',
                             padding: '2px 4px',
                             borderRadius: '4px',
-                            transition: 'background-color 0.15s'
+                            transition: 'background-color 0.15s',
+                            whiteSpace: 'nowrap'
                           }}
                           onClick={() => setShowSyncSyncModePicker(!showSyncSyncModePicker)}
                           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
                           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                         >
-                          <span>{getSyncModeInfo(syncSyncMode).emoji}</span>
-                          <span>{getSyncModeInfo(syncSyncMode).name}</span>
+                          <span style={{ flexShrink: 0 }}>{getSyncModeInfo(syncSyncMode).emoji}</span>
+                          <span style={{ flexShrink: 0 }}>{getSyncModeInfo(syncSyncMode).name}</span>
                         </div>
                         
                         {showSyncSyncModePicker && createPortal(
