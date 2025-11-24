@@ -329,28 +329,41 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       })
     });
     
+    // 🎯 三步过滤公式：checkType + 业务类型 - 系统事件
     const filtered = allEvents.filter((event: Event) => {
-      if (!event.isPlan) return false;
-      
-      // 🆕 过滤：只显示 checkType !== 'none' 的事件
-      if (event.checkType === 'none') return false;
-      
-      // 🔧 精确过滤：只排除系统生成的子事件，保留用户计划分项
-      if (event.parentEventId) {
-        // 如果是子事件，检查是否为需要排除的系统类型
-        if (event.isTimer === true || event.isTimeLog === true || event.isOutsideApp === true) {
-          return false; // 排除：计时器子事件、时间日志、外部应用数据或纯粹的用户日志笔记
-        }
-        // 其他子事件（用户创建的计划分项）保留显示
+      // 步骤 1: checkType 过滤（必须有有效的 checkType 且不为 'none'）
+      if (!event.checkType || event.checkType === 'none') {
+        return false;
       }
       
+      // 步骤 2: 业务类型过滤
+      // 2.1 必须是 Plan 事件
+      if (!event.isPlan) {
+        return false;
+      }
+      
+      // 2.2 TimeCalendar 时间范围检查
       if (event.isTimeCalendar) {
         if (event.endTime) {
           const endTime = new Date(event.endTime);
-          return now < endTime;
+          if (now >= endTime) {
+            return false; // TimeCalendar 已过期
+          }
+        } else {
+          return false; // 没有endTime的TimeCalendar事件视为已过期
         }
-        return false; // 没有endTime的TimeCalendar事件视为已过期
       }
+      
+      // 步骤 3: 排除系统事件（使用严格比较 === true）
+      if (event.isTimer === true || 
+          event.isOutsideApp === true || 
+          event.isTimeLog === true) {
+        return false;
+      }
+      
+      // 3.1 有父事件ID但不是系统事件的，保留（用户创建的计划分项）
+      // 这些在步骤3已经处理了，不需要额外检查
+      
       return true;
     });
     
@@ -1351,17 +1364,25 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           return;
         }
         
-        // 过滤系统生成事件：isTimer, isTimeLog, isOutsideApp
-        if (log.before.isTimer === true || log.before.isTimeLog === true || log.before.isOutsideApp === true) {
-          console.log('[PlanManager] ⏭️ 跳过系统事件 ghost:', log.eventId.slice(-8));
+        // 🎯 步骤 1: checkType 过滤（只显示有 checkbox 的事件）
+        if (!log.before.checkType || log.before.checkType === 'none') {
+          console.log('[PlanManager] ⏭️ 跳过 checkType=none ghost:', log.eventId.slice(-8));
           return;
         }
         
-        // 过滤空白事件：没有标题、内容、simpleTitle 或 fullTitle
+        // 🎯 步骤 2: 业务类型过滤（空白事件）
         const hasContent = log.before.title || log.before.content || 
                           log.before.simpleTitle || log.before.fullTitle;
         if (!hasContent) {
           console.log('[PlanManager] ⏭️ 跳过空白 ghost:', log.eventId.slice(-8));
+          return;
+        }
+        
+        // 🎯 步骤 3: 系统事件过滤（使用严格比较 === true）
+        if (log.before.isTimer === true || 
+            log.before.isTimeLog === true || 
+            log.before.isOutsideApp === true) {
+          console.log('[PlanManager] ⏭️ 跳过系统事件 ghost:', log.eventId.slice(-8));
           return;
         }
         
