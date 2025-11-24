@@ -1157,6 +1157,166 @@ export class EventService {
     }).join('');
   }
 
+  // ==================== 标题三层架构转换工具 (v2.14) ====================
+
+  /**
+   * Slate JSON → HTML（移除 Slate 元素节点，保留格式）
+   * @param fullTitle - Slate JSON 字符串
+   * @returns HTML 字符串（保留颜色、加粗等样式）
+   */
+  private static fullTitleToColorTitle(fullTitle: string): string {
+    if (!fullTitle) return '';
+    
+    try {
+      const nodes = JSON.parse(fullTitle);
+      if (!Array.isArray(nodes)) return '';
+      
+      // 遍历节点，提取文本和格式，排除 tag/dateMention 等元素
+      const extractTextWithFormat = (node: any): string => {
+        if (node.type === 'tag' || node.type === 'dateMention') {
+          // 跳过 Slate 元素节点
+          return '';
+        }
+        
+        if (node.type === 'paragraph') {
+          const content = node.children
+            ?.map((child: any) => extractTextWithFormat(child))
+            .filter((text: string) => text)
+            .join('');
+          return content ? `<p>${content}</p>` : '';
+        }
+        
+        // 文本节点：保留格式
+        if (node.text !== undefined) {
+          let text = node.text;
+          if (!text) return '';
+          
+          // 应用样式
+          if (node.bold) text = `<strong>${text}</strong>`;
+          if (node.italic) text = `<em>${text}</em>`;
+          if (node.underline) text = `<u>${text}</u>`;
+          if (node.strikethrough) text = `<del>${text}</del>`;
+          
+          // 应用颜色
+          if (node.color) text = `<span style="color: ${node.color}">${text}</span>`;
+          if (node.backgroundColor) text = `<span style="background-color: ${node.backgroundColor}">${text}</span>`;
+          
+          return text;
+        }
+        
+        return '';
+      };
+      
+      return nodes.map(extractTextWithFormat).filter(html => html).join('');
+    } catch (error) {
+      console.warn('[EventService] fullTitleToColorTitle 解析失败:', error);
+      return '';
+    }
+  }
+
+  /**
+   * HTML → 纯文本
+   * @param colorTitle - HTML 字符串
+   * @returns 纯文本
+   */
+  private static colorTitleToSimpleTitle(colorTitle: string): string {
+    return this.stripHtml(colorTitle);
+  }
+
+  /**
+   * 纯文本 → Slate JSON
+   * @param simpleTitle - 纯文本
+   * @returns Slate JSON 字符串
+   */
+  private static simpleTitleToFullTitle(simpleTitle: string): string {
+    if (!simpleTitle) return JSON.stringify([{ type: 'paragraph', children: [{ text: '' }] }]);
+    
+    return JSON.stringify([
+      {
+        type: 'paragraph',
+        children: [{ text: simpleTitle }]
+      }
+    ]);
+  }
+
+  /**
+   * 规范化标题对象：自动填充缺失的层级
+   * @param titleInput - 部分标题数据（可能只有 fullTitle/colorTitle/simpleTitle 之一）
+   * @returns 完整的 EventTitle 对象（包含三层）
+   * 
+   * 规则：
+   * 1. 有 fullTitle → 降级生成 colorTitle 和 simpleTitle
+   * 2. 有 colorTitle → 升级生成 fullTitle，降级生成 simpleTitle
+   * 3. 有 simpleTitle → 升级生成 colorTitle 和 fullTitle
+   * 4. 多个字段都有 → 保持原样，不覆盖
+   */
+  private static normalizeTitle(titleInput: Partial<import('../types').EventTitle> | undefined): import('../types').EventTitle {
+    const result: import('../types').EventTitle = {};
+    
+    if (!titleInput) {
+      // 空标题：返回空对象
+      return {
+        fullTitle: this.simpleTitleToFullTitle(''),
+        colorTitle: '',
+        simpleTitle: ''
+      };
+    }
+    
+    const { fullTitle, colorTitle, simpleTitle } = titleInput;
+    
+    // 场景 1: 只有 fullTitle → 降级生成 colorTitle 和 simpleTitle
+    if (fullTitle && !colorTitle && !simpleTitle) {
+      result.fullTitle = fullTitle;
+      result.colorTitle = this.fullTitleToColorTitle(fullTitle);
+      result.simpleTitle = this.colorTitleToSimpleTitle(result.colorTitle);
+      
+      console.log('[EventService] normalizeTitle: fullTitle → colorTitle + simpleTitle', {
+        fullTitleLength: fullTitle.length,
+        colorTitleLength: result.colorTitle?.length || 0,
+        simpleTitleLength: result.simpleTitle?.length || 0
+      });
+    }
+    
+    // 场景 2: 只有 colorTitle → 升级生成 fullTitle，降级生成 simpleTitle
+    else if (colorTitle && !fullTitle && !simpleTitle) {
+      result.colorTitle = colorTitle;
+      result.simpleTitle = this.colorTitleToSimpleTitle(colorTitle);
+      // 简化升级：colorTitle 无法完美转换为 Slate JSON，使用纯文本升级
+      result.fullTitle = this.simpleTitleToFullTitle(result.simpleTitle);
+      
+      console.log('[EventService] normalizeTitle: colorTitle → simpleTitle + fullTitle', {
+        colorTitleLength: colorTitle.length,
+        simpleTitleLength: result.simpleTitle?.length || 0
+      });
+    }
+    
+    // 场景 3: 只有 simpleTitle → 升级生成 colorTitle 和 fullTitle
+    else if (simpleTitle && !fullTitle && !colorTitle) {
+      result.simpleTitle = simpleTitle;
+      result.colorTitle = simpleTitle; // 纯文本直接赋值（无格式）
+      result.fullTitle = this.simpleTitleToFullTitle(simpleTitle);
+      
+      console.log('[EventService] normalizeTitle: simpleTitle → colorTitle + fullTitle', {
+        simpleTitleLength: simpleTitle.length
+      });
+    }
+    
+    // 场景 4: 多个字段都有 → 保持原样，填充缺失字段
+    else {
+      result.fullTitle = fullTitle || (simpleTitle ? this.simpleTitleToFullTitle(simpleTitle) : undefined);
+      result.colorTitle = colorTitle || simpleTitle || '';
+      result.simpleTitle = simpleTitle || (colorTitle ? this.colorTitleToSimpleTitle(colorTitle) : '');
+      
+      console.log('[EventService] normalizeTitle: 使用已有字段', {
+        hasFullTitle: !!fullTitle,
+        hasColorTitle: !!colorTitle,
+        hasSimpleTitle: !!simpleTitle
+      });
+    }
+    
+    return result;
+  }
+
   /**
    * 搜索历史事件中的参会人
    * 从所有事件的 organizer 和 attendees 字段提取联系人

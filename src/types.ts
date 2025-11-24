@@ -196,13 +196,34 @@ export interface Contact {
   updatedAt?: string;
 }
 
+/**
+ * 标题三层架构 (v2.14)
+ * - fullTitle: Slate JSON 格式（UnifiedSlateEditor 专用，包含标签/元素）
+ * - colorTitle: HTML 格式（UpcomingPanel/EditModal/Timer，保留颜色/格式）
+ * - simpleTitle: 纯文本（TimeCalendar/Outlook 同步）
+ */
+export interface EventTitle {
+  /** Slate JSON 格式 - 包含完整元素信息（标签、DateMention 等） */
+  fullTitle?: string;
+  
+  /** HTML 格式 - 保留颜色、加粗等样式，但移除 Slate 元素节点 */
+  colorTitle?: string;
+  
+  /** 纯文本 - 用于搜索、同步、简单显示 */
+  simpleTitle?: string;
+}
+
 export interface Event {
   id: string;
-  // ========== 标题字段（双向同步） ==========
-  simpleTitle?: string;       // 纯文本标题（用于TimeCalendar周/日视图）
-  fullTitle?: string;         // 富文本标题HTML（用于Plan页面，支持高亮/加粗等）
-  // ⚠️ DEPRECATED: 兼容旧代码，逐步迁移到 simpleTitle
-  title: string;              // 别名，指向 simpleTitle（向后兼容）
+  // ========== 标题字段（三层架构 v2.14） ==========
+  title: EventTitle;          // 统一标题对象（自动降级/升级）
+  
+  // ⚠️ DEPRECATED v2.14: 向后兼容字段，将在未来版本移除
+  /** @deprecated v2.14 请使用 title.simpleTitle */
+  simpleTitle?: string;
+  /** @deprecated v2.14 请使用 title.fullTitle */
+  fullTitle?: string;
+  
   description?: string;       // 纯文本描述（后台字段，仅用于Outlook同步）
   // ========== 时间字段（由 TimeHub 管理） ==========
   // ⚠️ v1.8 重要变更：时间字段允许 undefined

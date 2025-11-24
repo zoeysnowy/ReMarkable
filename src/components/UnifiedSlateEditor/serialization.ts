@@ -388,6 +388,9 @@ export function createEmptyEventLine(level: number = 0): EventLineNode {
         children: [{ text: '' }],
       },
     ],
+    metadata: {
+      checkType: 'once', // 🆕 新建事件默认显示 checkbox
+    },
   };
 }
 
