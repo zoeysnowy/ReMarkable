@@ -336,8 +336,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         return false;
       }
       
-      // 步骤 2: checkType 过滤（只排除明确为 'none' 的，undefined 视为历史数据保留）
-      if (event.checkType === 'none') {
+      // 步骤 2: checkType 过滤（必须有有效的 checkType 且不为 'none'）
+      if (!event.checkType || event.checkType === 'none') {
         return false;
       }
       
@@ -1360,9 +1360,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           return;
         }
         
-        // 🎯 步骤 1: checkType 过滤（只排除明确为 'none' 的，undefined 视为历史数据保留）
-        if (log.before.checkType === 'none') {
-          console.log('[PlanManager] ⏭️ 跳过 checkType=none ghost:', log.eventId.slice(-8));
+        // 🎯 步骤 1: checkType 过滤（必须有有效的 checkType 且不为 'none'）
+        if (!log.before.checkType || log.before.checkType === 'none') {
+          console.log('[PlanManager] ⏭️ 跳过 checkType 无效 ghost:', log.eventId.slice(-8));
           return;
         }
         

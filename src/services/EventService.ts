@@ -308,30 +308,30 @@ export class EventService {
         eventlogField = initialEventLog;
       }
       
-      // 🆕 v2.8: 双向同步 simpleTitle ↔ fullTitle
-      let simpleTitleField = event.simpleTitle || event.title;
-      let fullTitleField = event.fullTitle;
+      // 🆕 v2.14: 标题三层架构自动规范化
+      // 处理标题输入（可能是旧格式或新格式）
+      let normalizedTitle: import('../types').EventTitle;
       
-      if (!simpleTitleField && fullTitleField) {
-        // 场景1: 只有 fullTitle → 提取纯文本到 simpleTitle
-        simpleTitleField = this.stripHtml(fullTitleField);
-      } else if (!fullTitleField && simpleTitleField) {
-        // 场景2: 只有 simpleTitle → 将纯文本赋值到 fullTitle
-        fullTitleField = simpleTitleField;
-      }
-      // 场景3: 都有值 → 保持不变
-      // 场景4: 都没值 → 使用空字符串
-      if (!simpleTitleField) {
-        simpleTitleField = '';
+      if (typeof event.title === 'object' && event.title !== null) {
+        // 新格式：已经是 EventTitle 对象
+        normalizedTitle = this.normalizeTitle(event.title);
+      } else {
+        // 旧格式或兼容处理：从 simpleTitle/fullTitle/title 字段构建
+        normalizedTitle = this.normalizeTitle({
+          simpleTitle: event.simpleTitle || (typeof event.title === 'string' ? event.title : undefined),
+          fullTitle: event.fullTitle,
+          colorTitle: undefined // 让 normalizeTitle 自动生成
+        });
       }
       
       // 确保必要字段
       // 🔧 [BUG FIX] skipSync=true时，强制设置syncStatus='local-only'，忽略event.syncStatus
       const finalEvent: Event = {
         ...event,
-        simpleTitle: simpleTitleField,
-        fullTitle: fullTitleField,
-        title: simpleTitleField, // 向后兼容
+        title: normalizedTitle, // 🆕 v2.14: 使用规范化后的标题对象
+        // 向后兼容字段（废弃警告将在 getter 中处理）
+        simpleTitle: normalizedTitle.simpleTitle,
+        fullTitle: normalizedTitle.fullTitle,
         remarkableSource: true,
         syncStatus: skipSync ? 'local-only' : (event.syncStatus || 'pending'), // skipSync优先级最高
         createdAt: event.createdAt || now,
@@ -520,31 +520,72 @@ export class EventService {
       
       const updatesWithSync = { ...updates };
       
-      // ========== Title 双向同步 ==========
-      // 场景1: simpleTitle 有变化 → 同步到 fullTitle（如果未设置）
-      if ((updates as any).simpleTitle !== undefined && (updates as any).simpleTitle !== originalEvent.simpleTitle) {
-        if ((updates as any).fullTitle === undefined) {
-          (updatesWithSync as any).fullTitle = (updates as any).simpleTitle;
-          console.log('[EventService] simpleTitle 更新 → 同步到 fullTitle:', {
+      // ========== Title 三层架构同步 (v2.14) ==========
+      // 处理标题更新（支持新旧格式）
+      if ((updates as any).title !== undefined) {
+        const titleUpdate = (updates as any).title;
+        
+        if (typeof titleUpdate === 'object' && titleUpdate !== null) {
+          // 新格式：EventTitle 对象
+          const currentTitle = typeof originalEvent.title === 'object' ? originalEvent.title : {
+            simpleTitle: originalEvent.simpleTitle,
+            fullTitle: originalEvent.fullTitle,
+            colorTitle: undefined
+          };
+          
+          // 合并更新，自动规范化
+          const normalizedTitle = this.normalizeTitle({
+            ...currentTitle,
+            ...titleUpdate
+          });
+          
+          (updatesWithSync as any).title = normalizedTitle;
+          // 同步向后兼容字段
+          (updatesWithSync as any).simpleTitle = normalizedTitle.simpleTitle;
+          (updatesWithSync as any).fullTitle = normalizedTitle.fullTitle;
+          
+          console.log('[EventService] title 对象更新（v2.14）:', {
             eventId,
-            simpleTitle: (updates as any).simpleTitle.substring(0, 50),
+            hasFullTitle: !!titleUpdate.fullTitle,
+            hasColorTitle: !!titleUpdate.colorTitle,
+            hasSimpleTitle: !!titleUpdate.simpleTitle
+          });
+        } else {
+          // 旧格式：字符串（当作 simpleTitle 处理）
+          const normalizedTitle = this.normalizeTitle({
+            simpleTitle: titleUpdate as string
+          });
+          
+          (updatesWithSync as any).title = normalizedTitle;
+          (updatesWithSync as any).simpleTitle = normalizedTitle.simpleTitle;
+          (updatesWithSync as any).fullTitle = normalizedTitle.fullTitle;
+          
+          console.log('[EventService] title 字符串更新（兼容模式）:', {
+            eventId,
+            titleLength: (titleUpdate as string).length
           });
         }
-        // 同步到 title（向后兼容）
-        (updatesWithSync as any).title = (updates as any).simpleTitle;
       }
       
-      // 场景2: fullTitle 有变化 → 同步到 simpleTitle（如果未设置）
-      if ((updates as any).fullTitle !== undefined && (updates as any).fullTitle !== originalEvent.fullTitle) {
-        if ((updates as any).simpleTitle === undefined) {
-          (updatesWithSync as any).simpleTitle = this.stripHtml((updates as any).fullTitle);
-          console.log('[EventService] fullTitle 更新 → 同步到 simpleTitle:', {
-            eventId,
-            fullTitle: (updates as any).fullTitle.substring(0, 50),
-          });
-        }
-        // 同步到 title（向后兼容）
-        (updatesWithSync as any).title = (updatesWithSync as any).simpleTitle || this.stripHtml((updates as any).fullTitle);
+      // 兼容旧代码：simpleTitle/fullTitle 直接更新
+      else if ((updates as any).simpleTitle !== undefined || (updates as any).fullTitle !== undefined) {
+        console.warn('[EventService] ⚠️ 检测到旧格式标题更新，将自动转换为 v2.14 格式');
+        
+        const currentTitle = typeof originalEvent.title === 'object' ? originalEvent.title : {
+          simpleTitle: originalEvent.simpleTitle,
+          fullTitle: originalEvent.fullTitle,
+          colorTitle: undefined
+        };
+        
+        const normalizedTitle = this.normalizeTitle({
+          ...currentTitle,
+          simpleTitle: (updates as any).simpleTitle,
+          fullTitle: (updates as any).fullTitle
+        });
+        
+        (updatesWithSync as any).title = normalizedTitle;
+        (updatesWithSync as any).simpleTitle = normalizedTitle.simpleTitle;
+        (updatesWithSync as any).fullTitle = normalizedTitle.fullTitle;
       }
       
       // ========== Description 双向同步 ==========
