@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **EventEditModal V2 日历同步功能完整实现** (2025-11-25):
+  - ✅ **6层优先级来源显示**: 自动判断事件来源（Timer子事件→外部日历→独立Timer→Plan→TimeCalendar→本地事件）
+  - ✅ **多选日历 UI**: "来自"区域只读显示，"同步到"区域支持多选日历，显示"第一个日历+等"
+  - ✅ **Private 模式**: 支持 send-only-private 和 bidirectional-private 模式，参与者格式化为📧文本添加到 description
+  - ✅ **标签自动映射**: 根据同步目标日历自动添加对应标签（Outlook→工作+Outlook, Google→生活+Google, iCloud→个人+iCloud）
+  - ✅ **数据链路完整**: calendarIds[], planSyncConfig, actualSyncConfig 完整连接到 Event 类型和 EventService
+  - Files: 
+    - `EventEditModalV2.tsx` (Line 494-520: 标签映射, Line 626-663: Private模式, Line 691-747: 6层优先级)
+    - `SimpleCalendarDropdown.tsx` (多选支持)
+    - `types.ts` (PlanSyncConfig, ActualSyncConfig)
+  - Documentation: `EVENTEDITMODAL_V2_PRD.md` (更新实现状态和代码位置)
+  - Commits: 8012c5a, 8620720, 409b779, 7b51d7a
+
 ### Fixed
 - **ContentSelectionPanel Button Spacing Optimization** (2025-11-19):
   - 🎨 移除任务节点中所有不必要的spacer占位符
