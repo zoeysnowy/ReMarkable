@@ -1198,6 +1198,41 @@ export class EventService {
     }).join('');
   }
 
+  // ==================== 数据迁移工具 (v2.14) ====================
+
+  /**
+   * 迁移单个事件的标题格式（旧格式 → 新格式）
+   * @param event - 可能包含旧格式标题的事件
+   * @returns 迁移后的事件（新格式标题）
+   */
+  private static migrateEventTitle(event: any): Event {
+    // 检测旧格式：title 是字符串或存在独立的 simpleTitle/fullTitle 字段
+    const isOldFormat = typeof event.title !== 'object' || 
+                       event.title === null ||
+                       event.simpleTitle !== undefined || 
+                       event.fullTitle !== undefined;
+    
+    if (!isOldFormat) {
+      // 已经是新格式，直接返回
+      return event as Event;
+    }
+    
+    // 迁移标题
+    const normalizedTitle = this.normalizeTitle({
+      simpleTitle: event.simpleTitle || (typeof event.title === 'string' ? event.title : ''),
+      fullTitle: event.fullTitle,
+      colorTitle: undefined // 自动生成
+    });
+    
+    return {
+      ...event,
+      title: normalizedTitle,
+      // 保留向后兼容字段
+      simpleTitle: normalizedTitle.simpleTitle,
+      fullTitle: normalizedTitle.fullTitle
+    };
+  }
+
   // ==================== 标题三层架构转换工具 (v2.14) ====================
 
   /**

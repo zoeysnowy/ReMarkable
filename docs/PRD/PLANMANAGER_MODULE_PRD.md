@@ -79,10 +79,10 @@ export function filterEventsByTimeRange(
 }
 ```
 
-**过滤逻辑说明**:
-1. **checkType 过滤**: 只显示有 checkbox 的事件（`'once'` 或 `'recurring'`）
+**过滤逻辑说明**（UpcomingEventsPanel 三步公式）:
+1. **checkType 过滤**: 必须有有效的 checkType 且不为 'none'（!checkType || checkType === 'none' → false）
 2. **时间范围**: 必须在选定的时间范围内（Today/Tomorrow/This Week 等）
-3. **系统事件**: 排除 Timer/TimeLog/OutsideApp 等系统生成的事件
+3. **系统事件**: 排除 Timer/TimeLog/OutsideApp 等系统生成的事件（严格比较 === true）
 
 **注意**: 过滤顺序至关重要，必须按上述三步顺序执行，不能合并为并行条件。
 
@@ -1775,31 +1775,49 @@ const newItem: Event = {
 
 ### 2.4.1 数据来源和过滤规则
 
-**数据加载**: PlanManager 从 EventService.getAllEvents() 获取所有事件，然后应用以下过滤规则:
+**数据加载**: PlanManager 从 EventService.getAllEvents() 获取所有事件，然后应用以下过滤规则（v2.3 更新）:
 
 ```typescript
+// 🎯 三步过滤公式：isPlan + checkType - 系统事件
 const filtered = allEvents.filter((event: Event) => {
-  if (!event.isPlan) return false;
-  
-  // 🔧 精确过滤：只排除系统生成的子事件，保留用户计划分项
-  if (event.parentEventId) {
-    // 如果是子事件，检查是否为需要排除的系统类型
-    if (event.isTimer || event.isTimeLog || event.isOutsideApp) {
-      return false; // 排除：计时器子事件、时间日志、外部应用数据或纯粹的用户日志笔记
-    }
-    // 其他子事件（用户创建的计划分项）保留显示
+  // 步骤 1: 必须是 Plan 事件
+  if (!event.isPlan) {
+    return false;
   }
   
+  // 步骤 2: checkType 过滤（必须有有效的 checkType 且不为 'none'）
+  if (!event.checkType || event.checkType === 'none') {
+    return false;
+  }
+  
+  // 步骤 3: TimeCalendar 时间范围检查
   if (event.isTimeCalendar) {
     if (event.endTime) {
       const endTime = new Date(event.endTime);
-      return now < endTime;
+      if (now >= endTime) {
+        return false; // TimeCalendar 已过期
+      }
+    } else {
+      return false; // 没有endTime的TimeCalendar事件视为已过期
     }
-    return false; // 没有endTime的TimeCalendar事件视为已过期
   }
+  
+  // 步骤 4: 排除系统事件（使用严格比较 === true）
+  if (event.isTimer === true || 
+      event.isOutsideApp === true || 
+      event.isTimeLog === true) {
+    return false;
+  }
+  
   return true;
 });
 ```
+
+**关键改进（v2.3 2025-11-25）**:
+- 添加 `checkType` 过滤：只显示有 checkbox 的事件（'once' 或 'recurring'）
+- 系统事件过滤不再依赖 `parentEventId`：独立的系统事件也能被正确过滤
+- 统一过滤顺序：isPlan → checkType → TimeCalendar → 系统事件
+- 使用严格比较 `=== true`：避免 `undefined` 被误判
 
 ### 2.4.2 事件类型分类表
 

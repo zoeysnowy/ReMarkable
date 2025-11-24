@@ -334,6 +334,30 @@ if (dateRange) {
   );
   
   deleteOpsInRange.forEach(log => {
+    // 🎯 三步过滤公式（v2.3 2025-11-25）
+    
+    // 步骤 1: checkType 过滤（必须有有效的 checkType 且不为 'none'）
+    if (!log.before.checkType || log.before.checkType === 'none') {
+      console.log('[PlanManager] ⏭️ 跳过 checkType 无效 ghost:', log.eventId.slice(-8));
+      return;
+    }
+    
+    // 步骤 2: 业务类型过滤（必须有内容）
+    const hasContent = log.before.title || log.before.content || 
+                      log.before.simpleTitle || log.before.fullTitle;
+    if (!hasContent) {
+      console.log('[PlanManager] ⏭️ 跳过空白 ghost:', log.eventId.slice(-8));
+      return;
+    }
+    
+    // 步骤 3: 系统事件过滤（使用严格比较 === true）
+    if (log.before.isTimer === true || 
+        log.before.isTimeLog === true || 
+        log.before.isOutsideApp === true) {
+      console.log('[PlanManager] ⏭️ 跳过系统事件 ghost:', log.eventId.slice(-8));
+      return;
+    }
+    
     console.log('[PlanManager] 👻 添加 ghost:', {
       eventId: log.eventId.slice(-8),
       title: log.before?.title,
