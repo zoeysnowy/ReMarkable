@@ -95,7 +95,15 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
       isCompleted: item.isCompleted,
       isTask: item.isTask,
       type: item.type,
-      checkType: item.checkType || 'once', // 🆕 签到类型（默认有checkbox）
+      checkType: (() => {
+        const finalCheckType = item.checkType || 'once';
+        console.log('🔍 [planItemsToSlateNodes] Map checkType:', {
+          eventId: item.id?.slice(-10),
+          itemCheckType: item.checkType,
+          finalCheckType
+        });
+        return finalCheckType;
+      })(), // 🆕 签到类型（默认有checkbox）
       
       // Plan 相关
       isPlan: item.isPlan,
@@ -119,15 +127,9 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
     } as any;
     
     // Title 行（始终创建，即使内容为空）
-    // ✅ v2.14: 使用 title.fullTitle（Slate JSON 格式）
-    let titleChildren: (TextNode | TagNode | DateMentionNode)[];
-    try {
-      // fullTitle 是 JSON 字符串，直接解析
-      titleChildren = item.title?.fullTitle ? JSON.parse(item.title.fullTitle) : [{ text: '' }];
-    } catch (e) {
-      console.warn('[planItemToSlateNode] Failed to parse title.fullTitle as JSON, fallback to empty', e);
-      titleChildren = [{ text: '' }];
-    }
+    // ✅ v2.14: 使用 title.fullTitle（纯 Slate JSON 格式）
+    const titleChildren: (TextNode | TagNode | DateMentionNode)[] = 
+      item.title?.fullTitle ? JSON.parse(item.title.fullTitle) : [{ text: '' }];
     
     const titleNode: EventLineNode = {
       type: 'event-line',
