@@ -38,7 +38,7 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
         
         return {
           id: item.id?.substring(0, 30),
-          title: item.title?.substring(0, 20),
+          title: item.title?.simpleTitle?.substring(0, 20) || '',
           eventlogType,
           hasEventlog: !!item.eventlog,
           hasDescription: !!item.description,
@@ -64,7 +64,7 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
         }
       }
       
-      console.log(`  [${i}] ${item.title?.substring(0, 30)}`, {
+      console.log(`  [${i}] ${item.title?.simpleTitle?.substring(0, 30) || ''}`, {
         hasEventlog: !!item.eventlog,
         eventlogType,
         eventlogLength: eventlogContent.length,
@@ -119,7 +119,16 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
     } as any;
     
     // Title 行（始终创建，即使内容为空）
-    // ✅ v2.8: 使用 fullTitle（富文本）优先，回退到 simpleTitle/title
+    // ✅ v2.14: 使用 title.fullTitle（Slate JSON 格式）
+    let titleChildren: (TextNode | TagNode | DateMentionNode)[];
+    try {
+      // fullTitle 是 JSON 字符串，直接解析
+      titleChildren = item.title?.fullTitle ? JSON.parse(item.title.fullTitle) : [{ text: '' }];
+    } catch (e) {
+      console.warn('[planItemToSlateNode] Failed to parse title.fullTitle as JSON, fallback to empty', e);
+      titleChildren = [{ text: '' }];
+    }
+    
     const titleNode: EventLineNode = {
       type: 'event-line',
       eventId: item.eventId || item.id,
@@ -129,7 +138,7 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
       children: [
         {
           type: 'paragraph',
-          children: htmlToSlateFragment(item.fullTitle || item.simpleTitle || item.title || ''),
+          children: titleChildren,
         },
       ],
       metadata,  // 🆕 透传元数据
@@ -466,12 +475,14 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
     if (node.mode === 'title') {
       // Title 模式：只取第一个 paragraph
       const fragment = paragraphs[0]?.children;
-      const html = fragment ? slateFragmentToHtml(fragment) : '';
       
-      // ✅ v2.8: 保存到 fullTitle（富文本）和 simpleTitle（纯文本）
-      item.fullTitle = html;
-      item.simpleTitle = fragment ? extractPlainText(fragment) : '';
-      item.title = item.simpleTitle; // 向后兼容
+      // ✅ v2.14: 保存到 title 对象（三层架构）
+      // fullTitle 保存 Slate JSON（JSON.stringify），EventService 会自动生成 colorTitle 和 simpleTitle
+      item.title = {
+        fullTitle: fragment ? JSON.stringify(fragment) : '', // Slate fragment JSON
+        colorTitle: undefined, // 让 EventService 自动生成
+        simpleTitle: undefined // 让 EventService 自动生成
+      };
       item.tags = fragment ? extractTags(fragment) : '';
       
       // 🆕 v2.9: 优先从 TimeHub 读取最新时间（DateMention 只是触发器）
@@ -549,7 +560,7 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
   
   // ✅ v1.5: 过滤掉空节点（临时占位节点）
   const result = Array.from(items.values()).filter(item => {
-    const isEmpty = !item.title?.trim() && 
+    const isEmpty = !item.title?.simpleTitle?.trim() && 
                    !item.content?.trim() && 
                    !item.description?.trim() &&
                    (!item.tags || item.tags.length === 0);
@@ -559,7 +570,7 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
   // 🔍 v1.8: 调试返回的 items
   console.log('[slateNodesToPlanItems] 返回结果:', result.map(item => ({
     id: item.id,
-    title: item.title?.substring(0, 20),
+    title: item.title?.simpleTitle?.substring(0, 20) || '',
     hasEventlog: !!item.eventlog,
     hasDescription: !!item.description,
     eventlogLength: item.eventlog?.length || 0,
