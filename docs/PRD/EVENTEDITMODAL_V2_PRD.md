@@ -3190,20 +3190,49 @@ function renderActualProgressSync(event: Event): ReactNode {
 }
 ```
 
-**标签自动映射规则**:
+**✅ 标签自动映射规则（已实现于 EventEditModalV2.tsx Line 494-518）**:
 
-| 日历类型 | 自动添加标签 | 保留原有标签 |
-|---------|------------|------------|
-| Outlook | `['工作', 'Outlook']` | ✅ 保留 |
-| Google Calendar | `['生活', 'Google']` | ✅ 保留 |
-| iCloud | `['个人', 'iCloud']` | ✅ 保留 |
+| 日历类型 | 自动添加标签 | 保留原有标签 | 实现状态 |
+|---------|------------|------------|---------|
+| Outlook | `['工作', 'Outlook']` | ✅ 保留 | ✅ 已实现 |
+| Google Calendar | `['生活', 'Google']` | ✅ 保留 | ✅ 已实现 |
+| iCloud | `['个人', 'iCloud']` | ✅ 保留 | ✅ 已实现 |
+
+**实现逻辑**:
+
+```typescript
+// ✅ 已实现于 EventEditModalV2.tsx Line 494-518
+// Step 6.5: 标签自动映射（根据同步目标日历自动添加标签）
+let finalTags = [...(formData.tags || [])];
+const targetCalendars = formData.planSyncConfig?.targetCalendars || [];
+
+if (targetCalendars.length > 0) {
+  console.log('🏷️ [EventEditModalV2] Auto-mapping tags from target calendars:', targetCalendars);
+  const autoTags: string[] = [];
+  
+  targetCalendars.forEach(calendarId => {
+    // 假设日历 ID 格式为 "outlook-work", "google-personal", "icloud-family"
+    if (calendarId.includes('outlook')) {
+      autoTags.push('工作', 'Outlook');
+    } else if (calendarId.includes('google')) {
+      autoTags.push('生活', 'Google');
+    } else if (calendarId.includes('icloud')) {
+      autoTags.push('个人', 'iCloud');
+    }
+  });
+  
+  // 去重合并
+  finalTags = Array.from(new Set([...finalTags, ...autoTags]));
+  console.log('🏷️ [EventEditModalV2] Final tags after auto-mapping:', finalTags);
+}
+```
 
 **同步行为**:
 
-1. **添加标签**: 同步时自动为事件添加对应日历的标签
-2. **保留原标签**: 用户手动添加的标签不会被覆盖
-3. **去重处理**: 自动去除重复标签
-4. **双向同步**: 外部日历的标签变更也会同步回 ReMarkable
+1. ✅ **添加标签**: 保存时自动为事件添加对应日历的标签
+2. ✅ **保留原标签**: 用户手动添加的标签不会被覆盖
+3. ✅ **去重处理**: 自动去除重复标签（使用 `new Set()`）
+4. ⏳ **双向同步**: 外部日历的标签变更也会同步回 ReMarkable（待实现）
 
 **示例**:
 
