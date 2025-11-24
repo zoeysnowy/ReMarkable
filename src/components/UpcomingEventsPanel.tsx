@@ -8,6 +8,7 @@ import {
   formatTimeLabel 
 } from '../utils/upcomingEventsHelper';
 import { shouldShowCheckbox } from '../utils/eventHelpers';
+import { EventService } from '../services/EventService';
 
 // 导入本地 SVG 图标
 import TimerStartIconSvg from '../assets/icons/timer_start.svg';
@@ -26,14 +27,12 @@ const RightIcon = ({ className }: { className?: string }) => <img src={RightIcon
 const HideIcon = ({ className }: { className?: string }) => <img src={HideIconSvg} alt="Hide" className={className} style={{ width: '20px', height: '20px', opacity: 0.6 }} />;
 
 interface UpcomingEventsPanelProps {
-  events: Event[]; // 传入的事件列表
   onTimeFilterChange?: (filter: TimeFilter) => void;
   onEventClick?: (event: Event) => void; // 点击事件卡片
   onCheckboxChange?: (eventId: string, checked: boolean) => void; // checkbox 状态变化
 }
 
 const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({ 
-  events = [], // 默认空数组
   onTimeFilterChange,
   onEventClick,
   onCheckboxChange
@@ -42,6 +41,29 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isVisible, setIsVisible] = useState(true);
   const [showExpired, setShowExpired] = useState(false); // 是否展开过期事件
+  const [allEvents, setAllEvents] = useState<Event[]>([]); // 从 EventService 加载的所有事件
+
+  // 从 EventService 加载所有事件
+  useEffect(() => {
+    const loadEvents = () => {
+      const events = EventService.getAllEvents();
+      setAllEvents(events);
+    };
+
+    // 初始加载
+    loadEvents();
+
+    // 监听事件更新
+    const handleEventsUpdated = () => {
+      loadEvents();
+    };
+
+    window.addEventListener('eventsUpdated', handleEventsUpdated);
+
+    return () => {
+      window.removeEventListener('eventsUpdated', handleEventsUpdated);
+    };
+  }, []);
 
   // Update current time every minute
   useEffect(() => {
@@ -54,8 +76,8 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
 
   // 筛选和排序事件
   const { upcoming, expired } = useMemo(() => {
-    return filterAndSortEvents(events, activeFilter, currentTime);
-  }, [events, activeFilter, currentTime]);
+    return filterAndSortEvents(allEvents, activeFilter, currentTime);
+  }, [allEvents, activeFilter, currentTime]);
 
   const handleFilterChange = (filter: TimeFilter) => {
     setActiveFilter(filter);

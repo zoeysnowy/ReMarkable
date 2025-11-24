@@ -39,20 +39,9 @@
 
 ```typescript
 import { UpcomingEventsPanel } from '../components/UpcomingEventsPanel';
-import { Event } from '../types';
+import { EventService } from '../services/EventService';
 
 function MyComponent() {
-  const [events, setEvents] = useState<Event[]>([]);
-
-  // 从 EventService 获取事件
-  useEffect(() => {
-    const loadEvents = async () => {
-      const allEvents = await eventService.getEvents();
-      setEvents(allEvents);
-    };
-    loadEvents();
-  }, []);
-
   const handleTimeFilterChange = (filter: TimeFilter) => {
     console.log('筛选器变更:', filter);
   };
@@ -65,12 +54,11 @@ function MyComponent() {
   const handleCheckboxChange = (eventId: string, checked: boolean) => {
     console.log('Checkbox 变更:', eventId, checked);
     // 更新事件的 checked 状态
-    eventService.updateEvent(eventId, { checked });
+    EventService.updateEvent(eventId, { checked });
   };
 
   return (
     <UpcomingEventsPanel
-      events={events}
       onTimeFilterChange={handleTimeFilterChange}
       onEventClick={handleEventClick}
       onCheckboxChange={handleCheckboxChange}
@@ -79,14 +67,18 @@ function MyComponent() {
 }
 ```
 
+**注意**：组件会自动从 `EventService.getAllEvents()` 获取数据，并监听 `eventsUpdated` 事件自动刷新。无需手动传入 events 数据
+```
+
 ### Props 说明
 
 | Prop | 类型 | 必需 | 说明 |
 |------|------|------|------|
-| `events` | `Event[]` | ✅ | 事件列表 |
 | `onTimeFilterChange` | `(filter: TimeFilter) => void` | ❌ | 时间筛选器变更回调 |
 | `onEventClick` | `(event: Event) => void` | ❌ | 点击事件卡片回调 |
 | `onCheckboxChange` | `(eventId: string, checked: boolean) => void` | ❌ | Checkbox 状态变更回调 |
+
+**数据源**：组件内部自动从 `EventService.getAllEvents()` 获取数据，避免受 PlanManager Snapshot 模式影响
 
 ### TimeFilter 类型
 
