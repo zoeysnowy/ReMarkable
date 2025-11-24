@@ -484,13 +484,37 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         finalAttendees = []; // Private 模式下清空 attendees
       }
 
+      // 🔧 Step 6.5: 标签自动映射（根据同步目标日历自动添加标签）
+      let finalTags = [...(formData.tags || [])];
+      const targetCalendars = formData.planSyncConfig?.targetCalendars || [];
+      
+      if (targetCalendars.length > 0) {
+        console.log('🏷️ [EventEditModalV2] Auto-mapping tags from target calendars:', targetCalendars);
+        const autoTags: string[] = [];
+        
+        targetCalendars.forEach(calendarId => {
+          // 假设日历 ID 格式为 "outlook-work", "google-personal", "icloud-family"
+          if (calendarId.includes('outlook')) {
+            autoTags.push('工作', 'Outlook');
+          } else if (calendarId.includes('google')) {
+            autoTags.push('生活', 'Google');
+          } else if (calendarId.includes('icloud')) {
+            autoTags.push('个人', 'iCloud');
+          }
+        });
+        
+        // 去重合并
+        finalTags = Array.from(new Set([...finalTags, ...autoTags]));
+        console.log('🏷️ [EventEditModalV2] Final tags after auto-mapping:', finalTags);
+      }
+
       // 🔧 Step 7: 构建完整的 Event 对象
       const updatedEvent: Event = {
         ...event, // 保留原有字段（如 createdAt, syncStatus 等）
         ...formData,
         id: eventId, // 使用验证后的 ID
         title: finalTitle, // 使用处理后的标题
-        tags: formData.tags,
+        tags: finalTags, // 🏷️ 使用自动映射后的标签
         isTask: formData.isTask,
         isTimer: formData.isTimer,
         parentEventId: formData.parentEventId,
