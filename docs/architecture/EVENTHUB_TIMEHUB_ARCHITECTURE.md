@@ -1,11 +1,95 @@
 # EventHub & TimeHub 统一架构文档
 
-> **文档版本**: v1.8  
+> **文档版本**: v2.14  
 > **创建时间**: 2025-11-06  
 > **最后更新**: 2025-11-25  
 > **关联模块**: EventHub, TimeHub, EventService, EventHistoryService, TimeParsingService, PlanManager, UpcomingEventsPanel  
 > **文档类型**: 核心架构文档
-> **新增关联**: EventHistoryService 时间快照查询、Snapshot 功能优化、checkType 与 checkbox 关联
+> **新增关联**: EventTitle 三层架构、EventHistoryService 时间快照查询、Snapshot 功能优化、checkType 与 checkbox 关联
+
+---
+
+## 🎉 v2.14 EventTitle 三层架构重构 (2025-11-25)
+
+### 核心变更
+
+**背景**: 不同组件对标题格式需求不同（富文本 vs 纯文本），旧架构使用 `title: string` 导致信息丢失和场景混乱
+**解决方案**: 将 `title` 从 `string` 改为 `EventTitle` 对象，包含三个层级：fullTitle (Slate JSON)、colorTitle (HTML)、simpleTitle (纯文本)
+**状态**: ✅ 已完成全量迁移
+
+### 架构改进
+
+#### 1. 类型定义 - EventTitle 接口
+
+```typescript
+interface EventTitle {
+  fullTitle?: string;    // Slate JSON 富文本（UnifiedSlateEditor）
+  colorTitle?: string;   // HTML 富文本（UpcomingPanel/EditModal）
+  simpleTitle?: string;  // 纯文本（TimeCalendar/搜索/同步）
+}
+
+// Event.title 从 string 变为 EventTitle 对象
+interface Event {
+  title: EventTitle;  // ✅ v2.14
+  // ❌ 废弃字段已移除: simpleTitle, fullTitle
+}
+```
+
+#### 2. 自动转换机制 - EventService.normalizeTitle()
+
+```typescript
+// 🔥 核心：自动填充缺失层级
+private static normalizeTitle(titleInput: Partial<EventTitle>): EventTitle {
+  // 场景1: fullTitle only → 生成 colorTitle + simpleTitle
+  if (fullTitle && !colorTitle && !simpleTitle) {
+    return {
+      fullTitle,
+      colorTitle: fullTitleToColorTitle(fullTitle),
+      simpleTitle: colorTitleToSimpleTitle(colorTitle)
+    };
+  }
+  
+  // 场景2-4: 类似逻辑
+}
+```
+
+#### 3. 组件适配完成
+
+| 组件 | 使用字段 | 变更内容 |
+|-----|---------|---------|
+| UnifiedSlateEditor | `fullTitle` | ✅ 读写 title.fullTitle |
+| UpcomingEventsPanel | `colorTitle` | ✅ 显示 title.colorTitle |
+| EventEditModalV2 | `colorTitle` | ✅ 表单读写 colorTitle |
+| PlanManager | `simpleTitle` | ✅ 搜索/日志用 simpleTitle |
+| TimeCalendar | `simpleTitle` | ✅ 周/日视图用 simpleTitle |
+| Timer 模块 | `simpleTitle` | ✅ App.tsx 全部转换 |
+
+#### 4. 性能优化
+
+- **自动转换**: addEvent/updateEvent 自动调用 normalizeTitle()
+- **按需读取**: 组件只读取需要的层级
+- **避免重复**: 转换函数缓存结果
+
+### 迁移影响
+
+**✅ 完成的修改** (12个文件):
+1. types.ts - EventTitle 定义
+2. EventService.ts - 转换函数 + normalizeTitle()
+3. PlanManager.tsx - 所有 title 操作改为 simpleTitle
+4. UnifiedSlateEditor/serialization.ts - 序列化层
+5. UpcomingEventsPanel.tsx - 显示 colorTitle
+6. EventEditModalV2.tsx - 表单读写 colorTitle
+7. App.tsx - Timer title 赋值改为对象
+8. TimeCalendar.tsx - Timer 前缀检查
+9. calendarUtils.ts - 字符串操作
+10. ActionBasedSyncManager.ts - 冲突标记
+11. StatusLineContainer.tsx - 日志输出
+12. upcomingEventsHelper.ts - 过滤逻辑
+
+**🔥 破坏性变更**:
+- `Event.title` 从 `string` 变为 `EventTitle` 对象
+- 移除废弃字段 `simpleTitle`, `fullTitle`
+- 所有 `event.title.substring()` 改为 `event.title?.simpleTitle?.substring()`
 
 ---
 
@@ -1671,9 +1755,15 @@ await TimeHub.setEventTime('event-123', {
 interface Event {
   // ========== 基础标识 ==========
   id: string;                      // 事件唯一标识
-  title: string;                   // 事件标题
+  
+  // 🆕 v2.14: 标题三层架构（支持富文本、格式化、纯文本）
+  title: EventTitle;               // 事件标题（对象类型，包含三个层级）
+  
   description?: string;            // 事件描述（HTML 格式）
   emoji?: string;                  // 🆕 v1.1：事件 Emoji 图标
+  
+  // ========== EventTitle 三层架构（v2.14） ==========
+  // 详见下文 8.1.1 EventTitle 三层架构
   
   // ========== 时间字段（由 TimeHub 管理） ==========
   // ⚠️ 重要：时间格式统一为 'YYYY-MM-DD HH:mm:ss'（空格分隔符）
@@ -1728,6 +1818,152 @@ interface Event {
   syncStatus?: 'synced' | 'pending' | 'error' | 'local-only'; // 同步状态
 }
 ```
+
+### 8.1.1 EventTitle 三层架构（v2.14）
+
+#### 📋 接口定义
+
+```typescript
+/**
+ * 事件标题三层架构
+ * 自动转换支持：EventService.normalizeTitle() 自动填充缺失层级
+ */
+interface EventTitle {
+  fullTitle?: string;    // Slate JSON 富文本（包含标签、@人员、格式）
+  colorTitle?: string;   // HTML 富文本（包含颜色、加粗，但不含元素节点）
+  simpleTitle?: string;  // 纯文本（用于搜索、同步、日志）
+}
+```
+
+#### 🎯 设计原理
+
+**问题背景**：
+- UnifiedSlateEditor 需要完整 Slate JSON（标签、元素）
+- UpcomingPanel/EditModal 需要 HTML 格式（颜色、加粗）
+- TimeCalendar/搜索/同步 只需要纯文本
+- 旧架构混用 `title: string` 导致信息丢失
+
+**解决方案**：三层架构 + 自动转换
+1. **fullTitle** (Slate JSON) - 最完整的数据源
+2. **colorTitle** (HTML) - 中间层，保留格式但去除元素
+3. **simpleTitle** (纯文本) - 最简化版本
+
+#### 🔄 自动转换机制
+
+EventService 提供自动转换函数：
+
+```typescript
+class EventService {
+  // 向下降级：fullTitle → colorTitle → simpleTitle
+  private static fullTitleToColorTitle(fullTitle: string): string {
+    // 解析 Slate JSON，移除 tag/dateMention 节点，保留文本格式
+  }
+  
+  private static colorTitleToSimpleTitle(colorTitle: string): string {
+    // 移除所有 HTML 标签，返回纯文本
+  }
+  
+  // 向上升级：simpleTitle → fullTitle (基础 Slate JSON)
+  private static simpleTitleToFullTitle(simpleTitle: string): string {
+    // 创建简单的 Slate paragraph 节点
+  }
+  
+  // 🔥 核心：自动填充缺失层级
+  private static normalizeTitle(titleInput: Partial<EventTitle>): EventTitle {
+    // 场景1: 只有 fullTitle → 生成 colorTitle + simpleTitle
+    // 场景2: 只有 colorTitle → 生成 simpleTitle + fullTitle
+    // 场景3: 只有 simpleTitle → 生成 colorTitle + fullTitle
+    // 场景4: 有多个字段 → 填充缺失的
+  }
+}
+```
+
+#### 📊 使用场景映射
+
+| 组件/场景 | 使用字段 | 原因 | 示例 |
+|---------|---------|------|------|
+| **UnifiedSlateEditor** | `fullTitle` | 需要完整 Slate JSON（标签、元素） | 保存/读取带标签的标题 |
+| **UpcomingEventsPanel** | `colorTitle` | 显示 HTML 格式（颜色、加粗） | 红色加粗标题 |
+| **EventEditModal** | `colorTitle` | 富文本输入框，支持格式 | 用户输入带颜色标题 |
+| **Timer 模块** | `simpleTitle` | 简单文本显示 | "[专注中] 写文档" |
+| **TimeCalendar** | `simpleTitle` | 周/日视图纯文本 | "团队会议" |
+| **Outlook 同步** | `simpleTitle` | 远程日历不支持 HTML | "团队会议" |
+| **搜索功能** | `simpleTitle` | 全文搜索用纯文本 | 搜索"会议" |
+| **日志输出** | `simpleTitle` | console.log 可读性 | 显示前20字符 |
+
+#### 💡 使用示例
+
+```typescript
+// ✅ UnifiedSlateEditor 保存
+slateNodeToPlanItem(node) {
+  return {
+    title: {
+      fullTitle: slateToHtml(node),  // 保存完整 Slate JSON
+      colorTitle: undefined,          // EventService 自动生成
+      simpleTitle: undefined          // EventService 自动生成
+    }
+  };
+}
+
+// ✅ EventService 自动填充
+EventService.addEvent({
+  title: { fullTitle: '<p>红色标题</p>' }
+});
+// → normalizeTitle() 自动生成:
+// {
+//   fullTitle: '<p>红色标题</p>',
+//   colorTitle: '<span style="color:red">红色标题</span>',
+//   simpleTitle: '红色标题'
+// }
+
+// ✅ UpcomingPanel 显示
+<div dangerouslySetInnerHTML={{ 
+  __html: event.title?.colorTitle || event.title?.simpleTitle || ''
+}} />
+
+// ✅ 搜索过滤
+items.filter(item => 
+  item.title?.simpleTitle?.toLowerCase().includes(query)
+)
+
+// ✅ TimeCalendar 显示
+<span>{event.title?.simpleTitle}</span>
+```
+
+#### ⚠️ 迁移注意事项
+
+**旧代码模式**（❌ 已废弃）：
+```typescript
+event.title = "纯文本标题";  // ❌ 类型错误
+event.simpleTitle = "...";    // ❌ 字段已移除
+event.fullTitle = "...";      // ❌ 字段已移除
+```
+
+**新代码模式**（✅ 推荐）：
+```typescript
+// 创建事件：提供任意一层，其他层自动生成
+event.title = { 
+  simpleTitle: "标题",
+  fullTitle: undefined,
+  colorTitle: undefined
+};
+
+// 读取事件：根据场景选择合适的层级
+const displayTitle = event.title?.colorTitle || event.title?.simpleTitle || '';
+const searchText = event.title?.simpleTitle || '';
+const slateJson = event.title?.fullTitle || '';
+```
+
+#### 🔍 调试技巧
+
+EventService 在转换时输出日志：
+```typescript
+console.log('[EventService] normalizeTitle - 场景1: 仅 fullTitle');
+console.log('[EventService] normalizeTitle - 生成 colorTitle:', colorTitle);
+console.log('[EventService] normalizeTitle - 生成 simpleTitle:', simpleTitle);
+```
+
+---
 
 ### 8.2 新增字段详解（v1.1）
 
