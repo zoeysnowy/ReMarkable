@@ -17,6 +17,7 @@ import { validateEventTime } from '../utils/eventValidation';
 import { determineSyncTarget, shouldSync } from '../utils/syncRouter';
 import { ContactService } from './ContactService';
 import { EventHistoryService } from './EventHistoryService'; // 🆕 事件历史记录
+import { jsonToSlateNodes, slateNodesToHtml } from '../components/LightSlateEditor/serialization'; // 🆕 Slate 转换
 
 const eventLogger = logger.module('EventService');
 
@@ -273,10 +274,16 @@ export class EventService {
       }
 
       // 验证基本必填字段
-      if (!event.id || !event.title) {
-        const error = 'Event missing required fields (id or title)';
+      if (!event.id) {
+        const error = 'Event missing required field: id';
         eventLogger.error('❌ [EventService]', error, event);
         return { success: false, error };
+      }
+      
+      // 标题可以为空（会在上层如 EventEditModal 或 TimeCalendar 中自动填充）
+      // 如果既无标题又无标签，应该在 UI 层禁用保存按钮
+      if (!event.title && (!event.tags || event.tags.length === 0)) {
+        eventLogger.warn('⚠️ [EventService] Event has no title and no tags:', event.id);
       }
 
       // 🆕 v1.8.1: 初始化 eventlog 为新格式（如果未提供）
@@ -576,33 +583,74 @@ export class EventService {
         }
       }
       
-      // 场景2: eventlog 有变化 → 同步到 description
+      // 场景2: eventlog 有变化 → 自动转换为 EventLog 对象并同步到 description
       if ((updates as any).eventlog !== undefined && (updates as any).eventlog !== (originalEvent as any).eventlog) {
-        if (updates.description === undefined) {
-          const newEventlog = (updates as any).eventlog;
-          const isNewFormat = typeof newEventlog === 'object' && newEventlog !== null;
+        const newEventlog = (updates as any).eventlog;
+        const isEventLogObject = typeof newEventlog === 'object' && newEventlog !== null && 'content' in newEventlog;
+        const isSlateJsonString = typeof newEventlog === 'string' && newEventlog.trim().startsWith('[');
+        
+        if (isEventLogObject) {
+          // 格式1: 已经是 EventLog 对象 - 直接使用
+          const eventLogObj = newEventlog as EventLog;
+          (updatesWithSync as any).eventlog = {
+            ...eventLogObj,
+            updatedAt: formatTimeForStorage(new Date()),
+          };
           
-          if (isNewFormat) {
-            // 新格式：从 EventLog 提取 descriptionHtml 或 descriptionPlainText
-            const eventLogObj = newEventlog as EventLog;
+          if (updates.description === undefined) {
             updatesWithSync.description = eventLogObj.descriptionHtml || eventLogObj.descriptionPlainText || '';
+          }
+          
+          console.log('[EventService] eventlog 已是对象格式，直接使用');
+        } else if (isSlateJsonString) {
+          // 格式2: Slate JSON 字符串 - 自动转换为 EventLog 对象
+          try {
+            const slateNodes = jsonToSlateNodes(newEventlog);
+            const htmlDescription = slateNodesToHtml(slateNodes);
+            const plainTextDescription = htmlDescription.replace(/<[^>]*>/g, '');
             
-            // 🆕 自动更新 updatedAt
-            (updatesWithSync as any).eventlog = {
-              ...eventLogObj,
+            // 构建完整的 EventLog 对象
+            const eventLogObject: EventLog = {
+              content: newEventlog,
+              descriptionHtml: htmlDescription,
+              descriptionPlainText: plainTextDescription,
+              attachments: (originalEvent as any)?.eventlog?.attachments || [],
+              versions: (originalEvent as any)?.eventlog?.versions || [],
+              syncState: {
+                status: 'pending',
+                contentHash: this.hashContent(newEventlog),
+              },
+              createdAt: (originalEvent as any)?.eventlog?.createdAt || formatTimeForStorage(new Date()),
               updatedAt: formatTimeForStorage(new Date()),
             };
-          } else {
-            // 旧格式：提取纯文本
-            const plainText = this.stripHtml(newEventlog as string);
+            
+            (updatesWithSync as any).eventlog = eventLogObject;
+            
+            if (updates.description === undefined) {
+              updatesWithSync.description = htmlDescription;
+            }
+            
+            console.log('[EventService] ✅ Slate JSON 自动转换为 EventLog 对象:', {
+              eventId,
+              contentLength: newEventlog.length,
+              htmlLength: htmlDescription.length,
+              plainTextLength: plainTextDescription.length,
+            });
+          } catch (error) {
+            console.error('[EventService] ❌ Slate JSON 转换失败:', error);
+            // 降级：保存原始字符串
+            (updatesWithSync as any).eventlog = newEventlog;
+          }
+        } else {
+          // 格式3: 其他格式（向后兼容）- 提取纯文本
+          const plainText = this.stripHtml(newEventlog as string);
+          (updatesWithSync as any).eventlog = newEventlog;
+          
+          if (updates.description === undefined) {
             updatesWithSync.description = plainText;
           }
           
-          console.log('[EventService] eventlog 增量更新 → 同步到 description:', {
-            eventId,
-            isNewFormat,
-            description: updatesWithSync.description?.substring(0, 50),
-          });
+          console.log('[EventService] eventlog 旧格式，提取纯文本');
         }
       }
       

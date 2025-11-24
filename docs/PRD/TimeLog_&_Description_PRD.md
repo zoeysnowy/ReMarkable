@@ -1070,8 +1070,10 @@ const handleDescriptionChange = (slateNodes: Descendant[]) => {
 
 ### 5.1 eventlog → description 自动转换
 
+**✅ 实现状态：已完成 (2025-11-24)**
+
 **转换时机：**
-- EventService.updateEvent() 保存时
+- EventService.updateEvent() 保存时（自动检测输入格式）
 - 同步到 Outlook 之前
 
 **转换流程：**
@@ -1080,14 +1082,32 @@ class EventService {
   async updateEvent(eventId: string, updates: Partial<Event>) {
     const event = await this.getEvent(eventId);
     
-    // 如果 eventlog 有更新，自动生成 description
+    // ✅ 自动检测 eventlog 格式并转换
     if (updates.eventlog) {
-      const slateNodes = JSON.parse(updates.eventlog) as Descendant[];
+      const isSlateJsonString = typeof updates.eventlog === 'string' && 
+                                 updates.eventlog.trim().startsWith('[');
       
-      // 转换为 HTML（用于 Outlook）
-      const { html, plainText } = serializeSlateToHtml(slateNodes);
-      
-      updates.description = html;
+      if (isSlateJsonString) {
+        // 🔧 前端传递 Slate JSON 字符串 → 自动转换为 EventLog 对象
+        const slateNodes = jsonToSlateNodes(updates.eventlog);
+        const html = slateNodesToHtml(slateNodes);
+        const plainText = html.replace(/<[^>]*>/g, '');
+        
+        // 构建完整的 EventLog 对象
+        updates.eventlog = {
+          content: updates.eventlog,           // Slate JSON
+          descriptionHtml: html,               // HTML 版本
+          descriptionPlainText: plainText,     // 纯文本
+          attachments: event.eventlog?.attachments || [],
+          versions: event.eventlog?.versions || [],
+          syncState: { status: 'pending', contentHash: updates.eventlog },
+          createdAt: event.eventlog?.createdAt || formatTimeForStorage(new Date()),
+          updatedAt: formatTimeForStorage(new Date()),
+        };
+        
+        // 自动同步到 description
+        updates.description = html;
+      }
     }
     
     // 保存到 localStorage
@@ -1103,6 +1123,11 @@ class EventService {
   }
 }
 ```
+
+**架构优化：**
+- ✅ 前端组件（EventEditModalV2）：只传递 Slate JSON 字符串
+- ✅ EventService：统一负责转换为 EventLog 对象
+- ✅ 避免代码重复：转换逻辑集中在一处
 
 ### 5.2 智能序列化策略
 

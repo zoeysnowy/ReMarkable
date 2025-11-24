@@ -26,8 +26,8 @@ export const TimestampDividerElement: React.FC<RenderElementProps> = ({ attribut
         position: 'relative',
         display: 'flex',
         alignItems: 'center',
-        marginBottom: '0',
-        paddingTop: '8px', // 用 padding 代替 margin，创造上方间距
+        margin: '0',
+        paddingTop: '8px',
         paddingBottom: '4px',
         paddingLeft: '20px', // 为左边的竖线留空间
         opacity: 0.7,

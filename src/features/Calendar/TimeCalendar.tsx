@@ -52,6 +52,12 @@ interface TimeCalendarProps {
     tagName?: string; // 🆕 标签名称（无标签时的默认值）
     taskTitle?: string; // 🔧 向后兼容
   } | null; // 🆕 添加：当前运行的计时器状态
+  // 🆕 Timer 操作回调（从 App.tsx 传递）
+  onTimerStart?: (tagIds?: string | string[], eventIdOrParentId?: string) => Promise<void>;
+  onTimerPause?: () => void;
+  onTimerResume?: () => void;
+  onTimerStop?: () => void;
+  onTimerCancel?: () => void;
   className?: string; // 🆕 添加：CSS类名支持
   style?: React.CSSProperties; // 🆕 添加：内联样式支持
   isWidgetMode?: boolean; // 🆕 添加：是否在 widget 模式下（隐藏悬浮窗按钮）
@@ -72,6 +78,11 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   lastSyncTime,
   availableTags = [],
   globalTimer,
+  onTimerStart,
+  onTimerPause,
+  onTimerResume,
+  onTimerStop,
+  onTimerCancel,
   className = '',
   style = {},
   isWidgetMode = false,
@@ -1913,6 +1924,21 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       // 🔄 同步到 Outlook（EventHub 已经调用了 EventService.updateEvent，会触发同步）
       // 不需要重复调用 recordLocalAction
       
+      // 🚪 关闭弹窗并清除时间段选择状态
+      setShowEventEditModal(false);
+      setEditingEvent(null);
+      
+      // 清除 TUI Calendar 的网格选择（避免时间标签与事件标题重叠）
+      if (calendarRef.current) {
+        const instance = calendarRef.current.getInstance();
+        if (instance) {
+          instance.clearGridSelections();
+          console.log('🧹 [TimeCalendar] Grid selections cleared');
+        }
+      }
+      
+      console.log('✅ [TimeCalendar] Modal closed after save');
+      
     } catch (error) {
       console.error('❌ [TimeCalendar] Save failed:', error);
     }
@@ -2776,7 +2802,29 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         onSave={handleSaveEventFromModal}
         onDelete={handleDeleteEventFromModal}
         hierarchicalTags={getAvailableTagsForSettings()}
-        globalTimer={null} // TimeCalendar 不使用 Timer
+        globalTimer={globalTimer}
+        onTimerAction={(action, tagIds, eventIdOrParentId) => {
+          // 🎯 Timer 动作分发器：根据 action 调用对应的 Timer 处理函数
+          switch (action) {
+            case 'start':
+              onTimerStart?.(tagIds, eventIdOrParentId);
+              break;
+            case 'pause':
+              onTimerPause?.();
+              break;
+            case 'resume':
+              onTimerResume?.();
+              break;
+            case 'stop':
+              onTimerStop?.();
+              break;
+            case 'cancel':
+              onTimerCancel?.();
+              break;
+            default:
+              console.warn(`[TimeCalendar] Unknown timer action: ${action}`);
+          }
+        }}
       />
 
       {/* ⚙️ 设置面板 */}

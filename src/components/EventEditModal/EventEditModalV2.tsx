@@ -82,6 +82,7 @@ import data from '@emoji-mart/data';
 import { TagService } from '../../services/TagService';
 import { EventService } from '../../services/EventService';
 import { ContactService } from '../../services/ContactService';
+import { EventHistoryService } from '../../services/EventHistoryService';
 import { Event, Contact } from '../../types';
 import { HierarchicalTagPicker } from '../HierarchicalTagPicker/HierarchicalTagPicker';
 import UnifiedDateTimePicker from '../FloatingToolbar/pickers/UnifiedDateTimePicker';
@@ -92,7 +93,8 @@ import { SimpleCalendarDropdown } from '../EventEditModalV2Demo/SimpleCalendarDr
 import { SyncModeDropdown } from '../EventEditModalV2Demo/SyncModeDropdown';
 import { getAvailableCalendarsForSettings, getCalendarGroupColor } from '../../utils/calendarUtils';
 // TimeLog 相关导入
-import { LightSlateEditor } from '../LightSlateEditor';
+import { LightSlateEditor, LightSlateEditorRef } from '../LightSlateEditor';
+import { jsonToSlateNodes, slateNodesToHtml, slateNodesToJson } from '../LightSlateEditor/serialization';
 import { HeadlessFloatingToolbar } from '../FloatingToolbar/HeadlessFloatingToolbar';
 import { useFloatingToolbar } from '../FloatingToolbar/useFloatingToolbar';
 // import { insertTag, insertEmoji, insertDateMention } from '../UnifiedSlateEditor/helpers';
@@ -153,7 +155,7 @@ interface EventEditModalV2Props {
     parentEventId?: string;
   } | null;
   onStartTimeChange?: (newStartTime: number) => void;
-  onTimerAction?: (action: 'start' | 'pause' | 'stop' | 'cancel', eventId?: string) => void;
+  onTimerAction?: (action: 'start' | 'pause' | 'resume' | 'stop' | 'cancel', tagIds?: string | string[], eventIdOrParentId?: string) => void; // 🔧 修改：统一参数格式
   // v1 兼容 props（保留但不使用）
   microsoftService?: any;
   availableCalendars?: any[];
@@ -294,12 +296,17 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
 
   // TimeLog 相关 refs
   const rightPanelRef = useRef<HTMLDivElement>(null);
-  const slateEditorRef = useRef<any>(null);
+  const slateEditorRef = useRef<LightSlateEditorRef>(null);
 
   // FloatingToolbar Hook
   const floatingToolbar = useFloatingToolbar({
     editorRef: rightPanelRef as RefObject<HTMLElement>,
     enabled: isDetailView,
+    menuItemCount: 5, // tag, emoji, dateRange, addTask, textStyle
+    onMenuSelect: (index) => {
+      console.log('[EventEditModalV2] Menu selected:', index);
+      setActivePickerIndex(index);
+    },
   });
   
   const [sourceSyncMode, setSourceSyncMode] = useState('receive-only');
@@ -329,6 +336,31 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     try {
       console.log('💾 [EventEditModalV2] Saving event:', formData.id);
       
+      // 🔧 Step 0: 准备 eventlog（Slate JSON 字符串）
+      // 原因：用户可能直接点击保存按钮，2秒防抖还没触发
+      // 策略：
+      //   - 如果编辑器有焦点 → 读取编辑器最新内容（Slate JSON）
+      //   - 如果编辑器无焦点 → 使用 formData（已通过失焦保存更新）
+      // 
+      // ✅ 架构优化：只传递 Slate JSON 字符串给 EventService
+      // EventService 会自动转换为 EventLog 对象（content, descriptionHtml, descriptionPlainText）
+      let currentEventlog = formData.eventlog;
+      
+      if (slateEditorRef.current?.editor) {
+        const editorElement = document.querySelector('.slate-editable');
+        if (editorElement && editorElement.contains(document.activeElement)) {
+          console.log('📝 [EventEditModalV2] 编辑器有焦点，读取最新内容');
+          try {
+            const editorContent = slateEditorRef.current.editor.children;
+            currentEventlog = slateNodesToJson(editorContent);
+          } catch (error) {
+            console.error('❌ [EventEditModalV2] 读取编辑器内容失败，使用 formData:', error);
+          }
+        } else {
+          console.log('📝 [EventEditModalV2] 编辑器无焦点，使用 formData（已通过失焦或自动保存更新）');
+        }
+      }
+      
       // 🔧 Step 1: 处理空标题 - 如果标题为空但有标签，使用标签名称
       let finalTitle = formData.title;
       if (!finalTitle || finalTitle.trim() === '') {
@@ -343,40 +375,122 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         }
       }
       
-      // 🔧 Step 2: 构建完整的 Event 对象
+      // 🔧 Step 2: 处理时间格式 - 确保符合 EventService 的要求
+      // EventService 要求时间格式为 "YYYY-MM-DD HH:mm:ss"（空格分隔）
+      let startTimeForStorage = formData.startTime;
+      let endTimeForStorage = formData.endTime;
+      
+      if (formData.startTime) {
+        const { formatTimeForStorage } = await import('../../utils/timeUtils');
+        // 如果 startTime 是 ISO 格式或其他格式，转换为存储格式
+        const startDate = new Date(formData.startTime);
+        if (!isNaN(startDate.getTime())) {
+          startTimeForStorage = formatTimeForStorage(startDate);
+        }
+      }
+      
+      if (formData.endTime) {
+        const { formatTimeForStorage } = await import('../../utils/timeUtils');
+        const endDate = new Date(formData.endTime);
+        if (!isNaN(endDate.getTime())) {
+          endTimeForStorage = formatTimeForStorage(endDate);
+        }
+      }
+      
+      // 🔧 Step 3: 检查是否是运行中的 Timer
+      // Timer 运行中，应该使用 globalTimer.eventId，而不是 formData.id
+      const isRunningTimer = formData.isTimer && 
+                            globalTimer?.isRunning && 
+                            globalTimer?.eventId;
+      
+      console.log('🔍 [EventEditModalV2] Timer check:', {
+        isTimer: formData.isTimer,
+        globalTimerIsRunning: globalTimer?.isRunning,
+        globalTimerEventId: globalTimer?.eventId,
+        formDataId: formData.id,
+        isRunningTimer
+      });
+      
+      // 🔧 Step 4: 确定正确的 eventId
+      // 如果是运行中的 Timer，使用 globalTimer.eventId
+      // 否则使用 formData.id 或生成新 ID
+      let eventId: string;
+      if (isRunningTimer && globalTimer?.eventId) {
+        eventId = globalTimer.eventId;
+        console.log('⏱️ [EventEditModalV2] Using Timer eventId:', eventId);
+      } else if (formData.id && formData.id.trim() !== '') {
+        eventId = formData.id;
+      } else {
+        eventId = `event-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        console.log('🆕 [EventEditModalV2] Generated new eventId:', eventId);
+      }
+      
+      // 🔧 Step 5: 确定 syncStatus
+      const timerSyncStatus = isRunningTimer ? 'local-only' : (event?.syncStatus || 'pending');
+      
+      console.log('🔍 [EventEditModalV2] Final event ID and sync status:', {
+        eventId,
+        syncStatus: timerSyncStatus
+      });
+      
+      // 🔧 Step 6: 构建完整的 Event 对象
       const updatedEvent: Event = {
         ...event, // 保留原有字段（如 createdAt, syncStatus 等）
         ...formData,
-        id: formData.id,
+        id: eventId, // 使用验证后的 ID
         title: finalTitle, // 使用处理后的标题
         tags: formData.tags,
         isTask: formData.isTask,
         isTimer: formData.isTimer,
         parentEventId: formData.parentEventId,
-        startTime: formData.startTime,
-        endTime: formData.endTime,
+        startTime: startTimeForStorage,
+        endTime: endTimeForStorage,
         isAllDay: formData.allDay,
         location: formData.location,
         organizer: formData.organizer,
         attendees: formData.attendees,
-        eventlog: formData.eventlog,
-        description: formData.description,
+        eventlog: currentEventlog as any,  // ✅ Slate JSON 字符串（EventService 会自动转换）
+        syncStatus: timerSyncStatus, // 🔧 Timer 运行中保持 local-only
       } as Event;
 
-      // 🔧 Step 2: 导入 EventHub（统一事件管理中心）
+      // 🔧 调试日志：验证 eventlog 字段
+      console.log('💾 [EventEditModalV2] Saving event with Slate JSON:', {
+        hasEventlog: !!currentEventlog,
+        eventlogType: typeof currentEventlog,
+        eventlogLength: typeof currentEventlog === 'string' ? currentEventlog.length : JSON.stringify(currentEventlog).length,
+        eventlogPreview: typeof currentEventlog === 'string' 
+          ? currentEventlog.substring(0, 100) 
+          : JSON.stringify(currentEventlog).substring(0, 100)
+      });
+
+      // 🔧 Step 7: 特殊处理 - 新 Timer 事件创建
+      // 如果是通过 App.tsx 的 timerEditModal 打开（event.id === '' && event.isTimer === true）
+      // 则跳过 EventHub 操作，直接调用 onSave 让 App.handleTimerEditSave 处理
+      // 原因：App.handleTimerEditSave 会创建 Timer 事件并启动计时器
+      // 如果 EventEditModalV2 也创建事件，会导致重复创建
+      if (event?.id === '' && event?.isTimer === true) {
+        console.log('⏱️ [EventEditModalV2] New Timer creation, delegating to parent (App.handleTimerEditSave)');
+        onSave(updatedEvent);
+        return;
+      }
+      
+      // 🔧 Step 8: 导入 EventHub（统一事件管理中心）
       const { EventHub } = await import('../../services/EventHub');
       
-      // 🔧 Step 3: 判断是创建还是更新
+      // 🔧 Step 9: 判断是创建还是更新
       // 检查 EventService（持久化层）而不是 EventHub 缓存
       // 原因：EventHub 可能缓存了 TimeCalendar 传入的临时对象
       const allEvents = EventService.getAllEvents();
-      const existingEvent = allEvents.find(e => e.id === formData.id);
+      const existingEvent = allEvents.find(e => e.id === eventId);
       
       let result;
       
       if (!existingEvent) {
-        // ==================== 场景 1: 创建新事件 ====================
-        console.log('🆕 [EventEditModalV2] Creating new event:', formData.id);
+        // ==================== 场景 1: 创建新事件 (非Timer) ====================
+        console.log('🆕 [EventEditModalV2] Creating new event:', eventId);
+        
+        // 🔧 确保使用正确的 eventId
+        updatedEvent.id = eventId;
         
         // 使用 EventHub.createEvent() 创建完整事件
         // EventHub 会自动：
@@ -388,19 +502,30 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         
         if (result.success) {
           console.log('✅ [EventEditModalV2] Event created via EventHub:', result.event?.id);
+          
+          // 记录创建历史（用于 EventLog timestamp）
+          if (result.event) {
+            EventHistoryService.logCreate(result.event);
+            console.log('📝 [EventEditModalV2] Event creation logged to EventHistoryService');
+          }
         } else {
           throw new Error(result.error || 'Failed to create event');
         }
       } else {
         // ==================== 场景 2: 更新已存在事件 ====================
-        console.log('📝 [EventEditModalV2] Updating existing event:', formData.id);
+        console.log('📝 [EventEditModalV2] Updating existing event:', eventId);
+        
+        // 🔧 确保使用正确的 eventId
+        updatedEvent.id = eventId;
         
         // 使用 EventHub.updateFields() 增量更新
         // 优势：
         // 1. 只更新变化的字段，避免覆盖其他字段
         // 2. 自动记录变化日志（调试用）
         // 3. 合并当前快照，确保数据完整性
-        result = await EventHub.updateFields(updatedEvent.id, {
+        // 
+        // 🔧 Timer 运行中：保持 syncStatus='local-only'
+        result = await EventHub.updateFields(eventId, {
           title: updatedEvent.title,
           tags: updatedEvent.tags,
           isTask: updatedEvent.isTask,
@@ -414,6 +539,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
           attendees: updatedEvent.attendees,
           eventlog: updatedEvent.eventlog,
           description: updatedEvent.description,
+          syncStatus: updatedEvent.syncStatus, // 🔧 包含 Timer 的 local-only 状态
         }, {
           source: 'EventEditModalV2' // 标记更新来源，用于调试
         });
@@ -425,11 +551,10 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         }
       }
 
-      // 🔧 Step 4: 通知父组件（TimeCalendar）
+      // 🔧 Step 10: 通知父组件（TimeCalendar 或 App.handleTimerEditSave）
       // onSave 回调会触发：
-      // 1. TimeCalendar.handleSaveEventFromModal()
-      // 2. 关闭弹窗 setShowEventEditModal(false)
-      // 3. 清理状态 setEditingEvent(null)
+      // - TimeCalendar: handleSaveEventFromModal() → 关闭弹窗、清理状态
+      // - App.tsx: handleTimerEditSave() → 启动计时器、创建 Timer 事件（已被 Step 7 拦截）
       onSave(updatedEvent);
       
     } catch (error) {
@@ -477,8 +602,20 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
    * - event?.id 可能为 undefined（新建事件）
    * - 时间字段从 event.startTime/endTime 同步（不调用 TimeHub）
    */
+  // 🔧 [BUG FIX] 修复 Timer 编辑时 formData.id 为空的问题
+  // 对比 EventEditModal v1 发现：v1 使用 [event, isOpen] 作为依赖
+  // v2 之前只监听 [event?.id]，导致：
+  // 1. 当 event.id 相同时（如同一个 Timer），useEffect 不触发
+  // 2. formData 保持旧值，导致 formData.id = ''
+  // 解决方案：添加 isOpen 依赖，确保 Modal 打开时总是同步最新的 event 数据
   useEffect(() => {
-    if (event) {
+    console.log('🔄 [EventEditModalV2] Syncing formData with event prop:', {
+      eventId: event?.id,
+      isOpen,
+      currentFormDataId: formData.id
+    });
+    
+    if (event && isOpen) {
       setFormData({
         id: event.id,
         title: event.title || '',
@@ -506,7 +643,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         description: event.description || '',
       });
     }
-  }, [event?.id]); // 只在 event.id 变化时执行
+  }, [event?.id, isOpen]); // 🔧 添加 isOpen 依赖，确保 Modal 打开时同步数据
 
   // 初始化时手动提取演示数据的联系人到联系人库
   useEffect(() => {
@@ -878,12 +1015,19 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   
   /**
    * TimeLog 内容变化处理（LightSlateEditor）
+   * @param slateJson - Slate JSON 字符串（从 LightSlateEditor 的 onChange 回调接收）
    */
-  const handleTimelogChange = (htmlContent: string) => {
+  const handleTimelogChange = (slateJson: string) => {
+    // ✅ 架构优化：只保存 Slate JSON 字符串
+    // EventService 会在保存时自动转换为 EventLog 对象
+    console.log('📝 [EventEditModalV2] EventLog 变化:', {
+      slateJsonLength: slateJson.length,
+      preview: slateJson.substring(0, 100)
+    });
+    
     setFormData({
       ...formData,
-      description: htmlContent,
-      eventlog: htmlContent // 保持向后兼容
+      eventlog: slateJson as any,  // ✅ Slate JSON 字符串
     });
   };
 
@@ -1084,7 +1228,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                         className="timer-button-start"
                         onClick={() => {
                           if (onTimerAction) {
-                            onTimerAction('start', formData.id);
+                            // 🔧 传递 tagIds 数组和 eventId
+                            onTimerAction('start', formData.tags || [], formData.id);
                           }
                         }}
                         title="开始计时"
@@ -1102,7 +1247,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                         className="timer-btn pause-btn"
                         onClick={() => {
                           if (onTimerAction) {
-                            onTimerAction(isPaused ? 'pause' : 'pause', formData.id);
+                            // 🔧 暂停/继续不需要 tagIds
+                            onTimerAction(isPaused ? 'resume' : 'pause');
                           }
                         }}
                         title={isPaused ? '继续' : '暂停'}
@@ -1113,7 +1259,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                         className="timer-btn stop-btn"
                         onClick={() => {
                           if (onTimerAction && window.confirm('确定要结束计时并保存吗？')) {
-                            onTimerAction('stop', formData.id);
+                            // 🔧 stop 不需要额外参数，使用 globalTimer.eventId
+                            onTimerAction('stop');
                           }
                         }}
                         title="停止并保存"
@@ -1124,7 +1271,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                         className="timer-btn cancel-btn"
                         onClick={() => {
                           if (onTimerAction && window.confirm('确定要取消计时吗？当前计时将不会被保存。')) {
-                            onTimerAction('cancel', formData.id);
+                            // 🔧 cancel 不需要额外参数
+                            onTimerAction('cancel');
                           }
                         }}
                         title="取消计时"
@@ -1586,15 +1734,13 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                   {/* TimeLog 编辑区 */}
                   <div ref={rightPanelRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '200px' }}>
                     <LightSlateEditor
+                      ref={slateEditorRef}
                       key={`editor-${formData.id}-${timelogContent.length}`}
                       content={timelogContent}
                       parentEventId={formData.id || 'new-event'}
                       enableTimestamp={true}
                       placeholder="记录时间轴..."
-                      onChange={(slateJson) => {
-                        console.log('[EventEditModalV2] TimeLog onChange:', slateJson);
-                        setFormData({ ...formData, eventlog: slateJson });
-                      }}
+                      onChange={handleTimelogChange}
                       className="eventlog-editor"
                     />
                   </div>
@@ -1609,6 +1755,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                         mode: 'basic' as any
                       }}
                       slateEditorRef={slateEditorRef}
+                      activePickerIndex={activePickerIndex}
+                      onActivePickerIndexConsumed={() => setActivePickerIndex(-1)}
                       onTagSelect={(tagIds) => {
                         const tagId = Array.isArray(tagIds) ? tagIds[0] : tagIds;
                         handleTagSelect(tagId);
@@ -1638,51 +1786,76 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
             {isDetailView ? (
               <div className="detail-footer">
                 <button 
-                  className="eventmodal-v2-footer-btn eventmodal-v2-footer-btn-cancel"
-                  onClick={onClose}
-                >
-                  取消
-                </button>
-                <button 
-                  className="eventmodal-v2-footer-btn eventmodal-v2-footer-btn-save"
-                  onClick={handleSave}
-                  disabled={isSaveDisabled}
-                  style={{
-                    opacity: isSaveDisabled ? 0.5 : 1,
-                    cursor: isSaveDisabled ? 'not-allowed' : 'pointer'
+                  className="eventmodal-v2-footer-btn eventmodal-v2-footer-btn-delete"
+                  onClick={() => {
+                    if (window.confirm('确定要删除这个事件吗？此操作无法撤销。')) {
+                      onDelete?.(formData.id);
+                      onClose();
+                    }
                   }}
-                  title={isSaveDisabled ? '请输入标题或选择标签' : ''}
                 >
-                  保存
+                  删除
                 </button>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button 
+                    className="eventmodal-v2-footer-btn eventmodal-v2-footer-btn-cancel"
+                    onClick={onClose}
+                  >
+                    取消
+                  </button>
+                  <button 
+                    className="eventmodal-v2-footer-btn eventmodal-v2-footer-btn-save"
+                    onClick={handleSave}
+                    disabled={isSaveDisabled}
+                    style={{
+                      opacity: isSaveDisabled ? 0.5 : 1,
+                      cursor: isSaveDisabled ? 'not-allowed' : 'pointer'
+                    }}
+                    title={isSaveDisabled ? '请输入标题或选择标签' : ''}
+                  >
+                    保存
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="compact-footer">
                 <button 
-                  className="eventmodal-v2-footer-btn eventmodal-v2-footer-btn-cancel"
-                  onClick={onClose}
+                  className="eventmodal-v2-footer-btn eventmodal-v2-footer-btn-delete"
+                  onClick={() => {
+                    if (window.confirm('确定要删除这个事件吗？此操作无法撤销。')) {
+                      onDelete?.(formData.id);
+                      onClose();
+                    }
+                  }}
                 >
-                  取消
+                  删除
                 </button>
                 <button 
-                  className="eventmodal-v2-footer-btn" 
-                  style={{ color: '#3b82f6' }}
+                  className="eventmodal-v2-footer-btn eventmodal-v2-footer-btn-expand" 
                   onClick={() => setIsDetailView(true)}
                 >
                   📝 展开日志
                 </button>
-                <button 
-                  className="footer-btn footer-btn-save"
-                  onClick={handleSave}
-                  disabled={isSaveDisabled}
-                  style={{
-                    opacity: isSaveDisabled ? 0.5 : 1,
-                    cursor: isSaveDisabled ? 'not-allowed' : 'pointer'
-                  }}
-                  title={isSaveDisabled ? '请输入标题或选择标签' : ''}
-                >
-                  保存
-                </button>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button 
+                    className="eventmodal-v2-footer-btn eventmodal-v2-footer-btn-cancel"
+                    onClick={onClose}
+                  >
+                    取消
+                  </button>
+                  <button 
+                    className="eventmodal-v2-footer-btn eventmodal-v2-footer-btn-save"
+                    onClick={handleSave}
+                    disabled={isSaveDisabled}
+                    style={{
+                      opacity: isSaveDisabled ? 0.5 : 1,
+                      cursor: isSaveDisabled ? 'not-allowed' : 'pointer'
+                    }}
+                    title={isSaveDisabled ? '请输入标题或选择标签' : ''}
+                  >
+                    保存
+                  </button>
+                </div>
               </div>
             )}
         </div>

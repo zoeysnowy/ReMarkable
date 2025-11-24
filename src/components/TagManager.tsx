@@ -73,11 +73,12 @@ interface TagManagerProps {
   availableCalendars?: any[]; // 已同步的日历列表
   globalTimer?: {
     tagId: string;
+    tagIds: string[]; // 🆕 完整的标签数组
     isRunning: boolean;
     startTime: number;
     elapsedTime: number;
   } | null;
-  onTimerStart?: (tagId: string) => void;
+  onTimerStart?: (tagIds?: string | string[], eventIdOrParentId?: string) => void; // 🔧 修改：支持 tagIds 数组
   onTimerPause?: () => void;
   onTimerResume?: () => void;
   onTimerStop?: () => void;

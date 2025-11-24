@@ -2446,13 +2446,170 @@ function renderTaskProgress(event: Event): ReactNode {
 
 ---
 
-**文档版本**: v1.7  
-**最后更新**: 2025-11-20  
+---
+
+## 🔧 v1.8 EventLog 保存架构优化 (2025-11-24)
+
+### 问题背景
+
+**原架构问题**：
+- 前端组件（EventEditModalV2）手动构建 EventLog 对象
+- 代码重复：每个编辑位置都需要重复转换逻辑
+- 维护困难：转换逻辑分散在多处
+- 容易出错：开发者可能忘记转换某些字段
+
+### 解决方案：统一由 EventService 负责转换
+
+#### 1. EventService 自动转换逻辑
+
+```typescript
+// EventService.ts - 自动检测并转换 eventlog 格式
+class EventService {
+  async updateEvent(eventId: string, updates: Partial<Event>) {
+    const originalEvent = this.getEvent(eventId);
+    
+    // ✅ 场景2: eventlog 有变化 → 自动转换为 EventLog 对象
+    if (updates.eventlog !== undefined) {
+      const isSlateJsonString = typeof updates.eventlog === 'string' && 
+                                 updates.eventlog.trim().startsWith('[');
+      
+      if (isSlateJsonString) {
+        // 🔧 前端传递 Slate JSON 字符串 → 自动转换
+        const slateNodes = jsonToSlateNodes(updates.eventlog);
+        const html = slateNodesToHtml(slateNodes);
+        const plainText = html.replace(/<[^>]*>/g, '');
+        
+        // 构建完整的 EventLog 对象
+        updates.eventlog = {
+          content: updates.eventlog,           // Slate JSON
+          descriptionHtml: html,               // HTML 版本
+          descriptionPlainText: plainText,     // 纯文本
+          attachments: originalEvent.eventlog?.attachments || [],
+          versions: originalEvent.eventlog?.versions || [],
+          syncState: {
+            status: 'pending',
+            contentHash: this.hashContent(updates.eventlog),
+          },
+          createdAt: originalEvent.eventlog?.createdAt || formatTimeForStorage(new Date()),
+          updatedAt: formatTimeForStorage(new Date()),
+        };
+        
+        // 自动同步到 description（用于 Outlook）
+        if (updates.description === undefined) {
+          updates.description = html;
+        }
+      }
+    }
+    
+    // 保存到 localStorage
+    // ...
+  }
+}
+```
+
+#### 2. 前端组件简化
+
+```typescript
+// EventEditModalV2.tsx - 只传递 Slate JSON 字符串
+const handleTimelogChange = (slateJson: string) => {
+  // ✅ 简化：只保存 Slate JSON 字符串
+  setFormData({
+    ...formData,
+    eventlog: slateJson,  // EventService 会自动转换
+  });
+};
+
+const handleSave = async () => {
+  // ✅ 只传递 Slate JSON 字符串
+  const updatedEvent: Event = {
+    ...formData,
+    eventlog: currentEventlog,  // Slate JSON 字符串
+  };
+  
+  // EventHub/EventService 会自动转换为 EventLog 对象
+  await EventHub.updateFields(eventId, updatedEvent);
+};
+```
+
+#### 3. Timer 保存逻辑修复
+
+**问题**：App.tsx 的 Timer 自动保存直接操作 localStorage，绕过 EventService
+
+**修复**：
+```typescript
+// App.tsx - handleTimerEditSave
+// ❌ 之前：直接操作 localStorage
+existingEvents[eventIndex] = {
+  ...existingEvents[eventIndex],
+  description: updatedEvent.description,
+  // eventlog 被忽略！
+};
+
+// ✅ 修复后：使用 EventService
+await EventService.updateEvent(globalTimer.eventId, {
+  description: updatedEvent.description,
+  eventlog: updatedEvent.eventlog,  // EventService 会自动转换
+  location: updatedEvent.location,
+  title: updatedEvent.title,
+}, {
+  skipSync: true,
+  source: 'timer-edit'
+});
+```
+
+**30秒自动保存**：
+```typescript
+// saveTimerEvent() - 保留用户编辑的 eventlog
+const timerEvent: Event = {
+  id: timerEventId,
+  startTime: formatTimeForStorage(startTime),
+  endTime: formatTimeForStorage(endTime),
+  eventlog: existingEvent?.eventlog,  // ✅ 保留，不覆盖
+  // ...
+};
+```
+
+### 架构优势
+
+✅ **单一职责**：EventService 统一负责数据转换  
+✅ **代码简洁**：前端组件只需传递 Slate JSON  
+✅ **易于维护**：转换逻辑集中在一处  
+✅ **向后兼容**：支持多种输入格式（EventLog 对象、Slate JSON、旧格式）  
+✅ **防止数据丢失**：Timer 自动保存不会覆盖用户编辑的 eventlog
+
+### 数据流向
+
+```
+用户输入 (LightSlateEditor)
+  ↓ onChange (Slate JSON)
+EventEditModalV2.handleTimelogChange(slateJson: string)
+  ↓
+formData.eventlog = slateJson  // ✅ 字符串
+  ↓
+handleSave() → EventHub.updateFields()
+  ↓
+EventService.updateEvent(eventId, { eventlog: slateJson })
+  ↓ 自动检测格式
+EventService 内部转换
+  ├─ jsonToSlateNodes(slateJson)
+  ├─ slateNodesToHtml(nodes)
+  └─ 构建 EventLog 对象 { content, descriptionHtml, descriptionPlainText }
+  ↓
+localStorage 持久化 (EventLog 对象格式)
+  ↓
+Outlook 同步 (使用 descriptionHtml)
+```
+
+---
+
+**文档版本**: v1.8  
+**最后更新**: 2025-11-24  
 **维护者**: GitHub Copilot  
 **变更记录**:
 - v1.0 (2025-11-06): 初始版本
-- v1.1 (2025-11-06): 添加 EventEditModal v2 新增字段（emoji, isTimeCalendar, isTask, isCompleted, parentTaskId, childTaskCount, childTaskCompletedCount）及任务关联功能实现指南
+- v1.1 (2025-11-06): 添加 EventEditModal v2 新增字段及任务关联功能实现指南
 - v1.2 (2025-11-14): 移除 displayHint 存储依赖，时间显示完全基于动态计算
-- v1.3 (2025-11-14): **支持 undefined 时间字段**，完善自然语言处理链路文档（从输入到显示的完整流程）
+- v1.3 (2025-11-14): **支持 undefined 时间字段**，完善自然语言处理链路文档
 - v1.4-v1.6 (2025-11-19): 循环更新防护、ID分配与时间系统优化
 - v1.7 (2025-11-20): **新增事件签到功能**，完整的时间戳记录、EventHistoryService集成和状态线显示
+- v1.8 (2025-11-24): **EventLog 保存架构优化**，统一由 EventService 负责 Slate JSON → EventLog 对象转换，修复 Timer eventlog 保存问题

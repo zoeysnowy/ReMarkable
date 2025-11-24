@@ -151,18 +151,36 @@ export class EventLogTimestampService {
       const childrenCount = editor.children.length;
       console.log('[TimestampService] 编辑器状态:', { hasSelection: !!selection, childrenCount });
       
+      // 检查是否为空编辑器（只有一个空段落）
+      const isEmptyEditor = childrenCount === 1 
+        && editor.children[0].type === 'paragraph'
+        && editor.children[0].children.length === 1
+        && (editor.children[0].children[0] as any).text === '';
+      
+      console.log('[TimestampService] 是否为空编辑器:', isEmptyEditor);
+      
       // 在文档末尾插入 timestamp + 新的空段落（用户可以输入内容）
       const emptyParagraph = {
         type: 'paragraph',
         children: [{ text: '' }]
       };
       
-      console.log('[TimestampService] 在文档末尾插入 timestamp + 空段落');
-      Transforms.insertNodes(editor, [timestampNode, emptyParagraph] as any, { at: [childrenCount] });
+      // 如果是空编辑器，替换掉默认空段落；否则追加到末尾
+      const insertPosition = isEmptyEditor ? [0] : [childrenCount];
+      console.log('[TimestampService] 插入位置:', insertPosition);
+      
+      if (isEmptyEditor) {
+        // 先删除默认空段落，再插入 timestamp + 空段落
+        Transforms.removeNodes(editor, { at: [0] });
+        Transforms.insertNodes(editor, [timestampNode, emptyParagraph] as any, { at: [0] });
+      } else {
+        // 直接追加到末尾
+        Transforms.insertNodes(editor, [timestampNode, emptyParagraph] as any, { at: [childrenCount] });
+      }
       
       // 将光标移动到新段落
       try {
-        const newParagraphPath = [childrenCount + 1, 0]; // timestamp 后面的空段落
+        const newParagraphPath = isEmptyEditor ? [1, 0] : [childrenCount + 1, 0];
         Transforms.select(editor, { 
           anchor: { path: newParagraphPath, offset: 0 },
           focus: { path: newParagraphPath, offset: 0 }

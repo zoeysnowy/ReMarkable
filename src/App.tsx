@@ -990,31 +990,29 @@ function App() {
       })() : {})
     });
 
-    // 🔧 [BUG FIX] 立即保存用户编辑的 description 和 location 到 localStorage
-    // 这样 saveTimerEvent 每30秒运行时会读取到最新的用户输入
+    // 🔧 [BUG FIX] 立即保存用户编辑的字段 (使用 EventService 以支持 eventlog 自动转换)
     if (globalTimer.eventId) {
       try {
-        const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
-        const existingEvents: Event[] = saved ? JSON.parse(saved) : [];
-        const eventIndex = existingEvents.findIndex((e: Event) => e.id === globalTimer.eventId);
+        // ✅ 使用 EventService.updateEvent 以触发 eventlog → EventLog 对象转换
+        await EventService.updateEvent(globalTimer.eventId, {
+          description: updatedEvent.description,
+          eventlog: updatedEvent.eventlog,  // EventService 会自动转换 Slate JSON → EventLog 对象
+          location: updatedEvent.location,
+          title: updatedEvent.title,
+        }, {
+          skipSync: true,  // Timer 运行中不同步
+          source: 'timer-edit'
+        });
         
-        if (eventIndex !== -1) {
-          // 只更新用户可编辑的字段，保持其他字段不变
-          existingEvents[eventIndex] = {
-            ...existingEvents[eventIndex],
-            description: updatedEvent.description,
-            location: updatedEvent.location,
-            title: updatedEvent.title,
-            updatedAt: formatTimeForStorage(new Date())
-          };
-          
-          localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
-          AppLogger.log('💾 [Timer Edit] Saved user edits to localStorage:', {
-            eventId: globalTimer.eventId,
-            description: updatedEvent.description?.substring(0, 50),
-            location: updatedEvent.location
-          });
-        }
+        AppLogger.log('💾 [Timer Edit] Saved user edits via EventService:', {
+          eventId: globalTimer.eventId,
+          hasEventlog: !!updatedEvent.eventlog,
+          eventlogType: typeof updatedEvent.eventlog,
+          eventlogPreview: typeof updatedEvent.eventlog === 'string' 
+            ? updatedEvent.eventlog.substring(0, 50)
+            : JSON.stringify(updatedEvent.eventlog).substring(0, 50),
+          location: updatedEvent.location
+        });
       } catch (error) {
         AppLogger.error('💾 [Timer Edit] Failed to save user edits:', error);
       }
@@ -1059,7 +1057,7 @@ function App() {
         
         const eventTitle = globalTimer.eventTitle || (tag?.emoji ? `${tag.emoji} ${tag.name}` : globalTimer.tagName);
         
-        // 读取现有事件，保留用户的 description 和 location
+        // 读取现有事件，保留用户编辑的字段（description、location、eventlog）
         const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
         const existingEvents: Event[] = saved ? JSON.parse(saved) : [];
         const existingEvent = existingEvents.find((e: Event) => e.id === timerEventId);
@@ -1071,6 +1069,7 @@ function App() {
           endTime: formatTimeForStorage(endTime),
           location: existingEvent?.location || '',
           description: existingEvent?.description || '计时中的事件',
+          eventlog: existingEvent?.eventlog,  // ✅ 保留用户编辑的 eventlog
           tags: globalTimer.tagIds,
           calendarIds: tag && (tag as any).calendarId ? [(tag as any).calendarId] : [],
           isAllDay: false,
@@ -1600,6 +1599,11 @@ function App() {
               lastSyncTime={lastSyncTime}
               availableTags={hierarchicalTags}
               globalTimer={globalTimer}
+              onTimerStart={handleTimerStart}
+              onTimerPause={handleTimerPause}
+              onTimerResume={handleTimerResume}
+              onTimerStop={handleTimerStop}
+              onTimerCancel={handleTimerCancel}
             />
           </PageContainer>
         );

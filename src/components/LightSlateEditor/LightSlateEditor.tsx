@@ -12,7 +12,7 @@
  * LightSlateEditor:  content string → paragraph nodes (单内容编辑)
  */
 
-import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
+import React, { useCallback, useMemo, useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { 
   createEditor, 
   Descendant, 
@@ -20,7 +20,8 @@ import {
   Transforms, 
   Text,
   Node as SlateNode,
-  Element as SlateElement
+  Element as SlateElement,
+  Range
 } from 'slate';
 import { 
   Slate, 
@@ -97,6 +98,11 @@ export interface LightSlateEditorProps {
   readOnly?: boolean;
 }
 
+export interface LightSlateEditorRef {
+  /** Slate Editor 实例 */
+  editor: Editor;
+}
+
 // 转换函数现在从 serialization.ts 导入
 
 /**
@@ -111,21 +117,119 @@ const createTimestampDivider = (timestamp: Date): TimestampDividerType => {
   };
 };
 
-export const LightSlateEditor: React.FC<LightSlateEditorProps> = ({
-  content,
-  parentEventId,
-  onChange,
-  enableTimestamp = false,
-  placeholder = '开始编写...',
-  className = '',
-  readOnly = false
-}) => {
+export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditorProps>((
+  {
+    content,
+    parentEventId,
+    onChange,
+    enableTimestamp = false,
+    placeholder = '开始编写...',
+    className = '',
+    readOnly = false
+  },
+  ref
+) => {
   // 创建 Slate 编辑器实例
   const editor = useMemo(() => {
-    const editorInstance = withHistory(withReact(createEditor()));
-    console.log('[LightSlateEditor] 创建编辑器实例');
+    let editorInstance = createEditor();
+    
+    // 自定义编辑器配置
+    const { isInline, isVoid, normalizeNode } = editorInstance;
+    
+    // 配置 inline 元素
+    editorInstance.isInline = element => {
+      const e = element as any;
+      return (e.type === 'tag' || e.type === 'dateMention') ? true : isInline(element);
+    };
+    
+    // 配置 void 元素
+    editorInstance.isVoid = element => {
+      const e = element as any;
+      return (e.type === 'tag' || e.type === 'dateMention' || e.type === 'timestamp-divider') ? true : isVoid(element);
+    };
+    
+    // 🔥 normalizeNode 确保 void inline 元素后面总有空格
+    editorInstance.normalizeNode = entry => {
+      const [node, path] = entry;
+      
+      // 检查 tag 或 dateMention 元素
+      if (SlateElement.isElement(node) && (node.type === 'tag' || node.type === 'dateMention')) {
+        // 获取父节点和当前节点在父节点中的索引
+        const parentPath = path.slice(0, -1);
+        const parent = SlateNode.get(editorInstance, parentPath);
+        const nodeIndex = path[path.length - 1];
+        
+        if (!SlateElement.isElement(parent)) {
+          normalizeNode(entry);
+          return;
+        }
+        
+        // 检查下一个兄弟节点
+        const nextSiblingIndex = nodeIndex + 1;
+        const nextSibling = nextSiblingIndex < parent.children.length 
+          ? parent.children[nextSiblingIndex] 
+          : null;
+        
+        // 如果后面没有节点，或者下一个节点不是文本节点，或者不以空格开头
+        const needsSpace = !nextSibling || 
+                          !Text.isText(nextSibling) || 
+                          !nextSibling.text.startsWith(' ');
+        
+        if (needsSpace) {
+          // 💾 保存当前光标位置
+          const currentSelection = editorInstance.selection;
+          
+          // 在 void 元素之后插入空格文本节点
+          Editor.withoutNormalizing(editorInstance, () => {
+            const insertPath = [...parentPath, nextSiblingIndex];
+            
+            // 如果下一个节点是文本但不以空格开头，在文本开头插入空格
+            if (nextSibling && Text.isText(nextSibling)) {
+              Transforms.insertText(editorInstance, ' ', { 
+                at: { path: insertPath, offset: 0 } 
+              });
+              
+              // 🔧 只在光标原本在文本节点开头时才调整偏移
+              if (currentSelection && 
+                  Range.isCollapsed(currentSelection) &&
+                  currentSelection.anchor.path.join(',') === insertPath.join(',') &&
+                  currentSelection.anchor.offset === 0) {
+                Transforms.select(editorInstance, {
+                  anchor: { path: insertPath, offset: 1 },
+                  focus: { path: insertPath, offset: 1 },
+                });
+              }
+            } else {
+              // 否则插入新的空格文本节点
+              Transforms.insertNodes(
+                editorInstance,
+                { text: ' ' },
+                { at: insertPath }
+              );
+            }
+          });
+          
+          // 由于修改了树，立即返回让 Slate 重新 normalize
+          return;
+        }
+      }
+      
+      // 默认 normalize 行为
+      normalizeNode(entry);
+    };
+    
+    // 应用 React 和 History 插件
+    editorInstance = withReact(editorInstance);
+    editorInstance = withHistory(editorInstance);
+    
+    console.log('[LightSlateEditor] 创建编辑器实例（已配置 isInline, isVoid, normalizeNode）');
     return editorInstance;
   }, []);
+  
+  // 暴露 editor 实例给父组件
+  useImperativeHandle(ref, () => ({
+    editor
+  }), [editor]);
   
   // 记录已添加 timestamp 的 content (必须在 initialValue 之前定义)
   const timestampAddedForContentRef = useRef<string | null>(null);
@@ -495,23 +599,15 @@ export const LightSlateEditor: React.FC<LightSlateEditorProps> = ({
       });
       
       if (shouldInsert) {
-        // 检查是否已经有内容（只有有内容时才插入新 timestamp 进行分隔）
-        const hasContent = editor.children.some((node: any) => {
-          return node.type === 'paragraph' && node.children?.[0]?.text?.trim();
-        });
+        console.log('[LightSlateEditor] 聚焦时插入 timestamp（等待用户输入）');
         
-        if (hasContent) {
-          console.log('[LightSlateEditor] 聚焦时插入 timestamp（距上次编辑超过 5 分钟）');
-          
-          // 创建 timestamp 节点
-          const timestampNode = timestampServiceRef.current.createTimestampDivider(parentEventId);
-          
-          timestampServiceRef.current.insertTimestamp(editor, timestampNode, parentEventId);
-          
-          setPendingTimestamp(true); // 标记有等待用户输入的 timestamp
-        } else {
-          console.log('[LightSlateEditor] 聚焦但无内容，不插入 timestamp');
-        }
+        // 创建 timestamp 节点
+        const timestampNode = timestampServiceRef.current.createTimestampDivider(parentEventId);
+        
+        // 立即插入 timestamp + 空段落，不管是否有内容
+        timestampServiceRef.current.insertTimestamp(editor, timestampNode, parentEventId);
+        
+        setPendingTimestamp(true); // 标记有等待用户输入的 timestamp
       } else {
         console.log('[LightSlateEditor] 聚焦但距上次编辑未超过 5 分钟，不插入 timestamp');
       }
@@ -519,26 +615,66 @@ export const LightSlateEditor: React.FC<LightSlateEditorProps> = ({
   }, [enableTimestamp, editor, parentEventId]);
 
   /**
-   * 处理编辑器失焦 - 清理空的 timestamp
+   * 立即保存函数（用于失焦等场景）
+   */
+  const flushPendingChanges = useCallback(() => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    
+    const newContent = slateNodesToJson(editor.children);
+    if (newContent !== lastContentRef.current) {
+      lastContentRef.current = newContent;
+      onChange(newContent);
+      console.log('[LightSlateEditor] 💾 立即保存:', newContent.slice(0, 100) + '...');
+    }
+  }, [editor, onChange]);
+
+  /**
+   * 处理编辑器失焦 - 清理空的 timestamp 并立即保存
    */
   const handleBlur = useCallback(() => {
+    // Step 1: 清理空 timestamp
     if (pendingTimestamp && timestampServiceRef.current) {
       console.log('[LightSlateEditor] 失焦时检查是否需要清理空 timestamp');
       
-      // 检查是否真的没有内容
-      const hasAnyContent = editor.children.some((node: any) => {
-        return node.type === 'paragraph' && 
-               node.children?.[0]?.text?.trim();
-      });
+      // 查找最后一个 timestamp 后是否有实际内容
+      let lastTimestampIndex = -1;
+      for (let i = editor.children.length - 1; i >= 0; i--) {
+        const node = editor.children[i] as any;
+        if (node.type === 'timestamp-divider') {
+          lastTimestampIndex = i;
+          break;
+        }
+      }
       
-      // 只有当确实没有任何内容时才清理 timestamp
-      if (!hasAnyContent) {
-        timestampServiceRef.current.removeEmptyTimestamp(editor);
+      // 如果找到了 timestamp，检查它后面是否有内容
+      if (lastTimestampIndex !== -1) {
+        let hasContentAfterTimestamp = false;
+        for (let i = lastTimestampIndex + 1; i < editor.children.length; i++) {
+          const node = editor.children[i] as any;
+          if (node.type === 'paragraph' && node.children?.[0]?.text?.trim()) {
+            hasContentAfterTimestamp = true;
+            break;
+          }
+        }
+        
+        // 如果 timestamp 后面没有内容，删除这个 timestamp 和后面的空段落
+        if (!hasContentAfterTimestamp) {
+          console.log('[LightSlateEditor] 用户未输入内容，删除本次插入的 timestamp');
+          timestampServiceRef.current.removeEmptyTimestamp(editor);
+        } else {
+          console.log('[LightSlateEditor] 用户已输入内容，保留 timestamp');
+        }
       }
       
       setPendingTimestamp(false);
     }
-  }, [pendingTimestamp, editor]);
+    
+    // Step 2: 立即保存当前内容（取消防抖）
+    flushPendingChanges();
+  }, [pendingTimestamp, editor, flushPendingChanges]);
 
   /**
    * 处理编辑器内容变化
@@ -576,22 +712,27 @@ export const LightSlateEditor: React.FC<LightSlateEditorProps> = ({
    * 处理键盘事件
    */
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
-    // 这里可以添加自定义的键盘快捷键
-    // 比如 Ctrl+B 加粗、Ctrl+I 斜体等
+    // IME 组字中，不处理快捷键
+    if (event.nativeEvent?.isComposing) return;
     
+    // 文本格式化快捷键
     if (event.ctrlKey || event.metaKey) {
-      switch (event.key) {
+      switch (event.key.toLowerCase()) {
         case 'b':
           event.preventDefault();
-          // TODO: 实现加粗功能
-          break;
+          Editor.addMark(editor, 'bold', true);
+          return;
         case 'i':
           event.preventDefault();
-          // TODO: 实现斜体功能
-          break;
+          Editor.addMark(editor, 'italic', true);
+          return;
+        case 'u':
+          event.preventDefault();
+          Editor.addMark(editor, 'underline', true);
+          return;
       }
     }
-  }, []);
+  }, [editor]);
   
   // 组件卸载时清理定时器
   useEffect(() => {
@@ -647,4 +788,6 @@ export const LightSlateEditor: React.FC<LightSlateEditorProps> = ({
       </Slate>
     </div>
   );
-};
+});
+
+LightSlateEditor.displayName = 'LightSlateEditor';
