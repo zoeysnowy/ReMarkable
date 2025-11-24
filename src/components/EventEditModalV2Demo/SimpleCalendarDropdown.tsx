@@ -150,10 +150,11 @@ export const SimpleCalendarDropdown: React.FC<SimpleCalendarDropdownProps> = ({
                 disabled={isDisabled}
                 style={{
                   marginRight: '8px',
-                  accentColor: '#3b82f6'
+                  accentColor: '#3b82f6',
+                  cursor: isDisabled ? 'not-allowed' : 'pointer'
                 }}
               />
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'none' }}>
                 {/* 颜色圆点 */}
                 <span 
                   style={{ 

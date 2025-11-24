@@ -107,10 +107,11 @@ export const SyncModeDropdown: React.FC<SyncModeDropdownProps> = ({
                 onChange={() => onSelectionChange(mode.id)}
                 style={{
                   marginRight: '8px',
-                  accentColor: '#3b82f6'
+                  accentColor: '#3b82f6',
+                  cursor: 'pointer'
                 }}
               />
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'none' }}>
                 {/* Emoji 图标 */}
                 <span 
                   style={{ 

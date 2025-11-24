@@ -160,7 +160,7 @@ export function filterAndSortEvents(
     }
     
     // 排除纯计时器、外部APP、时间日志事件
-    if (event.isTimer || event.isOutsideApp || event.isTimeLog) {
+    if (event.isTimer === true || event.isOutsideApp === true || event.isTimeLog === true) {
       console.log('🚫 过滤事件:', event.title || event.simpleTitle, {
         isTimer: event.isTimer,
         isOutsideApp: event.isOutsideApp,

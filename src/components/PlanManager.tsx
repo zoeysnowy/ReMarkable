@@ -338,7 +338,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       // 🔧 精确过滤：只排除系统生成的子事件，保留用户计划分项
       if (event.parentEventId) {
         // 如果是子事件，检查是否为需要排除的系统类型
-        if (event.isTimer || event.isTimeLog || event.isOutsideApp) {
+        if (event.isTimer === true || event.isTimeLog === true || event.isOutsideApp === true) {
           return false; // 排除：计时器子事件、时间日志、外部应用数据或纯粹的用户日志笔记
         }
         // 其他子事件（用户创建的计划分项）保留显示
@@ -1348,6 +1348,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         // 防御性检查：确保 log.eventId 和 log.before 存在
         if (!log.eventId || !log.before) {
           console.warn('[PlanManager] ⚠️ 跳过无效的删除记录:', log);
+          return;
+        }
+        
+        // 过滤系统生成事件：isTimer, isTimeLog, isOutsideApp
+        if (log.before.isTimer === true || log.before.isTimeLog === true || log.before.isOutsideApp === true) {
+          console.log('[PlanManager] ⏭️ 跳过系统事件 ghost:', log.eventId.slice(-8));
           return;
         }
         
