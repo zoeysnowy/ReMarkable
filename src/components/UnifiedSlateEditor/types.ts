@@ -53,6 +53,7 @@ export interface EventMetadata {
   isCompleted?: boolean;
   isTask?: boolean;
   type?: string;
+  checkType?: 'none' | 'once' | 'recurring'; // 🆕 任务类型（控制 checkbox 显示：'once'/'recurring'=显示，'none'/undefined=隐藏）
   
   // Plan 相关
   isPlan?: boolean;

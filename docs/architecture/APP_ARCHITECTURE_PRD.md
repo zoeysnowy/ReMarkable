@@ -1,7 +1,7 @@
 # App 组件架构文档 (PRD)
 
-**版本**: v1.0  
-**最后更新**: 2025-11-10  
+**版本**: v1.1  
+**最后更新**: 2025-11-25  
 **文档类型**: 架构设计文档（逆向工程）
 
 ---
@@ -545,7 +545,57 @@ const availableCalendars = useMemo(() => {
 
 ---
 
-## 10. 参考文档
+## 10. 数据类型规范
+
+### 10.1 时间字段规范 (v1.8 - 2025-11-25)
+
+**规则**: 所有时间字段使用 `string | null`，禁止使用 `undefined`
+
+**理由**:
+1. **JSON 序列化问题**: `JSON.stringify()` 会忽略 `undefined`，导致字段无法清除
+2. **语义明确**: `null` = "明确没有值"，`undefined` = "未定义"
+3. **数据一致性**: 避免 localStorage 中出现无法清除的遗留字段
+4. **后端兼容**: 与 SQL NULL、GraphQL null 语义一致
+
+**类型定义**:
+```typescript
+// ✅ 正确
+interface Event {
+  startTime?: string | null;   // 明确支持 null
+  endTime?: string | null;     // 明确支持 null
+  isAllDay?: boolean;          // boolean 可以保持 undefined（三态逻辑）
+}
+
+// ❌ 错误
+interface Event {
+  startTime?: string;  // 隐式 undefined，JSON 序列化会丢失
+  endTime?: string;    // 隐式 undefined，JSON 序列化会丢失
+}
+```
+
+**代码示例**:
+```typescript
+// ✅ 正确：清除时间字段
+await TimeHub.setEventTime(eventId, {
+  start: '2025-11-25 10:00:00',
+  end: null  // ✅ 使用 null
+});
+
+// ❌ 错误：使用 undefined
+await TimeHub.setEventTime(eventId, {
+  start: '2025-11-25 10:00:00',
+  end: undefined  // ❌ JSON 序列化后丢失
+});
+```
+
+**相关文档**: 
+- [Time Picker PRD - 时间字段规范](../PRD/TIME_PICKER_AND_DISPLAY_PRD.md#undefined-vs-null)
+- [TimeHub Architecture - SetEventTimeInput](./EVENTHUB_TIMEHUB_ARCHITECTURE.md#332-seteventtime)
+- [修复方案文档](../fixes/UNDEFINED_VS_NULL_TIME_FIELDS_FIX.md)
+
+---
+
+## 11. 参考文档
 
 - [SYNC_MECHANISM_PRD.md](./SYNC_MECHANISM_PRD.md) - 同步机制文档
 - [TagService 源码](../../src/services/TagService.ts)

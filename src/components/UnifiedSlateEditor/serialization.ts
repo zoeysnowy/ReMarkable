@@ -95,6 +95,7 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
       isCompleted: item.isCompleted,
       isTask: item.isTask,
       type: item.type,
+      checkType: item.checkType || 'once', // 🆕 签到类型（默认有checkbox）
       
       // Plan 相关
       isPlan: item.isPlan,
@@ -437,6 +438,7 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
         isCompleted: metadata.isCompleted || false,
         isTask: metadata.isTask ?? true,
         type: metadata.type || 'todo',
+        checkType: metadata.checkType || 'once', // 🆕 默认有checkbox
         
         isPlan: metadata.isPlan ?? true,
         isTimeCalendar: metadata.isTimeCalendar ?? false,

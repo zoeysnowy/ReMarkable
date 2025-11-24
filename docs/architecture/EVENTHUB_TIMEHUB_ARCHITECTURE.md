@@ -1,11 +1,11 @@
 # EventHub & TimeHub 统一架构文档
 
-> **文档版本**: v1.7  
+> **文档版本**: v1.8  
 > **创建时间**: 2025-11-06  
-> **最后更新**: 2025-11-23  
-> **关联模块**: EventHub, TimeHub, EventService, EventHistoryService, TimeParsingService, PlanManager  
+> **最后更新**: 2025-11-25  
+> **关联模块**: EventHub, TimeHub, EventService, EventHistoryService, TimeParsingService, PlanManager, UpcomingEventsPanel  
 > **文档类型**: 核心架构文档
-> **新增关联**: EventHistoryService 时间快照查询、Snapshot 功能优化
+> **新增关联**: EventHistoryService 时间快照查询、Snapshot 功能优化、checkType 与 checkbox 关联
 
 ---
 
@@ -758,8 +758,8 @@ TimeHub.setEventTime(
 **输入参数**:
 ```typescript
 interface SetEventTimeInput {
-  start?: string | Date | undefined;  // ✅ 支持 undefined 清除时间
-  end?: string | Date | undefined;    // ✅ 支持 undefined 清除时间
+  start?: string | Date | null;  // ✅ 使用 null 清除时间（JSON 兼容）
+  end?: string | Date | null;    // ✅ 使用 null 清除时间（JSON 兼容）
   kind?: TimeKind;
   allDay?: boolean;
   source?: TimeSource;
@@ -768,6 +768,12 @@ interface SetEventTimeInput {
   timeSpec?: TimeSpec;  // 直接替换 TimeSpec
 }
 ```
+
+**⚠️ 重要变更 (v1.8 - 2025-11-25)**: 
+- 时间清除统一使用 `null` 而非 `undefined`
+- **原因**: `JSON.stringify()` 会忽略 `undefined`，导致字段无法清除
+- **影响**: 所有调用 `setEventTime` 的代码需更新
+- **详见**: [UNDEFINED_VS_NULL_TIME_FIELDS_FIX.md](../fixes/UNDEFINED_VS_NULL_TIME_FIELDS_FIX.md)
 
 **示例**:
 ```typescript
@@ -781,9 +787,16 @@ await TimeHub.setEventTime('event-123', {
 
 // 方式 2: 清除时间（支持 Task 类型）
 await TimeHub.setEventTime('event-123', {
-  start: undefined,  // ✅ 清除开始时间
-  end: undefined,    // ✅ 清除结束时间
+  start: null,  // ✅ 使用 null（v1.8 变更）
+  end: null,    // ✅ 使用 null（v1.8 变更）
   source: 'user'
+});
+
+// ❌ 错误：使用 undefined 会导致字段无法清除
+await TimeHub.setEventTime('event-123', {
+  start: '2025-11-24 10:00:00',
+  end: undefined,  // ❌ JSON 序列化后丢失，旧值无法清除
+  source: 'picker'
 });
 
 // 方式 3: 解析自然语言
@@ -2258,6 +2271,164 @@ const status = EventService.getCheckInStatus(eventId);
 - 签到的事件显示**绿色Done状态线**
 - 取消签到且过期的事件显示**橙色Missed状态线**
 - 通过EventHistoryService查询历史记录计算状态
+
+---
+
+#### 8.4.6 checkType 字段在数据流中的实现（v1.8 2025-11-25）
+
+**1. Slate 序列化支持**
+
+`checkType` 字段已集成到 UnifiedSlateEditor 的序列化流程中：
+
+```typescript
+// src/components/UnifiedSlateEditor/serialization.ts
+
+// 1. Event → Slate Node（提取元数据）
+export function planItemToSlateNode(item: any): EventLineNode {
+  return {
+    type: 'event-line',
+    eventId: item.id,
+    lineId: generateLineId(),
+    level: 0,
+    mode: 'title',
+    metadata: {
+      // ...其他字段
+      checkType: item.checkType || 'once', // 🆕 默认有checkbox
+    },
+    children: [/* ... */]
+  };
+}
+
+// 2. Slate Node → Event（重建事件）
+export function slateNodeToPlanItem(node: EventLineNode): Event {
+  const metadata = node.metadata || {};
+  return {
+    id: node.eventId,
+    // ...其他字段
+    checkType: metadata.checkType || 'once', // 🆕 默认有checkbox
+  };
+}
+```
+
+**默认值规则**:
+- Plan 页面创建的事件默认 `checkType='once'`（显示 checkbox）
+- FloatingBar 的 add_task 按钮可以切换 `'once'` ↔ `'none'`
+- EventEditModalV2 的 recurring 按钮可以设置为 `'recurring'`
+
+**2. EventLinePrefix 组件**
+
+根据 `checkType` 字段决定是否显示 checkbox：
+
+```typescript
+// src/components/UnifiedSlateEditor/EventLinePrefix.tsx
+const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onSave }) => {
+  const metadata = element.metadata || {};
+  const checkType = metadata.checkType;
+  const showCheckbox = checkType === 'once' || checkType === 'recurring';
+  
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+      {/* 根据 checkType 决定是否显示 checkbox */}
+      {showCheckbox && (
+        <input
+          type="checkbox"
+          checked={isCompleted}
+          onChange={(e) => {
+            const isChecked = e.target.checked;
+            if (isChecked) {
+              EventService.checkIn(element.eventId);
+            } else {
+              EventService.uncheck(element.eventId);
+            }
+            onSave(element.eventId, {});
+          }}
+        />
+      )}
+      {/* Emoji */}
+      {emoji && <span>{emoji}</span>}
+    </div>
+  );
+};
+```
+
+**3. PlanManager 同步逻辑**
+
+`syncToUnifiedTimeline` 中为事件添加 `checkType` 字段：
+
+```typescript
+// src/components/PlanManager.tsx
+const event: Event = {
+  id: item.id,
+  title: extractedTitle,
+  // ...其他字段
+  checkType: item.checkType || 'once', // 🆕 Plan事件默认有checkbox
+  remarkableSource: true,
+};
+```
+
+**4. UpcomingEventsPanel 过滤逻辑**
+
+三步过滤公式：`checkType + 时间范围 - 系统事件`
+
+```typescript
+// src/utils/upcomingEventsHelper.ts
+export function filterEventsByTimeRange(
+  events: Event[],
+  timeFilter: TimeFilter,
+  customStart?: Date,
+  customEnd?: Date
+): Event[] {
+  const { start, end } = getTimeRangeBounds(timeFilter, customStart, customEnd);
+  
+  return events.filter(event => {
+    // 步骤 1: checkType 过滤（必须有有效的 checkType 且不为 'none'）
+    if (!event.checkType || event.checkType === 'none') {
+      return false;
+    }
+    
+    // 步骤 2: 时间范围过滤
+    const inRange = isEventInRange(event, start, end);
+    if (!inRange) {
+      return false;
+    }
+    
+    // 步骤 3: 排除系统事件（使用严格比较 === true）
+    if (event.isTimer === true || 
+        event.isOutsideApp === true || 
+        event.isTimeLog === true) {
+      return false;
+    }
+    
+    return true;
+  });
+}
+```
+
+**过滤逻辑说明**:
+1. **checkType 过滤**: 只显示有 checkbox 的事件（`'once'` 或 `'recurring'`）
+2. **时间范围**: 必须在选定的时间范围内
+3. **系统事件**: 排除 Timer/TimeLog/OutsideApp 等系统生成的事件
+
+**注意**: 过滤顺序非常重要，必须按上述三步顺序执行，不能合并为并行条件。
+
+---
+
+#### 8.4.7 checkType 字段与 category 字段的区别
+
+**checkType** (业务字段):
+- 用途：控制事件是否显示 checkbox
+- 取值：`'none'` | `'once'` | `'recurring'`
+- 影响：UI 显示、Panel 过滤逻辑
+
+**category** (技术字段):
+- 用途：TUI Calendar 内部分类
+- 取值：`'milestone'` | `'task'` | `'allday'` | `'time'`
+- 影响：日历组件渲染逻辑（仅 TUI Calendar 内部使用）
+
+**历史问题**:
+- 旧版本代码曾将 `category: 'ongoing'` 用于业务标记（已废弃）
+- 2025-11-25 清理了 ActionBasedSyncManager 和 MicrosoftCalendarService 中的硬编码 `category: 'ongoing'`
+- EventTag 接口中删除了业务类 category 字段，只保留 Event 中的技术类 category
 
 ---
 

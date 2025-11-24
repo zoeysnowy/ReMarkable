@@ -135,6 +135,76 @@ TimeHoverCard({ startTime: startTimeStr })  // ✅ 使用已有的字符串变�
 
 ---
 
+## ⚠️ 重要：时间字段的 undefined vs null
+
+**本项目统一使用 `null` 表示"无时间值"，禁止使用 `undefined`**
+
+### 为什么使用 null？
+
+1. **JSON 序列化兼容**: `null` 会被正确序列化为 `{"field":null}`，而 `undefined` 会被 `JSON.stringify()` 忽略
+2. **语义明确**: `null` = "明确没有值"，`undefined` = "未定义"
+3. **数据一致性**: 避免字段无法清除的问题（详见 [UNDEFINED_VS_NULL_TIME_FIELDS_FIX.md](../fixes/UNDEFINED_VS_NULL_TIME_FIELDS_FIX.md)）
+4. **数据库一致**: 与 SQL NULL 语义一致
+
+### 类型定义规范
+
+```typescript
+// ✅ 正确：使用 | null
+interface Event {
+  startTime?: string | null;   // 明确可以是 null
+  endTime?: string | null;     // 明确可以是 null
+}
+
+// ❌ 错误：只写 ?（隐式 undefined）
+interface Event {
+  startTime?: string;  // ❌ 不明确，JSON 序列化会丢失
+  endTime?: string;    // ❌ 不明确，JSON 序列化会丢失
+}
+```
+
+### 代码规范
+
+```typescript
+// ✅ 正确：返回 null
+const endTime = hasEnd ? calculateEnd() : null;
+
+// ❌ 错误：返回 undefined
+const endTime = hasEnd ? calculateEnd() : undefined;  // JSON 序列化会丢失
+
+// ✅ 正确：检查时兼容 null 和 undefined
+if (event.endTime == null) {  // 使用 == null（同时检查 null 和 undefined）
+  // 没有结束时间
+}
+
+// ✅ 正确：显式检查
+if (event.endTime === null || event.endTime === undefined) {
+  // 没有结束时间
+}
+```
+
+### 实际影响
+
+```typescript
+// 场景：用户想清除结束时间
+const event = { startTime: "2025-11-24 10:00:00", endTime: "2025-11-24 12:00:00" };
+
+// ❌ 错误：使用 undefined
+EventService.updateEvent(eventId, { endTime: undefined });
+const updated = { ...event, ...{ endTime: undefined } };
+// → JSON.stringify(updated) = '{"startTime":"..."}'
+// → endTime 字段消失！旧值无法清除
+
+// ✅ 正确：使用 null
+EventService.updateEvent(eventId, { endTime: null });
+const updated = { ...event, ...{ endTime: null } };
+// → JSON.stringify(updated) = '{"startTime":"...","endTime":null}'
+// → endTime 正确设置为 null
+```
+
+**相关文档**: [UNDEFINED_VS_NULL_TIME_FIELDS_FIX.md](../fixes/UNDEFINED_VS_NULL_TIME_FIELDS_FIX.md)
+
+---
+
 ## 📊 完整数据链路
 
 ### 用户输入 → 持久化 → 显示

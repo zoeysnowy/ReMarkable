@@ -298,11 +298,14 @@ localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
 - [x] EventService 更新逻辑检查
 - [x] localStorage 序列化行为检查
 - [x] 显示层 undefined/null 处理检查
-- [ ] **待修复**: JSON.stringify 丢失 undefined 问题
-- [ ] **待修复**: 类型定义统一使用 `| null`
+- [x] **已分析**: JSON.stringify 丢失 undefined 问题（已确认为根本原因）
+- [x] **已规划**: 类型定义统一使用 `| null`（详见 UNDEFINED_VS_NULL_TIME_FIELDS_FIX.md）
+- [x] **已完成**: 文档更新（已更新 4 个架构文档）
+- [ ] **待实施**: 代码修复（4 个文件需修改）
 - [ ] **待测试**: 完整链路端到端测试
 
 ---
 
 **诊断日期**: 2025-11-24  
+**更新日期**: 2025-11-25  
 **诊断人**: GitHub Copilot

@@ -1949,6 +1949,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       createdAt: formatTimeForStorage(new Date()),
       updatedAt: formatTimeForStorage(new Date()),
       isTask: isTask,
+      checkType: item.checkType || 'once', // 🆕 Plan事件默认有checkbox
       remarkableSource: true,
     };
 

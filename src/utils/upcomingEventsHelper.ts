@@ -149,28 +149,36 @@ export function filterAndSortEvents(
 
   const { start, end } = getTimeRange(filter, now);
 
-  // 筛选事件：
-  // 1. checkType 不为 'none'
-  // 2. 在时间范围内
-  // 3. 排除 isTimer、isOutsideApp、isEventLog（纯粹的计时/外部APP/时间日志笔记）
+  // 筛选事件（严格按顺序）：
+  // 1. checkType !== 'none' && checkType !== undefined （保留有签到需求的事件）
+  // 2. + 在时间范围内
+  // 3. - 排除系统事件（isTimer/isOutsideApp/isTimeLog === true）
   const filteredEvents = events.filter(event => {
-    // 排除 checkType 为 'none' 的事件
-    if (event.checkType === 'none') {
+    // 步骤1：checkType 过滤（排除 'none' 和 undefined）
+    if (!event.checkType || event.checkType === 'none') {
       return false;
     }
     
-    // 排除纯计时器、外部APP、时间日志事件
+    // 步骤2：时间范围过滤
+    const inRange = isEventInRange(event, start, end);
+    if (!inRange) {
+      return false;
+    }
+    
+    // 步骤3：排除明确标记为 true 的系统事件
     if (event.isTimer === true || event.isOutsideApp === true || event.isTimeLog === true) {
-      console.log('🚫 过滤事件:', event.title || event.simpleTitle, {
+      console.log('🚫 [Panel] 过滤系统事件:', event.title || event.simpleTitle, {
+        checkType: event.checkType,
         isTimer: event.isTimer,
         isOutsideApp: event.isOutsideApp,
-        isTimeLog: event.isTimeLog
+        isTimeLog: event.isTimeLog,
+        startTime: event.startTime
       });
       return false;
     }
     
-    // 检查时间范围
-    return isEventInRange(event, start, end);
+    // 通过所有3个步骤的检查
+    return true;
   });
 
   // 排序
@@ -186,6 +194,14 @@ export function filterAndSortEvents(
     } else {
       upcoming.push(event);
     }
+  });
+
+  console.log('📊 [Panel] 过滤结果统计:', {
+    原始事件数: events.length,
+    过滤后事件数: filteredEvents.length,
+    即将开始: upcoming.length,
+    已过期: expired.length,
+    已过期事件标题: expired.map(e => e.title || e.simpleTitle)
   });
 
   return { upcoming, expired };

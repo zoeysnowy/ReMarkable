@@ -1,7 +1,7 @@
 # Slate.js 编辑器开发指南
 
 > **状态**: ✅ 生产环境使用中  
-> **最后更新**: 2025-11-19  
+> **最后更新**: 2025-11-25  
 > **框架版本**: Slate.js 0.118+  
 > **适用模块**: PlanManager, TimeCalendar, 未来所有需要富文本编辑的模块  
 > **重要更新**: 
@@ -11,8 +11,133 @@
 > - **字段重构: simpleTitle/fullTitle双向同步** (v2.8)
 > - **渲染架构重构: 移除renderLinePrefix/renderLineSuffix** (v2.8.3)
 > - **@ 提及自动保存暂停机制** (v2.10.1)
-> - **🎉 循环更新防护机制** (v2.11) 🆕
-> - **🛡️ 性能优化: enhancedValue深度比较机制** (v2.12) ✨
+> - **🎉 循环更新防护机制** (v2.11)
+> - **🛡️ 性能优化: enhancedValue深度比较机制** (v2.12)
+> - **✅ checkType 字段与 checkbox 关联** (v2.13) 🆕
+
+---
+
+## ✅ v2.13 checkType 字段与 checkbox 关联 (2025-11-25)
+
+### 重大功能更新
+
+**背景**: Slate 中每一行都有 checkbox 显示，但缺少字段控制显示逻辑
+**需求**: 使用 `checkType` 字段统一控制 checkbox 显示状态
+**状态**: ✅ 已实现并集成到序列化、UI组件、过滤逻辑
+
+### 核心实现
+
+#### 1. EventMetadata 扩展
+
+```typescript
+// src/components/UnifiedSlateEditor/types.ts
+export interface EventMetadata {
+  // ...其他字段
+  checkType?: 'none' | 'once' | 'recurring'; // 控制 checkbox 显示
+}
+```
+
+**字段说明**:
+- `'once'`: 单次任务，显示 checkbox（默认值）
+- `'recurring'`: 循环任务，显示 checkbox
+- `'none'` 或 `undefined`: 不显示 checkbox
+
+#### 2. 序列化支持
+
+**提取元数据**（Event → Slate Node）:
+```typescript
+// src/components/UnifiedSlateEditor/serialization.ts - planItemToSlateNode
+metadata: {
+  // ...其他字段
+  checkType: item.checkType || 'once', // 默认有checkbox
+}
+```
+
+**重建事件**（Slate Node → Event）:
+```typescript
+// slateNodeToPlanItem
+{
+  id: node.eventId,
+  // ...其他字段
+  checkType: metadata.checkType || 'once', // 默认有checkbox
+}
+```
+
+#### 3. EventLinePrefix 组件集成
+
+根据 `checkType` 决定是否显示 checkbox：
+
+```typescript
+// src/components/UnifiedSlateEditor/EventLinePrefix.tsx
+const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onSave }) => {
+  const metadata = element.metadata || {};
+  const checkType = metadata.checkType;
+  const showCheckbox = checkType === 'once' || checkType === 'recurring';
+  
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+      {/* 根据 checkType 决定是否显示 checkbox */}
+      {showCheckbox && (
+        <input
+          type="checkbox"
+          checked={isCompleted}
+          onChange={(e) => {
+            const isChecked = e.target.checked;
+            if (isChecked) {
+              EventService.checkIn(element.eventId);
+            } else {
+              EventService.uncheck(element.eventId);
+            }
+            onSave(element.eventId, {});
+          }}
+        />
+      )}
+      {/* Emoji */}
+      {emoji && <span>{emoji}</span>}
+    </div>
+  );
+};
+```
+
+#### 4. PlanManager 同步逻辑
+
+```typescript
+// src/components/PlanManager.tsx - syncToUnifiedTimeline
+const event: Event = {
+  id: item.id,
+  title: extractedTitle,
+  // ...其他字段
+  checkType: item.checkType || 'once', // Plan事件默认有checkbox
+  remarkableSource: true,
+};
+```
+
+### 与 UpcomingEventsPanel 集成
+
+checkType 字段用于 Panel 的三步过滤公式：
+
+```typescript
+// src/utils/upcomingEventsHelper.ts
+// 步骤 1: checkType 过滤
+if (!event.checkType || event.checkType === 'none') {
+  return false; // 不显示 checkbox 的事件不在 Panel 中显示
+}
+
+// 步骤 2: 时间范围过滤
+// 步骤 3: 排除系统事件
+```
+
+**过滤逻辑**: 只有 `checkType='once'` 或 `'recurring'` 的事件才会显示在 UpcomingEventsPanel 中。
+
+### 未来扩展
+
+**FloatingBar 集成** (待实现):
+- add_task 按钮：切换 `checkType` 在 `'once'` 和 `'none'` 之间
+- recurring 按钮：设置 `checkType='recurring'` 并配置循环规则
+
+**EventEditModalV2 集成** (待实现):
+- UI 控件显示当前 checkType 状态
+- 支持通过按钮切换 checkType 类型
 
 ---
 

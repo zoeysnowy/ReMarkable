@@ -742,6 +742,8 @@ function App() {
         // Plan Item：只更新 duration 和描述，保留原有的计划时间
         description: finalDescription,
         syncStatus: 'pending' as const,
+        isTimer: true, // ✅ 保留 isTimer 标记（子事件）
+        parentEventId: globalTimer.parentEventId, // ✅ 保留父事件关联
         updatedAt: formatTimeForStorage(new Date())
       } : finalEvent; // Timer 事件：更新完整数据
 
@@ -749,7 +751,9 @@ function App() {
       AppLogger.log('💾 [Timer Stop] Using EventService to create/update event', {
         isPlan: existingEvent?.isPlan,
         updateFields: Object.keys(updateData),
-        parentEventId: globalTimer.parentEventId
+        parentEventId: globalTimer.parentEventId,
+        existingIsTimer: existingEvent?.isTimer,
+        updateDataIsTimer: (updateData as any).isTimer
       });
       const result = await EventService.updateEvent(timerEventId, updateData as Event);
       

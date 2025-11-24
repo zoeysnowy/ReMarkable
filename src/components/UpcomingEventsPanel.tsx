@@ -48,6 +48,20 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
   useEffect(() => {
     const loadEvents = () => {
       const events = EventService.getAllEvents();
+      
+      // 🔍 [DEBUG] 检查计时事件的 isTimer 字段
+      const timerEvents = events.filter(e => 
+        e.description?.includes('[⏱️ 计时') || e.isTimer === true
+      );
+      console.log('🔍 [UpcomingEventsPanel] 从 EventService 加载的计时事件:', 
+        timerEvents.map(e => ({
+          id: e.id.slice(-8),
+          title: e.title || e.simpleTitle,
+          isTimer: e.isTimer,
+          description: e.description?.substring(0, 50)
+        }))
+      );
+      
       setAllEvents(events);
     };
 

@@ -2,10 +2,120 @@
 
 **模块路径**: `src/components/PlanManager.tsx`  
 **代码行数**: ~2400 lines  
-**架构版本**: v2.0 (循环更新防护)  
-**最后更新**: 2025-11-19  
+**架构版本**: v2.1 (checkType 字段支持)  
+**最后更新**: 2025-11-25  
 **编写框架**: Copilot PRD Reverse Engineering Framework v1.0  
 **Figma 设计稿**: [ReMarkable-0.1 - 1450w default](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=290-2646&m=dev)
+
+---
+
+## 🎯 v2.3 checkType 字段与 UpcomingEventsPanel 集成 (2025-11-25)
+
+### 功能概述
+
+**背景**: Slate 每一行都有 checkbox，需要字段控制其显示逻辑
+**需求**: 使用 `checkType` 字段统一控制 checkbox 显示，并在 UpcomingEventsPanel 中正确过滤
+**状态**: ✅ 已完成并测试验证
+
+### 核心改进
+
+#### 1. syncToUnifiedTimeline 添加 checkType 字段
+
+```typescript
+// src/components/PlanManager.tsx - syncToUnifiedTimeline
+const event: Event = {
+  id: item.id,
+  title: extractedTitle,
+  description: combinedDescription,
+  startTime: item.metadata?.startTime || null,
+  endTime: item.metadata?.endTime || null,
+  isAllDay: item.metadata?.isAllDay || false,
+  checkType: item.metadata?.checkType || 'once', // 🆕 Plan事件默认有checkbox
+  // ...其他字段
+  remarkableSource: true,
+};
+```
+
+**字段说明**:
+- `checkType='once'`: 单次任务，显示 checkbox（Plan 页面默认值）
+- `checkType='recurring'`: 循环任务，显示 checkbox
+- `checkType='none'`: 不显示 checkbox
+
+#### 2. UpcomingEventsPanel 三步过滤公式
+
+**过滤公式**: `checkType + 时间范围 - 系统事件`
+
+```typescript
+// src/utils/upcomingEventsHelper.ts
+export function filterEventsByTimeRange(
+  events: Event[],
+  timeFilter: TimeFilter,
+  customStart?: Date,
+  customEnd?: Date
+): Event[] {
+  const { start, end } = getTimeRangeBounds(timeFilter, customStart, customEnd);
+  
+  return events.filter(event => {
+    // 步骤 1: checkType 过滤（必须有有效的 checkType 且不为 'none'）
+    if (!event.checkType || event.checkType === 'none') {
+      return false;
+    }
+    
+    // 步骤 2: 时间范围过滤
+    const inRange = isEventInRange(event, start, end);
+    if (!inRange) {
+      return false;
+    }
+    
+    // 步骤 3: 排除系统事件（使用严格比较 === true）
+    if (event.isTimer === true || 
+        event.isOutsideApp === true || 
+        event.isTimeLog === true) {
+      return false;
+    }
+    
+    return true;
+  });
+}
+```
+
+**过滤逻辑说明**:
+1. **checkType 过滤**: 只显示有 checkbox 的事件（`'once'` 或 `'recurring'`）
+2. **时间范围**: 必须在选定的时间范围内（Today/Tomorrow/This Week 等）
+3. **系统事件**: 排除 Timer/TimeLog/OutsideApp 等系统生成的事件
+
+**注意**: 过滤顺序至关重要，必须按上述三步顺序执行，不能合并为并行条件。
+
+#### 3. 历史问题清理
+
+**问题**: 旧版本 Outlook 同步代码硬编码 `category: 'ongoing'` 用于业务标记
+**影响**: Timer 事件显示 #ongoing 标签，误导用户
+**修复**: 
+- 清理 `ActionBasedSyncManager.ts` 中的 `category: 'ongoing'`（1处）
+- 清理 `MicrosoftCalendarService.ts` 中的 `category: 'ongoing'`（2处）
+- 从 `EventTag` 接口中删除业务类 `category` 字段
+- 保留 `Event` 接口中的技术类 `category` 字段（供 TUI Calendar 使用）
+
+**字段区别**:
+- `checkType` (业务字段): 控制事件 checkbox 显示，影响 UI 和 Panel 过滤
+- `category` (技术字段): TUI Calendar 内部分类（'milestone'/'task'/'allday'/'time'）
+
+### 数据流完整性
+
+**完整流程**:
+1. **Plan 页面**: 用户创建事件 → Slate 序列化 → `checkType='once'`（默认）
+2. **PlanManager**: `syncToUnifiedTimeline` → 添加到 Event 对象
+3. **EventService**: 保存到本地存储，保留 `checkType` 字段
+4. **UpcomingEventsPanel**: 读取事件 → 三步过滤 → 只显示有 checkbox 的事件
+5. **EventLinePrefix**: 根据 `checkType` 决定是否渲染 checkbox
+
+### 测试验证
+
+**测试场景**:
+- ✅ Plan 页面创建事件 → 默认显示 checkbox
+- ✅ Timer 事件（`isTimer=true`）→ 不显示在 Panel 中
+- ✅ `checkType='none'` 的事件 → 不显示 checkbox，不在 Panel 中
+- ✅ 过滤顺序正确 → checkType → 时间范围 → 系统事件
 
 ---
 

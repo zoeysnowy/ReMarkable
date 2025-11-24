@@ -23,6 +23,10 @@ const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onS
   const checkInStatus = EventService.getCheckInStatus(element.eventId);
   const isCompleted = checkInStatus.isChecked;
   
+  // 🆕 根据 checkType 判断是否显示 checkbox
+  const checkType = metadata.checkType;
+  const showCheckbox = checkType === 'once' || checkType === 'recurring';
+  
   const emoji = metadata.emoji;
 
   // 🆕 状态配置映射 (根据用户要求的颜色方案)
@@ -67,30 +71,32 @@ const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onS
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-      {/* Checkbox - 统一缩进由StatusLineContainer的padding-left控制 */}
-      <input
-        type="checkbox"
-        checked={isCompleted}
-        onChange={(e) => {
-          e.stopPropagation();
-          const isChecked = e.target.checked;
-          
-          // ✅ 只使用新的 check-in 机制，不再更新 isCompleted 字段
-          if (isChecked) {
-            EventService.checkIn(element.eventId);
-          } else {
-            EventService.uncheck(element.eventId);
-          }
-          
-          // 触发重新渲染
-          onSave(element.eventId, {});
-        }}
-        style={{
-          cursor: 'pointer',
-          opacity: 1,
-          marginRight: '4px',
-        }}
-      />
+      {/* Checkbox - 根据 checkType 决定是否显示 */}
+      {showCheckbox && (
+        <input
+          type="checkbox"
+          checked={isCompleted}
+          onChange={(e) => {
+            e.stopPropagation();
+            const isChecked = e.target.checked;
+            
+            // ✅ 只使用新的 check-in 机制，不再更新 isCompleted 字段
+            if (isChecked) {
+              EventService.checkIn(element.eventId);
+            } else {
+              EventService.uncheck(element.eventId);
+            }
+            
+            // 触发重新渲染
+            onSave(element.eventId, {});
+          }}
+          style={{
+            cursor: 'pointer',
+            opacity: 1,
+            marginRight: '4px',
+          }}
+        />
+      )}
       
       {/* Emoji */}
       {emoji && (
