@@ -620,6 +620,10 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
           eventlog: updatedEvent.eventlog,
           description: updatedEvent.description,
           syncStatus: updatedEvent.syncStatus, // 🔧 包含 Timer 的 local-only 状态
+          // 🆕 日历同步配置字段
+          calendarIds: updatedEvent.calendarIds,
+          planSyncConfig: updatedEvent.planSyncConfig,
+          actualSyncConfig: updatedEvent.actualSyncConfig,
         }, {
           source: 'EventEditModalV2' // 标记更新来源，用于调试
         });
