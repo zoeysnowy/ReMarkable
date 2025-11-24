@@ -51,11 +51,28 @@ import { TimestampDividerElement } from '../UnifiedSlateEditor/elements/Timestam
 // 导入 timestamp 服务
 import { EventLogTimestampService } from '../UnifiedSlateEditor/timestampService';
 
+// 导入 EventHistoryService 获取创建时间
+import { EventHistoryService } from '../../services/EventHistoryService';
+
 // 导入序列化工具
 import { jsonToSlateNodes, slateNodesToJson } from './serialization';
 
 // 样式复用 UnifiedSlateEditor 的样式
 import './LightSlateEditor.css';
+
+/**
+ * 格式化日期时间为 "YYYY-MM-DD HH:mm:ss" 格式
+ */
+function formatDateTime(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
 
 export interface LightSlateEditorProps {
   /** Slate JSON 内容 (来自 event.eventlog) */
@@ -110,12 +127,57 @@ export const LightSlateEditor: React.FC<LightSlateEditorProps> = ({
     return editorInstance;
   }, []);
   
+  // 记录已添加 timestamp 的 content (必须在 initialValue 之前定义)
+  const timestampAddedForContentRef = useRef<string | null>(null);
+  
   // 将 Slate JSON 字符串转换为 Slate nodes
   const initialValue = useMemo(() => {
-    const nodes = jsonToSlateNodes(content);
+    let nodes = jsonToSlateNodes(content);
     console.log('[LightSlateEditor] 解析内容为节点:', { content, nodes });
+    
+    // 如果启用 timestamp 且这个 content 还没添加过 timestamp
+    if (enableTimestamp && parentEventId && timestampAddedForContentRef.current !== content) {
+      const hasActualContent = nodes.some((node: any) => {
+        if (node.type === 'paragraph') {
+          return node.children?.some((child: any) => child.text?.trim());
+        }
+        return node.type !== 'paragraph';
+      });
+      
+      const hasTimestamp = nodes.some((node: any) => node.type === 'timestamp-divider');
+      
+      if (hasActualContent && !hasTimestamp) {
+        // 从 EventHistoryService 获取创建时间
+        const createLog = EventHistoryService.queryHistory({
+          eventId: parentEventId,
+          operations: ['create'],
+          limit: 1
+        })[0];
+        
+        if (createLog) {
+          const createTime = new Date(createLog.timestamp);
+          console.log('[LightSlateEditor] 在 initialValue 中添加 timestamp:', createTime);
+          
+          // 在开头插入 timestamp（不插入 preline，由 renderElement 动态绘制）
+          nodes = [
+            {
+              type: 'timestamp-divider',
+              timestamp: createTime.toISOString(),
+              displayText: formatDateTime(createTime),
+              isFirstOfDay: true,
+              children: [{ text: '' }]
+            },
+            ...nodes
+          ] as any;
+          
+          // 标记这个 content 已经添加过 timestamp
+          timestampAddedForContentRef.current = content;
+        }
+      }
+    }
+    
     return nodes;
-  }, [content]); // 依赖 content，内容变化时重新解析
+  }, [content, enableTimestamp, parentEventId]); // 依赖 content，内容变化时重新解析
   
   // 自动保存定时器
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -148,13 +210,103 @@ export const LightSlateEditor: React.FC<LightSlateEditorProps> = ({
   // Timestamp 相关状态
   const timestampServiceRef = useRef<EventLogTimestampService | null>(null);
   const [pendingTimestamp, setPendingTimestamp] = useState<boolean>(false);
+  const contentLoadedRef = useRef<boolean>(false);
   
   // 初始化 timestamp 服务
   useEffect(() => {
     if (enableTimestamp && parentEventId) {
       timestampServiceRef.current = new EventLogTimestampService();
+      console.log('[LightSlateEditor] 初始化 EventLogTimestampService');
+      
+      // 如果内容中已有 timestamp，提取最后一个并设置为 lastEditTime
+      const timestamps = editor.children.filter((node: any) => node.type === 'timestamp-divider') as any[];
+      if (timestamps.length > 0) {
+        const lastTimestamp = timestamps[timestamps.length - 1];
+        const lastTime = new Date(lastTimestamp.timestamp);
+        timestampServiceRef.current.updateLastEditTime(parentEventId, lastTime);
+        console.log('[LightSlateEditor] 从内容中恢复 lastEditTime:', lastTime);
+      }
     }
-  }, [enableTimestamp, parentEventId]);
+  }, [enableTimestamp, parentEventId, editor]);
+  
+  // 从加载的内容中提取最后一个 timestamp，并初始化 timestampService
+  // 如果有内容但没有 timestamp，插入初始 timestamp + preline
+  useEffect(() => {
+    if (enableTimestamp && parentEventId && timestampServiceRef.current && !contentLoadedRef.current) {
+      // 检查是否有实际内容（不只是空段落）
+      const hasActualContent = editor.children.some((node: any) => {
+        if (node.type === 'paragraph') {
+          return node.children?.some((child: any) => child.text?.trim());
+        }
+        return node.type !== 'paragraph';
+      });
+      
+      // 扫描所有 timestamp 节点
+      let lastTimestamp: Date | null = null;
+      let hasTimestamp = false;
+      
+      for (const node of editor.children) {
+        const element = node as any;
+        if (element.type === 'timestamp-divider' && element.timestamp) {
+          hasTimestamp = true;
+          try {
+            const timestampDate = new Date(element.timestamp);
+            if (!lastTimestamp || timestampDate > lastTimestamp) {
+              lastTimestamp = timestampDate;
+            }
+          } catch (error) {
+            console.warn('[LightSlateEditor] 解析 timestamp 失败:', element.timestamp);
+          }
+        }
+      }
+      
+      // 如果有内容但没有 timestamp，插入初始 timestamp（不插入 preline，由 renderElement 动态绘制）
+      if (hasActualContent && !hasTimestamp) {
+        console.log('[LightSlateEditor] 有内容但无 timestamp，插入初始 timestamp');
+        
+        // 从 EventHistoryService 获取创建时间
+        const createLog = EventHistoryService.queryHistory({
+          eventId: parentEventId,
+          operations: ['create'],
+          limit: 1
+        })[0];
+        
+        if (createLog) {
+          const createTime = new Date(createLog.timestamp);
+          console.log('[LightSlateEditor] 找到创建时间:', createTime);
+          
+          // 创建 timestamp 节点（使用创建时间）
+          const timestampNode = {
+            type: 'timestamp-divider',
+            timestamp: createTime.toISOString(),
+            displayText: formatDateTime(createTime),
+            isFirstOfDay: true,
+            children: [{ text: '' }]
+          };
+          
+          // 使用 Editor.withoutNormalizing 避免中间状态
+          Editor.withoutNormalizing(editor, () => {
+            // 在编辑器开头插入 timestamp（不插入 preline）
+            Transforms.insertNodes(editor, timestampNode as any, { at: [0] });
+          });
+          
+          // 更新 timestampService 的最后编辑时间
+          timestampServiceRef.current.updateLastEditTime(parentEventId, createTime);
+          
+          console.log('[LightSlateEditor] 初始 timestamp 插入完成');
+        } else {
+          console.warn('[LightSlateEditor] 未找到创建日志，跳过初始 timestamp 插入');
+        }
+      }
+      // 如果找到现有 timestamp，更新 timestampService 的最后编辑时间
+      else if (lastTimestamp) {
+        console.log('[LightSlateEditor] 从内容中提取到最后 timestamp:', lastTimestamp);
+        timestampServiceRef.current.updateLastEditTime(parentEventId, lastTimestamp);
+      }
+      
+      contentLoadedRef.current = true;
+    }
+  }, [editor, enableTimestamp, parentEventId]);
   
   /**
    * 检查当前元素前面是否有 timestamp，并计算到前一个 timestamp 的距离
@@ -200,10 +352,47 @@ export const LightSlateEditor: React.FC<LightSlateEditorProps> = ({
     
     switch ((element as any).type) {
       case 'paragraph':
-        // 检查是否需要 preline
-        const needsPreline = hasPrecedingTimestamp(element, editor.children);
+        // 检查是否应该绘制 preline
+        const needsPreline = (() => {
+          try {
+            const path = ReactEditor.findPath(editor, element);
+            if (!path) return false;
+            
+            // 向上查找最近的 timestamp
+            let hasTimestamp = false;
+            for (let i = path[0] - 1; i >= 0; i--) {
+              const node = editor.children[i] as any;
+              if (node.type === 'timestamp-divider') {
+                hasTimestamp = true;
+                break;
+              }
+            }
+            
+            if (!hasTimestamp) return false;
+            
+            // 如果有内容，显示 preline
+            const hasContent = (element as any).children?.some((child: any) => child.text?.trim());
+            if (hasContent) return true;
+            
+            // 空段落：检查是否是当前 timestamp 组中的段落
+            // 向上查找，如果遇到 timestamp 之前都是 paragraph，说明属于这个 timestamp 组
+            for (let i = path[0] - 1; i >= 0; i--) {
+              const node = editor.children[i] as any;
+              if (node.type === 'timestamp-divider') {
+                return true; // 找到了 timestamp，这是它下面的段落
+              }
+              if (node.type !== 'paragraph') {
+                break; // 遇到其他类型节点，停止
+              }
+            }
+            
+            return false;
+          } catch {
+            return false;
+          }
+        })();
         
-        // 检查是否是最后一个非空段落（光标可能到过的最远位置）
+        // 检查是否是最后一个非空段落（光标可能到达过的最远位置）
         const isLastContentParagraph = (() => {
           try {
             const path = ReactEditor.findPath(editor, element);
@@ -223,7 +412,7 @@ export const LightSlateEditor: React.FC<LightSlateEditorProps> = ({
         })();
         
         return (
-          <div 
+          <div
             {...props.attributes}
             className={`slate-paragraph ${needsPreline ? 'with-preline' : ''}`}
             style={{
@@ -233,22 +422,22 @@ export const LightSlateEditor: React.FC<LightSlateEditorProps> = ({
             }}
           >
             {needsPreline && (
-              <div 
+              <div
                 className="paragraph-preline"
+                contentEditable={false}
                 style={{
                   position: 'absolute',
                   left: '8px',
-                  top: '-32px', // 固定高度，向上延伸到 timestamp 顶部
-                  bottom: isLastContentParagraph ? '-20px' : '-4px',
+                  top: '-28px', // 向上延伸到 timestamp 文字顶部（padding-top 8px + 文字行高约 20px）
+                  bottom: isLastContentParagraph ? '-8px' : '0', // 最后段落向下延伸一点，其他段落到底部
                   width: '2px',
                   background: '#e5e7eb',
-                  zIndex: 0
+                  zIndex: 0,
+                  pointerEvents: 'none' // 防止 preline 拦截点击事件
                 }}
               />
             )}
-            <div style={{ position: 'relative', zIndex: 1 }}>
-              {props.children}
-            </div>
+            {props.children}
           </div>
         );
         
@@ -299,26 +488,32 @@ export const LightSlateEditor: React.FC<LightSlateEditorProps> = ({
    */
   const handleFocus = useCallback(() => {
     if (enableTimestamp && timestampServiceRef.current && parentEventId) {
+      // 检查是否需要插入新的 timestamp（基于 5 分钟间隔）
       const shouldInsert = timestampServiceRef.current.shouldInsertTimestamp({
-        contextId: parentEventId,  // 使用 parentEventId 作为 contextId
+        contextId: parentEventId,
         eventId: parentEventId
       });
       
       if (shouldInsert) {
-        console.log('[LightSlateEditor] 聚焦时插入 timestamp');
+        // 检查是否已经有内容（只有有内容时才插入新 timestamp 进行分隔）
+        const hasContent = editor.children.some((node: any) => {
+          return node.type === 'paragraph' && node.children?.[0]?.text?.trim();
+        });
         
-        // 检查当前第一个元素是否为空段落
-        const firstElement = editor.children[0] as any;
-        const hasPreElement = firstElement && 
-          firstElement.type === 'paragraph' && 
-          firstElement.children?.[0]?.text?.length > 0;
-        
-        // 创建 timestamp 节点
-        const timestampNode = timestampServiceRef.current.createTimestampDivider(parentEventId);
-        
-        timestampServiceRef.current.insertTimestamp(editor, timestampNode, parentEventId);
-        
-        setPendingTimestamp(true); // 标记有等待用户输入的 timestamp
+        if (hasContent) {
+          console.log('[LightSlateEditor] 聚焦时插入 timestamp（距上次编辑超过 5 分钟）');
+          
+          // 创建 timestamp 节点
+          const timestampNode = timestampServiceRef.current.createTimestampDivider(parentEventId);
+          
+          timestampServiceRef.current.insertTimestamp(editor, timestampNode, parentEventId);
+          
+          setPendingTimestamp(true); // 标记有等待用户输入的 timestamp
+        } else {
+          console.log('[LightSlateEditor] 聚焦但无内容，不插入 timestamp');
+        }
+      } else {
+        console.log('[LightSlateEditor] 聚焦但距上次编辑未超过 5 分钟，不插入 timestamp');
       }
     }
   }, [enableTimestamp, editor, parentEventId]);
@@ -351,9 +546,15 @@ export const LightSlateEditor: React.FC<LightSlateEditorProps> = ({
   const handleChange = useCallback((newValue: Descendant[]) => {
     console.log('[LightSlateEditor] 内容变化:', newValue);
     
-    // 如果有等待的 timestamp，用户开始输入了，清除标记
+    // 如果有等待的 timestamp，用户开始输入了，清除标记并更新最后编辑时间
     if (pendingTimestamp) {
       setPendingTimestamp(false);
+      
+      // 用户开始输入，确认这个 timestamp，更新最后编辑时间
+      if (enableTimestamp && timestampServiceRef.current && parentEventId) {
+        timestampServiceRef.current.updateLastEditTime(parentEventId);
+        console.log('[LightSlateEditor] 用户输入确认 timestamp，更新最后编辑时间');
+      }
     }
     
     // 防抖保存
@@ -369,7 +570,7 @@ export const LightSlateEditor: React.FC<LightSlateEditorProps> = ({
         console.log('[LightSlateEditor] 自动保存 Slate JSON:', newContent.slice(0, 100) + '...');
       }
     }, 2000);
-  }, [pendingTimestamp, onChange]);
+  }, [pendingTimestamp, onChange, enableTimestamp, parentEventId]);
   
   /**
    * 处理键盘事件

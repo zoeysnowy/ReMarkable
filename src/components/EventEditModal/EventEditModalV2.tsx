@@ -1,20 +1,80 @@
 /**
  * EventEditModal v2 - 双视图事件编辑模态框
  * 
- * 完整的事件编辑器，支持详情视图和收缩视图
- * 
- * 功能：
+ * ==================== 功能概览 ====================
  * 1. 左侧事件标识区（Emoji、标题、标签、任务勾选）
  * 2. Timer 计时按钮交互
- * 3. 计划安排编辑
+ * 3. 计划安排编辑（时间、地点、参会人）
  * 4. 实际进展显示
- * 5. Event Log 富文本编辑
+ * 5. Event Log 富文本编辑（LightSlateEditor）
+ * 
+ * ==================== 架构集成 ====================
+ * 
+ * 数据流向（遵循 EVENTHUB_TIMEHUB_ARCHITECTURE.md）:
+ * ```
+ * 用户输入
+ *   ↓
+ * formData（本地状态）
+ *   ↓
+ * handleSave()
+ *   ↓
+ * EventHub.createEvent() / EventHub.updateFields()
+ *   ↓
+ * EventService.createEvent() / EventService.updateEvent()
+ *   ↓
+ * localStorage 持久化 + BroadcastChannel 同步
+ *   ↓
+ * eventsUpdated 事件 → TimeCalendar 监听 → UI 刷新
+ * ```
+ * 
+ * 职责分离：
+ * - EventEditModal: UI 层，负责表单输入和展示
+ * - EventHub: 状态管理层，负责缓存和增量更新
+ * - EventService: 持久化层，负责 localStorage 和跨 Tab 同步
+ * - TimeHub: 时间管理层（本组件不直接调用，时间字段随事件保存）
+ * 
+ * 关键原则：
+ * 1. ✅ 所有事件操作通过 EventHub（禁止直接调用 EventService）
+ * 2. ✅ 增量更新使用 updateFields（避免覆盖其他字段）
+ * 3. ✅ 创建 vs 更新：检查 EventService（持久化层）而非 EventHub 缓存
+ * 4. ✅ 原子性保存：所有字段一起保存（避免部分保存导致数据不一致）
+ * 5. ✅ 时间字段：与其他字段一起保存，不单独调用 TimeHub.setEventTime()
+ * 
+ * ==================== 数据结构 ====================
+ * 
+ * MockEvent（formData）:
+ * - 非时间字段: title, tags, isTask, location, organizer, attendees, eventlog, description
+ * - 时间字段: startTime, endTime, allDay
+ * - 元数据: id, parentEventId, isTimer
+ * 
+ * Event（完整事件）:
+ * - 继承 MockEvent 的所有字段
+ * - 额外字段: createdAt, updatedAt, syncStatus, remarkableSource, calendarIds, todoListIds
+ * 
+ * eventlog 字段格式兼容：
+ * - 旧格式: 字符串（HTML）
+ * - 新格式: EventLog 对象 { content: Slate JSON, descriptionPlainText, ... }
+ * - LightSlateEditor 需要: Slate JSON 字符串
+ * 
+ * ==================== 性能优化 ====================
+ * 
+ * 1. 条件渲染: !isOpen 时不渲染（减少 DOM 节点）
+ * 2. 懒加载: 动态 import EventHub（减少初始包大小）
+ * 3. 依赖优化: useEffect 只监听 event?.id（避免频繁更新）
+ * 4. 联系人提取: 初始化时自动提取 organizer/attendees 到 ContactService
+ * 
+ * ==================== 相关文档 ====================
+ * 
+ * - EVENTHUB_TIMEHUB_ARCHITECTURE.md: 核心架构规范
+ * - EVENTEDITMODAL_V2_IMPLEMENTATION.md: 实现细节
+ * - EVENT_ARCHITECTURE.md: 旧版架构文档（已归档）
  * 
  * @author Zoey Gong
- * @version 2.0.0
+ * @version 2.0.1
+ * @lastModified 2025-11-24
  */
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
@@ -33,6 +93,8 @@ import { SyncModeDropdown } from '../EventEditModalV2Demo/SyncModeDropdown';
 import { getAvailableCalendarsForSettings, getCalendarGroupColor } from '../../utils/calendarUtils';
 // TimeLog 相关导入
 import { LightSlateEditor } from '../LightSlateEditor';
+import { HeadlessFloatingToolbar } from '../FloatingToolbar/HeadlessFloatingToolbar';
+import { useFloatingToolbar } from '../FloatingToolbar/useFloatingToolbar';
 // import { insertTag, insertEmoji, insertDateMention } from '../UnifiedSlateEditor/helpers';
 // import { parseExternalHtml, slateNodesToRichHtml } from '../UnifiedSlateEditor/serialization';
 import { formatTimeForStorage } from '../../utils/timeUtils';
@@ -112,7 +174,30 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
 }) => {
   // 如果modal未打开，不渲染
   if (!isOpen) return null;
-  // 从 props.event 初始化表单数据
+  
+  /**
+   * ==================== formData 初始化 ====================
+   * 
+   * 数据来源：
+   * 1. 编辑已有事件：props.event（来自 EventService.getAllEvents()）
+   * 2. 创建新事件：TimeCalendar 传入的临时对象（带 local-${timestamp} ID）
+   * 
+   * 字段说明：
+   * - 非时间字段：title, tags, isTask, location, attendees, eventlog, description
+   * - 时间字段：startTime, endTime, allDay（存储但不在此处管理）
+   * - 元数据：id, parentEventId（Timer父子关系）, organizer（Outlook同步）
+   * 
+   * eventlog 字段处理：
+   * - 旧格式：字符串（HTML）
+   * - 新格式：EventLog 对象 { content: Slate JSON, ... }
+   * - LightSlateEditor 需要 Slate JSON 字符串
+   * 
+   * 架构分层：
+   * - EventEditModal：UI层，负责用户输入和展示
+   * - EventHub：状态管理层，负责缓存和增量更新
+   * - EventService：持久化层，负责 localStorage 存储
+   * - TimeHub：时间管理层，负责 TimeSpec 和时间意图（本组件不直接调用）
+   */
   const [formData, setFormData] = useState<MockEvent>(() => {
     if (event) {
       return {
@@ -210,18 +295,148 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   // TimeLog 相关 refs
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const slateEditorRef = useRef<any>(null);
+
+  // FloatingToolbar Hook
+  const floatingToolbar = useFloatingToolbar({
+    editorRef: rightPanelRef as RefObject<HTMLElement>,
+    enabled: isDetailView,
+  });
   
-  // FloatingBar 图标配置
-  const floatingBarIcons = [
-    { icon: '😀', alt: '表情' },
-    { icon: '#', alt: '标签' },
-    { icon: '📅', alt: '日期' },
-    { icon: '•', alt: '列表' },
-    { icon: '🎨', alt: '颜色' },
-    { icon: '+', alt: '添加任务' }
-  ];
   const [sourceSyncMode, setSourceSyncMode] = useState('receive-only');
   const [syncSyncMode, setSyncSyncMode] = useState('bidirectional');
+
+  /**
+   * 🚫 计算保存按钮是否应该禁用
+   * 根据 PRD：当 !formData.title && formData.tags.length === 0 时禁用
+   */
+  const isSaveDisabled = !formData.title?.trim() && (!formData.tags || formData.tags.length === 0);
+
+  /**
+   * 💾 统一保存处理函数
+   * 
+   * 架构说明：
+   * 1. 遵循 EventHub 架构规范（EVENTHUB_TIMEHUB_ARCHITECTURE.md）
+   * 2. 数据流：EventEditModal → EventHub → EventService → localStorage
+   * 3. 职责分离：
+   *    - EventHub: 管理非时间字段（title, tags, description, attendees, eventlog等）
+   *    - TimeHub: 管理时间字段（startTime, endTime, isAllDay, timeSpec）
+   * 4. 创建 vs 更新：
+   *    - 检查 EventService（持久化层）判断事件是否存在
+   *    - 新建：EventHub.createEvent() - 一次性创建完整事件
+   *    - 更新：EventHub.updateFields() - 增量更新指定字段
+   */
+  const handleSave = async () => {
+    try {
+      console.log('💾 [EventEditModalV2] Saving event:', formData.id);
+      
+      // 🔧 Step 1: 处理空标题 - 如果标题为空但有标签，使用标签名称
+      let finalTitle = formData.title;
+      if (!finalTitle || finalTitle.trim() === '') {
+        if (formData.tags && formData.tags.length > 0) {
+          // 获取第一个标签的名称（含 emoji）
+          const flatTags = TagService.getFlatTags();
+          const tag = flatTags.find(t => t.id === formData.tags[0]);
+          if (tag) {
+            finalTitle = tag.emoji ? `${tag.emoji} ${tag.name}` : tag.name;
+            console.log('🏷️ [EventEditModalV2] Auto-generated title from tag:', finalTitle);
+          }
+        }
+      }
+      
+      // 🔧 Step 2: 构建完整的 Event 对象
+      const updatedEvent: Event = {
+        ...event, // 保留原有字段（如 createdAt, syncStatus 等）
+        ...formData,
+        id: formData.id,
+        title: finalTitle, // 使用处理后的标题
+        tags: formData.tags,
+        isTask: formData.isTask,
+        isTimer: formData.isTimer,
+        parentEventId: formData.parentEventId,
+        startTime: formData.startTime,
+        endTime: formData.endTime,
+        isAllDay: formData.allDay,
+        location: formData.location,
+        organizer: formData.organizer,
+        attendees: formData.attendees,
+        eventlog: formData.eventlog,
+        description: formData.description,
+      } as Event;
+
+      // 🔧 Step 2: 导入 EventHub（统一事件管理中心）
+      const { EventHub } = await import('../../services/EventHub');
+      
+      // 🔧 Step 3: 判断是创建还是更新
+      // 检查 EventService（持久化层）而不是 EventHub 缓存
+      // 原因：EventHub 可能缓存了 TimeCalendar 传入的临时对象
+      const allEvents = EventService.getAllEvents();
+      const existingEvent = allEvents.find(e => e.id === formData.id);
+      
+      let result;
+      
+      if (!existingEvent) {
+        // ==================== 场景 1: 创建新事件 ====================
+        console.log('🆕 [EventEditModalV2] Creating new event:', formData.id);
+        
+        // 使用 EventHub.createEvent() 创建完整事件
+        // EventHub 会自动：
+        // 1. 缓存事件快照
+        // 2. 调用 EventService.createEvent() 持久化
+        // 3. EventService 触发 eventsUpdated 事件
+        // 4. TimeCalendar 监听 eventsUpdated 自动刷新
+        result = await EventHub.createEvent(updatedEvent);
+        
+        if (result.success) {
+          console.log('✅ [EventEditModalV2] Event created via EventHub:', result.event?.id);
+        } else {
+          throw new Error(result.error || 'Failed to create event');
+        }
+      } else {
+        // ==================== 场景 2: 更新已存在事件 ====================
+        console.log('📝 [EventEditModalV2] Updating existing event:', formData.id);
+        
+        // 使用 EventHub.updateFields() 增量更新
+        // 优势：
+        // 1. 只更新变化的字段，避免覆盖其他字段
+        // 2. 自动记录变化日志（调试用）
+        // 3. 合并当前快照，确保数据完整性
+        result = await EventHub.updateFields(updatedEvent.id, {
+          title: updatedEvent.title,
+          tags: updatedEvent.tags,
+          isTask: updatedEvent.isTask,
+          isTimer: updatedEvent.isTimer,
+          parentEventId: updatedEvent.parentEventId,
+          startTime: updatedEvent.startTime,
+          endTime: updatedEvent.endTime,
+          isAllDay: updatedEvent.isAllDay,
+          location: updatedEvent.location,
+          organizer: updatedEvent.organizer,
+          attendees: updatedEvent.attendees,
+          eventlog: updatedEvent.eventlog,
+          description: updatedEvent.description,
+        }, {
+          source: 'EventEditModalV2' // 标记更新来源，用于调试
+        });
+        
+        if (result.success) {
+          console.log('✅ [EventEditModalV2] Event updated via EventHub');
+        } else {
+          throw new Error(result.error || 'Failed to update event');
+        }
+      }
+
+      // 🔧 Step 4: 通知父组件（TimeCalendar）
+      // onSave 回调会触发：
+      // 1. TimeCalendar.handleSaveEventFromModal()
+      // 2. 关闭弹窗 setShowEventEditModal(false)
+      // 3. 清理状态 setEditingEvent(null)
+      onSave(updatedEvent);
+      
+    } catch (error) {
+      console.error('❌ [EventEditModalV2] Save failed:', error);
+      // TODO: 显示错误提示给用户
+    }
+  };
 
   // 获取日历显示信息
   const getCalendarInfo = (calendarId: string) => {
@@ -245,7 +460,23 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     return mode || { id: 'unknown', name: '未知模式', emoji: '❓' };
   };
 
-  // 当 event 变化时同步到 formData
+  /**
+   * ==================== props.event 变化同步 ====================
+   * 
+   * 触发场景：
+   * 1. 打开编辑弹窗：TimeCalendar 传入新的 event 对象
+   * 2. 切换事件：用户在弹窗中切换编辑不同事件（未实现）
+   * 
+   * 同步策略：
+   * - 依赖 event.id 变化（避免频繁更新）
+   * - 完整覆盖 formData（清除之前的编辑状态）
+   * - 保持 eventlog 格式一致性（Slate JSON 字符串）
+   * 
+   * 注意：
+   * - 不监听 event 对象本身（会导致无限循环）
+   * - event?.id 可能为 undefined（新建事件）
+   * - 时间字段从 event.startTime/endTime 同步（不调用 TimeHub）
+   */
   useEffect(() => {
     if (event) {
       setFormData({
@@ -600,6 +831,17 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
 
   /**
    * 处理时间选择完成
+   * 
+   * 架构说明：
+   * 1. UnifiedDateTimePicker 返回 ISO 格式时间字符串
+   * 2. 暂存到 formData（本地状态）
+   * 3. 保存时统一通过 EventHub.createEvent/updateFields 持久化
+   * 4. EventHub 会将时间字段保存到 EventService
+   * 
+   * 注意：
+   * - 不在此处调用 TimeHub.setEventTime()（避免部分保存）
+   * - 时间字段随其他字段一起在 handleSave() 中保存
+   * - 遵循"原子性保存"原则：要么全部保存，要么全部回滚
    */
   const handleTimeApplied = (startIso: string, endIso?: string, allDay?: boolean) => {
     setFormData({
@@ -1355,51 +1597,38 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                       }}
                       className="eventlog-editor"
                     />
-                    
-                    {/* 简单的 FloatingToolbar 演示 */}
-                    <div style={{
-                      position: 'absolute',
-                      bottom: '20px',
-                      right: '20px',
-                      background: '#ffffff',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '8px',
-                      padding: '8px',
-                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-                      display: 'flex',
-                      gap: '4px'
-                    }}>
-                      {floatingBarIcons.map((iconConfig, index) => (
-                        <button
-                          key={index}
-                          style={{
-                            background: activePickerIndex === index ? '#f3f4f6' : 'transparent',
-                            border: 'none',
-                            borderRadius: '4px',
-                            padding: '8px',
-                            cursor: 'pointer',
-                            fontSize: '16px',
-                            minWidth: '36px',
-                            minHeight: '36px'
-                          }}
-                          onClick={() => {
-                            // 简单的功能演示
-                            if (index === 0) { // 表情
-                              handleEmojiSelect({ native: '😊' });
-                            } else if (index === 1) { // 标签
-                              handleTagSelect('work'); // 假设有个工作标签
-                            } else if (index === 2) { // 日期
-                              handleDateRangeSelect(new Date().toISOString());
-                            }
-                            setActivePickerIndex(activePickerIndex === index ? -1 : index);
-                          }}
-                          title={iconConfig.alt}
-                        >
-                          {iconConfig.icon}
-                        </button>
-                      ))}
-                    </div>
                   </div>
+
+                  {/* HeadlessFloatingToolbar */}
+                  {floatingToolbar.mode !== 'hidden' && (
+                    <HeadlessFloatingToolbar
+                      position={floatingToolbar.position}
+                      mode={floatingToolbar.mode}
+                      config={{ 
+                        features: [],
+                        mode: 'basic' as any
+                      }}
+                      slateEditorRef={slateEditorRef}
+                      onTagSelect={(tagIds) => {
+                        const tagId = Array.isArray(tagIds) ? tagIds[0] : tagIds;
+                        handleTagSelect(tagId);
+                        floatingToolbar.hideToolbar();
+                      }}
+                      onEmojiSelect={(emoji) => {
+                        handleEmojiSelect(emoji);
+                        floatingToolbar.hideToolbar();
+                      }}
+                      onDateRangeSelect={(start, end) => {
+                        handleDateRangeSelect(start?.toISOString() || '');
+                        floatingToolbar.hideToolbar();
+                      }}
+                      onRequestClose={floatingToolbar.hideToolbar}
+                      availableTags={hierarchicalTags}
+                      currentTags={formData.tags}
+                      eventId={formData.id}
+                      editorMode="eventlog"
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -1416,28 +1645,13 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                 </button>
                 <button 
                   className="eventmodal-v2-footer-btn eventmodal-v2-footer-btn-save"
-                  onClick={() => {
-                    // 保存时转换 formData 为 Event
-                    const updatedEvent: Event = {
-                      ...event,
-                      ...formData,
-                      id: formData.id,
-                      title: formData.title,
-                      tags: formData.tags,
-                      isTask: formData.isTask,
-                      isTimer: formData.isTimer,
-                      parentEventId: formData.parentEventId,
-                      startTime: formData.startTime,
-                      endTime: formData.endTime,
-                      allDay: formData.allDay,
-                      location: formData.location,
-                      organizer: formData.organizer,
-                      attendees: formData.attendees,
-                      eventlog: formData.eventlog,
-                      description: formData.description,
-                    } as Event;
-                    onSave(updatedEvent);
+                  onClick={handleSave}
+                  disabled={isSaveDisabled}
+                  style={{
+                    opacity: isSaveDisabled ? 0.5 : 1,
+                    cursor: isSaveDisabled ? 'not-allowed' : 'pointer'
                   }}
+                  title={isSaveDisabled ? '请输入标题或选择标签' : ''}
                 >
                   保存
                 </button>
@@ -1459,13 +1673,13 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                 </button>
                 <button 
                   className="footer-btn footer-btn-save"
-                  onClick={() => {
-                    const updatedEvent: Event = {
-                      ...event,
-                      ...formData,
-                    } as Event;
-                    onSave(updatedEvent);
+                  onClick={handleSave}
+                  disabled={isSaveDisabled}
+                  style={{
+                    opacity: isSaveDisabled ? 0.5 : 1,
+                    cursor: isSaveDisabled ? 'not-allowed' : 'pointer'
                   }}
+                  title={isSaveDisabled ? '请输入标题或选择标签' : ''}
                 >
                   保存
                 </button>

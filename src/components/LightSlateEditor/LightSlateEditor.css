@@ -6,7 +6,9 @@
 .light-slate-editor {
   position: relative;
   width: 100%;
-  min-height: 120px;
+  height: 100%; /* 填充父容器高度 */
+  display: flex;
+  flex-direction: column;
 }
 
 .light-slate-editor .slate-editable {
@@ -17,7 +19,8 @@
   color: #333;
   background: transparent;
   border-radius: 4px;
-  min-height: 100px;
+  flex: 1; /* 占满剩余空间 */
+  min-height: 200px; /* 最小高度与父容器一致 */
 }
 
 .light-slate-editor .slate-editable:focus {
@@ -27,8 +30,9 @@
 /* 段落样式 */
 .light-slate-editor .slate-paragraph {
   margin: 4px 0; /* 减少 margin 为 4px */
-  /* 取消 padding */
 }
+
+/* preline 样式已移到 JS 中动态渲染，这里不需要 CSS */
 
 .light-slate-editor .slate-paragraph:first-child {
   margin-top: 0;
@@ -56,14 +60,7 @@
   user-select: none;
 }
 
-.timestamp-divider .preline {
-  position: absolute;
-  left: 8px;
-  top: -8px;
-  bottom: -8px;
-  width: 2px;
-  background: linear-gradient(to bottom, transparent, #ddd 20%, #ddd 80%, transparent);
-}
+
 
 .timestamp-divider .timestamp-text {
   font-size: 12px;

@@ -432,6 +432,131 @@ function App() {
 
 ---
 
+## 📝 EventLog Timestamp & Preline Implementation
+
+### Overview
+
+Implemented automatic timestamp insertion with visual preline (vertical timeline) for EventLog editor using LightSlateEditor.
+
+**Status**: ✅ Complete (2025-11-24)
+
+### Features
+
+1. **Automatic Timestamp Insertion**
+   - First-time edit: Inserts timestamp with event creation time
+   - Re-activation after 5 minutes: Inserts new timestamp at document end
+   - Empty eventlog: No timestamp until user starts typing
+
+2. **Visual Preline (Timeline)**
+   - Vertical gray line connecting timestamp to content
+   - Dynamically extends as user adds more paragraphs
+   - Proper spacing (8px) between different timestamp groups
+
+3. **Smart Rendering Logic**
+   - Preline only shows for paragraphs under a timestamp
+   - Multiple paragraphs under same timestamp share continuous preline
+   - Empty paragraphs immediately after timestamp show preline (for cursor feedback)
+
+### Implementation Details
+
+**Files Modified**:
+- `src/components/LightSlateEditor/LightSlateEditor.tsx` - Editor component with timestamp logic
+- `src/components/LightSlateEditor/LightSlateEditor.css` - Editor styling
+- `src/components/UnifiedSlateEditor/timestampService.ts` - 5-minute interval checking
+- `src/components/UnifiedSlateEditor/elements/TimestampDividerElement.tsx` - Timestamp rendering
+
+**Key Logic**:
+
+```typescript
+// Timestamp insertion on focus (5-minute check)
+const handleFocus = useCallback(() => {
+  const shouldInsert = timestampServiceRef.current.shouldInsertTimestamp({
+    contextId: parentEventId,
+    eventId: parentEventId
+  });
+  
+  if (shouldInsert) {
+    const hasContent = editor.children.some((node: any) => 
+      node.type === 'paragraph' && node.children?.[0]?.text?.trim()
+    );
+    
+    if (hasContent) {
+      // Insert new timestamp + empty paragraph at end
+      timestampServiceRef.current.insertTimestamp(editor, timestampNode, parentEventId);
+    }
+  }
+}, [enableTimestamp, editor, parentEventId]);
+
+// Preline rendering logic
+const needsPreline = (() => {
+  // Find if there's a timestamp before this paragraph
+  let hasTimestamp = false;
+  for (let i = path[0] - 1; i >= 0; i--) {
+    if (editor.children[i].type === 'timestamp-divider') {
+      hasTimestamp = true;
+      break;
+    }
+  }
+  
+  if (!hasTimestamp) return false;
+  
+  // Show preline if paragraph has content
+  const hasContent = element.children?.some(child => child.text?.trim());
+  if (hasContent) return true;
+  
+  // Show preline for empty paragraph if it's in current timestamp group
+  for (let i = path[0] - 1; i >= 0; i--) {
+    if (editor.children[i].type === 'timestamp-divider') return true;
+    if (editor.children[i].type !== 'paragraph') break;
+  }
+  
+  return false;
+})();
+```
+
+**Styling**:
+
+```css
+/* Timestamp with padding (not margin) for preline spacing */
+.timestamp-divider {
+  padding-top: 8px;
+  padding-bottom: 4px;
+  padding-left: 20px;
+}
+
+/* Preline positioning */
+.paragraph-preline {
+  position: absolute;
+  left: 8px;
+  top: -28px;  /* Extends to timestamp text top */
+  bottom: 0;   /* Extends to paragraph bottom */
+  width: 2px;
+  background: #e5e7eb;
+  pointer-events: none;
+}
+```
+
+### Behavior
+
+| Scenario | Timestamp | Preline |
+|----------|-----------|---------|
+| Empty eventlog | ❌ No | ❌ No |
+| First edit (has content) | ✅ Yes (creation time) | ✅ Yes |
+| Re-open within 5 min | ❌ No new | ✅ Existing |
+| Re-open after 5 min | ✅ Yes (new timestamp) | ✅ New preline |
+| Press Enter (new paragraph) | ❌ No | ✅ Extends preline |
+| Multiple paragraphs | ❌ No | ✅ Continuous preline |
+
+### Key Fixes
+
+1. **Hooks Order**: Moved `timestampAddedForContentRef` before `initialValue` useMemo
+2. **Double Rendering**: Removed duplicate preline rendering (CSS + JS)
+3. **Preline Position**: Use padding instead of margin for 8px spacing
+4. **Dynamic Height**: Preline extends with paragraph content automatically
+5. **Empty Paragraph**: Show preline for timestamp's first empty paragraph (cursor feedback)
+
+---
+
 ## 📚 References
 
 - **PRD**: `docs/PRD/EVENTEDITMODAL_V2_PRD.md`
@@ -443,6 +568,7 @@ function App() {
   - `src/components/FloatingBar/`
   - `src/services/ContactService.ts`
   - `src/services/TagService.ts`
+  - `src/services/EventHistoryService.ts` (for timestamp creation time)
 
 ---
 

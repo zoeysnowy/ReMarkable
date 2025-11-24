@@ -136,7 +136,7 @@ export class EventLogTimestampService {
     
     // 如果没有预创建元素，检查是否需要插入并创建
     if (!timestampElement) {
-      if (!this.shouldInsertTimestamp(editor, undefined, eventId)) {
+      if (!this.shouldInsertTimestamp({ editor, eventId })) {
         console.log('[TimestampService] shouldInsertTimestamp 返回 false，跳过插入');
         return;
       }
@@ -147,52 +147,29 @@ export class EventLogTimestampService {
     console.log('[TimestampService] 创建 timestamp 节点:', timestampNode);
     
     try {
-      // 使用最安全的方式：在文档开始插入
       const { selection } = editor;
-      console.log('[TimestampService] 编辑器状态:', { hasSelection: !!selection });
+      const childrenCount = editor.children.length;
+      console.log('[TimestampService] 编辑器状态:', { hasSelection: !!selection, childrenCount });
       
-      if (selection) {
-        // 尝试在当前段落开始插入
-        const [match] = Editor.nodes(editor, {
-          match: n => SlateElement.isElement(n) && (n as any).type === 'paragraph'
+      // 在文档末尾插入 timestamp + 新的空段落（用户可以输入内容）
+      const emptyParagraph = {
+        type: 'paragraph',
+        children: [{ text: '' }]
+      };
+      
+      console.log('[TimestampService] 在文档末尾插入 timestamp + 空段落');
+      Transforms.insertNodes(editor, [timestampNode, emptyParagraph] as any, { at: [childrenCount] });
+      
+      // 将光标移动到新段落
+      try {
+        const newParagraphPath = [childrenCount + 1, 0]; // timestamp 后面的空段落
+        Transforms.select(editor, { 
+          anchor: { path: newParagraphPath, offset: 0 },
+          focus: { path: newParagraphPath, offset: 0 }
         });
-        
-        if (match) {
-          const [, paragraphPath] = match;
-          console.log('[TimestampService] 在段落路径插入:', paragraphPath);
-          Transforms.insertNodes(editor, [timestampNode] as any, { at: paragraphPath });
-          
-          // 插入后，将光标移动到 timestamp 后面的段落的文本节点
-          const nextParagraphPath = [paragraphPath[0] + 1, 0]; // [段落索引, 文本节点索引]
-          try {
-            Transforms.select(editor, { 
-              anchor: { path: nextParagraphPath, offset: 0 },
-              focus: { path: nextParagraphPath, offset: 0 }
-            });
-            console.log('[TimestampService] 光标已移动到:', nextParagraphPath);
-          } catch (error) {
-            console.warn('[TimestampService] 无法移动光标:', error);
-          }
-        } else {
-          // 回退到在选择点前插入
-          console.log('[TimestampService] 在选择点插入');
-          Transforms.insertNodes(editor, [timestampNode] as any);
-        }
-      } else {
-        // 没有选择时，在文档开头插入
-        console.log('[TimestampService] 在文档开头插入');
-        Transforms.insertNodes(editor, [timestampNode] as any, { at: [0] });
-        
-        // 将光标移动到 timestamp 后面的段落的文本节点
-        try {
-          Transforms.select(editor, { 
-            anchor: { path: [1, 0], offset: 0 }, // [第二个节点（段落）, 文本节点]
-            focus: { path: [1, 0], offset: 0 }
-          });
-          console.log('[TimestampService] 光标已移动到文档第二段');
-        } catch (error) {
-          console.warn('[TimestampService] 无法移动光标:', error);
-        }
+        console.log('[TimestampService] 光标已移动到新段落:', newParagraphPath);
+      } catch (error) {
+        console.warn('[TimestampService] 无法移动光标:', error);
       }
       
       console.log('[TimestampService] timestamp 插入成功');
@@ -249,11 +226,13 @@ export class EventLogTimestampService {
   /**
    * 更新最后编辑时间（手动调用，防止短时间内重复插入）
    * @param eventId Event ID
+   * @param timestamp 可选的时间戳，如果不提供则使用当前时间
    */
-  updateLastEditTime(eventId: string): void {
+  updateLastEditTime(eventId: string, timestamp?: Date): void {
     if (eventId) {
-      this.lastEditTimestamp.set(eventId, new Date());
-      console.log('[TimestampService] 手动更新最后编辑时间:', eventId);
+      const time = timestamp || new Date();
+      this.lastEditTimestamp.set(eventId, time);
+      console.log('[TimestampService] 手动更新最后编辑时间:', eventId, time);
     }
   }
 
