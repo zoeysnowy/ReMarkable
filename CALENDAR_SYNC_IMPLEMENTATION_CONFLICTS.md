@@ -55,7 +55,7 @@ const [syncCalendarId, setSyncCalendarId] = useState(...);
 **你的决定**: 
 ```
 [请在此填写你的选择和理由]
-
+整个app只有数组，请修改v2的PRD，并完成开发
 
 ```
 
@@ -117,7 +117,7 @@ const [syncSyncMode, setSyncSyncMode] = useState('bidirectional');
 **你的决定**: 
 ```
 [请在此填写你的选择和理由]
-
+A. 按PRD开发
 
 ```
 
@@ -169,7 +169,7 @@ const getCalendarInfo = (calendarId: string) => {
 **你的决定**: 
 ```
 [请在此填写你的选择和理由]
-
+A. 完整开发
 
 ```
 
@@ -221,7 +221,7 @@ const syncModes = [
 **你的决定**: 
 ```
 [请在此填写你的选择和理由]
-
+A. 完整实现
 
 ```
 
@@ -268,7 +268,7 @@ const [syncCalendarId, setSyncCalendarId] = useState(...);
 **你的决定**: 
 ```
 [请在此填写你的选择和理由]
-
+A. 完整实现
 
 ```
 
@@ -307,7 +307,7 @@ const newEvent = {
 **你的决定**: 
 ```
 [请在此填写你的选择和理由]
-
+C. 目前全局都是数组了，不会破坏，而且我们本来就在开发环境
 
 ```
 

@@ -1679,8 +1679,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                         onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
                         onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                       >
-                        <span>{getSyncModeInfo(sourceSyncMode).emoji}</span>
-                        <span>{getSyncModeInfo(sourceSyncMode).name}</span>
+                        <span style={{ pointerEvents: 'none' }}>{getSyncModeInfo(sourceSyncMode).emoji}</span>
+                        <span style={{ pointerEvents: 'none' }}>{getSyncModeInfo(sourceSyncMode).name}</span>
                       </div>
                       
                       {showSourceSyncModePicker && createPortal(
@@ -1778,7 +1778,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
                           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                         >
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flex: 1, minWidth: 0, pointerEvents: 'none' }}>
                             <span style={{ 
                               width: '8px', 
                               height: '8px', 
@@ -1805,7 +1805,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
-                            maxWidth: '60px'
+                            maxWidth: '60px',
+                            pointerEvents: 'none'
                           }}>{getMultiCalendarDisplayInfo(syncCalendarIds).subName}</span>
                         </div>
                         
@@ -1865,8 +1866,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
                           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                         >
-                          <span style={{ flexShrink: 0 }}>{getSyncModeInfo(syncSyncMode).emoji}</span>
-                          <span style={{ flexShrink: 0 }}>{getSyncModeInfo(syncSyncMode).name}</span>
+                          <span style={{ flexShrink: 0, pointerEvents: 'none' }}>{getSyncModeInfo(syncSyncMode).emoji}</span>
+                          <span style={{ flexShrink: 0, pointerEvents: 'none' }}>{getSyncModeInfo(syncSyncMode).name}</span>
                         </div>
                         
                         {showSyncSyncModePicker && createPortal(
