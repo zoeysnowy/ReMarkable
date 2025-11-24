@@ -471,7 +471,20 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         syncStatus: timerSyncStatus
       });
       
-      // 🔧 Step 6: 构建完整的 Event 对象
+      // 🔧 Step 6: 处理 Private 模式（send-only-private, bidirectional-private）
+      // 如果选择了 Private 模式，参与者不邀请，添加到 description
+      const isPrivateMode = formData.planSyncConfig?.mode?.includes('-private');
+      let finalAttendees = formData.attendees;
+      let finalDescription = formData.description || '';
+      
+      if (isPrivateMode && formData.attendees && formData.attendees.length > 0) {
+        console.log('🔒 [EventEditModalV2] Private mode detected, formatting participants to description');
+        const participantText = formatParticipantsToDescription(formData.attendees);
+        finalDescription = participantText + finalDescription;
+        finalAttendees = []; // Private 模式下清空 attendees
+      }
+
+      // 🔧 Step 7: 构建完整的 Event 对象
       const updatedEvent: Event = {
         ...event, // 保留原有字段（如 createdAt, syncStatus 等）
         ...formData,
@@ -486,7 +499,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         isAllDay: formData.allDay,
         location: formData.location,
         organizer: formData.organizer,
-        attendees: formData.attendees,
+        attendees: finalAttendees, // 🔒 Private 模式下为空数组
+        description: finalDescription, // 🔒 Private 模式下包含参与者文本
         eventlog: currentEventlog as any,  // ✅ Slate JSON 字符串（EventService 会自动转换）
         syncStatus: timerSyncStatus, // 🔧 Timer 运行中保持 local-only
         // 🆕 日历同步配置
@@ -641,6 +655,43 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
       color: firstCalendar.color,
       hasMore: calendarIds.length > 1
     };
+  };
+
+  /**
+   * 格式化参与者为 description 文本（Private 模式）
+   * 📧 参与者：alice@company.com, bob@company.com
+   */
+  const formatParticipantsToDescription = (attendees: Contact[]): string => {
+    if (!attendees || attendees.length === 0) return '';
+    
+    const participantList = attendees
+      .map(contact => contact.email || contact.name)
+      .filter(Boolean)
+      .join(', ');
+    
+    return participantList ? `📧 参与者：${participantList}\n\n` : '';
+  };
+
+  /**
+   * 从 description 中提取参与者（Private 模式接收时使用）
+   */
+  const extractParticipantsFromDescription = (description: string): { attendees: Contact[], cleanDescription: string } => {
+    const participantPattern = /^📧 参与者：(.+?)\n\n/;
+    const match = description.match(participantPattern);
+    
+    if (!match) {
+      return { attendees: [], cleanDescription: description };
+    }
+    
+    const participantText = match[1];
+    const attendees: Contact[] = participantText.split(',').map(email => ({
+      email: email.trim(),
+      name: email.trim().split('@')[0]
+    }));
+    
+    const cleanDescription = description.replace(participantPattern, '');
+    
+    return { attendees, cleanDescription };
   };
 
   /**

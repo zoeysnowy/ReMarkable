@@ -105,6 +105,45 @@
   margin-top: 36px;
 }
 
+/* Expired Events Divider */
+.expired-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.expired-divider:hover {
+  opacity: 0.8;
+}
+
+.expired-divider-line {
+  flex: 1;
+  height: 1px;
+  background-color: #e5e7eb;
+}
+
+.expired-label {
+  font-family: 'Inter', 'Microsoft YaHei', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: #9ca3af;
+  white-space: nowrap;
+}
+
+.expired-expand-icon {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.2s;
+  opacity: 0.6;
+}
+
+.expired-expand-icon.expanded {
+  transform: rotate(90deg);
+}
+
 /* Event Card */
 .event-card {
   position: relative;

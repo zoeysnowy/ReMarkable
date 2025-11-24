@@ -223,7 +223,24 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
 
       {/* Event Cards */}
       <div className="event-list">
-        {events.map((event) => renderEventCard(event))}
+        {/* 即将开始的事件 */}
+        {upcoming.map((event) => renderEventCard(event))}
+
+        {/* 过期事件分隔符 */}
+        {expired.length > 0 && (
+          <div className="expired-divider" onClick={toggleExpiredSection}>
+            <div className="expired-divider-line" />
+            <span className="expired-label">
+              已过期 ({expired.length})
+            </span>
+            <RightIcon 
+              className={`expired-expand-icon ${showExpired ? 'expanded' : ''}`}
+            />
+          </div>
+        )}
+
+        {/* 已过期的事件（可展开/收缩） */}
+        {showExpired && expired.map((event) => renderEventCard(event))}
       </div>
     </div>
   );
