@@ -477,6 +477,10 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         attendees: formData.attendees,
         eventlog: currentEventlog as any,  // ✅ Slate JSON 字符串（EventService 会自动转换）
         syncStatus: timerSyncStatus, // 🔧 Timer 运行中保持 local-only
+        // 🆕 日历同步配置
+        calendarIds: formData.calendarIds,
+        planSyncConfig: formData.planSyncConfig,
+        actualSyncConfig: formData.actualSyncConfig,
       } as Event;
 
       // 🔧 调试日志：验证 eventlog 字段
@@ -589,7 +593,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     }
   };
 
-  // 获取日历显示信息
+  // 获取日历显示信息（单个）
   const getCalendarInfo = (calendarId: string) => {
     const calendar = availableCalendars.find(c => c.id === calendarId);
     if (!calendar) return { name: 'Unknown', subName: '', color: '#999999' };
@@ -602,6 +606,28 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
       name: mainName,
       subName: subName ? `: ${subName}` : '',
       color: calendar.color
+    };
+  };
+
+  // 获取多选日历显示信息（第一个 + 等）
+  const getMultiCalendarDisplayInfo = (calendarIds: string[]) => {
+    if (calendarIds.length === 0) {
+      return { displayText: '选择日历...', color: '#999999', hasMore: false };
+    }
+    
+    const firstCalendar = availableCalendars.find(c => c.id === calendarIds[0]);
+    if (!firstCalendar) {
+      return { displayText: '未知日历', color: '#999999', hasMore: calendarIds.length > 1 };
+    }
+    
+    const cleanName = firstCalendar.name.replace(/^[\uD83C-\uDBFF\uDC00-\uDFFF]+\s*/, '');
+    const [mainName, subName] = cleanName.includes(': ') ? cleanName.split(': ') : [cleanName, ''];
+    
+    return {
+      displayText: mainName,
+      subName: subName ? `: ${subName}` : '',
+      color: firstCalendar.color,
+      hasMore: calendarIds.length > 1
     };
   };
 
@@ -1472,12 +1498,15 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                           <span style={{ 
                             width: '8px', 
                             height: '8px', 
-                            background: getCalendarInfo(sourceCalendarId).color, 
+                            background: getMultiCalendarDisplayInfo(sourceCalendarIds).color, 
                             borderRadius: '50%' 
                           }}></span>
-                          <strong style={{ color: '#1f2937' }}>{getCalendarInfo(sourceCalendarId).name}</strong>
+                          <strong style={{ color: '#1f2937' }}>{getMultiCalendarDisplayInfo(sourceCalendarIds).displayText}</strong>
+                          {getMultiCalendarDisplayInfo(sourceCalendarIds).hasMore && (
+                            <span style={{ color: '#6b7280', fontSize: '13px' }}>等</span>
+                          )}
                         </span>
-                        <span style={{ color: '#6b7280' }}>{getCalendarInfo(sourceCalendarId).subName}</span>
+                        <span style={{ color: '#6b7280' }}>{getMultiCalendarDisplayInfo(sourceCalendarIds).subName}</span>
                       </div>
                       
                       {showSourceCalendarPicker && createPortal(
@@ -1496,13 +1525,17 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                         >
                           <SimpleCalendarDropdown
                             availableCalendars={availableCalendars}
-                            selectedCalendarId={sourceCalendarId}
-                            onSelectionChange={(calendarId) => {
-                              setSourceCalendarId(calendarId);
-                              setShowSourceCalendarPicker(false);
+                            selectedCalendarIds={sourceCalendarIds}
+                            multiSelect={true}
+                            onMultiSelectionChange={(calendarIds) => {
+                              setSourceCalendarIds(calendarIds);
+                              setFormData(prev => ({
+                                ...prev,
+                                calendarIds: calendarIds
+                              }));
                             }}
                             onClose={() => setShowSourceCalendarPicker(false)}
-                            title="选择来源日历"
+                            title="选择来源日历（可多选）"
                           />
                         </div>,
                         document.body
@@ -1552,6 +1585,13 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                             selectedModeId={sourceSyncMode}
                             onSelectionChange={(modeId) => {
                               setSourceSyncMode(modeId);
+                              setFormData(prev => ({
+                                ...prev,
+                                planSyncConfig: {
+                                  ...prev.planSyncConfig,
+                                  mode: modeId as any
+                                }
+                              }));
                               setShowSourceSyncModePicker(false);
                             }}
                             onClose={() => setShowSourceSyncModePicker(false)}
@@ -1623,12 +1663,15 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                             <span style={{ 
                               width: '8px', 
                               height: '8px', 
-                              background: getCalendarInfo(syncCalendarId).color, 
+                              background: getMultiCalendarDisplayInfo(syncCalendarIds).color, 
                               borderRadius: '50%' 
                             }}></span>
-                            <strong style={{ color: '#1f2937' }}>{getCalendarInfo(syncCalendarId).name}</strong>
+                            <strong style={{ color: '#1f2937' }}>{getMultiCalendarDisplayInfo(syncCalendarIds).displayText}</strong>
+                            {getMultiCalendarDisplayInfo(syncCalendarIds).hasMore && (
+                              <span style={{ color: '#6b7280', fontSize: '13px' }}>等</span>
+                            )}
                           </span>
-                          <span style={{ color: '#6b7280' }}>{getCalendarInfo(syncCalendarId).subName}</span>
+                          <span style={{ color: '#6b7280' }}>{getMultiCalendarDisplayInfo(syncCalendarIds).subName}</span>
                         </div>
                         
                         {showSyncCalendarPicker && createPortal(
@@ -1647,13 +1690,20 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                           >
                             <SimpleCalendarDropdown
                               availableCalendars={availableCalendars}
-                              selectedCalendarId={syncCalendarId}
-                              onSelectionChange={(calendarId) => {
-                                setSyncCalendarId(calendarId);
-                                setShowSyncCalendarPicker(false);
+                              selectedCalendarIds={syncCalendarIds}
+                              multiSelect={true}
+                              onMultiSelectionChange={(calendarIds) => {
+                                setSyncCalendarIds(calendarIds);
+                                setFormData(prev => ({
+                                  ...prev,
+                                  planSyncConfig: {
+                                    ...prev.planSyncConfig,
+                                    targetCalendars: calendarIds
+                                  }
+                                }));
                               }}
                               onClose={() => setShowSyncCalendarPicker(false)}
-                              title="选择同步日历"
+                              title="选择同步日历（可多选）"
                             />
                           </div>,
                           document.body
@@ -1703,6 +1753,14 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                               selectedModeId={syncSyncMode}
                               onSelectionChange={(modeId) => {
                                 setSyncSyncMode(modeId);
+                                setFormData(prev => ({
+                                  ...prev,
+                                  actualSyncConfig: {
+                                    mode: modeId as any,
+                                    targetCalendars: syncCalendarIds,
+                                    tagMapping: prev.actualSyncConfig?.tagMapping
+                                  }
+                                }));
                                 setShowSyncSyncModePicker(false);
                               }}
                               onClose={() => setShowSyncSyncModePicker(false)}

@@ -20,6 +20,7 @@ Snapshot（快照）功能是 PlanManager 的核心可视化特性，通过**彩
 2. **进度可视化**: 通过竖线颜色和位置，直观看出项目进展
 3. **状态连续性**: 相同状态的竖线在同一列连续显示，清晰展示时间线
 4. **多状态支持**: 一个事件可能同时拥有多个状态（如：新建+更新，或更新+完成）
+5. **删除可见性**: Ghost 事件（已删除）以删除线样式显示，保持历史完整性
 
 ### 核心特性
 
@@ -30,6 +31,8 @@ Snapshot（快照）功能是 PlanManager 的核心可视化特性，通过**彩
 - ✅ **实时响应**: 日期范围变化时竖线实时更新
 - ✅ **DOM精确定位**: 基于实际DOM元素位置测量，支持事件多行内容（eventlog）
 - ✅ **标签智能定位**: 每个状态只显示一次标签，自动定位到对应竖线的中心
+- ✅ **Ghost 事件**: 显示在时间范围内删除的事件，带删除线和灰色竖线
+- ✅ **编辑器隔离**: 通过 `key` 强制重置，确保时间范围切换时状态完全刷新
 
 ---
 
@@ -293,6 +296,136 @@ weekEnd.setHours(23, 59, 59, 999); // 23:59:59
    - **查看当前/未来时间范围**: 使用 `now` 作为截止时间，只有真正过期的事件才算missed
    - **查看历史时间范围**: 使用 `rangeEnd` 作为截止时间，在那个历史范围内应完成但未完成的事件算missed
    - **修复前问题**: 直接使用 `eventTime < rangeEnd` 会导致未来事件也被标记为missed
+
+### Ghost 事件机制 (⚠️ Critical Feature)
+
+**什么是 Ghost 事件？**
+
+Ghost 事件是指在选定时间范围内被删除的事件，以**删除线样式 + 灰色竖线**的形式显示，让用户了解"在这段时间里有哪些任务被删除了"。
+
+**核心原则**:
+1. **仅显示原则**: Ghost 事件仅用于 Snapshot 可视化，永远不会保存到 localStorage
+2. **临时标记**: 使用 `_isDeleted: true` 和 `_deletedAt: timestamp` 标记
+3. **时间准确性**: 只显示"在起点时存在 + 在范围内被删除"的事件
+4. **隔离机制**: 通过编辑器 `key` 确保状态隔离，避免跨时间范围污染
+
+**生成逻辑**:
+
+```typescript
+// PlanManager.tsx - editorItems useMemo
+if (dateRange) {
+  const startTime = formatTimeForStorage(dateRange.start);
+  const endTime = formatTimeForStorage(dateRange.end);
+  
+  // 1️⃣ 获取起点时刻存在的所有事件（基准状态）
+  const existingAtStart = EventHistoryService.getExistingEventsAtTime(startTime);
+  
+  // 2️⃣ 筛选出起点时存在的事件（未删除的）
+  allItems = filteredItems.filter(item => existingAtStart.has(item.id));
+  
+  // 3️⃣ 查询时间范围内的所有操作
+  const operations = EventHistoryService.queryHistory({ startTime, endTime });
+  
+  // 4️⃣ 添加范围内删除的事件为 ghost
+  const deleteOpsInRange = operations.filter(op => 
+    op.operation === 'delete' && 
+    op.before &&
+    existingAtStart.has(op.eventId)  // ⚠️ 关键检查：必须在起点时存在
+  );
+  
+  deleteOpsInRange.forEach(log => {
+    console.log('[PlanManager] 👻 添加 ghost:', {
+      eventId: log.eventId.slice(-8),
+      title: log.before?.title,
+      删除于: new Date(log.timestamp).toLocaleString()
+    });
+    
+    allItems.push({
+      ...log.before,         // 恢复删除前的完整事件数据
+      _isDeleted: true,      // 临时标记：已删除
+      _deletedAt: log.timestamp  // 删除时间戳
+    } as any);
+  });
+}
+```
+
+**关键检查**: `existingAtStart.has(op.eventId)`
+- ✅ **通过**: 事件在 28 号创建，29 号删除 → 查询 28-29 号显示 ghost
+- ❌ **不通过**: 事件在 23 号删除 → 查询 28-29 号**不显示** ghost（因为 28 号起点时已不存在）
+
+**防护机制**:
+
+```typescript
+// 1. 初始化过滤：从 localStorage 加载时移除 ghost
+const rawEvents = EventService.getAllEvents();
+const allEvents = rawEvents.filter(e => !(e as any)._isDeleted);
+
+// 2. 保存时过滤：确保 ghost 不会被保存
+const realItems = updatedItems.filter(item => !(item as any)._isDeleted);
+EventService.batchUpdate(realItems);
+
+// 3. 编辑器隔离：强制重置避免跨时间范围污染
+<UnifiedSlateEditor
+  key={dateRange ? `snapshot-${dateRange.start.getTime()}-${dateRange.end.getTime()}` : 'normal'}
+  items={editorItems}
+/>
+```
+
+**视觉样式**:
+
+```css
+/* EventLineElement.tsx */
+.unified-event-line.deleted-line {
+  text-decoration: line-through;
+  opacity: 0.6;
+  pointer-events: none;  /* 禁止交互 */
+}
+```
+
+**状态竖线**: 灰色 (`#9CA3AF`) + "Del" 标签
+
+**EventHistoryService.getExistingEventsAtTime()**:
+
+这个方法是 Ghost 事件准确性的核心，负责计算"某个时间点存在哪些事件"：
+
+```typescript
+static getExistingEventsAtTime(timestamp: string): Set<string> {
+  const targetTime = parseLocalTimeString(timestamp);
+  
+  // 1. 从当前存在的事件开始
+  const existingEvents = new Set<string>(
+    EventService.getAllEvents().map(e => e.id)
+  );
+  
+  // 2. 分析每个事件的生命周期
+  const eventLifecycle = new Map<string, { createTime?: Date; deleteTime?: Date }>();
+  allLogs.forEach(log => {
+    if (log.operation === 'create') lifecycle.createTime = logTime;
+    if (log.operation === 'delete') lifecycle.deleteTime = logTime;
+  });
+  
+  // 3. 调整事件集合
+  eventLifecycle.forEach((lifecycle, eventId) => {
+    // 创建时间晚于目标 → 移除（目标时刻还没创建）
+    if (lifecycle.createTime && lifecycle.createTime > targetTime) {
+      existingEvents.delete(eventId);
+    }
+    // 删除时间晚于目标 && 创建时间早于目标 → 添加（目标时刻还存在）
+    else if (lifecycle.deleteTime && lifecycle.deleteTime > targetTime &&
+             (!lifecycle.createTime || lifecycle.createTime <= targetTime)) {
+      existingEvents.add(eventId);
+    }
+  });
+  
+  return existingEvents;
+}
+```
+
+**边界情况处理**:
+- ✅ 事件在历史记录之前就存在（没有 create 记录）→ 默认算作存在
+- ✅ 事件创建和删除都在目标时间之后 → 不存在
+- ✅ 事件删除在目标时间之前 → 不存在
+- ✅ 事件删除在目标时间之后 → 存在
 
 **状态到竖线的转换**:
 
