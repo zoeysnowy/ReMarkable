@@ -1499,21 +1499,25 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         console.log(`[getEventStatuses]   ⏭️ ${eventTitle}: 不添加 DONE（当前未勾选）`);
       }
       
-      // 🔧 判断 "missed" 状态：事件时间已过（< 范围结束时间），且在范围内没有完成
+      // 🔧 判断 "missed" 状态：事件时间已过（取当前时间和范围结束时间的较早者），且在范围内没有完成
       if (event && event.startTime) {
         const eventTime = new Date(event.startTime);
+        const now = new Date();
+        const cutoffTime = now < rangeEnd ? now : rangeEnd; // 取较早的时间点
         
         console.log(`[getEventStatuses]   🕐 ${eventTitle}: 检查 MISSED 状态`, {
           事件时间: event.startTime,
+          当前时间: now.toISOString(),
           范围结束: endTime,
-          事件时间已过: eventTime < rangeEnd,
+          判定截止时间: cutoffTime.toISOString(),
+          事件已过期: eventTime < cutoffTime,
           已有DONE: statuses.has('done')
         });
         
-        // 事件时间已过（相对于范围结束时间）且没有 DONE 状态
-        if (eventTime < rangeEnd && !statuses.has('done')) {
+        // 事件时间已过判定截止时间且没有 DONE 状态
+        if (eventTime < cutoffTime && !statuses.has('done')) {
           statuses.add('missed');
-          console.log(`[getEventStatuses]   ✅ ${eventTitle}: 添加 MISSED 状态（事件时间 < 范围结束，且未完成）`);
+          console.log(`[getEventStatuses]   ✅ ${eventTitle}: 添加 MISSED 状态（事件时间 < 判定截止时间，且未完成）`);
         } else {
           console.log(`[getEventStatuses]   ⏭️ ${eventTitle}: 不算 MISSED（事件未到期或已完成）`);
         }

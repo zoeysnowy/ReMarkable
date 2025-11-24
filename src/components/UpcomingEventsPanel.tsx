@@ -10,8 +10,8 @@ import RightIconSvg from '../assets/icons/right.svg';
 import HideIconSvg from '../assets/icons/hide.svg';
 
 // 图标组件
-const TimerStartIcon = ({ className }: { className?: string }) => <img src={TimerStartIconSvg} alt="" className={className} style={{ width: '20px', height: '20px' }} />;
-const TaskGrayIcon = ({ className }: { className?: string }) => <img src={TaskGrayIconSvg} alt="" className={className} style={{ width: '16px', height: '16px' }} />;
+const TimerStartIcon = ({ className }: { className?: string }) => <img src={TimerStartIconSvg} alt="Timer Start" className={className} style={{ width: '20px', height: '20px' }} />;
+const TaskGrayIcon = ({ className }: { className?: string }) => <img src={TaskGrayIconSvg} alt="Task" className={className} style={{ width: '16px', height: '16px' }} />;
 const AttendeeIcon = ({ className }: { className?: string }) => <img src={AttendeeIconSvg} alt="" className={className} style={{ width: '16px', height: '16px' }} />;
 const LocationIcon = ({ className }: { className?: string }) => <img src={LocationIconSvg} alt="" className={className} style={{ width: '16px', height: '16px' }} />;
 const RightIcon = ({ className }: { className?: string }) => <img src={RightIconSvg} alt="" className={className} style={{ width: '16px', height: '16px' }} />;
@@ -33,6 +33,8 @@ interface EventItem {
   description?: string;
   actionIndicator: ActionIndicatorType;
   countdown?: string;
+  checkType?: 'none' | 'once' | 'recurring';
+  isChecked?: boolean;
 }
 
 interface UpcomingEventsPanelProps {
@@ -65,6 +67,7 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({ onTimeFilterC
       attendees: ['Zoey Gong', 'Jenny Wong', 'Cindy Cai'],
       location: '静安嘉里中心2座F38，RM工作室，5号会议室',
       actionIndicator: 'start',
+      checkType: 'none',
     },
     {
       id: '2',
@@ -76,6 +79,8 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({ onTimeFilterC
       attendees: ['Zoey Gong', 'Jenny Wong', 'Cindy Cai'],
       location: '静安嘉里中心2座F38，RM工作室，5号会议室',
       actionIndicator: 'deadline',
+      checkType: 'once',
+      isChecked: false,
     },
     {
       id: '3',
@@ -85,6 +90,8 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({ onTimeFilterC
       startTime: '晚上',
       description: '西班牙海鲜炖饭（Paella）、塔帕斯...',
       actionIndicator: 'new',
+      checkType: 'once',
+      isChecked: false,
     },
   ]);
 
@@ -114,59 +121,45 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({ onTimeFilterC
     }
   };
 
-  const getActionIndicatorColor = (type: ActionIndicatorType) => {
-    switch (type) {
-      case 'start':
-        return '#ef4444'; // Red
-      case 'deadline':
-        return '#f59e0b'; // Orange
-      case 'new':
-        return '#6366f1'; // Indigo
-      case 'updated':
-        return '#9ca3af'; // Gray
-      case 'done':
-        return '#10b981'; // Green
-      default:
-        return '#6366f1';
-    }
-  };
-
   const renderEventCard = (event: EventItem) => {
-    const indicatorColor = getActionIndicatorColor(event.actionIndicator);
     const indicatorIcon = getActionIndicatorIcon(event.actionIndicator);
 
     return (
       <div key={event.id} className="event-card">
-        {/* Action Indicator Line */}
+        {/* Action Indicator Line - 使用标签颜色 */}
         <div
           className="event-indicator-line"
-          style={{ backgroundColor: indicatorColor }}
+          style={{ backgroundColor: event.tagColor }}
         />
 
         <div className="event-card-content">
-          {/* Event Header */}
-          <div className="event-header">
-            <div className="event-icon">{indicatorIcon}</div>
-            <h4 className="event-title">{event.title}</h4>
-          </div>
-
-          {/* Event Tag */}
-          <div className="event-tag" style={{ color: event.tagColor }}>
-            {event.tag}
-          </div>
-
-          {/* Event Time Info */}
-          <div className="event-time-row">
-            {event.startTime && (
-              <div className="event-time-info">
+          {/* 第一行: checkbox? + title | 时间icon + 时间 */}
+          <div className="event-row-1">
+            <div className="event-header">
+              {event.checkType && event.checkType !== 'none' && (
+                <div className="event-checkbox">
+                  <input 
+                    type="checkbox" 
+                    checked={event.isChecked} 
+                    onChange={() => {/* TODO: handle checkbox change */}}
+                  />
+                </div>
+              )}
+              <h4 className="event-title">{event.title}</h4>
+            </div>
+            <div className="event-time-info">
+              <TimerStartIcon />
+              {event.startTime && (
                 <span className="event-time-label">{event.startTime}</span>
-              </div>
-            )}
-            {event.endTime && (
-              <div className="event-time-info">
-                <span className="event-time-label">{event.endTime}</span>
-              </div>
-            )}
+              )}
+            </div>
+          </div>
+
+          {/* 第二行: 标签 | 倒计时 */}
+          <div className="event-row-2">
+            <div className="event-tag" style={{ color: event.tagColor }}>
+              {event.tag}
+            </div>
             {event.countdown && (
               <div
                 className="event-countdown"
@@ -199,11 +192,11 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({ onTimeFilterC
             </div>
           )}
 
-          {/* Event Description */}
+          {/* Event Log Preview */}
           {event.description && (
-            <div className="event-description">
-              <RightIcon className="event-description-icon" />
-              <span className="event-description-text">{event.description}</span>
+            <div className="event-log-preview">
+              <RightIcon className="event-log-expand-icon" />
+              <span className="event-log-text">{event.description}</span>
             </div>
           )}
         </div>
@@ -254,11 +247,6 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({ onTimeFilterC
         >
           全部
         </button>
-      </div>
-
-      {/* Divider Lines with Action Indicator Labels */}
-      <div className="event-divider">
-        <div className="event-divider-line" />
       </div>
 
       {/* Event Cards */}

@@ -2107,28 +2107,151 @@ const status = EventService.getCheckInStatus(eventId);
 
 ---
 
-#### 8.4.3 签到功能与UI集成
+#### 8.4.3 checkType - 签到类型（v2.8 新增 2025-11-24）
+
+```typescript
+checkType?: 'none' | 'once' | 'recurring';
+```
+
+**用途**: 定义事件的签到类型和频率
+
+**取值说明**:
+- `'none'`: 无需签到（默认，不显示 checkbox）
+- `'once'`: 单次签到任务（显示 checkbox，完成一次即可）
+- `'recurring'`: 循环签到任务（显示 checkbox，按循环配置重复签到）
+
+**使用场景**:
+```typescript
+// 单次任务
+event.checkType = 'once';
+
+// 每周签到任务
+event.checkType = 'recurring';
+event.recurringConfig = {
+  type: 'weekly',
+  weekDays: [1, 3, 5],  // 周一、周三、周五
+  startDate: '2025-11-24'
+};
+```
+
+---
+
+#### 8.4.4 recurringConfig - 循环签到配置（v2.8 新增 2025-11-24）
+
+```typescript
+interface RecurringConfig {
+  type: 'daily' | 'weekly' | 'monthly' | 'custom';
+  weekDays?: number[];      // 每周哪几天（0-6，0=周日）
+  monthDays?: number[];     // 每月哪几天（1-31）
+  intervalDays?: number;    // 间隔天数（自定义）
+  startDate?: string;       // 循环开始日期
+  endDate?: string;         // 循环结束日期（可选）
+}
+
+recurringConfig?: RecurringConfig;  // 当 checkType='recurring' 时有效
+```
+
+**用途**: 定义循环签到任务的具体规则
+
+**配置示例**:
+```typescript
+// 每天签到
+{
+  type: 'daily',
+  startDate: '2025-11-24',
+  endDate: '2025-12-24'  // 持续一个月
+}
+
+// 每周一签到
+{
+  type: 'weekly',
+  weekDays: [1],
+  startDate: '2025-11-24'
+}
+
+// 每月1号和15号签到
+{
+  type: 'monthly',
+  monthDays: [1, 15]
+}
+
+// 每3天签到一次
+{
+  type: 'custom',
+  intervalDays: 3,
+  startDate: '2025-11-24'
+}
+```
+
+---
+
+#### 8.4.5 签到功能与UI集成
+
+**统一的 Checkbox 显示判断**:
+
+所有组件使用统一的辅助函数判断是否显示 checkbox：
+
+```typescript
+// src/utils/eventHelpers.ts
+export function shouldShowCheckbox(event: { checkType?: CheckType }): boolean {
+  return event.checkType !== undefined && event.checkType !== 'none';
+}
+```
+
+**核心规则**:
+- `checkType === 'once'` → ✅ 显示 checkbox（单次签到）
+- `checkType === 'recurring'` → ✅ 显示 checkbox（循环签到）
+- `checkType === 'none'` 或 `undefined` → ❌ 不显示 checkbox
+
+**应用位置**（所有位置统一使用此判断）:
+- ✅ **PlanManager** - Plan 页面的事件列表
+- ✅ **TimeCalendar** - 日历视图的事件
+- ✅ **UpcomingEvents** - 即将到来面板
+- ✅ **EventEditModal** - 事件编辑弹窗
+- ✅ **Homepage Timer** - 首页计时器面板
 
 **EventLinePrefix组件集成**:
 ```typescript
-// 将签到功能集成到现有checkbox
-<input
-  type="checkbox"
-  checked={isCompleted}
-  onChange={(e) => {
-    const isChecked = e.target.checked;
-    
-    // 更新任务完成状态
-    onSave(element.eventId, { isCompleted: isChecked });
-    
-    // 🆕 同时记录签到操作
-    if (isChecked) {
-      EventService.checkIn(element.eventId);
-    } else {
-      EventService.uncheck(element.eventId);
-    }
-  }}
-/>
+import { shouldShowCheckbox, isEventChecked } from '../../utils/eventHelpers';
+
+// 判断是否显示 checkbox
+if (shouldShowCheckbox(event)) {
+  return (
+    <input
+      type="checkbox"
+      checked={isEventChecked(event)}
+      onChange={(e) => {
+        const isChecked = e.target.checked;
+        
+        // 更新任务完成状态
+        onSave(element.eventId, { isCompleted: isChecked });
+        
+        // 记录签到操作
+        if (isChecked) {
+          EventService.checkIn(element.eventId);
+        } else {
+          EventService.uncheck(element.eventId);
+        }
+      }}
+    />
+  );
+}
+```
+
+**EventService 签到状态查询增强**:
+```typescript
+// 查询签到状态（包含新增字段）
+const status = EventService.getCheckInStatus(eventId);
+// 返回：
+// {
+//   isChecked: boolean,
+//   checkInCount: number,
+//   uncheckCount: number,
+//   lastCheckIn?: string,
+//   lastUncheck?: string,
+//   checkType: 'none' | 'once' | 'recurring',     // 🆕 新增
+//   recurringConfig?: RecurringConfig              // 🆕 新增
+// }
 ```
 
 **状态线显示集成**:

@@ -8,22 +8,33 @@ interface Calendar {
 
 interface SimpleCalendarDropdownProps {
   availableCalendars: Calendar[];
-  selectedCalendarId: string;
-  onSelectionChange: (calendarId: string) => void;
+  selectedCalendarId?: string;  // 单选模式（向后兼容）
+  selectedCalendarIds?: string[]; // 多选模式
+  onSelectionChange?: (calendarId: string) => void;  // 单选回调（向后兼容）
+  onMultiSelectionChange?: (calendarIds: string[]) => void; // 多选回调
   onClose?: () => void;
   title?: string;
+  multiSelect?: boolean;  // 是否启用多选模式
 }
 
 /**
- * 简化的日历选择下拉组件 - 只显示下拉列表，不显示 chips
+ * 简化的日历选择下拉组件 - 支持单选和多选模式
+ * 多选模式：显示第一个日历 + "等" 字
  */
 export const SimpleCalendarDropdown: React.FC<SimpleCalendarDropdownProps> = ({
   availableCalendars,
   selectedCalendarId,
+  selectedCalendarIds = [],
   onSelectionChange,
+  onMultiSelectionChange,
   onClose,
-  title = "选择日历"
+  title = "选择日历",
+  multiSelect = false
 }) => {
+  // 确定当前选中的日历列表
+  const currentSelectedIds = multiSelect 
+    ? selectedCalendarIds 
+    : (selectedCalendarId ? [selectedCalendarId] : []);
 
   // 获取日历显示名称
   const getCalendarName = (calendar: Calendar) => {
@@ -91,8 +102,23 @@ export const SimpleCalendarDropdown: React.FC<SimpleCalendarDropdownProps> = ({
         overflowY: 'auto'
       }}>
         {availableCalendars.map(calendar => {
-          const isSelected = selectedCalendarId === calendar.id;
-          const isDisabled = false; // 在单选模式下不需要禁用
+          const isSelected = currentSelectedIds.includes(calendar.id);
+          const isDisabled = false;
+
+          const handleSelect = () => {
+            if (isDisabled) return;
+            
+            if (multiSelect) {
+              // 多选模式
+              const newSelection = isSelected
+                ? currentSelectedIds.filter(id => id !== calendar.id)
+                : [...currentSelectedIds, calendar.id];
+              onMultiSelectionChange?.(newSelection);
+            } else {
+              // 单选模式（向后兼容）
+              onSelectionChange?.(calendar.id);
+            }
+          };
 
           return (
             <label
@@ -120,7 +146,7 @@ export const SimpleCalendarDropdown: React.FC<SimpleCalendarDropdownProps> = ({
               <input
                 type="checkbox"
                 checked={isSelected}
-                onChange={() => !isDisabled && onSelectionChange(calendar.id)}
+                onChange={handleSelect}
                 disabled={isDisabled}
                 style={{
                   marginRight: '8px',

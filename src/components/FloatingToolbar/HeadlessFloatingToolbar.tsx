@@ -537,7 +537,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
                 <TextColorPicker
                   onPreview={(color) => {
                     // 🆕 预览模式：直接添加 mark，不触发 format 逻辑
-                    const editor = slateEditorRef?.current;
+                    const editor = slateEditorRef?.current?.editor;
                     if (editor && editor.selection) {
                       // 保存原始选区（仅第一次）
                       if (!savedSelectionRef.current) {
@@ -548,7 +548,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
                     }
                   }}
                   onSelect={(color) => {
-                    const editor = slateEditorRef?.current;
+                    const editor = slateEditorRef?.current?.editor;
                     // 恢复选区
                     if (editor && savedSelectionRef.current) {
                       Transforms.select(editor, savedSelectionRef.current);
@@ -559,7 +559,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
                     onRequestClose?.();
                   }}
                   onClose={() => {
-                    const editor = slateEditorRef?.current;
+                    const editor = slateEditorRef?.current?.editor;
                     // 关闭时也恢复选区
                     if (editor && savedSelectionRef.current) {
                       Transforms.select(editor, savedSelectionRef.current);
@@ -574,7 +574,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
                 <BackgroundColorPicker
                   onPreview={(color) => {
                     // 🆕 预览模式：直接添加 mark，不触发 format 逻辑
-                    const editor = slateEditorRef?.current;
+                    const editor = slateEditorRef?.current?.editor;
                     if (editor && editor.selection) {
                       // 保存原始选区（仅第一次）
                       if (!savedSelectionRef.current) {
@@ -590,7 +590,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
                   }}
                   onSelect={(color) => {
                     console.log('[BackgroundColorPicker onSelect] 🎨 选择背景颜色:', { color });
-                    const editor = slateEditorRef?.current;
+                    const editor = slateEditorRef?.current?.editor;
                     
                     console.log('[BackgroundColorPicker onSelect] 📋 Editor 状态:', {
                       hasEditor: !!editor,
@@ -617,7 +617,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
                     onRequestClose?.();
                   }}
                   onClose={() => {
-                    const editor = slateEditorRef?.current;
+                    const editor = slateEditorRef?.current?.editor;
                     // 关闭时也恢复选区
                     if (editor && savedSelectionRef.current) {
                       Transforms.select(editor, savedSelectionRef.current);

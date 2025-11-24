@@ -1,11 +1,11 @@
 ﻿# EventEditModal v2 产品需求文档 (PRD)
 
-> **版本**: v2.0.0  
+> **版本**: v2.0.2  
 > **创建时间**: 2025-11-06  
-> **最后更新**: 2025-11-19  
+> **最后更新**: 2025-11-24  
 > **Figma 设计稿**: [EventEditModal v2 设计稿](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=201-630&m=dev)  
 > **基于**: EventEditModal v1 + Figma 设计稿  
-> **依赖模块**: EventHub, TimeHub, UnifiedSlateEditor, HeadlessFloatingToolbar, Timer Module  
+> **依赖模块**: EventHub, TimeHub, LightSlateEditor, HeadlessFloatingToolbar, Timer Module  
 > **关联文档**: 
 > - [EventEditModal v1 PRD](./EVENTEDITMODAL_MODULE_PRD.md)
 > - [Timer 模块 PRD](./TIMER_MODULE_PRD.md)
@@ -13,7 +13,16 @@
 > - [TIME_ARCHITECTURE.md](../TIME_ARCHITECTURE.md)
 > - [SLATE_DEVELOPMENT_GUIDE.md](../SLATE_DEVELOPMENT_GUIDE.md)
 
-> **🔥 v2.0.1 最新更新** (2025-11-20):
+> **🔥 v2.0.2 最新更新** (2025-11-24):
+> - ✅ **LightSlateEditor 集成**: 轻量级 Slate 编辑器替代 UnifiedSlateEditor，专为 EventLog 优化
+> - ✅ **FloatingBar 完整支持**: HeadlessFloatingToolbar 集成完成，支持 tag/emoji/dateMention 插入
+> - ✅ **文本格式功能**: 支持粗体 (Ctrl+B)、斜体 (Ctrl+I)、下划线 (Ctrl+U)、文字颜色、背景颜色
+> - ✅ **颜色选择器优化**: 修复数字键选择颜色功能，通过 isSubPickerOpen 状态避免键盘事件冲突
+> - ✅ **Void 元素处理**: 实现自定义 isVoid、isInline、normalizeNode，正确处理 timestamp-divider 等行内 void 元素
+> - ✅ **键盘交互优化**: 添加 isComposing 检查，支持中文输入法；Ctrl+快捷键应用文本格式
+> - ✅ **时间戳分隔线**: EventLogTimestampService 自动生成 5 分钟间隔的时间戳分隔线
+> 
+> **🔥 v2.0.1 历史更新** (2025-11-20):
 > - ✅ **完整同步机制整合**: 将 CALENDAR_SYNC_SCENARIOS_MATRIX.md 的内容完整整合到 EventEditModal v2 PRD
 > - ✅ **Private 模式支持**: 添加 send-only-private 和 bidirectional-private 模式，参与者不被邀请而作为文本添加到描述
 > - ✅ **独立事件架构**: Plan 和 Actual 永远创建独立的远程事件，使用 syncedPlanEventId 和 syncedActualEventId
@@ -68,10 +77,10 @@
 
 ## 📊 功能实现状态总览
 
-> **最后更新**: 2025-11-19  
-> **完成度**: 65% (13/20 核心功能已完成)
+> **最后更新**: 2025-11-24  
+> **完成度**: 75% (15/20 核心功能已完成)
 
-### ✅ 已完成功能（13 项）
+### ✅ 已完成功能（15 项）
 
 | 功能模块 | 所在区域 | 组件/文件 | 完成时间 |
 |---------|---------|----------|----------|
@@ -86,15 +95,16 @@
 | **日历来源显示** | 左侧 - 中 Section | 静态 UI | 2025-11-15 |
 | **标签区域静态显示** | 右侧 - Event Log | 静态 UI | 2025-11-15 |
 | **Plan 提示区域** | 右侧 - Event Log | 静态 UI | 2025-11-15 |
-| **时间戳分隔线样式** | 右侧 - Event Log | 静态 CSS | 2025-11-15 |
-| **日志静态展示** | 右侧 - Event Log | 静态 HTML | 2025-11-15 |
+| **时间戳分隔线自动生成** | 右侧 - Event Log | EventLogTimestampService | 2025-11-24 |
+| **LightSlateEditor 集成** | 右侧 - Event Log | LightSlateEditor + 自定义 editor config | 2025-11-24 |
+| **FloatingBar 插入功能** | 右侧 - Event Log | HeadlessFloatingToolbar + insertTag/Emoji/DateMention | 2025-11-24 |
+| **文本格式与颜色** | 右侧 - Event Log | TextColorPicker + BackgroundColorPicker + 快捷键 | 2025-11-24 |
 
-### ⚠️ 部分实现功能（4 项）
+### ⚠️ 部分实现功能（3 项）
 
 | 功能模块 | 已完成部分 | 待完成部分 | 优先级 |
 |---------|-----------|-----------|--------|
 | **实际进展区域** | 静态 UI + 样式 | 动态数据 + Timer 汇总逻辑 | P0 |
-| **Event Log 编辑** | 静态内容展示 | UnifiedSlateEditor 集成 | P0 |
 | **标签区域编辑** | 静态显示 | Slate 编辑能力（删除/插入） | P1 |
 | **视图切换** | 布局结构 | 切换交互 + 状态保持 | P1 |
 
@@ -104,47 +114,52 @@
 |---------|---------|-----------|--------|----------|
 | **日历来源 + 同步机制选择** | 左侧 - 中 Section | 3-4 天 | P0 | ✅ 完整规范化：9种场景+Private模式+独立事件架构（已整合在本 PRD 中） |
 | **实际进展数据集成** | 左侧 - 下 Section | 2-3 天 | P0 | - |
-| **UnifiedSlateEditor 集成** | 右侧 - Event Log | 3-4 天 | P0 | - |
 | **Timer 二次计时自动升级** | 左侧 - Timer 按钮 | 2 天 | P2 | - |
 
 ### 📈 开发进度
 
 ```
-总体进度: ████████████░░░░░░░░ 65%
+总体进度: ███████████████░░░░░ 75%
 
 左侧 Event Overview: ███████████████░░░ 85%
   ├─ 上 Section (事件标识):       ████████████████████ 100%
   ├─ 中 Section (计划安排):       ████████████████████ 100%
   └─ 下 Section (实际进展):       ██████░░░░░░░░░░░░░░  30%
 
-右侧 Event Log:      ████░░░░░░░░░░░░░░░░  20%
+右侧 Event Log:      ██████████████░░░░░░  70%
   ├─ 标签区域:                    ████████░░░░░░░░░░░░  40%
   ├─ Plan 提示:                   ████████████████████ 100%
-  └─ Slate 编辑区:                ░░░░░░░░░░░░░░░░░░░░   0%
+  ├─ 时间戳分隔线:                ████████████████████ 100%
+  ├─ Slate 编辑区:                ██████████████░░░░░░  70%
+  ├─ FloatingBar 集成:            ████████████████████ 100%
+  └─ 文本格式/颜色:               ████████████████████ 100%
 ```
 
 ### 🎯 下一步开发建议
 
 **第一阶段**（本周完成）- P0 功能:
-1. ✅ **实际进展数据集成** - 2-3 天
+1. ⏳ **实际进展数据集成** - 2-3 天
    - 时间片段列表动态渲染
    - 总时长汇总计算
    - 计划 vs 实际时间对比
    - DDL 完成状态显示
 
-2. ✅ **UnifiedSlateEditor 集成** - 3-4 天
-   - 主日志富文本编辑器
-   - 时间戳分隔线动态生成
-   - 父事件 + Timer 子事件日志合并
-   - 点击 Timer 色块自动滚动
+2. ✅ **LightSlateEditor 集成** - 已完成 (2025-11-24)
+   - ✅ 主日志富文本编辑器
+   - ✅ 时间戳分隔线自动生成（5分钟间隔）
+   - ✅ FloatingBar 完整集成（tag/emoji/dateMention）
+   - ✅ 文本格式支持（粗体/斜体/下划线/颜色）
+   - ✅ 颜色选择器数字键功能
+   - ⏳ 父事件 + Timer 子事件日志合并（待实现）
+   - ⏳ 点击 Timer 色块自动滚动（待实现）
 
 **第二阶段**（下周完成）- P1 功能:
-3. ✅ **标签区域 Slate 编辑** - 1-2 天
-4. ✅ **视图切换交互** - 1-2 天
+3. ⏳ **标签区域 Slate 编辑** - 1-2 天
+4. ⏳ **视图切换交互** - 1-2 天
 
 **第三阶段**（后续优化）- P2 功能:
-5. ✅ **Timer 二次计时自动升级** - 2 天
-6. ✅ **日历归属选择器** - 1 天
+5. ⏳ **Timer 二次计时自动升级** - 2 天
+6. ⏳ **日历同步机制选择器** - 3-4 天
 
 ---
 

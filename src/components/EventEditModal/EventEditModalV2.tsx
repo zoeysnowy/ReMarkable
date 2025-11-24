@@ -97,7 +97,7 @@ import { LightSlateEditor, LightSlateEditorRef } from '../LightSlateEditor';
 import { jsonToSlateNodes, slateNodesToHtml, slateNodesToJson } from '../LightSlateEditor/serialization';
 import { HeadlessFloatingToolbar } from '../FloatingToolbar/HeadlessFloatingToolbar';
 import { useFloatingToolbar } from '../FloatingToolbar/useFloatingToolbar';
-// import { insertTag, insertEmoji, insertDateMention } from '../UnifiedSlateEditor/helpers';
+import { insertTag, insertEmoji, insertDateMention, applyTextFormat } from '../UnifiedSlateEditor/helpers';
 // import { parseExternalHtml, slateNodesToRichHtml } from '../UnifiedSlateEditor/serialization';
 import { formatTimeForStorage } from '../../utils/timeUtils';
 import './EventEditModalV2.css';
@@ -229,6 +229,13 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
           return event.eventlog.content || '[]';
         })(),
         description: event.description || '',
+        // 🆕 日历同步配置
+        calendarIds: event.calendarIds || [],
+        planSyncConfig: event.planSyncConfig || {
+          mode: 'receive-only',
+          targetCalendars: []
+        },
+        actualSyncConfig: event.actualSyncConfig || null,
       };
     }
     // 新建事件时的默认值
@@ -246,6 +253,13 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
       attendees: [],
       eventlog: '[]',
       description: '',
+      // 🆕 日历同步配置
+      calendarIds: [],
+      planSyncConfig: {
+        mode: 'receive-only',
+        targetCalendars: []
+      },
+      actualSyncConfig: null,
     };
   });
 
@@ -277,13 +291,24 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   const timelogContent = formData.eventlog || '[]';
   
   const [activePickerIndex, setActivePickerIndex] = useState(-1);
+  const [isSubPickerOpen, setIsSubPickerOpen] = useState(false); // 🆕 追踪子选择器（颜色选择器）是否打开
 
   // 获取真实的可用日历数据
   const availableCalendars = getAvailableCalendarsForSettings();
 
-  // 日历来源状态 - 使用真实日历的第一个作为默认值
-  const [sourceCalendarId, setSourceCalendarId] = useState(() => availableCalendars[0]?.id || 'local-created');
-  const [syncCalendarId, setSyncCalendarId] = useState(() => availableCalendars[1]?.id || availableCalendars[0]?.id || 'not-synced');
+  // 日历来源状态 - 从 formData.calendarIds 初始化（多选）
+  const [sourceCalendarIds, setSourceCalendarIds] = useState<string[]>(() => {
+    if (event?.calendarIds && event.calendarIds.length > 0) {
+      return event.calendarIds;
+    }
+    return availableCalendars.length > 0 ? [availableCalendars[0].id] : ['local-created'];
+  });
+  const [syncCalendarIds, setSyncCalendarIds] = useState<string[]>(() => {
+    if (event?.planSyncConfig?.targetCalendars && event.planSyncConfig.targetCalendars.length > 0) {
+      return event.planSyncConfig.targetCalendars;
+    }
+    return availableCalendars.length > 1 ? [availableCalendars[1].id] : [];
+  });
 
   // 同步模式数据
   const syncModes = [
@@ -303,6 +328,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     editorRef: rightPanelRef as RefObject<HTMLElement>,
     enabled: isDetailView,
     menuItemCount: 5, // tag, emoji, dateRange, addTask, textStyle
+    isSubPickerOpen, // 🆕 传递子选择器状态，打开时不拦截数字键
     onMenuSelect: (index) => {
       console.log('[EventEditModalV2] Menu selected:', index);
       setActivePickerIndex(index);
@@ -1042,10 +1068,11 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
    * FloatingToolbar 表情选择 - 暂时禁用
    */
   const handleEmojiSelect = (emoji: any) => {
-    // TODO: 重新实现 LightSlateEditor 的 emoji 插入
-    // if (slateEditorRef.current) {
-    //   insertEmoji(slateEditorRef.current, emoji.native);
-    // }
+    if (slateEditorRef.current?.editor) {
+      // emoji 可能是对象（来自 emoji-mart）或字符串
+      const emojiStr = typeof emoji === 'string' ? emoji : emoji.native;
+      insertEmoji(slateEditorRef.current.editor, emojiStr);
+    }
     setActivePickerIndex(-1); // 关闭 picker
   };
 
@@ -1053,20 +1080,19 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
    * FloatingToolbar 标签选择 - 暂时禁用
    */
   const handleTagSelect = (tagId: string) => {
-    // TODO: 重新实现 LightSlateEditor 的 tag 插入
-    // if (slateEditorRef.current) {
-    //   const tag = TagService.getTagById(tagId);
-    //   if (tag) {
-    //     insertTag(
-    //       slateEditorRef.current,
-    //       tagId,
-    //       tag.name,
-    //       tag.color || '#999999',
-    //       tag.emoji || '',
-    //       false // mentionOnly
-    //     );
-    //   }
-    // }
+    if (slateEditorRef.current?.editor) {
+      const tag = TagService.getTagById(tagId);
+      if (tag) {
+        insertTag(
+          slateEditorRef.current.editor,
+          tagId,
+          tag.name,
+          tag.color || '#999999',
+          tag.emoji || '',
+          false // mentionOnly
+        );
+      }
+    }
     setActivePickerIndex(-1); // 关闭 picker
   };
 
@@ -1074,15 +1100,14 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
    * FloatingToolbar 日期范围选择
    */
   const handleDateRangeSelect = (startDate: string, endDate?: string) => {
-    // TODO: 重新实现 LightSlateEditor 的 date mention 插入
-    // if (slateEditorRef.current) {
-    //   insertDateMention(
-    //     slateEditorRef.current,
-    //     startDate,
-    //     endDate,
-    //     false // mentionOnly
-    //   );
-    // }
+    if (slateEditorRef.current?.editor) {
+      insertDateMention(
+        slateEditorRef.current.editor,
+        startDate,
+        endDate,
+        false // mentionOnly
+      );
+    }
     setActivePickerIndex(-1); // 关闭 picker
   };
 
@@ -1757,6 +1782,12 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                       slateEditorRef={slateEditorRef}
                       activePickerIndex={activePickerIndex}
                       onActivePickerIndexConsumed={() => setActivePickerIndex(-1)}
+                      onSubPickerStateChange={setIsSubPickerOpen} // 🆕 追踪颜色选择器状态
+                      onTextFormat={(command, value) => {
+                        if (slateEditorRef.current?.editor) {
+                          applyTextFormat(slateEditorRef.current.editor, command, value);
+                        }
+                      }}
                       onTagSelect={(tagIds) => {
                         const tagId = Array.isArray(tagIds) ? tagIds[0] : tagIds;
                         handleTagSelect(tagId);

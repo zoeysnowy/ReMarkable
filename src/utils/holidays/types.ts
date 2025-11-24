@@ -131,6 +131,30 @@ export interface Event {
   // 🆕 Issue #12: Timer ↔ Plan 集成
   parentEventId?: string;   // 父事件 ID（用于 Timer 子事件关联）
   timerLogs?: string[];     // 计时日志（子 Timer 事件 ID 列表）
+  
+  // 🆕 v2.0.1: 日历同步配置
+  planSyncConfig?: PlanSyncConfig;     // 计划安排同步配置
+  actualSyncConfig?: ActualSyncConfig | null; // 实际进展同步配置（null 表示继承 planSyncConfig）
+}
+
+/**
+ * 计划安排同步配置
+ * 支持 5 种模式：receive-only, send-only, send-only-private, bidirectional, bidirectional-private
+ */
+export interface PlanSyncConfig {
+  mode: 'receive-only' | 'send-only' | 'send-only-private' | 'bidirectional' | 'bidirectional-private';
+  targetCalendars: string[];  // 目标日历 ID 列表（多选）
+  tagMapping?: { [calendarId: string]: string[] }; // 日历 → 标签自动映射
+}
+
+/**
+ * 实际进展同步配置
+ * 支持 4 种模式：send-only, send-only-private, bidirectional, bidirectional-private（不支持 receive-only）
+ */
+export interface ActualSyncConfig {
+  mode: 'send-only' | 'send-only-private' | 'bidirectional' | 'bidirectional-private';
+  targetCalendars: string[];  // 目标日历 ID 列表（多选）
+  tagMapping?: { [calendarId: string]: string[] }; // 日历 → 标签自动映射
 }
 
 export interface Task {

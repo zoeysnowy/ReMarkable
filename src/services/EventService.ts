@@ -982,10 +982,17 @@ export class EventService {
     lastUncheck?: string;
     checkInCount: number;
     uncheckCount: number;
+    checkType: import('../types').CheckType;
+    recurringConfig?: import('../types').RecurringConfig;
   } {
     const event = this.getEventById(eventId);
     if (!event) {
-      return { isChecked: false, checkInCount: 0, uncheckCount: 0 };
+      return { 
+        isChecked: false, 
+        checkInCount: 0, 
+        uncheckCount: 0,
+        checkType: 'none'
+      };
     }
 
     const checked = event.checked || [];
@@ -1000,7 +1007,9 @@ export class EventService {
       return { 
         isChecked: false, 
         checkInCount: checked.length, 
-        uncheckCount: unchecked.length 
+        uncheckCount: unchecked.length,
+        checkType: event.checkType || 'none',
+        recurringConfig: event.recurringConfig
       };
     }
     
@@ -1012,7 +1021,9 @@ export class EventService {
       lastCheckIn,
       lastUncheck,
       checkInCount: checked.length,
-      uncheckCount: unchecked.length
+      uncheckCount: unchecked.length,
+      checkType: event.checkType || 'none',
+      recurringConfig: event.recurringConfig
     };
   }
 

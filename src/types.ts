@@ -10,6 +10,29 @@ export interface TimerSession {
 }
 
 /**
+ * 签到类型
+ */
+export type CheckType = 'none' | 'once' | 'recurring';
+
+/**
+ * 循环周期配置
+ */
+export interface RecurringConfig {
+  /** 循环类型: daily(每天), weekly(每周), monthly(每月), custom(自定义) */
+  type: 'daily' | 'weekly' | 'monthly' | 'custom';
+  /** 每周哪几天（0-6，0=周日）- 用于 weekly 类型 */
+  weekDays?: number[];
+  /** 每月哪几天（1-31）- 用于 monthly 类型 */
+  monthDays?: number[];
+  /** 间隔天数 - 用于 custom 类型 */
+  intervalDays?: number;
+  /** 循环开始日期 */
+  startDate?: string;
+  /** 循环结束日期（可选，不设置则无限循环） */
+  endDate?: string;
+}
+
+/**
  * 同步状态枚举
  * 用于标识事件的同步状态
  */
@@ -275,6 +298,8 @@ export interface Event {
   // 🆕 签到功能：用于任务管理和定时打卡
   checked?: string[];       // 签到时间戳数组（ISO格式）
   unchecked?: string[];     // 取消签到时间戳数组（ISO格式）
+  checkType?: CheckType;    // 签到类型：none(无需签到), once(单次签到), recurring(循环签到)
+  recurringConfig?: RecurringConfig; // 循环签到配置（当 checkType='recurring' 时有效）
   
   // 🆕 v2.1: 日历同步配置（支持 Private 模式和独立事件架构）
   /**

@@ -248,12 +248,14 @@ const getEventStatuses = useCallback((eventId: string) => {
     statuses.add('done');
   }
   
-  // 4️⃣ 判断 MISSED 状态
+  // 4️⃣ 判断 MISSED 状态 (⚠️ 修复于 2025-11-24)
   if (event?.startTime) {
     const eventTime = new Date(event.startTime);
+    const now = new Date();
     const rangeEnd = new Date(endTime);
+    const cutoffTime = now < rangeEnd ? now : rangeEnd; // 取较早的时间点
     
-    if (eventTime < rangeEnd && !statuses.has('done')) {
+    if (eventTime < cutoffTime && !statuses.has('done')) {
       statuses.add('missed');
     }
   }
@@ -280,9 +282,17 @@ weekEnd.setHours(23, 59, 59, 999); // 23:59:59
    - 比较时间戳找到最后一次操作
    - 性能优化：避免每次都查询历史
 
-3. **MISSED 判定简化**:
-   - 只判断 `eventTime < rangeEnd`
-   - 不要求事件在范围内（允许显示历史遗留未完成事件）
+3. **MISSED 判定逻辑** (⚠️ 已修复 2025-11-24):
+   ```typescript
+   // 取当前时间和范围结束时间的较早者作为判定截止时间
+   const cutoffTime = now < rangeEnd ? now : rangeEnd;
+   if (eventTime < cutoffTime && !statuses.has('done')) {
+     statuses.add('missed');
+   }
+   ```
+   - **查看当前/未来时间范围**: 使用 `now` 作为截止时间，只有真正过期的事件才算missed
+   - **查看历史时间范围**: 使用 `rangeEnd` 作为截止时间，在那个历史范围内应完成但未完成的事件算missed
+   - **修复前问题**: 直接使用 `eventTime < rangeEnd` 会导致未来事件也被标记为missed
 
 **状态到竖线的转换**:
 
@@ -529,6 +539,115 @@ const STATUS_LABELS = {
 
 ---
 
-**最后更新**: 2025-11-23  
+## 📝 更新日志
+
+### 2025-11-24
+
+#### Bug Fix 1: Missed 状态判定逻辑错误
+- **问题**: 直接使用 `eventTime < rangeEnd` 导致未来事件被错误标记为 missed
+- **修复**: 使用 `min(now, rangeEnd)` 作为判定截止时间
+- **影响**: 查看当前时间范围时，未来事件不再被标记为 missed
+- **文件**: `PlanManager.tsx` - `getEventStatuses()` 函数
+
+#### Bug Fix 2: Ghost 事件显示错误时间范围 ⚠️ **Critical Fix**
+- **问题描述**: 
+  - 页面初始加载时默认选择"本周"时间范围（包含今天）
+  - 本周范围内删除的事件会被添加为 ghost 事件（带删除线的灰色事件）
+  - Ghost 事件被序列化到 Slate 编辑器的内部状态中
+  - 当用户切换到其他时间范围（如 28-29 号）时，虽然 `editorItems` 重新计算不包含 ghost，但编辑器已渲染的 ghost 事件无法移除
+  - 导致在错误的时间范围内显示 ghost 事件（例如：23 号删除的事件出现在 28-29 号的快照中）
+
+- **根本原因**: React 组件缓存机制
+  - UnifiedSlateEditor 没有 `key` 属性
+  - 当 `dateRange` 变化时，React 认为是同一个组件，只更新 props
+  - Slate 编辑器的内部状态（已渲染的节点）不会被重置
+  - Ghost 事件标记（`_isDeleted: true`）被保留在编辑器中
+
+- **修复方案**: 强制编辑器重置
+  ```typescript
+  <UnifiedSlateEditor
+    key={dateRange ? `snapshot-${dateRange.start.getTime()}-${dateRange.end.getTime()}` : 'normal'}
+    items={editorItems}
+    onChange={debouncedOnChange}
+    getEventStatus={getEventStatus}
+  />
+  ```
+  - 每次 `dateRange` 变化时，`key` 改变
+  - React 完全销毁旧编辑器组件，创建新实例
+  - 新编辑器从 `editorItems` 重新初始化，不包含旧的 ghost 事件
+  - 切换回正常模式时，`key='normal'` 确保编辑器重置
+
+- **防御性修复**: 多层 Ghost 事件过滤
+  ```typescript
+  // 1. 初始化时过滤（PlanManager.tsx L298-303）
+  const rawEvents = EventService.getAllEvents();
+  const allEvents = rawEvents.filter(e => !(e as any)._isDeleted);
+  if (rawEvents.length !== allEvents.length) {
+    console.warn('[PlanManager] 🚨 发现并过滤了', rawEvents.length - allEvents.length, '个 ghost 事件！');
+  }
+  
+  // 2. 保存时过滤（PlanManager.tsx L876）
+  const realItems = updatedItems.filter(item => !(item as any)._isDeleted);
+  
+  // 3. Snapshot 模式诊断（PlanManager.tsx L1291-1299）
+  const ghostsInFiltered = filteredItems.filter((item: any) => item._isDeleted);
+  if (ghostsInFiltered.length > 0) {
+    console.error('[PlanManager] 🚨 filteredItems 中发现 ghost 事件！', ...);
+  }
+  ```
+
+- **Snapshot Ghost 事件生成逻辑**（正确实现）:
+  ```typescript
+  // PlanManager.tsx - editorItems useMemo (L1283-1350)
+  if (dateRange) {
+    const startTime = formatTimeForStorage(dateRange.start);
+    const endTime = formatTimeForStorage(dateRange.end);
+    
+    // 1. 获取起点时刻存在的所有事件
+    const existingAtStart = EventHistoryService.getExistingEventsAtTime(startTime);
+    
+    // 2. 筛选出起点时存在的事件（未删除的）
+    allItems = filteredItems.filter(item => existingAtStart.has(item.id));
+    
+    // 3. 查询时间范围内的所有操作
+    const operations = EventHistoryService.queryHistory({ startTime, endTime });
+    
+    // 4. 添加范围内删除的事件为 ghost（仅当它们在起点时存在）
+    const deleteOpsInRange = operations.filter(op => 
+      op.operation === 'delete' && 
+      op.before &&
+      existingAtStart.has(op.eventId)
+    );
+    
+    deleteOpsInRange.forEach(log => {
+      allItems.push({
+        ...log.before,
+        _isDeleted: true,
+        _deletedAt: log.timestamp
+      } as any);
+    });
+  }
+  ```
+
+- **影响范围**: 
+  - Snapshot 功能的所有时间范围切换
+  - Ghost 事件（删除的事件）的显示准确性
+  - 编辑器状态管理的可靠性
+
+- **测试验证**:
+  - ✅ 页面加载默认本周 → 显示本周删除的 ghost 事件
+  - ✅ 切换到未来日期（28-29 号）→ ghost 事件消失
+  - ✅ 切换回本周 → ghost 事件重新出现
+  - ✅ 编辑器内容完全重置，无残留状态
+
+- **相关文件**:
+  - `PlanManager.tsx` - L2043 (UnifiedSlateEditor key 属性)
+  - `PlanManager.tsx` - L1283-1350 (Ghost 事件生成逻辑)
+  - `PlanManager.tsx` - L298-303 (初始化过滤)
+  - `PlanManager.tsx` - L876 (保存时过滤)
+
+---
+
+**最后更新**: 2025-11-24  
 **维护者**: GitHub Copilot + Zoey  
-**版本**: v1.0 - Snapshot 状态可视化系统完整实现
+**版本**: v1.0.1 - 修复 Ghost 事件显示错误和 Missed 状态判定
