@@ -120,6 +120,7 @@ import taskGrayIcon from '../../assets/icons/task_gray.svg';
 import ddlWarnIcon from '../../assets/icons/ddl_warn.svg';
 import linkColorIcon from '../../assets/icons/link_color.svg';
 import backIcon from '../../assets/icons/back.svg';
+import remarkableLogo from '../../assets/icons/LOGO.svg';
 
 interface MockEvent {
   id: string;
@@ -734,7 +735,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
    */
   const getEventSourceInfo = (evt: Event | null) => {
     if (!evt) {
-      return { emoji: '🚀', name: 'ReMarkable', icon: null, color: '#3b82f6' };
+      return { emoji: null, name: 'ReMarkable', icon: remarkableLogo, color: '#3b82f6' };
     }
 
     // 1. Timer 子事件 - 递归获取父事件的来源
@@ -773,11 +774,11 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
 
     // 5. TimeCalendar 事件
     if (evt.isTimeCalendar) {
-      return { emoji: '🚀', name: 'ReMarkable', icon: null, color: '#3b82f6' };
+      return { emoji: null, name: 'ReMarkable', icon: remarkableLogo, color: '#3b82f6' };
     }
 
     // 6. 其他本地事件
-    return { emoji: '🚀', name: 'ReMarkable', icon: null, color: '#3b82f6' };
+    return { emoji: null, name: 'ReMarkable', icon: remarkableLogo, color: '#3b82f6' };
   };
 
   // 获取同步模式显示信息
@@ -1636,7 +1637,11 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                               <span style={{ fontSize: '16px' }}>{sourceInfo.emoji}</span>
                             )}
                             {sourceInfo.icon && (
-                              <span style={{ fontSize: '16px' }}>{sourceInfo.icon}</span>
+                              typeof sourceInfo.icon === 'string' && sourceInfo.icon.endsWith('.svg') ? (
+                                <img src={sourceInfo.icon} alt="" style={{ width: '16px', height: '16px' }} />
+                              ) : (
+                                <span style={{ fontSize: '16px' }}>{sourceInfo.icon}</span>
+                              )
                             )}
                             <span style={{ fontSize: '14px', color: '#374151', fontWeight: 500 }}>
                               {sourceInfo.name}
@@ -1960,7 +1965,9 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                         floatingToolbar.hideToolbar();
                       }}
                       onDateRangeSelect={(start, end) => {
-                        handleDateRangeSelect(start?.toISOString() || '');
+                        // ✅ 使用 formatTimeForStorage 而不是 toISOString()
+                        const formattedTime = start ? formatTimeForStorage(start) : '';
+                        handleDateRangeSelect(formattedTime);
                         floatingToolbar.hideToolbar();
                       }}
                       onRequestClose={floatingToolbar.hideToolbar}

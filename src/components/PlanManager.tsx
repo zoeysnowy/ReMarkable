@@ -332,6 +332,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     const filtered = allEvents.filter((event: Event) => {
       if (!event.isPlan) return false;
       
+      // 🆕 过滤：只显示 checkType !== 'none' 的事件
+      if (event.checkType === 'none') return false;
+      
       // 🔧 精确过滤：只排除系统生成的子事件，保留用户计划分项
       if (event.parentEventId) {
         // 如果是子事件，检查是否为需要排除的系统类型
@@ -1323,19 +1326,45 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       console.log('[PlanManager] 📝 时间范围内操作:', operations.length, '条');
       
       // 4️⃣ 添加范围内删除的事件为 ghost
-      const deleteOpsInRange = operations.filter(op => op.operation === 'delete' && op.before);
+      const deleteOpsInRange = operations.filter(op => op.operation === 'delete' && op.before && op.eventId);
       console.log('[PlanManager] 🗑️ 范围内删除操作:', deleteOpsInRange.length, '条');
       
-      const deletedInRange = deleteOpsInRange.filter(op => existingAtStart.has(op.eventId));
-      console.log('[PlanManager] 🎯 其中在起点存在的:', deletedInRange.length, '条');
+      // ✅ 修改逻辑：显示"在起点存在 OR 在范围内创建"并且"在范围内被删除"的事件
+      // 查找范围内创建的事件
+      const createdInRange = new Set(
+        operations
+          .filter(op => op.operation === 'create' && op.eventId)
+          .map(op => op.eventId)
+      );
+      console.log('[PlanManager] 🆕 范围内创建:', createdInRange.size, '个');
+      
+      // 过滤：在起点存在 OR 在范围内创建
+      const deletedInRange = deleteOpsInRange.filter(op => 
+        op.eventId && (existingAtStart.has(op.eventId) || createdInRange.has(op.eventId))
+      );
+      console.log('[PlanManager] 🎯 其中在起点存在或范围内创建的:', deletedInRange.length, '条');
       
       deletedInRange.forEach(log => {
+        // 防御性检查：确保 log.eventId 和 log.before 存在
+        if (!log.eventId || !log.before) {
+          console.warn('[PlanManager] ⚠️ 跳过无效的删除记录:', log);
+          return;
+        }
+        
+        // 过滤空白事件：没有标题、内容、simpleTitle 或 fullTitle
+        const hasContent = log.before.title || log.before.content || 
+                          log.before.simpleTitle || log.before.fullTitle;
+        if (!hasContent) {
+          console.log('[PlanManager] ⏭️ 跳过空白 ghost:', log.eventId.slice(-8));
+          return;
+        }
+        
         console.log('[PlanManager] 👻 添加 ghost:', {
           eventId: log.eventId.slice(-8),
-          title: log.before?.title,
-          content: log.before?.content,
-          simpleTitle: log.before?.simpleTitle,
-          fullTitle: log.before?.fullTitle,
+          title: log.before.title,
+          content: log.before.content,
+          simpleTitle: log.before.simpleTitle,
+          fullTitle: log.before.fullTitle,
           删除于: new Date(log.timestamp).toLocaleString(),
           before完整信息: log.before
         });
@@ -1347,10 +1376,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       });
       
       // 记录被跳过的删除操作
-      const skippedDeletes = deleteOpsInRange.filter(op => !existingAtStart.has(op.eventId));
+      const skippedDeletes = deleteOpsInRange.filter(op => 
+        op.eventId && !existingAtStart.has(op.eventId) && !createdInRange.has(op.eventId)
+      );
       if (skippedDeletes.length > 0) {
-        console.log('[PlanManager] ⏭️ 跳过不在起点的删除:', skippedDeletes.length, '条', 
-          skippedDeletes.map(op => `${op.eventId.slice(-8)}-${op.before?.title?.substring(0, 15)}`));
+        console.log('[PlanManager] ⏭️ 跳过（不在起点也不在范围内创建）:', skippedDeletes.length, '条', 
+          skippedDeletes.map(op => `${op.eventId?.slice(-8) || 'unknown'}-${op.before?.title?.substring(0, 15) || 'no title'}`));
       }
       
       console.log('[PlanManager] 📊 Snapshot 完成：最终', allItems.length, '个事件', `(${allItems.filter((i: any) => i._isDeleted).length} ghost)`);

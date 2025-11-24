@@ -4,11 +4,12 @@ import { Event } from '../types';
 import { 
   TimeFilter, 
   filterAndSortEvents, 
-  formatCountdown, 
-  formatTimeLabel 
+  formatCountdown
 } from '../utils/upcomingEventsHelper';
 import { shouldShowCheckbox } from '../utils/eventHelpers';
 import { EventService } from '../services/EventService';
+import { TagService } from '../services/TagService';
+import { formatRelativeDate, formatRelativeTimeDisplay } from '../utils/relativeDateFormatter';
 
 // 导入本地 SVG 图标
 import TimerStartIconSvg from '../assets/icons/timer_start.svg';
@@ -100,14 +101,56 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
     onEventClick?.(event);
   };
 
-  const renderEventCard = (event: Event) => {
-    const timeLabel = formatTimeLabel(event);
-    const countdown = formatCountdown(event, currentTime);
+  /**
+   * 从标题中移除标签和日期mention元素
+   * 标签格式: #tagName 或 #emoji tagName
+   * 日期格式: 📅 日期文本
+   */
+  const cleanEventTitle = (title: string): string => {
+    if (!title) return '';
     
-    // 获取第一个标签作为显示（目前简化处理，使用默认颜色）
+    return title
+      // 移除标签（# 开头，后面可能有emoji和文字）
+      .replace(/#[^\s#📅]*/g, '')
+      // 移除日期mention（📅 开头的内容）
+      .replace(/📅[^📅#]*/g, '')
+      // 移除多余空格
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  const renderEventCard = (event: Event) => {
+    // 使用 formatRelativeTimeDisplay 格式化时间显示
+    const timeLabel = formatRelativeTimeDisplay(
+      event.startTime,
+      event.endTime,
+      event.isAllDay
+    );
+    
+    const countdown = formatCountdown(event, currentTime);
+    const isExpired = !countdown; // 过期事件没有倒计时
+    
+    // 获取第一个标签的信息
     const primaryTagId = event.tags && event.tags.length > 0 ? event.tags[0] : null;
-    // TODO: 从 TagService 获取标签的真实颜色和名称
-    const tagColor = event.color || '#6b7280'; // 使用 event.color 或默认灰色
+    const primaryTag = primaryTagId ? TagService.getTagById(primaryTagId) : null;
+    const tagColor = primaryTag?.color || event.color || '#6b7280';
+    const tagEmoji = primaryTag?.emoji;
+    const tagName = primaryTag?.name || event.category;
+    
+    // 移除标签和日期mention的纯文本标题（用于显示）
+    const rawTitle = event.simpleTitle || event.title || '';
+    const cleanTitle = cleanEventTitle(rawTitle);
+    
+    // 计算是否需要显示日期（仅过期事件需要）
+    let dateDisplay: string | undefined;
+    if (isExpired && (event.startTime || event.endTime)) {
+      const eventDate = new Date(event.startTime || event.endTime!);
+      const relativeDate = formatRelativeDate(eventDate, currentTime);
+      // 只有不是"今天"或"明天"时才显示
+      if (relativeDate !== '今天' && relativeDate !== '明天') {
+        dateDisplay = relativeDate;
+      }
+    }
 
     return (
       <div 
@@ -137,7 +180,7 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
                   />
                 </div>
               )}
-              <h4 className="event-title">{event.title}</h4>
+              <h4 className="event-title">{cleanTitle}</h4>
             </div>
             {timeLabel && (
               <div className="event-time-info">
@@ -147,11 +190,11 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
             )}
           </div>
 
-          {/* 第二行: 标签 | 倒计时 */}
+          {/* 第二行: 标签 | 倒计时/日期 */}
           <div className="event-row-2">
-            {primaryTagId && (
+            {tagName && (
               <div className="event-tag" style={{ color: tagColor }}>
-                {event.category || primaryTagId}
+                #{tagEmoji ? `${tagEmoji} ` : ''}{tagName}
               </div>
             )}
             {countdown && (
@@ -164,6 +207,11 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
                 }}
               >
                 {countdown}
+              </div>
+            )}
+            {dateDisplay && (
+              <div className="event-date">
+                {dateDisplay}
               </div>
             )}
           </div>

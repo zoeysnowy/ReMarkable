@@ -1,4 +1,5 @@
 import { Event } from '../types';
+import { TagService } from '../services/TagService';
 
 export type TimeFilter = 'today' | 'tomorrow' | 'week' | 'nextWeek' | 'all';
 
@@ -55,16 +56,17 @@ export function getTimeRange(filter: TimeFilter, now: Date = new Date()): { star
  * 判断事件是否在指定时间范围内
  */
 export function isEventInRange(event: Event, start: Date, end: Date): boolean {
-  const eventDate = new Date(event.date);
-  
-  // 如果有开始时间，使用开始时间
-  if (event.startTime) {
-    const [hours, minutes] = event.startTime.split(':').map(Number);
-    eventDate.setHours(hours, minutes, 0, 0);
-  } else {
-    eventDate.setHours(0, 0, 0, 0);
+  // startTime 和 endTime 格式: 'YYYY-MM-DD HH:mm:ss'
+  if (!event.startTime && !event.endTime) {
+    return false; // 没有时间信息的事件不显示
   }
 
+  // 使用 startTime 或 endTime（优先 startTime）
+  const timeString = event.startTime || event.endTime;
+  if (!timeString) return false;
+
+  const eventDate = new Date(timeString);
+  
   return eventDate >= start && eventDate <= end;
 }
 
@@ -72,22 +74,18 @@ export function isEventInRange(event: Event, start: Date, end: Date): boolean {
  * 判断事件是否已过期
  */
 export function isEventExpired(event: Event, now: Date = new Date()): boolean {
-  const eventDate = new Date(event.date);
-  
+  // endTime 和 startTime 格式: 'YYYY-MM-DD HH:mm:ss'
   if (event.endTime) {
     // 如果有结束时间，使用结束时间判断
-    const [hours, minutes] = event.endTime.split(':').map(Number);
-    eventDate.setHours(hours, minutes, 0, 0);
+    const eventDate = new Date(event.endTime);
     return eventDate < now;
   } else if (event.startTime) {
     // 如果只有开始时间，使用开始时间判断
-    const [hours, minutes] = event.startTime.split(':').map(Number);
-    eventDate.setHours(hours, minutes, 0, 0);
+    const eventDate = new Date(event.startTime);
     return eventDate < now;
   } else {
-    // 全天事件，比较日期
-    eventDate.setHours(23, 59, 59, 999);
-    return eventDate < now;
+    // 没有时间信息，认为未过期
+    return false;
   }
 }
 
@@ -95,14 +93,13 @@ export function isEventExpired(event: Event, now: Date = new Date()): boolean {
  * 计算事件距离现在的时间差（用于排序）
  */
 export function getEventTimeDiff(event: Event, now: Date = new Date()): number {
-  const eventDate = new Date(event.date);
-  
-  if (event.startTime) {
-    const [hours, minutes] = event.startTime.split(':').map(Number);
-    eventDate.setHours(hours, minutes, 0, 0);
-  } else {
-    eventDate.setHours(0, 0, 0, 0);
+  // startTime 格式: 'YYYY-MM-DD HH:mm:ss'
+  if (!event.startTime && !event.endTime) {
+    return Infinity; // 没有时间信息的排到最后
   }
+
+  const timeString = event.startTime || event.endTime;
+  const eventDate = new Date(timeString!);
 
   return eventDate.getTime() - now.getTime();
 }
@@ -152,8 +149,34 @@ export function filterAndSortEvents(
 
   const { start, end } = getTimeRange(filter, now);
 
-  // 筛选在范围内的事件
-  const filteredEvents = events.filter(event => isEventInRange(event, start, end));
+  // 筛选事件：
+  // 1. checkType 不为 'none'
+  // 2. 在时间范围内
+  // 3. 排除 isTimer、isOutsideApp、isEventLog（纯粹的计时/外部APP/时间日志笔记）
+  // 4. 排除带有 #ongoing 标签的计时事件
+  const filteredEvents = events.filter(event => {
+    // 排除 checkType 为 'none' 的事件
+    if (event.checkType === 'none') {
+      return false;
+    }
+    
+    // 排除纯计时器、外部APP、时间日志事件
+    if (event.isTimer || event.isOutsideApp || event.isTimeLog) {
+      return false;
+    }
+    
+    // 排除带有 #ongoing 标签的计时事件（额外防护）
+    if (event.tags?.some(tagId => {
+      const tag = TagService.getTagById(tagId);
+      return tag?.name === 'ongoing';
+    })) {
+      console.warn('⏱️ 过滤计时事件:', event.title || event.simpleTitle, 'isTimer:', event.isTimer);
+      return false;
+    }
+    
+    // 检查时间范围
+    return isEventInRange(event, start, end);
+  });
 
   // 排序
   const sortedEvents = sortEvents(filteredEvents, now);
@@ -201,14 +224,27 @@ export function formatCountdown(event: Event, now: Date = new Date()): string | 
 
 /**
  * 格式化时间显示文本
+ * startTime/endTime 格式: 'YYYY-MM-DD HH:mm:ss'
  */
 export function formatTimeLabel(event: Event): string | undefined {
+  // 提取时间部分（HH:mm）
+  const extractTime = (timeString: string): string => {
+    const date = new Date(timeString);
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+  };
+
   if (event.startTime && event.endTime) {
-    return `${event.startTime}-${event.endTime}`;
+    const startTimeStr = extractTime(event.startTime);
+    const endTimeStr = extractTime(event.endTime);
+    return `${startTimeStr}-${endTimeStr}`;
   } else if (event.startTime) {
-    return `${event.startTime}开始`;
+    const startTimeStr = extractTime(event.startTime);
+    return `${startTimeStr}开始`;
   } else if (event.endTime) {
-    return `${event.endTime}截止`;
+    const endTimeStr = extractTime(event.endTime);
+    return `${endTimeStr}截止`;
   } else if (event.isAllDay) {
     return '全天';
   }
