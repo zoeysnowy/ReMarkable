@@ -136,6 +136,18 @@ interface MockEvent {
   attendees?: Contact[];
   eventlog?: string; // Slate JSON string for TimeLog content
   description?: string; // HTML export for Outlook sync
+  // 🆕 日历同步配置
+  calendarIds?: string[];
+  planSyncConfig?: {
+    mode?: string;
+    targetCalendars?: string[];
+    tagMapping?: { [key: string]: string[] };
+  };
+  actualSyncConfig?: {
+    mode?: string;
+    targetCalendars?: string[];
+    tagMapping?: { [key: string]: string[] };
+  } | null;
 }
 
 interface EventEditModalV2Props {
@@ -629,6 +641,64 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
       color: firstCalendar.color,
       hasMore: calendarIds.length > 1
     };
+  };
+
+  /**
+   * 获取事件来源信息（按照 PRD 的 6 层优先级）
+   * 优先级：
+   * 1. Timer 子事件继承父事件来源
+   * 2. 外部日历事件（Outlook/Google/iCloud）
+   * 3. 独立 Timer 事件
+   * 4. Plan 事件
+   * 5. TimeCalendar 事件
+   * 6. 其他本地事件
+   */
+  const getEventSourceInfo = (evt: Event | null) => {
+    if (!evt) {
+      return { emoji: '🚀', name: 'ReMarkable', icon: null, color: '#3b82f6' };
+    }
+
+    // 1. Timer 子事件 - 递归获取父事件的来源
+    if (evt.isTimer && evt.parentEventId) {
+      const parentEvent = EventService.getEventById(evt.parentEventId);
+      if (parentEvent) {
+        return getEventSourceInfo(parentEvent);
+      }
+    }
+
+    // 2. 外部日历事件
+    if (evt.source === 'outlook' || evt.source === 'google' || evt.source === 'icloud') {
+      const calendarId = evt.calendarIds?.[0];
+      const calendar = calendarId ? availableCalendars.find(c => c.id === calendarId) : null;
+      const calendarName = calendar ? calendar.name.replace(/^[\uD83C-\uDBFF\uDC00-\uDFFF]+\s*/, '') : '默认';
+      
+      switch (evt.source) {
+        case 'outlook':
+          return { emoji: null, name: `Outlook: ${calendarName}`, icon: '📧', color: '#0078d4' };
+        case 'google':
+          return { emoji: null, name: `Google: ${calendarName}`, icon: '📅', color: '#4285f4' };
+        case 'icloud':
+          return { emoji: null, name: `iCloud: ${calendarName}`, icon: '☁️', color: '#007aff' };
+      }
+    }
+
+    // 3. 独立 Timer 事件（没有父事件的 Timer）
+    if (evt.isTimer && !evt.parentEventId) {
+      return { emoji: '⏱️', name: 'ReMarkable计时', icon: null, color: '#f59e0b' };
+    }
+
+    // 4. Plan 事件
+    if (evt.isPlan) {
+      return { emoji: '✅', name: 'ReMarkable计划', icon: null, color: '#10b981' };
+    }
+
+    // 5. TimeCalendar 事件
+    if (evt.isTimeCalendar) {
+      return { emoji: '🚀', name: 'ReMarkable', icon: null, color: '#3b82f6' };
+    }
+
+    // 6. 其他本地事件
+    return { emoji: '🚀', name: 'ReMarkable', icon: null, color: '#3b82f6' };
   };
 
   // 获取同步模式显示信息
@@ -1473,73 +1543,28 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                   )}
                 </div>
 
-                {/* 日历来源和同步模式 */}
-                <div className="eventmodal-v2-plan-row" style={{ marginTop: '4px', position: 'relative' }}>
+                {/* 日历来源（只读显示）*/}
+                <div className="eventmodal-v2-plan-row" style={{ marginTop: '4px' }}>
                   <span style={{ flexShrink: 0, color: '#6b7280' }}>来自</span>
                   <div className="eventmodal-v2-plan-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    {/* 日历选择区域 */}
-                    <div style={{ position: 'relative' }}>
-                      <div 
-                        ref={sourceCalendarRef}
-                        style={{ 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: '6px',
-                          cursor: 'pointer',
-                          padding: '2px 4px',
-                          borderRadius: '4px',
-                          transition: 'background-color 0.15s'
-                        }}
-                        onClick={() => setShowSourceCalendarPicker(!showSourceCalendarPicker)}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <span style={{ 
-                            width: '8px', 
-                            height: '8px', 
-                            background: getMultiCalendarDisplayInfo(sourceCalendarIds).color, 
-                            borderRadius: '50%' 
-                          }}></span>
-                          <strong style={{ color: '#1f2937' }}>{getMultiCalendarDisplayInfo(sourceCalendarIds).displayText}</strong>
-                          {getMultiCalendarDisplayInfo(sourceCalendarIds).hasMore && (
-                            <span style={{ color: '#6b7280', fontSize: '13px' }}>等</span>
-                          )}
-                        </span>
-                        <span style={{ color: '#6b7280' }}>{getMultiCalendarDisplayInfo(sourceCalendarIds).subName}</span>
-                      </div>
-                      
-                      {showSourceCalendarPicker && createPortal(
-                        <div 
-                          style={{
-                            position: 'fixed',
-                            top: sourceCalendarRef.current ? (sourceCalendarRef.current.getBoundingClientRect().bottom + 4) : '50%',
-                            left: sourceCalendarRef.current ? sourceCalendarRef.current.getBoundingClientRect().left : '50%',
-                            zIndex: 9999,
-                            minWidth: '200px',
-                            backgroundColor: '#ffffff',
-                            border: '1px solid #e5e7eb',
-                            borderRadius: '8px',
-                            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
-                          }}
-                        >
-                          <SimpleCalendarDropdown
-                            availableCalendars={availableCalendars}
-                            selectedCalendarIds={sourceCalendarIds}
-                            multiSelect={true}
-                            onMultiSelectionChange={(calendarIds) => {
-                              setSourceCalendarIds(calendarIds);
-                              setFormData(prev => ({
-                                ...prev,
-                                calendarIds: calendarIds
-                              }));
-                            }}
-                            onClose={() => setShowSourceCalendarPicker(false)}
-                            title="选择来源日历（可多选）"
-                          />
-                        </div>,
-                        document.body
-                      )}
+                    {/* 只读显示事件来源（6层优先级）*/}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {(() => {
+                        const sourceInfo = getEventSourceInfo(event);
+                        return (
+                          <>
+                            {sourceInfo.emoji && (
+                              <span style={{ fontSize: '16px' }}>{sourceInfo.emoji}</span>
+                            )}
+                            {sourceInfo.icon && (
+                              <span style={{ fontSize: '16px' }}>{sourceInfo.icon}</span>
+                            )}
+                            <span style={{ fontSize: '14px', color: '#374151', fontWeight: 500 }}>
+                              {sourceInfo.name}
+                            </span>
+                          </>
+                        );
+                      })()}
                     </div>
                     
                     {/* 同步模式选择区域 */}
