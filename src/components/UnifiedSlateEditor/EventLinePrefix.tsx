@@ -44,7 +44,11 @@ const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onS
     metadataKeys: element.metadata ? Object.keys(element.metadata) : [],
     checkType,
     showCheckbox,
-    isCompleted
+    isCompleted,
+    checked数组: metadata.checked,
+    unchecked数组: metadata.unchecked,
+    lastChecked,
+    lastUnchecked
   });
   
   const emoji = metadata.emoji;
@@ -114,24 +118,20 @@ const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onS
               unchecked: !isChecked ? [...(metadata.unchecked || []), timestamp] : metadata.unchecked
             };
             
-            // 🔥 直接更新 Slate element - 立即触发重新渲染
-            try {
-              const path = ReactEditor.findPath(editor, element);
-              Transforms.setNodes(editor, { metadata: updatedMetadata } as any, { at: path });
-              console.log('[EventLinePrefix] ✅ Slate element updated:', { path, updatedMetadata });
-            } catch (err) {
-              console.error('[EventLinePrefix] ❌ Failed to update Slate element:', err);
-            }
-            
-            // ✅ 2. 调用 EventService 持久化到 localStorage（会自动触发 eventsUpdated）
+            // ✅ 调用 EventService 持久化到 localStorage（会自动触发 eventsUpdated）
             if (isChecked) {
               EventService.checkIn(element.eventId);
             } else {
               EventService.uncheck(element.eventId);
             }
             
-            // 🔧 注意：不再调用 onSave，因为 EventService.checkIn/uncheck 已经触发了 eventsUpdated 事件
-            // UnifiedSlateEditor 的监听器会自动同步最新的 checked/unchecked 数组
+            // 🔧 EventService.checkIn/uncheck 会：
+            // 1. 更新 localStorage
+            // 2. 触发 eventsUpdated 事件  
+            // 3. UnifiedSlateEditor 的监听器收到事件
+            // 4. 更新 Slate metadata（含 checked/unchecked 数组）
+            // 5. 调用 setValue() 强制 React 重新渲染
+            // 6. EventLinePrefix 读取新的 metadata 并显示正确状态
           }}
           style={{
             cursor: 'pointer',
@@ -160,11 +160,15 @@ export const EventLinePrefix = React.memo(EventLinePrefixComponent, (prevProps, 
   const prevMetadata = prevProps.element.metadata || {};
   const nextMetadata = nextProps.element.metadata || {};
   
-  // ✅ 比较 check-in 状态而不是 isCompleted
-  const prevChecked = EventService.getCheckInStatus(prevProps.element.eventId).isChecked;
-  const nextChecked = EventService.getCheckInStatus(nextProps.element.eventId).isChecked;
+  // ✅ 比较 Slate metadata 中的 checked/unchecked 数组，而不是 EventService
+  // 这样才能响应 Slate 的 metadata 更新
+  const prevCheckedCount = prevMetadata.checked?.length || 0;
+  const nextCheckedCount = nextMetadata.checked?.length || 0;
+  const prevUncheckedCount = prevMetadata.unchecked?.length || 0;
+  const nextUncheckedCount = nextMetadata.unchecked?.length || 0;
   
-  return prevChecked === nextChecked &&
+  return prevCheckedCount === nextCheckedCount &&
+         prevUncheckedCount === nextUncheckedCount &&
          prevMetadata.emoji === nextMetadata.emoji &&
          prevProps.eventStatus === nextProps.eventStatus;
 });

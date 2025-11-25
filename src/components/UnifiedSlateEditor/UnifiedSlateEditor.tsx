@@ -869,6 +869,13 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
           };
           
           // 只更新 metadata，保持 children 不变
+          console.log('%c[✏️ 更新 Slate metadata]', 'background: #2196F3; color: white; padding: 2px 6px;', {
+            eventId: eventId?.slice(-10),
+            checked: newMetadata.checked,
+            unchecked: newMetadata.unchecked,
+            oldChecked: currentNode.metadata?.checked,
+            oldUnchecked: currentNode.metadata?.unchecked,
+          });
           Transforms.setNodes(editor, { metadata: newMetadata } as any, { at: [index] });
           
           // 🆕 更新 children 中的 DateMentionNode
@@ -933,6 +940,11 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
         });
       });
       
+      console.log('%c[🔄 强制重新渲染]', 'background: #FF5722; color: white; padding: 2px 6px;', {
+        eventId: eventId?.slice(-10),
+        skipNextOnChange: true,
+        editorChildrenCount: editor.children.length
+      });
       skipNextOnChangeRef.current = true;
       setValue([...editor.children] as unknown as EventLineNode[]);
     };

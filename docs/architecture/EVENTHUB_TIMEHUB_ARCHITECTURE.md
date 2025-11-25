@@ -1638,6 +1638,200 @@ await TimeHub.setEventTime(eventId, {
 
 ---
 
+## 6.7 Checkbox 状态同步机制 (v2.14.1 新增)
+
+### 核心原理
+
+**问题**: 用户点击 checkbox 后，UI 不立即更新，需要刷新页面
+**根本原因**: 
+1. eventsUpdated 监听器未同步 `checked`/`unchecked` 数组到 Slate metadata
+2. React.memo 比较函数使用 EventService 而非 Slate metadata
+
+**解决方案**: 建立 EventService → eventsUpdated → Slate metadata → React 的完整同步链路
+
+### 数据流设计
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  User Interaction                                            │
+└──────────────────┬───────────────────────────────────────────┘
+                   │ onClick checkbox
+                   ▼
+┌──────────────────────────────────────────────────────────────┐
+│  EventLinePrefix Component                                   │
+│  - 读取 element.metadata.checked/unchecked                   │
+│  - 计算 isCompleted = lastChecked > lastUnchecked            │
+│  - onChange: EventService.checkIn/uncheck()                  │
+└──────────────────┬───────────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────────────┐
+│  EventService (localStorage)                                 │
+│  - checked: [timestamp1, timestamp2, ...]                    │
+│  - unchecked: [timestamp3, timestamp4, ...]                  │
+│  - 触发 window.dispatchEvent('eventsUpdated')                │
+└──────────────────┬───────────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────────────┐
+│  UnifiedSlateEditor (eventsUpdated listener)                 │
+│  1. EventService.getEventById(eventId)                       │
+│  2. Transforms.setNodes({ metadata: { checked, unchecked }}) │
+│  3. setValue([...editor.children]) - 强制重新渲染            │
+└──────────────────┬───────────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────────────┐
+│  React.memo Comparison (EventLinePrefix)                     │
+│  - 比较 metadata.checked.length                              │
+│  - 比较 metadata.unchecked.length                            │
+│  - 如果不同 → 触发重新渲染                                   │
+└──────────────────┬───────────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────────────┐
+│  EventLinePrefix Re-render                                   │
+│  - 重新计算 isCompleted                                      │
+│  - ✅ Checkbox 显示最新状态                                  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### 关键实现
+
+#### 1. eventsUpdated 监听器同步数组
+
+**位置**: `UnifiedSlateEditor.tsx` L850-867
+
+```typescript
+const handleEventUpdated = (e: any) => {
+  const { eventId } = e.detail || {};
+  const updatedEvent = EventService.getEventById(eventId);
+  
+  // 构建新的 metadata
+  const newMetadata = {
+    // ...其他字段
+    checked: updatedEvent.checked,     // ✅ 关键：同步 checked 数组
+    unchecked: updatedEvent.unchecked, // ✅ 关键：同步 unchecked 数组
+  };
+  
+  // 更新 Slate
+  Transforms.setNodes(editor, { metadata: newMetadata }, { at: [index] });
+  
+  // ✅ 强制重新渲染
+  skipNextOnChangeRef.current = true;
+  setValue([...editor.children]);
+};
+```
+
+#### 2. EventLinePrefix 状态计算
+
+**位置**: `EventLinePrefix.tsx` L26-35
+
+```typescript
+const EventLinePrefixComponent = ({ element }) => {
+  const metadata = element.metadata || {};
+  
+  // ✅ 完全基于 Slate metadata 计算状态
+  const lastChecked = metadata.checked?.[metadata.checked.length - 1];
+  const lastUnchecked = metadata.unchecked?.[metadata.unchecked.length - 1];
+  const isCompleted = lastChecked && (!lastUnchecked || lastChecked > lastUnchecked);
+  
+  return (
+    <input
+      type="checkbox"
+      checked={!!isCompleted}
+      onChange={(e) => {
+        // ✅ 只调用 EventService，不操作 Slate
+        if (e.target.checked) {
+          EventService.checkIn(element.eventId);
+        } else {
+          EventService.uncheck(element.eventId);
+        }
+      }}
+    />
+  );
+};
+```
+
+#### 3. React.memo 比较函数
+
+**位置**: `EventLinePrefix.tsx` L158-170
+
+```typescript
+export const EventLinePrefix = React.memo(
+  EventLinePrefixComponent,
+  (prevProps, nextProps) => {
+    const prevMetadata = prevProps.element.metadata || {};
+    const nextMetadata = nextProps.element.metadata || {};
+    
+    // ✅ 比较 Slate metadata，而不是 EventService
+    const prevCheckedCount = prevMetadata.checked?.length || 0;
+    const nextCheckedCount = nextMetadata.checked?.length || 0;
+    const prevUncheckedCount = prevMetadata.unchecked?.length || 0;
+    const nextUncheckedCount = nextMetadata.unchecked?.length || 0;
+    
+    // 如果数组长度变化 → 返回 false → 重新渲染
+    return (
+      prevCheckedCount === nextCheckedCount &&
+      prevUncheckedCount === nextUncheckedCount &&
+      // ...其他字段比较
+    );
+  }
+);
+```
+
+### 设计原则
+
+1. **单一数据源**: EventService (localStorage) 是唯一真实来源
+2. **事件驱动**: 使用 eventsUpdated 事件广播状态变化
+3. **Slate 作为缓存**: metadata 缓存 EventService 数据
+4. **避免直接操作**: 组件不直接调用 Transforms，依赖事件流同步
+5. **React.memo 优化**: 基于 metadata 比较，避免不必要的重新渲染
+
+### 常见陷阱
+
+❌ **错误做法**:
+```typescript
+// 在 onChange 中直接操作 Slate
+Transforms.setNodes(editor, {
+  metadata: { ...metadata, checked: [...metadata.checked, Date.now()] }
+});
+// 问题：触发 Slate onChange → 可能导致循环更新
+```
+
+❌ **错误做法**:
+```typescript
+// React.memo 比较 EventService 状态
+const prevChecked = EventService.getCheckInStatus(prevProps.element.eventId).isChecked;
+const nextChecked = EventService.getCheckInStatus(nextProps.element.eventId).isChecked;
+return prevChecked === nextChecked;
+// 问题：EventService 立即更新，prev 和 next 相同 → 不重新渲染
+```
+
+✅ **正确做法**:
+```typescript
+// 组件只调用 EventService
+EventService.checkIn(eventId);
+// EventService 触发 eventsUpdated
+// UnifiedSlateEditor 监听器同步到 Slate
+// React.memo 检测 metadata 变化
+// 组件自动重新渲染
+```
+
+### 扩展性
+
+此机制可扩展到其他字段：
+- `tags`: 标签数组同步
+- `attendees`: 参与者数组同步
+- `attachments`: 附件数组同步
+
+只需：
+1. 在 eventsUpdated 监听器中添加字段
+2. 在 React.memo 比较函数中添加字段
+3. 在组件中读取 `element.metadata.字段名`
+
+---
+
 ## 7. 常见问题
 
 ### 7.1 Q: EventHub 和 TimeHub 的缓存会过期吗？

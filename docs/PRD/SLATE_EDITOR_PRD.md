@@ -13,7 +13,196 @@
 > - **@ 提及自动保存暂停机制** (v2.10.1)
 > - **🎉 循环更新防护机制** (v2.11)
 > - **🛡️ 性能优化: enhancedValue深度比较机制** (v2.12)
-> - **✅ checkType 字段与 checkbox 关联** (v2.13) 🆕
+> - **✅ checkType 字段与 checkbox 关联** (v2.13)
+> - **🎯 checkbox 状态实时同步机制** (v2.14) 🆕
+
+---
+
+## ✅ v2.14 checkbox 状态实时同步机制 (2025-11-25)
+
+### 重大功能更新
+
+**背景**: 用户点击 checkbox 后需要刷新页面才能看到状态变化  
+**根本原因**: 
+1. eventsUpdated 监听器未同步 `checked`/`unchecked` 数组到 Slate metadata
+2. React.memo 的比较函数使用 EventService 而非 Slate metadata 判断更新
+
+**状态**: ✅ 已修复，checkbox 点击后立即显示正确状态
+
+### 核心实现
+
+#### 1. eventsUpdated 监听器同步 checked/unchecked 数组
+
+**位置**: `src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx` L850-867
+
+```typescript
+const handleEventUpdated = (e: any) => {
+  const { eventId, isDeleted, isNewEvent } = e.detail || {};
+  
+  // 从 EventService 获取最新事件数据
+  const updatedEvent = EventService.getEventById(eventId);
+  if (!updatedEvent) return;
+  
+  // 找到需要更新的 Slate 节点
+  const nodesToUpdate = editor.children.filter(
+    (node) => node.eventId === eventId
+  );
+  
+  nodesToUpdate.forEach((currentNode, index) => {
+    // 🔧 构建新的 metadata（包含 checked/unchecked 数组）
+    const newMetadata = {
+      // ...其他字段
+      checkType: updatedEvent.checkType || 'once',
+      checked: updatedEvent.checked,     // ✅ 同步签到数组
+      unchecked: updatedEvent.unchecked, // ✅ 同步取消签到数组
+      // ...其他字段
+    };
+    
+    // 更新 Slate metadata
+    Transforms.setNodes(editor, { metadata: newMetadata }, { at: [index] });
+  });
+  
+  // ✅ 强制 React 重新渲染
+  skipNextOnChangeRef.current = true;
+  setValue([...editor.children]);
+};
+```
+
+**关键点**:
+- `checked` 和 `unchecked` 是时间戳数组，记录每次签到/取消签到的时间
+- 每次 EventService 更新这些数组时，必须同步到 Slate metadata
+- 调用 `setValue()` 强制 React 重新渲染所有组件
+
+#### 2. EventLinePrefix 计算 isCompleted 状态
+
+**位置**: `src/components/UnifiedSlateEditor/EventLinePrefix.tsx` L26-35
+
+```typescript
+const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onSave, eventStatus }) => {
+  const metadata = element.metadata || {};
+  
+  // ✅ 直接从 Slate metadata 计算 checked 状态
+  const lastChecked = metadata.checked && metadata.checked.length > 0 
+    ? metadata.checked[metadata.checked.length - 1] 
+    : null;
+  const lastUnchecked = metadata.unchecked && metadata.unchecked.length > 0 
+    ? metadata.unchecked[metadata.unchecked.length - 1] 
+    : null;
+  
+  // 比较最后的时间戳决定当前状态
+  const isCompleted = lastChecked && (!lastUnchecked || lastChecked > lastUnchecked);
+  
+  // 渲染 checkbox
+  return (
+    <input
+      type="checkbox"
+      checked={!!isCompleted}
+      onChange={(e) => {
+        const isChecked = e.target.checked;
+        
+        // ✅ 调用 EventService 更新 localStorage
+        if (isChecked) {
+          EventService.checkIn(element.eventId);
+        } else {
+          EventService.uncheck(element.eventId);
+        }
+        
+        // EventService 会触发 eventsUpdated 事件
+        // → UnifiedSlateEditor 监听器更新 Slate metadata
+        // → React.memo 检测到变化
+        // → EventLinePrefix 重新渲染
+      }}
+    />
+  );
+};
+```
+
+**关键点**:
+- `isCompleted` 完全基于 Slate metadata 计算，不调用 EventService
+- 点击 checkbox 时只调用 EventService，不直接操作 Slate
+- 依赖 eventsUpdated 事件流自动同步状态
+
+#### 3. React.memo 比较函数修复
+
+**位置**: `src/components/UnifiedSlateEditor/EventLinePrefix.tsx` L158-170
+
+**修复前（❌ 错误）**:
+```typescript
+export const EventLinePrefix = React.memo(EventLinePrefixComponent, (prevProps, nextProps) => {
+  // ❌ 比较 EventService 的状态（localStorage 已更新，导致不重新渲染）
+  const prevChecked = EventService.getCheckInStatus(prevProps.element.eventId).isChecked;
+  const nextChecked = EventService.getCheckInStatus(nextProps.element.eventId).isChecked;
+  
+  return prevChecked === nextChecked; // 两者相同 → 不重新渲染 → checkbox 不更新
+});
+```
+
+**修复后（✅ 正确）**:
+```typescript
+export const EventLinePrefix = React.memo(EventLinePrefixComponent, (prevProps, nextProps) => {
+  const prevMetadata = prevProps.element.metadata || {};
+  const nextMetadata = nextProps.element.metadata || {};
+  
+  // ✅ 比较 Slate metadata 中的数组长度
+  const prevCheckedCount = prevMetadata.checked?.length || 0;
+  const nextCheckedCount = nextMetadata.checked?.length || 0;
+  const prevUncheckedCount = prevMetadata.unchecked?.length || 0;
+  const nextUncheckedCount = nextMetadata.unchecked?.length || 0;
+  
+  return prevCheckedCount === nextCheckedCount &&
+         prevUncheckedCount === nextUncheckedCount &&
+         // ...其他字段比较
+});
+```
+
+**关键点**:
+- 必须比较 **Slate metadata** 的变化，而不是 EventService 的状态
+- 因为 EventService 立即更新 localStorage，但 Slate metadata 异步更新
+- 如果比较 EventService，prev 和 next 都是最新状态 → 不重新渲染
+
+### 完整数据流
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Checkbox as EventLinePrefix<br/>(Checkbox)
+    participant EventService
+    participant Storage as localStorage
+    participant EventHub as eventsUpdated Event
+    participant SlateEditor as UnifiedSlateEditor
+    participant Slate as Slate Metadata
+    participant ReactMemo as React.memo
+
+    User->>Checkbox: 点击 checkbox
+    Checkbox->>EventService: checkIn(eventId)
+    EventService->>Storage: 更新 checked 数组 [t1, t2, t3]
+    EventService->>EventHub: 触发 eventsUpdated 事件
+    EventHub->>SlateEditor: handleEventUpdated()
+    SlateEditor->>EventService: getEventById(eventId)
+    EventService-->>SlateEditor: { checked: [t1,t2,t3], unchecked: [t0] }
+    SlateEditor->>Slate: Transforms.setNodes({ metadata: {..., checked, unchecked} })
+    SlateEditor->>SlateEditor: setValue([...editor.children])
+    SlateEditor->>ReactMemo: 检测 props 变化
+    ReactMemo->>ReactMemo: prevMetadata.checked.length !== nextMetadata.checked.length
+    ReactMemo->>Checkbox: 触发重新渲染
+    Checkbox->>Checkbox: 重新计算 isCompleted
+    Checkbox->>User: ✅ 显示最新的 checkbox 状态
+```
+
+### 关键要点
+
+1. **单一数据源**: EventService (localStorage) 是 checked/unchecked 数组的唯一真实来源
+2. **事件驱动同步**: 通过 eventsUpdated 事件广播状态变化
+3. **Slate 作为缓存**: Slate metadata 是 EventService 数据的缓存视图
+4. **React.memo 优化**: 基于 Slate metadata 判断是否重新渲染
+5. **避免直接操作 Slate**: checkbox onChange 只调用 EventService，不操作 Slate
+
+### 影响范围
+
+- ✅ Plan 页面 checkbox 实时更新
+- ✅ UpcomingEventsPanel checkbox 实时更新
+- ✅ 避免了 Slate onChange 循环触发
+- ✅ 保持了数据一致性（EventService ↔ Slate）
 
 ---
 
