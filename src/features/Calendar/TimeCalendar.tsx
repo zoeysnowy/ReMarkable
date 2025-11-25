@@ -1397,7 +1397,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
         
         // 查找带有"[专注中]"前缀的timer事件
         const prefixedTimerEvents = events.filter((e: any) => 
-          e.isTimer && e.title && e.title.startsWith('[专注中]')
+          e.isTimer && e.title?.simpleTitle && e.title.simpleTitle.startsWith('[专注中]')
         );
         
         if (prefixedTimerEvents.length > 0) {
@@ -1474,7 +1474,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     // 🔧 关键修正：显示完整的timer事件（从开始到现在），而不是分段
     const realtimeEvent: Event = {
       id: timerEventId,
-      title: currentTimer.eventTitle || currentTimer.taskTitle || '计时中...',
+      title: { simpleTitle: currentTimer.eventTitle || currentTimer.taskTitle || '计时中...', colorTitle: undefined, fullTitle: undefined },
       startTime: formatTimeForStorage(timerStartTime), // timer的真实开始时间
       endTime: formatTimeForStorage(now), // 当前时间
       location: '',
@@ -1752,7 +1752,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     // 创建新事件对象（不保存，仅用于编辑）
     const newEvent: Event = {
       id: `local-${Date.now()}`,
-      title: '',
+      title: { simpleTitle: '', colorTitle: undefined, fullTitle: undefined },
       startTime: formatTimeForStorage(start),
       endTime: formatTimeForStorage(end),
       location: '',
@@ -2363,7 +2363,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
                 
                 const newEvent: Event = {
                   id: `local-${Date.now()}`,
-                  title: '',
+                  title: { simpleTitle: '', colorTitle: undefined, fullTitle: undefined },
                   startTime: formatTimeForStorage(now),
                   endTime: formatTimeForStorage(end),
                   location: '',

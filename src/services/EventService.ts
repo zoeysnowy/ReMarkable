@@ -926,7 +926,7 @@ export class EventService {
       });
 
       // 记录事件历史
-      EventHistoryService.logCheckin(eventId, event.title || 'Untitled Event', { action: 'check-in', timestamp });
+      EventHistoryService.logCheckin(eventId, event.title?.simpleTitle || 'Untitled Event', { action: 'check-in', timestamp });
 
       // 触发更新事件
       this.dispatchEventUpdate(eventId, { checkedIn: true, timestamp });
@@ -979,7 +979,7 @@ export class EventService {
       eventLogger.log('💾 [EventService] Event unchecked, saved to localStorage');
 
       // 记录事件历史
-      EventHistoryService.logCheckin(eventId, event.title || 'Untitled Event', { action: 'uncheck', timestamp });
+      EventHistoryService.logCheckin(eventId, event.title?.simpleTitle || 'Untitled Event', { action: 'uncheck', timestamp });
 
       // 触发更新事件
       this.dispatchEventUpdate(eventId, { unchecked: true, timestamp });

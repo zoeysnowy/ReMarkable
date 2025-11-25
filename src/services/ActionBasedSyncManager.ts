@@ -2162,7 +2162,7 @@ private getUserSettings(): any {
             
             // 发送通知给用户（确保参数都是 string 类型）
             this.showCalendarFallbackNotification(
-              action.data.title || '未命名事件', 
+              action.data.title?.simpleTitle || '未命名事件', 
               syncTargetCalendarId || 'unknown', 
               fallbackCalendarId
             );
@@ -2689,7 +2689,7 @@ private getUserSettings(): any {
               this.saveDeletedEventIds();
               // 📝 状态栏反馈
               window.dispatchEvent(new CustomEvent('sync-status-update', {
-                detail: { message: `✅ 已从Outlook删除事件: ${deleteTargetEvent?.title || 'Unknown'}` }
+                detail: { message: `✅ 已从Outlook删除事件: ${deleteTargetEvent?.title?.simpleTitle || 'Unknown'}` }
               }));
               
               return true;
