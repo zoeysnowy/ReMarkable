@@ -763,10 +763,8 @@ export class ActionBasedSyncManager {
    */
   private deduplicateEvents() {
     try {
-      const savedEvents = localStorage.getItem(STORAGE_KEYS.EVENTS);
-      if (!savedEvents) return;
-
-      const events = JSON.parse(savedEvents);
+      const events = EventService.getAllEvents(); // 自动规范化 title
+      if (events.length === 0) return;
       
       // 🔧 [OPTIMIZATION] 快速预检：检查是否真的有重复
       const externalIdSet = new Set<string>();
@@ -3066,8 +3064,7 @@ private getUserSettings(): any {
 
   private getLocalEvents() {
     try {
-      const stored = localStorage.getItem(STORAGE_KEYS.EVENTS);
-      const events = stored ? JSON.parse(stored) : [];
+      const events = EventService.getAllEvents(); // 自动规范化 title
       
       // 🔧 [FIX] 只在 IndexMap 为空时才重建（避免每次都重建）
       // 正常情况下使用增量更新 updateEventInIndex()
@@ -3265,9 +3262,9 @@ private getUserSettings(): any {
 
   private updateLocalEventExternalId(localEventId: string, externalId: string, description?: string) {
     try {
-      const savedEvents = localStorage.getItem(STORAGE_KEYS.EVENTS);
-      if (savedEvents) {
-        const events = JSON.parse(savedEvents);
+      const existingEvent = EventService.getEventById(localEventId);
+      if (existingEvent) {
+        const events = EventService.getAllEvents();
         const eventIndex = events.findIndex((event: any) => event.id === localEventId);
         if (eventIndex !== -1) {
           // 🔍 检查是否有其他事件已经使用了这个 externalId（可能是迁移导致的重复）
@@ -3345,9 +3342,9 @@ private getUserSettings(): any {
 
   private updateLocalEventCalendarId(localEventId: string, calendarId: string) {
     try {
-      const savedEvents = localStorage.getItem(STORAGE_KEYS.EVENTS);
-      if (savedEvents) {
-        const events = JSON.parse(savedEvents);
+      const existingEvent = EventService.getEventById(localEventId);
+      if (existingEvent) {
+        const events = EventService.getAllEvents();
         const eventIndex = events.findIndex((event: any) => event.id === localEventId);
         
         if (eventIndex !== -1) {
@@ -3825,12 +3822,10 @@ private getUserSettings(): any {
     this.lastIntegrityCheck = Date.now();
 
     try {
-      const stored = localStorage.getItem(STORAGE_KEYS.EVENTS);
-      if (!stored) {
+      const events = EventService.getAllEvents(); // 自动规范化 title
+      if (events.length === 0) {
         return;
       }
-
-      const events = JSON.parse(stored);
       
       // 🔧 [NEW] 决定检查策略
       const needsFullCheck = !this.fullCheckCompleted;
@@ -3980,7 +3975,7 @@ private getUserSettings(): any {
   private fixOrphanedPendingEvents() {
     // 每次启动时都检查，不使用迁移标记
     try {
-      const events = JSON.parse(localStorage.getItem(STORAGE_KEYS.EVENTS) || '[]');
+      const events = EventService.getAllEvents(); // 自动规范化 title
       
       // 查找需要同步但未同步的事件：
       // 1. syncStatus 为 'pending'（统一的待同步状态，包含新建和更新）
@@ -4053,7 +4048,7 @@ private getUserSettings(): any {
       return;
     }
     try {
-      const events = JSON.parse(localStorage.getItem(STORAGE_KEYS.EVENTS) || '[]');
+      const events = EventService.getAllEvents(); // 自动规范化 title
       let migratedCount = 0;
       
       const migratedEvents = events.map((event: any) => {

@@ -566,13 +566,10 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           setEvents(prev => prev.filter(e => e.id !== eventId));
           return;
         } else if (detail?.isNewEvent || detail?.isUpdate) {
-          // 新建/更新操作：从 localStorage 读取单个事件并更新
-          const savedEvents = localStorage.getItem(STORAGE_KEYS.EVENTS);
-          if (savedEvents) {
-            const parsedEvents = JSON.parse(savedEvents);
-            const updatedEvent = parsedEvents.find((e: Event) => e.id === eventId);
-            
-            if (updatedEvent) {
+          // 新建/更新操作：从 EventService 读取单个事件并更新
+          const updatedEvent = EventService.getEventById(eventId);
+          
+          if (updatedEvent) {
               setEvents(prev => {
                 const index = prev.findIndex(e => e.id === eventId);
                 if (index >= 0) {
@@ -1387,9 +1384,8 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     // 2. Widget简化方案：检测localStorage中是否有带"[专注中]"前缀的timer事件
     // console.log('🔍 [WIDGET TIMER] Checking for events with [专注中] prefix...');
     try {
-      const eventsData = localStorage.getItem('remarkable-events');
-      if (eventsData) {
-        const events = JSON.parse(eventsData);
+      const events = EventService.getAllEvents(); // 自动规范化 title
+      if (events.length > 0) {
         
         // 查找带有"[专注中]"前缀的timer事件
         const prefixedTimerEvents = events.filter((e: any) => 
@@ -1724,11 +1720,8 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
    * 📝 点击事件 - 打开编辑弹窗
    */
   const handleClickEvent = useCallback((eventInfo: any) => {
-    // 直接从 localStorage 读取最新的 events，避免闭包问题
-    const savedEvents = localStorage.getItem(STORAGE_KEYS.EVENTS);
-    const currentEvents = savedEvents ? JSON.parse(savedEvents) : [];
-    
-    const event = currentEvents.find((e: Event) => e.id === eventInfo.event.id);
+    // 直接从 EventService 读取最新的 event，避免闭包问题
+    const event = EventService.getEventById(eventInfo.event.id);
     
     if (event) {
       setEditingEvent(event);
@@ -1787,11 +1780,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       const { event: calendarEvent, changes } = updateInfo;
       
       // 查找原始事件
-      const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
-      if (!saved) return;
-      
-      const existingEvents: Event[] = JSON.parse(saved);
-      const originalEvent = existingEvents.find((e: Event) => e.id === calendarEvent.id);
+      const originalEvent = EventService.getEventById(calendarEvent.id);
       
       if (!originalEvent) {
         console.error('❌ [TimeCalendar] Event not found:', calendarEvent.id);

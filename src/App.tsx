@@ -363,10 +363,8 @@ function App() {
     // 🆕 检测是否为独立 Timer 的二次计时（自动升级机制）
     let parentEventId = eventIdOrParentId;
     if (eventIdOrParentId) {
-      // 从 localStorage 读取所有事件
-      const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
-      const existingEvents: Event[] = saved ? JSON.parse(saved) : [];
-      const existingEvent = existingEvents.find((e: Event) => e.id === eventIdOrParentId);
+      // 从 EventService 读取单个事件（自动规范化 title）
+      const existingEvent = EventService.getEventById(eventIdOrParentId);
       
       // 检测条件：isTimer=true + 无 parentEventId + 有 timerLogs（说明已完成至少一次计时）
       if (existingEvent && 
@@ -676,9 +674,7 @@ function App() {
       const timerEventId = globalTimer.eventId;
       
       // 🔧 [BUG FIX] 读取现有事件，保留用户的 description 和 location
-      const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
-      const existingEvents: Event[] = saved ? JSON.parse(saved) : [];
-      const existingEvent = existingEvents.find((e: Event) => e.id === timerEventId);
+      const existingEvent = EventService.getEventById(timerEventId);
       
       // 🆕 [FEATURE] 自动生成标题：如果用户既没有标题也没有标签，生成默认标题
       let eventTitle: string;
@@ -838,10 +834,8 @@ function App() {
     }
     const timerEventId = globalTimer.eventId;
     
-    // 🔧 [BUG FIX] 从 localStorage 读取现有事件，保留 description 和其他字段
-    const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
-    const existingEvents: Event[] = saved ? JSON.parse(saved) : [];
-    const existingEvent = existingEvents.find((e: Event) => e.id === timerEventId);
+    // 🔧 [BUG FIX] 从 EventService 读取现有事件，保留 description 和其他字段
+    const existingEvent = EventService.getEventById(timerEventId);
 
     const tempEvent: Event = {
       id: timerEventId,
@@ -1057,9 +1051,7 @@ function App() {
         const eventTitle = globalTimer.eventTitle || (tag?.emoji ? `${tag.emoji} ${tag.name}` : globalTimer.tagName);
         
         // 读取现有事件，保留用户编辑的字段（description、location、eventlog）
-        const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
-        const existingEvents: Event[] = saved ? JSON.parse(saved) : [];
-        const existingEvent = existingEvents.find((e: Event) => e.id === timerEventId);
+        const existingEvent = EventService.getEventById(timerEventId);
         
         const timerEvent: Event = {
           id: timerEventId, // ✅ 固定 ID，整个运行过程不变
@@ -1080,6 +1072,7 @@ function App() {
         };
 
         // ✅ 更新同一个事件（不创建新事件）
+        const existingEvents = EventService.getAllEvents();
         const eventIndex = existingEvents.findIndex((e: Event) => e.id === timerEventId);
         
         if (eventIndex === -1) {
@@ -1090,6 +1083,7 @@ function App() {
           AppLogger.log('🔄 [Timer Auto-save] Updated timer event:', timerEventId);
         }
         
+        // 🔧 直接保存（getAllEvents 已经返回规范化后的数据）
         localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
         
         // 🔇 运行中静默保存，不触发 eventsUpdated（避免频繁重渲染）
@@ -1137,9 +1131,7 @@ function App() {
           const eventTitle = globalTimer.eventTitle || (tag?.emoji ? `${tag.emoji} ${tag.name}` : globalTimer.tagName);
           
           // 🔧 [BUG FIX] 读取现有事件，保留用户的 description
-          const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
-          const existingEvents: Event[] = saved ? JSON.parse(saved) : [];
-          const existingEvent = existingEvents.find((e: Event) => e.id === timerEventId);
+          const existingEvent = EventService.getEventById(timerEventId);
           
           const timerEvent: Event = {
             id: timerEventId,
@@ -1157,6 +1149,7 @@ function App() {
             remarkableSource: true
           };
 
+          const existingEvents = EventService.getAllEvents();
           const eventIndex = existingEvents.findIndex((e: Event) => e.id === timerEventId);
           
           if (eventIndex === -1) {
@@ -1165,6 +1158,7 @@ function App() {
             existingEvents[eventIndex] = timerEvent;
           }
           
+          // 🔧 直接保存（getAllEvents 已经返回规范化后的数据）
           localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
           AppLogger.log('💾 [Timer] Saved timer event before unload:', timerEventId);
         } catch (error) {
