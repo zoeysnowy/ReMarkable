@@ -2708,11 +2708,20 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         }}
         onCheckboxChange={(eventId, checked) => {
           // 🔧 处理 checkbox 状态变化
+          console.log('[PlanManager] onCheckboxChange 被调用:', { eventId: eventId.slice(-10), checked });
+          
           if (checked) {
-            EventService.checkIn(eventId);
+            const result = EventService.checkIn(eventId);
+            console.log('[PlanManager] checkIn 结果:', result);
           } else {
-            EventService.uncheck(eventId);
+            const result = EventService.uncheck(eventId);
+            console.log('[PlanManager] uncheck 结果:', result);
           }
+          
+          // 🔍 检查状态
+          const status = EventService.getCheckInStatus(eventId);
+          console.log('[PlanManager] 操作后状态:', status);
+          
           // 触发 UI 更新
           setItems(prev => [...prev]);
         }}

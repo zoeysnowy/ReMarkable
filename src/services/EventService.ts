@@ -1361,13 +1361,6 @@ export class EventService {
       result.fullTitle = fullTitle ?? (simpleTitle ? this.simpleTitleToFullTitle(simpleTitle) : this.simpleTitleToFullTitle(''));
       result.colorTitle = colorTitle ?? simpleTitle ?? '';
       result.simpleTitle = simpleTitle ?? (colorTitle ? this.colorTitleToSimpleTitle(colorTitle) : '');
-      
-      console.log('[EventService] normalizeTitle: 使用已有字段', {
-        hasFullTitle: !!fullTitle,
-        hasColorTitle: !!colorTitle,
-        hasSimpleTitle: !!simpleTitle,
-        result: result
-      });
     }
     
     return result;

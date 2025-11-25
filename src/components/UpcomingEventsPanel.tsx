@@ -108,7 +108,19 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
   };
 
   const handleCheckboxChange = (eventId: string, checked: boolean) => {
+    console.log('[UpcomingEventsPanel] handleCheckboxChange 被调用:', { eventId: eventId.slice(-10), checked });
+    
+    // 获取当前状态
+    const beforeStatus = EventService.getCheckInStatus(eventId);
+    console.log('[UpcomingEventsPanel] 操作前状态:', beforeStatus);
+    
     onCheckboxChange?.(eventId, checked);
+    
+    // 延迟检查状态（等待 EventService 更新）
+    setTimeout(() => {
+      const afterStatus = EventService.getCheckInStatus(eventId);
+      console.log('[UpcomingEventsPanel] 操作后状态:', afterStatus);
+    }, 100);
   };
 
   const handleEventClick = (event: Event) => {
@@ -182,18 +194,33 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
           {/* 第一行: checkbox? + title | 时间icon + 时间 */}
           <div className="event-row-1">
             <div className="event-header">
-              {shouldShowCheckbox(event) && (
-                <div className="event-checkbox">
-                  <input 
-                    type="checkbox" 
-                    checked={EventService.getCheckInStatus(event.id).isChecked} 
-                    onChange={(e) => {
-                      e.stopPropagation(); // 阻止触发卡片点击
-                      handleCheckboxChange(event.id, e.target.checked);
-                    }}
-                  />
-                </div>
-              )}
+              {shouldShowCheckbox(event) && (() => {
+                const checkStatus = EventService.getCheckInStatus(event.id);
+                console.log(`[UpcomingEventsPanel] 渲染 checkbox [${event.id.slice(-10)}]:`, {
+                  isChecked: checkStatus.isChecked,
+                  lastCheckIn: checkStatus.lastCheckIn,
+                  lastUncheck: checkStatus.lastUncheck,
+                  checkInCount: checkStatus.checkInCount,
+                  uncheckCount: checkStatus.uncheckCount
+                });
+                
+                return (
+                  <div className="event-checkbox">
+                    <input 
+                      type="checkbox" 
+                      checked={checkStatus.isChecked} 
+                      onChange={(e) => {
+                        e.stopPropagation(); // 阻止触发卡片点击
+                        console.log(`[UpcomingEventsPanel] onChange 触发:`, { 
+                          eventId: event.id.slice(-10), 
+                          newChecked: e.target.checked 
+                        });
+                        handleCheckboxChange(event.id, e.target.checked);
+                      }}
+                    />
+                  </div>
+                );
+              })()}
               <h4 className="event-title">{cleanTitle}</h4>
             </div>
             {timeLabel && (
