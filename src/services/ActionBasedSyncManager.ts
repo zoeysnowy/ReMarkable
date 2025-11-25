@@ -2809,12 +2809,7 @@ private getUserSettings(): any {
             );
             
             if (existingEvent) {
-              console.log(`🎯 [Timer Dedupe] 通过 ReMarkable 签名匹配到本地 Timer 事件:`, {
-                localId: existingEvent.id,
-                remoteId: newEvent.externalId,
-                title: newEvent.title?.simpleTitle || '',
-                createTime: formatTimeForStorage(createTime)
-              });
+              // 🎯 [Timer Dedupe] 通过 ReMarkable 签名匹配到本地 Timer 事件
             }
             
             // 🆕 如果没有匹配到 Timer 事件，尝试匹配普通事件
@@ -2828,12 +2823,7 @@ private getUserSettings(): any {
               );
               
               if (existingEvent) {
-                console.log(`🎯 [Event Dedupe] 通过 ReMarkable 签名匹配到本地事件:`, {
-                  localId: existingEvent.id,
-                  remoteId: newEvent.externalId,
-                  title: newEvent.title,
-                  createTime: formatTimeForStorage(createTime)
-                });
+                // 🎯 [Event Dedupe] 通过 ReMarkable 签名匹配到本地事件
               }
             }
           }
@@ -3087,7 +3077,6 @@ private getUserSettings(): any {
     // 🔧 [CRITICAL] 记录重建 Promise，允许其他操作等待
     this.indexMapRebuildPromise = (async () => {
       const startTime = performance.now();
-      console.log(`🔨 [IndexMap REBUILD] Starting rebuild for ${events.length} events at ${performance.now().toFixed(2)}ms`);
       let BATCH_SIZE = 200; // 初始批大小：200 个事件
       const MAX_BATCH_TIME = 10; // 每批最多 10ms
       const TARGET_FIRST_BATCH_TIME = 5; // 首批目标时间：5ms（留余量）
@@ -3184,7 +3173,6 @@ private getUserSettings(): any {
       }
     
       const totalDuration = performance.now() - startTime;
-      console.log(`✅ [IndexMap REBUILD DONE] ${this.eventIndexMap.size} entries in ${totalDuration.toFixed(0)}ms (ended at ${performance.now().toFixed(2)}ms)`);
     })();
     
     // 等待重建完成
