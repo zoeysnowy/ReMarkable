@@ -2722,8 +2722,14 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           const status = EventService.getCheckInStatus(eventId);
           console.log('[PlanManager] 操作后状态:', status);
           
-          // 触发 UI 更新
-          setItems(prev => [...prev]);
+          // ✅ 立即手动触发 eventsUpdated 事件，让 UpcomingEventsPanel 重新加载
+          window.dispatchEvent(new CustomEvent('eventsUpdated', {
+            detail: { 
+              eventId, 
+              checkedIn: checked,
+              source: 'checkbox-change'
+            }
+          }));
         }}
       />
     </div>

@@ -69,11 +69,12 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
     loadEvents();
 
     // 监听事件更新
-    const handleEventsUpdated = () => {
+    const handleEventsUpdated = (e: any) => {
+      console.log('[UpcomingEventsPanel] 收到 eventsUpdated 事件:', e.detail);
       loadEvents();
     };
 
-    window.addEventListener('eventsUpdated', handleEventsUpdated);
+    window.addEventListener('eventsUpdated', handleEventsUpdated as EventListener);
 
     return () => {
       window.removeEventListener('eventsUpdated', handleEventsUpdated);

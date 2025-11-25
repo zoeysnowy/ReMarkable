@@ -2070,8 +2070,14 @@ private getUserSettings(): any {
           }
 
           // 🔧 使用新的描述处理方法
+          // 🆕 v2.14.1: 优先从 eventlog 对象提取 descriptionHtml
+          let descriptionSource = action.data.description || '';
+          if (action.data.eventlog && typeof action.data.eventlog === 'object') {
+            descriptionSource = action.data.eventlog.descriptionHtml || action.data.eventlog.descriptionPlainText || descriptionSource;
+          }
+          
           const createDescription = this.processEventDescription(
-            action.data.description || '',
+            descriptionSource,
             'remarkable',
             'create',
             action.data
@@ -2392,8 +2398,14 @@ private getUserSettings(): any {
               
               try {
                 // 在新日历中创建事件（相当于迁移）
+                // 🆕 v2.14.1: 优先从 eventlog 对象提取 descriptionHtml
+                let descriptionSource = action.data.description || '';
+                if (action.data.eventlog && typeof action.data.eventlog === 'object') {
+                  descriptionSource = action.data.eventlog.descriptionHtml || action.data.eventlog.descriptionPlainText || descriptionSource;
+                }
+                
                 const migrateDescription = this.processEventDescription(
-                  action.data.description || '',
+                  descriptionSource,
                   'remarkable',
                   'update',
                   action.data
@@ -2455,8 +2467,14 @@ private getUserSettings(): any {
           
           // 描述处理：添加同步备注管理
           if (action.data.description !== undefined) {
+            // 🆕 v2.14.1: 优先从 eventlog 对象提取 descriptionHtml
+            let descriptionSource = action.data.description || '';
+            if (action.data.eventlog && typeof action.data.eventlog === 'object') {
+              descriptionSource = action.data.eventlog.descriptionHtml || action.data.eventlog.descriptionPlainText || descriptionSource;
+            }
+            
             const updateDescription = this.processEventDescription(
-              action.data.description || '',
+              descriptionSource,
               'remarkable',
               'update',
               action.data
@@ -2552,8 +2570,14 @@ private getUserSettings(): any {
                 }
               
                 
+                // 🆕 v2.14.1: 优先从 eventlog 对象提取 descriptionHtml
+                let descriptionSource = action.data.description || '';
+                if (action.data.eventlog && typeof action.data.eventlog === 'object') {
+                  descriptionSource = action.data.eventlog.descriptionHtml || action.data.eventlog.descriptionPlainText || descriptionSource;
+                }
+                
                 const recreateDescription = this.processEventDescription(
-                  action.data.description || '',
+                  descriptionSource,
                   'remarkable',
                   'create',
                   action.data
@@ -2898,11 +2922,30 @@ private getUserSettings(): any {
           
           // Description processing completed
           
+          // 🆕 v2.14.1: 同步 description 到 eventlog 对象
+          let updatedEventlog = events[eventIndex].eventlog;
+          if (cleanDescription !== events[eventIndex].description) {
+            // description 有变化，需要同步到 eventlog
+            if (typeof updatedEventlog === 'object' && updatedEventlog !== null) {
+              // 保留 EventLog 对象的元数据（attachments、versions 等）
+              updatedEventlog = {
+                ...updatedEventlog,
+                content: JSON.stringify([{ type: 'paragraph', children: [{ text: cleanDescription }] }]),
+                descriptionHtml: cleanDescription,
+                descriptionPlainText: cleanDescription.replace(/<[^>]*>/g, ''),
+                updatedAt: formatTimeForStorage(new Date()),
+              };
+            } else {
+              // 旧格式，直接赋值字符串
+              updatedEventlog = cleanDescription;
+            }
+          }
+          
           const updatedEvent = {
             ...events[eventIndex], // 🔧 保留所有原有字段（包括source和calendarId）
             title: action.data.subject || '',
             description: cleanDescription, // 直接使用清理后的内容，不添加同步备注
-            // eventlog: 🆕 不更新 eventlog，保留本地的富文本内容
+            eventlog: updatedEventlog, // 🆕 同步更新 eventlog
             startTime: this.safeFormatDateTime(action.data.start?.dateTime || action.data.start),
             endTime: this.safeFormatDateTime(action.data.end?.dateTime || action.data.end),
             location: action.data.location?.displayName || '',
