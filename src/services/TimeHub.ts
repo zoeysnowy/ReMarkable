@@ -79,15 +79,15 @@ class TimeHubImpl {
 
   private emit(eventId: string) {
     const set = this.listeners.get(eventId);
-    console.log(`%c[🔔 TimeHub.emit]`, 'background: #9C27B0; color: white; padding: 2px 6px;', {
-      eventId,
-      订阅者数量: set?.size ?? 0,
-      hasListeners: !!set
-    });
+    // console.log(`%c[🔔 TimeHub.emit]`, 'background: #9C27B0; color: white; padding: 2px 6px;', {
+    //   eventId,
+    //   订阅者数量: set?.size ?? 0,
+    //   hasListeners: !!set
+    // });
     if (!set) return;
     set.forEach((cb) => {
       try { 
-        console.log(`%c[📞 调用订阅者]`, 'background: #673AB7; color: white; padding: 2px 6px;', { eventId });
+        // console.log(`%c[📞 调用订阅者]`, 'background: #673AB7; color: white; padding: 2px 6px;', { eventId });
         cb(); 
       } catch (err) { 
         console.error(`%c[❌ 订阅者回调失败]`, 'background: #F44336; color: white; padding: 2px 6px;', { eventId, error: err });

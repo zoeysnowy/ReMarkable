@@ -534,47 +534,17 @@ export class EventService {
       if ((updates as any).title !== undefined) {
         const titleUpdate = (updates as any).title;
         
-        // 🔧 FIX: 只合并非 undefined 的字段，避免覆盖已有值
-        const mergedTitle: Partial<import('../types').EventTitle> = {};
-        
-        // 先复制原有的非 undefined 字段
-        if (originalEvent.title?.fullTitle !== undefined) {
-          mergedTitle.fullTitle = originalEvent.title.fullTitle;
-        }
-        if (originalEvent.title?.colorTitle !== undefined) {
-          mergedTitle.colorTitle = originalEvent.title.colorTitle;
-        }
-        if (originalEvent.title?.simpleTitle !== undefined) {
-          mergedTitle.simpleTitle = originalEvent.title.simpleTitle;
-        }
-        
-        // 再用 titleUpdate 中非 undefined 的字段覆盖
-        if (titleUpdate?.fullTitle !== undefined) {
-          mergedTitle.fullTitle = titleUpdate.fullTitle;
-        }
-        if (titleUpdate?.colorTitle !== undefined) {
-          mergedTitle.colorTitle = titleUpdate.colorTitle;
-        }
-        if (titleUpdate?.simpleTitle !== undefined) {
-          mergedTitle.simpleTitle = titleUpdate.simpleTitle;
-        }
-        
-        // 自动规范化
-        const normalizedTitle = this.normalizeTitle(mergedTitle);
+        // ✅ 修复：传入新 title 时，直接用 normalizeTitle 重新生成三个字段
+        // 不再与旧值 merge，确保三个字段完全同步
+        const normalizedTitle = this.normalizeTitle(titleUpdate);
         
         (updatesWithSync as any).title = normalizedTitle;
         
         console.log('[EventService] title 更新（v2.14）:', {
           eventId,
-          'original.fullTitle': !!originalEvent.title?.fullTitle,
-          'original.colorTitle': !!originalEvent.title?.colorTitle,
-          'original.simpleTitle': !!originalEvent.title?.simpleTitle,
           'update.fullTitle': !!titleUpdate?.fullTitle,
           'update.colorTitle': !!titleUpdate?.colorTitle,
           'update.simpleTitle': !!titleUpdate?.simpleTitle,
-          'merged.fullTitle': !!mergedTitle.fullTitle,
-          'merged.colorTitle': !!mergedTitle.colorTitle,
-          'merged.simpleTitle': !!mergedTitle.simpleTitle,
           'normalized.fullTitle': !!normalizedTitle.fullTitle,
           'normalized.colorTitle': !!normalizedTitle.colorTitle,
           'normalized.simpleTitle': !!normalizedTitle.simpleTitle
@@ -677,14 +647,20 @@ export class EventService {
           }
         } else {
           // 格式3: 其他格式（向后兼容）- 提取纯文本
-          const plainText = this.stripHtml(newEventlog as string);
-          (updatesWithSync as any).eventlog = newEventlog;
-          
-          if (updates.description === undefined) {
-            updatesWithSync.description = plainText;
+          if (typeof newEventlog === 'string') {
+            const plainText = this.stripHtml(newEventlog);
+            (updatesWithSync as any).eventlog = newEventlog;
+            
+            if (updates.description === undefined) {
+              updatesWithSync.description = plainText;
+            }
+            
+            console.log('[EventService] eventlog 旧格式，提取纯文本');
+          } else {
+            // 🔧 非字符串格式，直接保存
+            (updatesWithSync as any).eventlog = newEventlog;
+            console.log('[EventService] eventlog 未知格式，直接保存');
           }
-          
-          console.log('[EventService] eventlog 旧格式，提取纯文本');
         }
       }
       

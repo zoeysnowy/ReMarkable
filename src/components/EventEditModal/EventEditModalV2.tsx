@@ -135,7 +135,7 @@ interface MockEvent {
   location?: string;
   organizer?: Contact;
   attendees?: Contact[];
-  eventlog?: string; // Slate JSON string for TimeLog content
+  eventlog?: any; // Slate JSON (Descendant[] array or string)
   description?: string; // HTML export for Outlook sync
   // 🆕 日历同步配置
   calendarIds?: string[];
@@ -229,17 +229,37 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         organizer: event.organizer,
         attendees: event.attendees || [],
         eventlog: (() => {
-          // 处理 eventlog 字段的多种格式
-          if (!event.eventlog) return '[]';
+          // 处理 eventlog 字段的多种格式，统一转换为 Descendant[] 对象
+          if (!event.eventlog) return [];
           
           if (typeof event.eventlog === 'string') {
-            // 如果是字符串，直接返回（假设已经是 Slate JSON）
+            // 如果是字符串（Slate JSON），解析为对象
+            try {
+              return JSON.parse(event.eventlog);
+            } catch (error) {
+              console.error('❌ [EventEditModalV2] eventlog 解析失败:', error);
+              return [];
+            }
+          }
+          
+          // 如果是 EventLog 对象，提取 content 字段并解析
+          if (event.eventlog.content) {
+            try {
+              return typeof event.eventlog.content === 'string' 
+                ? JSON.parse(event.eventlog.content) 
+                : event.eventlog.content;
+            } catch (error) {
+              console.error('❌ [EventEditModalV2] eventlog.content 解析失败:', error);
+              return [];
+            }
+          }
+          
+          // 如果是数组，直接返回（已经是 Descendant[]）
+          if (Array.isArray(event.eventlog)) {
             return event.eventlog;
           }
           
-          // 如果是 EventLog 对象，提取 content 字段
-          // content 字段本身已经是 JSON 字符串，不需要再 JSON.stringify
-          return event.eventlog.content || '[]';
+          return [];
         })(),
         description: event.description || '',
         // 🆕 日历同步配置
@@ -264,7 +284,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
       allDay: false,
       location: '',
       attendees: [],
-      eventlog: '[]',
+      eventlog: [],  // 🔧 Slate JSON 对象（空 Descendant 数组）
       description: '',
       // 🆕 日历同步配置
       calendarIds: [],
@@ -300,8 +320,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     console.log('================================================================');
   }, [event, formData.eventlog]);
 
-  // TimeLog 相关状态 - 直接使用 formData.eventlog
-  const timelogContent = formData.eventlog || '[]';
+  // TimeLog 相关状态 - 直接使用 formData.eventlog（现在是对象或空数组）
+  const timelogContent = formData.eventlog || [];
   
   const [activePickerIndex, setActivePickerIndex] = useState(-1);
   const [isSubPickerOpen, setIsSubPickerOpen] = useState(false); // 🆕 追踪子选择器（颜色选择器）是否打开
@@ -391,7 +411,9 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
           console.log('📝 [EventEditModalV2] 编辑器有焦点，读取最新内容');
           try {
             const editorContent = slateEditorRef.current.editor.children;
-            currentEventlog = slateNodesToJson(editorContent);
+            const jsonString = slateNodesToJson(editorContent);
+            // 🔧 将 JSON 字符串转换回对象（EventService 需要对象格式）
+            currentEventlog = JSON.parse(jsonString);
           } catch (error) {
             console.error('❌ [EventEditModalV2] 读取编辑器内容失败，使用 formData:', error);
           }
@@ -400,8 +422,20 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         }
       }
       
-      // 🔧 Step 1: 使用用户输入的标题（不自动替换为标签名称）
+      // 🔧 Step 1: 确定最终标题
+      // 如果用户输入了标题，使用用户输入；否则使用标签名称作为默认标题
       let finalTitle = formData.title;
+      
+      // 如果标题为空且有标签，使用第一个标签名称作为标题
+      if (!finalTitle || !finalTitle.trim()) {
+        if (formData.tags && formData.tags.length > 0) {
+          const firstTag = TagService.getTagById(formData.tags[0]);
+          if (firstTag) {
+            finalTitle = `${firstTag.emoji || ''}${firstTag.name}事项`.trim();
+            console.log('🏷️ [EventEditModalV2] Using tag name as title:', finalTitle);
+          }
+        }
+      }
       
       // 🔧 Step 2: 处理时间格式 - 确保符合 EventService 的要求
       // EventService 要求时间格式为 "YYYY-MM-DD HH:mm:ss"（空格分隔）
@@ -503,7 +537,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         ...event, // 保留原有字段（如 createdAt, syncStatus 等）
         ...formData,
         id: eventId, // 使用验证后的 ID
-        title: { colorTitle: finalTitle, simpleTitle: undefined, fullTitle: undefined }, // ✅ EventEditModal 使用 colorTitle（HTML格式）
+        title: { colorTitle: finalTitle }, // ✅ 传 colorTitle（可能包含 emoji），让 EventService.normalizeTitle 自动生成 fullTitle 和 simpleTitle
         tags: finalTags, // 🏷️ 使用自动映射后的标签
         isTask: formData.isTask,
         isTimer: formData.isTimer,
@@ -515,7 +549,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         organizer: formData.organizer,
         attendees: finalAttendees, // 🔒 Private 模式下为空数组
         description: finalDescription, // 🔒 Private 模式下包含参与者文本
-        eventlog: currentEventlog as any,  // ✅ Slate JSON 字符串（EventService 会自动转换）
+        eventlog: currentEventlog as any,  // ✅ Slate JSON 对象（Descendant[] 数组）
         syncStatus: timerSyncStatus, // 🔧 Timer 运行中保持 local-only
         // 🆕 日历同步配置
         calendarIds: formData.calendarIds,
@@ -821,15 +855,37 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         organizer: event.organizer,
         attendees: event.attendees || [],
         eventlog: (() => {
-          // 处理 eventlog 字段的多种格式
-          if (!event.eventlog) return '[]';
+          // 处理 eventlog 字段的多种格式，统一转换为 Descendant[] 对象
+          if (!event.eventlog) return [];
           
           if (typeof event.eventlog === 'string') {
+            // 如果是字符串（Slate JSON），解析为对象
+            try {
+              return JSON.parse(event.eventlog);
+            } catch (error) {
+              console.error('❌ [EventEditModalV2] eventlog 解析失败:', error);
+              return [];
+            }
+          }
+          
+          // 如果是 EventLog 对象，提取 content 字段并解析
+          if (event.eventlog.content) {
+            try {
+              return typeof event.eventlog.content === 'string' 
+                ? JSON.parse(event.eventlog.content) 
+                : event.eventlog.content;
+            } catch (error) {
+              console.error('❌ [EventEditModalV2] eventlog.content 解析失败:', error);
+              return [];
+            }
+          }
+          
+          // 如果是数组，直接返回（已经是 Descendant[]）
+          if (Array.isArray(event.eventlog)) {
             return event.eventlog;
           }
           
-          // 如果是 EventLog 对象，提取 content 字段（已经是字符串）
-          return event.eventlog.content || '[]';
+          return [];
         })(),
         description: event.description || '',
       });
@@ -1211,17 +1267,26 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
    * @param slateJson - Slate JSON 字符串（从 LightSlateEditor 的 onChange 回调接收）
    */
   const handleTimelogChange = (slateJson: string) => {
-    // ✅ 架构优化：只保存 Slate JSON 字符串
-    // EventService 会在保存时自动转换为 EventLog 对象
+    // 🔧 将 JSON 字符串转换为对象（EventService 需要 Descendant[] 数组）
     console.log('📝 [EventEditModalV2] EventLog 变化:', {
       slateJsonLength: slateJson.length,
       preview: slateJson.substring(0, 100)
     });
     
-    setFormData({
-      ...formData,
-      eventlog: slateJson as any,  // ✅ Slate JSON 字符串
-    });
+    try {
+      const slateNodes = JSON.parse(slateJson);
+      setFormData({
+        ...formData,
+        eventlog: slateNodes as any,  // ✅ Slate JSON 对象（Descendant[] 数组）
+      });
+    } catch (error) {
+      console.error('❌ [EventEditModalV2] Slate JSON 解析失败:', error);
+      // 保留字符串格式作为后备
+      setFormData({
+        ...formData,
+        eventlog: slateJson as any,
+      });
+    }
   };
 
   /**

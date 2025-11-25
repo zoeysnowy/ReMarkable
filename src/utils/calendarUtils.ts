@@ -304,6 +304,31 @@ export function convertToCalendarEvent(
   // 🔧 修复：保持已有的"[专注中]"前缀，或为当前运行的timer添加前缀
   let displayTitle: string = event.title?.simpleTitle || ''; // 🔧 确保 displayTitle 是字符串类型
   
+  // 🆕 v1.2: 如果既没有标题也没有标签，使用 eventlog 内容作为 fallback
+  if (!displayTitle && (!event.tags || event.tags.length === 0)) {
+    const eventlog = event.eventlog || (event as any).description;
+    if (eventlog) {
+      if (typeof eventlog === 'string') {
+        // 纯文本或 HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = eventlog;
+        displayTitle = (tempDiv.textContent || '').substring(0, 50).trim(); // 取前50字符
+      } else if (eventlog.descriptionPlainText) {
+        // EventLog 对象格式
+        displayTitle = eventlog.descriptionPlainText.substring(0, 50).trim();
+      } else if (eventlog.descriptionHtml) {
+        // EventLog 对象格式（HTML）
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = eventlog.descriptionHtml;
+        displayTitle = (tempDiv.textContent || '').substring(0, 50).trim();
+      }
+      
+      if (displayTitle) {
+        displayTitle = displayTitle + (displayTitle.length >= 50 ? '...' : ''); // 添加省略号
+      }
+    }
+  }
+  
   // 🆕 v1.1: 对于全天事件，优先使用 displayHint 作为标题
   const eventWithHint = event as any;
   if (eventWithHint.displayHint && event.isAllDay) {
@@ -397,7 +422,7 @@ export function convertFromCalendarEvent(
   // 创建新事件
   return {
     id: calendarEvent.id || generateEventId(),
-    title: { simpleTitle: calendarEvent.title || '(无标题)', colorTitle: undefined, fullTitle: undefined },
+    title: { simpleTitle: calendarEvent.title || '(无标题)' }, // ✅ 只传 simpleTitle
     description: calendarEvent.body || '',
     // 🔧 修复时区问题：使用 dayjs 格式化避免 UTC 转换
     startTime: dayjs(calendarEvent.start).format('YYYY-MM-DD HH:mm:ss'),

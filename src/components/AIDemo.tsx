@@ -359,7 +359,7 @@ export const AIDemo: React.FC = () => {
       // 构建 Event 对象（仿照 EventEditModal）
       const newEvent: Event = {
         id: `ai-${Date.now()}`,
-        title: editedTitle,
+        title: { simpleTitle: editedTitle },
         startTime: editedStartTime + ':00', // datetime-local -> 本地时间（无时区）
         endTime: editedEndTime + ':00',
         location: editedLocation,

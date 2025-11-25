@@ -2397,6 +2397,32 @@ export class MicrosoftCalendarService {
       MSCalendarLogger.log('🎯 [syncEventToCalendar] Converted event data:', outlookEventData);
       MSCalendarLogger.log('📝 [syncEventToCalendar] Invalid contacts integrated to description:', invalidContacts);
       
+      // 🔍 验证数据：确保所有字段都是正确的类型
+      const cleanedData = {
+        subject: outlookEventData.subject,
+        body: outlookEventData.body && typeof outlookEventData.body === 'object' 
+          ? {
+              contentType: outlookEventData.body.contentType || 'Text',
+              content: (outlookEventData.body.content || '').toString().trim() || ' ' // ✅ Outlook 不接受空字符串，用单空格代替
+            }
+          : { contentType: 'Text', content: ' ' },
+        start: outlookEventData.start,
+        end: outlookEventData.end,
+        location: outlookEventData.location || undefined,
+        isAllDay: Boolean(outlookEventData.isAllDay),
+        organizer: outlookEventData.organizer || undefined,
+        attendees: outlookEventData.attendees || undefined
+      };
+      
+      // 🔍 移除所有 undefined 字段（Outlook API 可能不接受 undefined）
+      Object.keys(cleanedData).forEach(key => {
+        if (cleanedData[key as keyof typeof cleanedData] === undefined) {
+          delete cleanedData[key as keyof typeof cleanedData];
+        }
+      });
+      
+      MSCalendarLogger.log('🧹 [syncEventToCalendar] Cleaned data (removed undefined):', cleanedData);
+      
       const endpoint = `https://graph.microsoft.com/v1.0/me/calendars/${targetCalendarId}/events`;
       
       const response = await fetch(endpoint, {
@@ -2405,7 +2431,7 @@ export class MicrosoftCalendarService {
           'Authorization': `Bearer ${this.accessToken}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(outlookEventData)
+        body: JSON.stringify(cleanedData)
       });
 
       if (!response.ok) {

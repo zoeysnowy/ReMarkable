@@ -13,12 +13,21 @@ import {
 } from '../UnifiedSlateEditor/types';
 
 /**
- * 将 Slate JSON 字符串转换为 Slate nodes
+ * 将 Slate JSON（字符串或对象）转换为 Slate nodes
  * 处理从 eventlog 字段读取的 JSON 数据
  */
-export function jsonToSlateNodes(slateJson: string): Descendant[] {
+export function jsonToSlateNodes(slateJson: string | any[] | undefined): Descendant[] {
+  // 🔧 如果已经是数组对象，直接返回
+  if (Array.isArray(slateJson)) {
+    console.log('[jsonToSlateNodes] 输入已是数组，直接返回');
+    return slateJson.length > 0 ? slateJson as Descendant[] : [{
+      type: 'paragraph',
+      children: [{ text: '' }]
+    } as ParagraphNode];
+  }
+  
   // 处理空值或空字符串
-  if (!slateJson?.trim()) {
+  if (!slateJson || (typeof slateJson === 'string' && !slateJson.trim())) {
     console.log('[LightSlateEditor] 空内容，返回默认段落');
     return [{
       type: 'paragraph',
@@ -27,8 +36,8 @@ export function jsonToSlateNodes(slateJson: string): Descendant[] {
   }
 
   try {
-    // 尝试解析 JSON
-    const parsed = JSON.parse(slateJson);
+    // 尝试解析 JSON 字符串
+    const parsed = JSON.parse(slateJson as string);
     console.log('[jsonToSlateNodes] 解析成功:', parsed);
     console.log('[jsonToSlateNodes] 是否为数组:', Array.isArray(parsed));
     

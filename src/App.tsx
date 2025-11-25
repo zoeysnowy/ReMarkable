@@ -456,7 +456,7 @@ function App() {
       // ✅ 立即创建初始事件（syncStatus: 'local-only'，运行中不同步）
       const initialEvent: Event = {
         id: timerEventId,
-        title: { simpleTitle: '计时中的事件', fullTitle: undefined, colorTitle: undefined },
+        title: { simpleTitle: '计时中的事件' },
         startTime: formatTimeForStorage(startDate),
         endTime: formatTimeForStorage(startDate), // 结束时更新
         tags: tagIdArray,
@@ -714,7 +714,7 @@ function App() {
       // 🔧 复用同一个 eventId，更新状态为 pending 以触发同步
       const finalEvent: Event = {
         id: timerEventId, // ✅ 复用启动时创建的 ID
-        title: { simpleTitle: eventTitle, fullTitle: undefined, colorTitle: undefined },
+        title: { simpleTitle: eventTitle }, // ✅ 只传 simpleTitle，让 normalizeTitle 自动填充
         startTime: formatTimeForStorage(startTime),
         endTime: formatTimeForStorage(new Date(startTime.getTime() + totalElapsed)),
         tags: globalTimer.tagIds || [],
@@ -799,7 +799,7 @@ function App() {
       const now = new Date();
       const tempEvent: Event = {
         id: '', // 🔧 使用空ID，表示这是新Timer
-        title: { simpleTitle: '', fullTitle: undefined, colorTitle: undefined },
+        title: { simpleTitle: '' },
         startTime: formatTimeForStorage(now),
         endTime: formatTimeForStorage(new Date(now.getTime() + 3600000)), // 默认1小时
         tags: [],
@@ -839,7 +839,7 @@ function App() {
 
     const tempEvent: Event = {
       id: timerEventId,
-      title: { simpleTitle: globalTimer.eventTitle || (tag?.name || ''), fullTitle: undefined, colorTitle: undefined },
+      title: { simpleTitle: globalTimer.eventTitle || (tag?.name || '') }, // ✅ 只传 simpleTitle
       startTime: formatTimeForStorage(startTime),
       endTime: formatTimeForStorage(endTime),
       tags: globalTimer.tagIds, // 使用完整的标签数组
@@ -909,7 +909,7 @@ function App() {
       const realTimerEventId = `timer-${tagId}-${finalStartTime.getTime()}`;
       
       // 🔧 使用 EventService 创建真实事件（使用真实ID），防止重复
-      const eventTitle = updatedEvent.title || (tag.emoji ? `${tag.emoji} ${tag.name}` : tag.name);
+      const eventTitle = updatedEvent.title || { simpleTitle: tag.emoji ? `${tag.emoji} ${tag.name}` : tag.name };
       const timerEvent: Event = {
         id: realTimerEventId, // 使用真实ID
         title: eventTitle,
@@ -1055,7 +1055,7 @@ function App() {
         
         const timerEvent: Event = {
           id: timerEventId, // ✅ 固定 ID，整个运行过程不变
-          title: { simpleTitle: eventTitle, fullTitle: undefined, colorTitle: undefined },
+          title: { simpleTitle: eventTitle }, // ✅ 只传 simpleTitle
           startTime: formatTimeForStorage(startTime),
           endTime: formatTimeForStorage(endTime),
           location: existingEvent?.location || '',
@@ -1135,7 +1135,7 @@ function App() {
           
           const timerEvent: Event = {
             id: timerEventId,
-            title: { simpleTitle: eventTitle, fullTitle: undefined, colorTitle: undefined }, // 保存时移除"[专注中]"标记
+            title: { simpleTitle: eventTitle }, // 保存时移除"[专注中]"标记
             startTime: formatTimeForStorage(startTime),
             endTime: formatTimeForStorage(endTime),
             location: existingEvent?.location || '', // 🔧 保留location

@@ -37,8 +37,10 @@ interface Event {
 
 #### 2. 自动转换机制 - EventService.normalizeTitle()
 
+**🔥 核心原则**: **所有 title 字段的转换统一由 EventService.normalizeTitle() 处理**
+
 ```typescript
-// 🔥 核心：自动填充缺失层级
+// EventService.ts
 private static normalizeTitle(titleInput: Partial<EventTitle>): EventTitle {
   // 场景1: fullTitle only → 生成 colorTitle + simpleTitle
   if (fullTitle && !colorTitle && !simpleTitle) {
@@ -49,11 +51,91 @@ private static normalizeTitle(titleInput: Partial<EventTitle>): EventTitle {
     };
   }
   
-  // 场景2-4: 类似逻辑
+  // 场景2: colorTitle only → 生成 simpleTitle + fullTitle
+  // 场景3: simpleTitle only → 生成 colorTitle + fullTitle
+  // 场景4: 多个字段存在 → 直接返回
 }
+
+// 自动调用时机：
+// 1. EventService.createEvent() - 创建时自动转换
+// 2. EventService.updateEvent() - 更新时自动转换
+// 3. EventHub.createEvent() → 调用 EventService.createEvent()
+// 4. EventHub.updateFields() → 调用 EventService.updateEvent()
 ```
 
-#### 3. 组件适配完成
+**✅ 组件层面规范**:
+- EventEditModalV2: 传递 `{ simpleTitle: finalTitle }` 或 `{ colorTitle: finalTitle }`
+- PlanManager: 传递 `{ simpleTitle: plainText }`
+- AIDemo: 传递 `{ simpleTitle: editedTitle }`
+- TimeCalendar: 使用 `convertFromCalendarEvent()` 自动创建 EventTitle 对象
+
+**❌ 禁止行为**:
+- 不要在组件中直接传递字符串给 `title` 字段
+- 不要在 EventHub/TimeHub 层做 title 转换
+- 不要绕过 EventService 直接操作 localStorage
+
+#### 3. 标题字段完整数据流
+
+```mermaid
+graph TB
+    A[组件层] --> B{传递 title}
+    B -->|EventEditModalV2| C["{simpleTitle: finalTitle}"]
+    B -->|PlanManager| D["{simpleTitle: plainText}"]
+    B -->|AIDemo| E["{simpleTitle: editedTitle}"]
+    B -->|TimeCalendar| F["convertFromCalendarEvent()"]
+    
+    C --> G[EventHub.updateFields]
+    D --> G
+    E --> H[EventHub.createEvent]
+    F --> H
+    
+    G --> I[EventService.updateEvent]
+    H --> J[EventService.createEvent]
+    
+    I --> K[normalizeTitle]
+    J --> K
+    
+    K --> L{检查字段}
+    L -->|只有 simpleTitle| M[生成 colorTitle + fullTitle]
+    L -->|只有 colorTitle| N[生成 simpleTitle + fullTitle]
+    L -->|只有 fullTitle| O[生成 colorTitle + simpleTitle]
+    L -->|多个字段存在| P[保持原样]
+    
+    M --> Q[完整的 EventTitle 对象]
+    N --> Q
+    O --> Q
+    P --> Q
+    
+    Q --> R[存储到 localStorage]
+    Q --> S[更新 EventHub 缓存]
+    Q --> T[触发 eventsUpdated 事件]
+```
+
+**关键点**:
+1. **组件层**: 只需传递一个 title 字段（simpleTitle/colorTitle/fullTitle）
+2. **EventHub 层**: 透传给 EventService，不做转换
+3. **EventService 层**: 自动调用 normalizeTitle() 填充缺失字段
+4. **存储层**: 保存完整的 EventTitle 对象
+
+#### 4. 外部同步处理（Outlook/Google Calendar）
+
+```typescript
+// ActionBasedSyncManager.ts - 同步到外部服务时提取 simpleTitle
+const outlookEventData = {
+  subject: action.data.title?.simpleTitle || '(无标题)',  // ✅ 提取纯文本
+  // ... 其他字段
+};
+
+// MicrosoftCalendarService.ts - 同步时同样提取 simpleTitle
+const eventData = {
+  subject: event.title?.simpleTitle || '(无标题)',
+  // ... 其他字段
+};
+```
+
+**原因**: 外部 API 不支持富文本，只能接受纯文本字符串
+
+#### 5. 组件适配完成
 
 | 组件 | 使用字段 | 变更内容 |
 |-----|---------|---------|
@@ -701,15 +783,21 @@ EventHub.updateFields(
 
 **示例**:
 ```typescript
-// ✅ 正确：只更新标题和标签
+// ✅ 正确：只更新标题和标签（传递 EventTitle 对象）
 await EventHub.updateFields('event-123', {
-  title: '新标题',
+  title: { simpleTitle: '新标题' },  // ✅ EventTitle 对象
   tags: ['tag1', 'tag2']
 }, { source: 'PlanManager' });
 
+// ❌ 错误：传递字符串给 title
+await EventHub.updateFields('event-123', {
+  title: '新标题',  // ❌ 应该是 EventTitle 对象
+  tags: ['tag1', 'tag2']
+});
+
 // ❌ 错误：覆盖整个对象
 const event = EventHub.getSnapshot('event-123');
-event.title = '新标题';
+event.title = { simpleTitle: '新标题' };
 await EventService.updateEvent('event-123', event); // 会覆盖 description 等字段！
 ```
 
@@ -1536,14 +1624,72 @@ graph LR
 | **Timer 更新** | TimeHub.setTimerWindow | 跳过外部同步 |
 | **获取时间快照** | TimeHub.getSnapshot | 获取 TimeSpec |
 
-### 6.3 避免常见错误
+### 6.3 如何正确使用 title 字段（v2.14+）
+
+#### ✅ 正确使用方式
+
+**场景 1: 创建新事件**
+```typescript
+// ✅ 只传一个字段，EventService 自动生成其他字段
+await EventHub.createEvent({
+  id: 'event-123',
+  title: { simpleTitle: '会议' },  // 自动生成 colorTitle 和 fullTitle
+  // ... 其他字段
+});
+```
+
+**场景 2: 更新标题**
+```typescript
+// ✅ 增量更新 title
+await EventHub.updateFields('event-123', {
+  title: { simpleTitle: '更新后的标题' }
+});
+
+// ✅ 或者更新富文本标题
+await EventHub.updateFields('event-123', {
+  title: { colorTitle: '<span>🔥 重要会议</span>' }
+});
+```
+
+**场景 3: 读取标题**
+```typescript
+// ✅ 根据场景选择合适的字段
+const event = EventHub.getSnapshot('event-123');
+
+// 纯文本场景（搜索、同步、日志）
+console.log(event.title?.simpleTitle);
+
+// 富文本显示（UpcomingPanel）
+console.log(event.title?.colorTitle);
+
+// Slate 编辑器
+console.log(event.title?.fullTitle);
+```
+
+#### ❌ 错误使用方式
+
+```typescript
+// ❌ 错误 1: 传递字符串
+await EventHub.updateFields('event-123', {
+  title: '新标题'  // ❌ 应该是 { simpleTitle: '新标题' }
+});
+
+// ❌ 错误 2: 手动转换
+const colorTitle = simpleToColorTitle(simpleTitle);  // ❌ 不需要手动转换
+const fullTitle = colorToFullTitle(colorTitle);      // ❌ EventService 会自动处理
+
+// ❌ 错误 3: 直接访问不存在的字段
+console.log(event.title.substring());  // ❌ title 是对象，不是字符串
+```
+
+### 6.4 避免常见错误
 
 #### ❌ 错误 1: 直接修改 getSnapshot 返回值
 
 ```typescript
 // ❌ 错误
 const event = EventHub.getSnapshot('event-123');
-event.title = '新标题';
+event.title = { simpleTitle: '新标题' };
 await EventService.updateEvent('event-123', event);
 ```
 
@@ -1552,7 +1698,7 @@ await EventService.updateEvent('event-123', event);
 **✅ 正确**:
 ```typescript
 await EventHub.updateFields('event-123', {
-  title: '新标题'
+  title: { simpleTitle: '新标题' }  // ✅ 传递 EventTitle 对象
 });
 ```
 
@@ -1562,7 +1708,7 @@ await EventHub.updateFields('event-123', {
 // ❌ 错误
 const updatedEvent = {
   ...existingEvent,
-  title: '新标题'
+  title: '新标题'  // ❌ 应该是 EventTitle 对象
   // description 可能被覆盖为 undefined！
 };
 await EventService.updateEvent('event-123', updatedEvent);
@@ -1571,8 +1717,9 @@ await EventService.updateEvent('event-123', updatedEvent);
 **✅ 正确**:
 ```typescript
 await EventHub.updateFields('event-123', {
-  title: '新标题'
+  title: { simpleTitle: '新标题' }  // ✅ EventTitle 对象
   // 其他字段保持不变
+  // EventService.normalizeTitle() 会自动生成 colorTitle 和 fullTitle
 });
 ```
 

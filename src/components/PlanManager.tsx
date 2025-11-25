@@ -1739,7 +1739,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         const updatedItem: Event = {
           ...(titleLine.data as any),
           id: (titleLine.data as any)?.id ?? itemId,
-          title: hasContent ? { simpleTitle: plainText, fullTitle: undefined, colorTitle: undefined } : { simpleTitle: '', fullTitle: undefined, colorTitle: undefined }, // 🔧 使用 EventTitle 格式
+          title: { simpleTitle: hasContent ? plainText : '' }, // ✅ 只传 simpleTitle，让 normalizeTitle 自动填充
           content: titleLine.content,
           tags: extractedTags,
           level: titleLine.level,
@@ -1789,7 +1789,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         
         const newItem: Event = {
           id: titleLine.id,
-          title: hasContent ? { simpleTitle: plainText || '(无标题)', fullTitle: undefined, colorTitle: undefined } : { simpleTitle: '', fullTitle: undefined, colorTitle: undefined }, // 🔧 使用 EventTitle 格式
+          title: { simpleTitle: hasContent ? (plainText || '(无标题)') : '' }, // ✅ 只传 simpleTitle
           content: titleLine.content,
           tags: extractedTags,
           priority: 'medium',
@@ -2153,7 +2153,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                 
                 const newPendingItem: Event = {
                   id: baseId,
-                  title: { simpleTitle: '', fullTitle: undefined, colorTitle: undefined }, // 🔧 使用 EventTitle 格式
+                  title: { simpleTitle: '' }, // ✅ 只传 simpleTitle
                   content: '',
                   description: '',
                   tags: [],
@@ -2650,7 +2650,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                         if (item) {
                           const updatedItem = {
                             ...item,
-                            title: { simpleTitle: plainText, fullTitle: undefined, colorTitle: undefined }, // 🔧 使用 EventTitle 格式
+                            title: { simpleTitle: plainText }, // ✅ 只传 simpleTitle
                             content: updatedContent,
                             tags: extractedTags,
                           };

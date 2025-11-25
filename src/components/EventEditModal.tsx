@@ -497,7 +497,7 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
             
             const newEvent: Event = {
               ...event,
-              title: finalTitle,
+              title: { simpleTitle: finalTitle },
               description: formData.description,
               startTime: startISO,
               endTime: endISO,
@@ -556,7 +556,7 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
 
             // 2. 再更新其他字段（不包含时间，因为 EventHub.setEventTime 已处理）
             await EventHub.updateFields(event.id, {
-              title: finalTitle,
+              title: { simpleTitle: finalTitle },
               description: formData.description,
               location: formData.location,
               isAllDay: formData.isAllDay,

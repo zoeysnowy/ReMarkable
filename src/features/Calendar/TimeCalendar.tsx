@@ -1465,7 +1465,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     // 🔧 关键修正：显示完整的timer事件（从开始到现在），而不是分段
     const realtimeEvent: Event = {
       id: timerEventId,
-      title: { simpleTitle: currentTimer.eventTitle || currentTimer.taskTitle || '计时中...', colorTitle: undefined, fullTitle: undefined },
+      title: { simpleTitle: currentTimer.eventTitle || currentTimer.taskTitle || '计时中...' }, // ✅ 只传 simpleTitle
       startTime: formatTimeForStorage(timerStartTime), // timer的真实开始时间
       endTime: formatTimeForStorage(now), // 当前时间
       location: '',
@@ -1740,7 +1740,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     // 创建新事件对象（不保存，仅用于编辑）
     const newEvent: Event = {
       id: `local-${Date.now()}`,
-      title: { simpleTitle: '', colorTitle: undefined, fullTitle: undefined },
+      title: { simpleTitle: '' }, // ✅ 只传 simpleTitle
       startTime: formatTimeForStorage(start),
       endTime: formatTimeForStorage(end),
       location: '',
@@ -2347,7 +2347,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
                 
                 const newEvent: Event = {
                   id: `local-${Date.now()}`,
-                  title: { simpleTitle: '', colorTitle: undefined, fullTitle: undefined },
+                  title: { simpleTitle: '' }, // ✅ 只传 simpleTitle
                   startTime: formatTimeForStorage(now),
                   endTime: formatTimeForStorage(end),
                   location: '',
