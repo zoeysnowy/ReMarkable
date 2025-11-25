@@ -302,7 +302,7 @@ export function convertToCalendarEvent(
   const isCurrentlyRunningTimer = runningTimerEventId !== null && event.id === runningTimerEventId;
   
   // 🔧 修复：保持已有的"[专注中]"前缀，或为当前运行的timer添加前缀
-  let displayTitle = event.title;
+  let displayTitle: string = event.title?.simpleTitle || ''; // 🔧 确保 displayTitle 是字符串类型
   
   // 🆕 v1.1: 对于全天事件，优先使用 displayHint 作为标题
   const eventWithHint = event as any;
@@ -313,25 +313,17 @@ export function convertToCalendarEvent(
   if (isWidgetMode) {
     // 🆕 Widget模式：简化的前缀同步逻辑
     // 如果事件已经有[专注中]前缀，说明主程序认为它正在运行，Widget也应该显示前缀
-    const simpleTitle = event.title?.simpleTitle || '';
-    if (simpleTitle.startsWith('[专注中]')) {
-      displayTitle = simpleTitle; // 保持前缀
-    } else {
-      displayTitle = simpleTitle; // 没有前缀则不添加
+    // displayTitle 已经初始化为 simpleTitle，这里只需要检查是否保持即可
+    if (!displayTitle.startsWith('[专注中]')) {
+      // Widget 模式不添加前缀，保持原样
     }
   } else {
     // 主程序模式：使用复杂的timer状态检测逻辑
-    const simpleTitle = event.title?.simpleTitle || '';
-    if (isCurrentlyRunningTimer && !simpleTitle.startsWith('[专注中]')) {
+    if (isCurrentlyRunningTimer && !displayTitle.startsWith('[专注中]')) {
       // 当前运行的timer且title没有前缀 -> 添加前缀
-      displayTitle = `[专注中] ${simpleTitle}`;
-    } else if (!isCurrentlyRunningTimer && simpleTitle.startsWith('[专注中]')) {
-      // 不是当前运行的timer但title有前缀 -> 保持原有前缀（历史事件）
-      displayTitle = simpleTitle;
-    } else {
-      // 其他情况保持原title
-      displayTitle = simpleTitle;
+      displayTitle = `[专注中] ${displayTitle}`;
     }
+    // 其他情况保持原 displayTitle（已经是 simpleTitle 或 displayHint）
   }
   
   // 🔍 调试：检查"[专注中]"前缀逻辑
