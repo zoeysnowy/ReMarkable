@@ -1713,7 +1713,7 @@ export class ActionBasedSyncManager {
               // 🆕 第一次未找到，加入候选列表
               this.deletionCandidates.set(localEvent.id, {
                 externalId: cleanExternalId,
-                title: localEvent.title,
+                title: localEvent.title?.simpleTitle || '',
                 firstMissingRound: this.syncRoundCounter,
                 firstMissingTime: now,
                 lastCheckRound: this.syncRoundCounter,
@@ -2814,7 +2814,7 @@ private getUserSettings(): any {
               console.log(`🎯 [Timer Dedupe] 通过 ReMarkable 签名匹配到本地 Timer 事件:`, {
                 localId: existingEvent.id,
                 remoteId: newEvent.externalId,
-                title: newEvent.title,
+                title: newEvent.title?.simpleTitle || '',
                 createTime: formatTimeForStorage(createTime)
               });
             }
@@ -2825,7 +2825,7 @@ private getUserSettings(): any {
                 !e.isTimer &&                   // ✅ 非 Timer 事件
                 !e.externalId &&                // ✅ 还没有同步过(没有 externalId)
                 (e.remarkableSource === true || e.id.startsWith('local-')) && // ✅ ReMarkable 创建的或本地创建的
-                e.title === newEvent.title &&   // ✅ 标题匹配
+                e.title?.simpleTitle === newEvent.title?.simpleTitle &&   // ✅ 标题匹配
                 Math.abs(new Date(e.createdAt).getTime() - createTime.getTime()) < 5000 // ✅ 创建时间匹配(5秒容差)
               );
               
@@ -3620,7 +3620,7 @@ private getUserSettings(): any {
   private async createEventInOutlookCalendar(event: any, calendarId: string): Promise<any> {
     try {
       const eventData = {
-        subject: event.title,
+        subject: event.title?.simpleTitle || '',
         body: {
           contentType: 'html',
           content: event.description || ''

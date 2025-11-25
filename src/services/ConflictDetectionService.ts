@@ -203,7 +203,7 @@ export class ConflictDetectionService {
       });
     };
 
-    let message = `与「${conflictingEvent.title}」冲突\n`;
+    let message = `与「${conflictingEvent.title?.simpleTitle || ''}」冲突\n`;
     message += `时间：${timeFormat(overlapStart)} - ${timeFormat(overlapEnd)}\n`;
     message += `类型：${type === 'full' ? '完全冲突' : '部分冲突'}\n`;
 

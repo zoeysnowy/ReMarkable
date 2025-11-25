@@ -245,11 +245,11 @@ export const FullContactModal: React.FC<FullContactModalProps> = ({
                     }}
                   >
                     <span className="full-contact-event-emoji">
-                      {extractEmoji(event.title)}
+                      {extractEmoji(event.title?.simpleTitle || '')}
                     </span>
                     <div className="full-contact-event-content">
                       <div className="full-contact-event-title">
-                        {removeEmoji(event.title)}
+                        {removeEmoji(event.title?.simpleTitle || '')}
                       </div>
                       <div className="full-contact-event-date">
                         {formatDate(event.startTime)}

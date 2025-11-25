@@ -207,10 +207,10 @@ export const ContactPreviewCard: React.FC<ContactPreviewCardProps> = ({
                 }}
               >
                 <span className="contact-preview-event-emoji">
-                  {extractEmoji(event.title)}
+                  {extractEmoji(event.title?.simpleTitle || '')}
                 </span>
                 <span className="contact-preview-event-title">
-                  {removeEmoji(event.title)}
+                  {removeEmoji(event.title?.simpleTitle || '')}
                 </span>
                 <span className="contact-preview-event-date">
                   {formatDate(event.startTime)}
