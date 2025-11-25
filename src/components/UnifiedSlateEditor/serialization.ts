@@ -105,6 +105,10 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
         return finalCheckType;
       })(), // 🆕 签到类型（默认有checkbox）
       
+      // ✅ v2.14: Checkbox 状态数组（用于 EventLinePrefix 计算 isCompleted）
+      checked: item.checked || [],
+      unchecked: item.unchecked || [],
+      
       // Plan 相关
       isPlan: item.isPlan,
       isTimeCalendar: item.isTimeCalendar,

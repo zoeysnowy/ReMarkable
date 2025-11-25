@@ -82,15 +82,15 @@ class EventHubClass {
     });
     
     // 🔍 [DEBUG-TIMER] 额外日志
-    // 1. 获取当前快照
-    const currentSnapshot = this.getSnapshot(eventId);
-    if (!currentSnapshot) {
+    // 1. 🔧 [FIX] 始终从 EventService 读取最新数据，避免缓存导致的数据不一致
+    const currentEvent = EventService.getEventById(eventId);
+    if (!currentEvent) {
       return { success: false, error: 'Event not found' };
     }
 
     // 2. 合并更新（只更新指定字段）
     const updatedEvent: Event = {
-      ...currentSnapshot,
+      ...currentEvent,  // ✅ 使用 EventService 的最新数据
       ...updates,
       // 🔧 修复：使用 formatTimeForStorage 而不是 toISOString()
       updatedAt: formatTimeForStorage(new Date())
@@ -100,7 +100,7 @@ class EventHubClass {
     const changes: string[] = [];
     for (const key in updates) {
       if (updates.hasOwnProperty(key)) {
-        const oldValue = (currentSnapshot as any)[key];
+        const oldValue = (currentEvent as any)[key];
         const newValue = (updates as any)[key];
         if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
           changes.push(`${key}: ${this.formatValue(oldValue)} → ${this.formatValue(newValue)}`);

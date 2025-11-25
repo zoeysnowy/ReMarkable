@@ -803,8 +803,81 @@ const STATUS_LABELS = {
   - `PlanManager.tsx` - L298-303 (初始化过滤)
   - `PlanManager.tsx` - L876 (保存时过滤)
 
+### 2025-11-25
+
+#### Bug Fix 3: Snapshot 模式下 checkbox 状态刷新后丢失 ⚠️ **Critical Fix**
+
+- **问题描述**:
+  - 在 Snapshot 模式下勾选事件 checkbox，界面立即显示勾选状态
+  - 刷新页面后，"Done" 状态竖线仍然显示，但 checkbox 变回未勾选状态
+  - 普通模式（非 Snapshot）下 checkbox 状态正常持久化
+
+- **根本原因**: Ghost 事件的 `checked/unchecked` 数组未传递到 Slate metadata
+  1. Ghost 事件从 `EventHistoryService` 的 `log.before` 创建，包含删除时的完整状态
+  2. `planItemsToSlateNodes()` 将事件转换为 Slate 节点时创建 `metadata` 对象
+  3. **关键缺失**: `metadata` 没有包含 `checked` 和 `unchecked` 数组
+  4. `EventLinePrefix` 从 `metadata.checked/unchecked` 计算 `isCompleted` 状态
+  5. 由于 metadata 缺少这些数组，checkbox 总是显示为未勾选
+
+- **数据流分析**:
+  ```typescript
+  // ❌ 修复前：checked/unchecked 数组丢失
+  EventHistoryService.log.before (含 checked[])
+    → PlanManager.editorItems (含 checked[])
+      → planItemsToSlateNodes() 
+        → metadata (❌ 不含 checked/unchecked)
+          → EventLinePrefix.isCompleted (总是 false)
+  
+  // ✅ 修复后：完整传递
+  EventHistoryService.log.before (含 checked[])
+    → PlanManager.editorItems (含 checked[])
+      → planItemsToSlateNodes() 
+        → metadata (✅ 含 checked/unchecked)
+          → EventLinePrefix.isCompleted (正确计算)
+  ```
+
+- **修复方案**:
+  ```typescript
+  // src/components/UnifiedSlateEditor/serialization.ts
+  const metadata: EventMetadata = {
+    // ... 其他字段 ...
+    
+    // ✅ v2.14: Checkbox 状态数组（用于 EventLinePrefix 计算 isCompleted）
+    checked: item.checked || [],
+    unchecked: item.unchecked || [],
+    
+    // ... 其他字段 ...
+  };
+  ```
+
+- **为什么 "Done" 竖线仍然正确显示？**
+  - `getEventStatuses()` 直接从 `EventService.getCheckInStatus(eventId)` 读取状态
+  - EventService 的数据来自 localStorage，不受 Slate metadata 影响
+  - 所以 "Done" 状态竖线显示正确，但 checkbox UI 状态错误
+
+- **影响范围**:
+  - Snapshot 模式下的所有事件（包括 ghost 事件）
+  - 普通模式不受影响（因为 eventsUpdated 监听器会同步状态）
+  - 页面刷新后的状态持久化
+
+- **测试验证**:
+  - ✅ Snapshot 模式勾选事件 → checkbox 立即显示
+  - ✅ 刷新页面 → checkbox 状态保持
+  - ✅ "Done" 竖线和 checkbox 状态一致
+  - ✅ Ghost 事件的 checkbox 状态也正确显示
+
+- **相关文件**:
+  - `serialization.ts` - L107-109 (添加 checked/unchecked 到 metadata)
+  - `EventLinePrefix.tsx` - L27-35 (从 metadata 计算 isCompleted)
+  - `PlanManager.tsx` - L1485-1575 (getEventStatuses 使用 EventService)
+
+- **关联修复**: 
+  - v2.14 Checkbox 状态实时同步机制（2025-11-24）
+  - 确保 eventsUpdated 事件同步 checked/unchecked 数组到 Slate metadata
+
 ---
 
-**最后更新**: 2025-11-24  
+**最后更新**: 2025-11-25  
 **维护者**: GitHub Copilot + Zoey  
-**版本**: v1.0.1 - 修复 Ghost 事件显示错误和 Missed 状态判定
+**版本**: v1.0.2 - 修复 Snapshot 模式下 checkbox 状态刷新后丢失
+

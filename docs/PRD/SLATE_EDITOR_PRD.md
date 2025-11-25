@@ -204,6 +204,53 @@ sequenceDiagram
 - ✅ 避免了 Slate onChange 循环触发
 - ✅ 保持了数据一致性（EventService ↔ Slate）
 
+### Snapshot 模式特殊处理 (2025-11-25)
+
+**问题**: Snapshot 模式下 checkbox 刷新后状态丢失
+
+**症状**:
+- 勾选 checkbox → 立即显示勾选状态 ✅
+- 刷新页面 → "Done" 竖线仍显示，但 checkbox 变回未勾选 ❌
+
+**根本原因**: `planItemsToSlateNodes()` 未传递 `checked/unchecked` 数组
+
+**数据流分析**:
+```typescript
+// Ghost 事件从历史记录创建
+EventHistoryService.log.before 
+  → PlanManager.editorItems (含 checked[])
+    → planItemsToSlateNodes() 
+      → metadata (❌ 缺少 checked/unchecked)
+        → EventLinePrefix.isCompleted (总是 false)
+```
+
+**修复方案**:
+```typescript
+// src/components/UnifiedSlateEditor/serialization.ts
+const metadata: EventMetadata = {
+  // ...其他字段
+  
+  // ✅ v2.14: Checkbox 状态数组（用于 EventLinePrefix 计算 isCompleted）
+  checked: item.checked || [],
+  unchecked: item.unchecked || [],
+  
+  // ...其他字段
+};
+```
+
+**为什么 Done 竖线仍正确？**
+- `PlanManager.getEventStatuses()` 直接调用 `EventService.getCheckInStatus(eventId)`
+- EventService 从 localStorage 读取，不受 Slate metadata 影响
+- 所以竖线正确，但 checkbox UI 错误
+
+**测试验证**:
+- ✅ Snapshot 模式勾选 → checkbox 立即显示
+- ✅ 刷新页面 → checkbox 状态保持
+- ✅ "Done" 竖线和 checkbox 状态一致
+- ✅ Ghost 事件的 checkbox 也正确显示
+
+**相关文档**: [SNAPSHOT_STATUS_VISUALIZATION_PRD.md](./SNAPSHOT_STATUS_VISUALIZATION_PRD.md#2025-11-25)
+
 ---
 
 ## ✅ v2.13 checkType 字段与 checkbox 关联 (2025-11-25)
