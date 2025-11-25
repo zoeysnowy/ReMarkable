@@ -1901,14 +1901,15 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       }
 
       // 🏷️ Bug Fix #4: 如果标题为空，使用标签名称（含emoji）作为标题
-      if (!updatedEvent.title || updatedEvent.title.trim() === '') {
+      if (!updatedEvent.title || !updatedEvent.title.simpleTitle?.trim()) {
         const tagId = updatedEvent.tags?.[0];
         if (tagId) {
           const flatTags = TagService.getFlatTags();
           const tag = flatTags.find(t => t.id === tagId);
           if (tag) {
-            updatedEvent.title = tag.emoji ? `${tag.emoji} ${tag.name}` : tag.name;
-            console.log('🏷️ [TimeCalendar] Using tag name as title:', updatedEvent.title);
+            const tagTitle = tag.emoji ? `${tag.emoji} ${tag.name}` : tag.name;
+            updatedEvent.title = { simpleTitle: tagTitle, colorTitle: undefined, fullTitle: undefined };
+            console.log('🏷️ [TimeCalendar] Using tag name as title:', tagTitle);
             
             // 更新标题
             const { EventHub } = await import('../../services/EventHub');
@@ -2559,7 +2560,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
               // 获取事件的开始和结束时间
               const start = event.start;
               const end = event.end;
-              const title = event.title || '';
+              const title = event.title?.simpleTitle || '';
               const textColor = event.backgroundColor || event.borderColor || 'rgba(59, 130, 246, 0.8)';
               
               // 格式化时间显示（带开始/结束提示）
@@ -2605,7 +2606,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
             time(event: any) {
               // 获取事件的开始和结束时间
               const start = event.start;
-              const title = event.title || '';
+              const title = event.title?.simpleTitle || '';
               
               // 格式化时间显示
               let timeDisplay = '';
