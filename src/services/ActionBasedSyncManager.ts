@@ -3112,20 +3112,23 @@ private getUserSettings(): any {
       const processBatch = (batchEvents: any[], batchIndex: number): number => {
         const batchStart = performance.now();
       
-        batchEvents.forEach(event => {
-          if (event.id) {
-            this.eventIndexMap.set(event.id, event);
+      batchEvents.forEach(event => {
+        // 🔧 规范化 title 格式（避免标题闪烁）
+        if (event.title) {
+          event.title = EventService.normalizeTitle(event.title);
+        }
+        
+        if (event.id) {
+          this.eventIndexMap.set(event.id, event);
+        }
+        if (event.externalId) {
+          // 优先保留 Timer 事件的 externalId 索引
+          const existing = this.eventIndexMap.get(event.externalId);
+          if (!existing || event.id.startsWith('timer-')) {
+            this.eventIndexMap.set(event.externalId, event);
           }
-          if (event.externalId) {
-            // 优先保留 Timer 事件的 externalId 索引
-            const existing = this.eventIndexMap.get(event.externalId);
-            if (!existing || event.id.startsWith('timer-')) {
-              this.eventIndexMap.set(event.externalId, event);
-            }
-          }
-        });
-      
-        const batchDuration = performance.now() - batchStart;
+        }
+      });        const batchDuration = performance.now() - batchStart;
         if (batchIndex === 0 || batchIndex % 5 === 0) {
         // console.log(`📊 [IndexMap] Batch ${batchIndex}: ${batchEvents.length} events in ${batchDuration.toFixed(2)}ms`);
         }
@@ -3192,6 +3195,11 @@ private getUserSettings(): any {
   // 🔧 同步版本（仅用于关键路径）
   private rebuildEventIndexMap(events: any[]) {
     events.forEach(event => {
+      // 🔧 规范化 title 格式（避免标题闪烁）
+      if (event.title) {
+        event.title = EventService.normalizeTitle(event.title);
+      }
+      
       if (event.id) {
         this.eventIndexMap.set(event.id, event);
       }
@@ -3218,6 +3226,11 @@ private getUserSettings(): any {
     
     // 添加新索引
     if (event) {
+      // 🔧 规范化 title 格式（避免标题闪烁）
+      if (event.title) {
+        event.title = EventService.normalizeTitle(event.title);
+      }
+      
       if (event.id) {
         this.eventIndexMap.set(event.id, event);
       }

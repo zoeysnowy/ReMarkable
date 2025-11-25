@@ -12,6 +12,7 @@
 import { Contact, ContactSource } from '../types';
 import md5 from 'crypto-js/md5';
 import { logger } from '../utils/logger';
+import { formatTimeForStorage } from '../utils/timeUtils';
 
 const STORAGE_KEY = 'remarkable-contacts';
 const contactLogger = logger.module('ContactService');
@@ -91,7 +92,7 @@ export class ContactService {
   private static emitEvent(eventType: ContactEventType, data: any): void {
     const event: ContactEvent = {
       type: eventType,
-      timestamp: new Date().toISOString(),
+      timestamp: formatTimeForStorage(new Date()),
       data,
     };
 
@@ -281,8 +282,8 @@ export class ContactService {
     const newContact: Contact = {
       ...contact,
       id: this.generateContactId(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: formatTimeForStorage(new Date()),
+      updatedAt: formatTimeForStorage(new Date()),
     };
 
     // 设置头像（如果有邮箱但没有头像）
@@ -313,7 +314,7 @@ export class ContactService {
   static addContacts(contacts: Omit<Contact, 'id'>[]): Contact[] {
     this.initialize();
     
-    const timestamp = new Date().toISOString();
+    const timestamp = formatTimeForStorage(new Date());
     const newContacts = contacts.map(contact => {
       const newContact: Contact = {
         ...contact,
@@ -360,7 +361,7 @@ export class ContactService {
     const updatesToSave = this.serializeExtendedFields({
       ...this.contacts[index],
       ...updates,
-      updatedAt: new Date().toISOString(),
+      updatedAt: formatTimeForStorage(new Date()),
     });
     
     this.contacts[index] = updatesToSave;
