@@ -400,19 +400,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         }
       }
       
-      // 🔧 Step 1: 处理空标题 - 如果标题为空但有标签，使用标签名称
+      // 🔧 Step 1: 使用用户输入的标题（不自动替换为标签名称）
       let finalTitle = formData.title;
-      if (!finalTitle || finalTitle.trim() === '') {
-        if (formData.tags && formData.tags.length > 0) {
-          // 获取第一个标签的名称（含 emoji）
-          const flatTags = TagService.getFlatTags();
-          const tag = flatTags.find(t => t.id === formData.tags[0]);
-          if (tag) {
-            finalTitle = tag.emoji ? `${tag.emoji} ${tag.name}` : tag.name;
-            console.log('🏷️ [EventEditModalV2] Auto-generated title from tag:', finalTitle);
-          }
-        }
-      }
       
       // 🔧 Step 2: 处理时间格式 - 确保符合 EventService 的要求
       // EventService 要求时间格式为 "YYYY-MM-DD HH:mm:ss"（空格分隔）
@@ -1898,11 +1887,30 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                               selectedModeId={syncSyncMode}
                               onSelectionChange={(modeId) => {
                                 setSyncSyncMode(modeId);
+                                
+                                // 🆕 自动从标签映射中提取 calendarIds
+                                const mappedCalendarIds: string[] = [];
+                                if (formData.tags && formData.tags.length > 0) {
+                                  const flatTags = TagService.getFlatTags();
+                                  formData.tags.forEach(tagId => {
+                                    const tag = flatTags.find(t => t.id === tagId);
+                                    if (tag?.calendarMapping?.calendarId) {
+                                      if (!mappedCalendarIds.includes(tag.calendarMapping.calendarId)) {
+                                        mappedCalendarIds.push(tag.calendarMapping.calendarId);
+                                      }
+                                    }
+                                  });
+                                }
+                                
+                                // 合并用户选择的日历和标签映射的日历
+                                const allCalendarIds = [...new Set([...syncCalendarIds, ...mappedCalendarIds])];
+                                
                                 setFormData(prev => ({
                                   ...prev,
+                                  calendarIds: allCalendarIds.length > 0 ? allCalendarIds : prev.calendarIds,
                                   actualSyncConfig: {
                                     mode: modeId as any,
-                                    targetCalendars: syncCalendarIds,
+                                    targetCalendars: allCalendarIds,
                                     tagMapping: prev.actualSyncConfig?.tagMapping
                                   }
                                 }));

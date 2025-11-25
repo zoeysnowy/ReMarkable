@@ -6,9 +6,12 @@
  * 布局：统一缩进的 Checkbox + Emoji + 状态标签
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { useSlateStatic, ReactEditor } from 'slate-react';
+import { Transforms, Editor } from 'slate';
 import { EventLineNode } from './types';
 import { EventService } from '../../services/EventService';
+import { formatTimeForStorage } from '../../utils/timeUtils';
 
 export interface EventLinePrefixProps {
   element: EventLineNode;
@@ -17,11 +20,19 @@ export interface EventLinePrefixProps {
 }
 
 const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onSave, eventStatus }) => {
+  const editor = useSlateStatic();
   const metadata = element.metadata || {};
   
-  // ✅ 使用新的 check-in 机制，而不是旧的 isCompleted 字段
-  const checkInStatus = EventService.getCheckInStatus(element.eventId);
-  const isCompleted = checkInStatus.isChecked;
+  // ✅ 直接从 metadata 计算 checked 状态，不调用 EventService
+  const lastChecked = metadata.checked && metadata.checked.length > 0 
+    ? metadata.checked[metadata.checked.length - 1] 
+    : null;
+  const lastUnchecked = metadata.unchecked && metadata.unchecked.length > 0 
+    ? metadata.unchecked[metadata.unchecked.length - 1] 
+    : null;
+  
+  // 比较最后的时间戳
+  const isCompleted = lastChecked && (!lastUnchecked || lastChecked > lastUnchecked);
   
   // 🆕 根据 checkType 判断是否显示 checkbox
   const checkType = metadata.checkType;
@@ -84,7 +95,7 @@ const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onS
       {showCheckbox && (
         <input
           type="checkbox"
-          checked={isCompleted}
+          checked={!!isCompleted}
           onChange={(e) => {
             e.stopPropagation();
             const isChecked = e.target.checked;
@@ -95,17 +106,32 @@ const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onS
               checkType: metadata.checkType
             });
             
-            // ✅ 只使用新的 check-in 机制，不再更新 isCompleted 字段
-            if (isChecked) {
-              const result = EventService.checkIn(element.eventId);
-              console.log('[EventLinePrefix] CheckIn result:', result);
-            } else {
-              const result = EventService.uncheck(element.eventId);
-              console.log('[EventLinePrefix] Uncheck result:', result);
+            // ✅ 1. 立即更新 Slate element 的 metadata（乐观更新）
+            const timestamp = formatTimeForStorage(new Date());
+            const updatedMetadata = {
+              ...metadata,
+              checked: isChecked ? [...(metadata.checked || []), timestamp] : metadata.checked,
+              unchecked: !isChecked ? [...(metadata.unchecked || []), timestamp] : metadata.unchecked
+            };
+            
+            // 🔥 直接更新 Slate element - 立即触发重新渲染
+            try {
+              const path = ReactEditor.findPath(editor, element);
+              Transforms.setNodes(editor, { metadata: updatedMetadata } as any, { at: path });
+              console.log('[EventLinePrefix] ✅ Slate element updated:', { path, updatedMetadata });
+            } catch (err) {
+              console.error('[EventLinePrefix] ❌ Failed to update Slate element:', err);
             }
             
-            // 触发重新渲染
-            onSave(element.eventId, {});
+            // ✅ 2. 调用 EventService 持久化到 localStorage（会自动触发 eventsUpdated）
+            if (isChecked) {
+              EventService.checkIn(element.eventId);
+            } else {
+              EventService.uncheck(element.eventId);
+            }
+            
+            // 🔧 注意：不再调用 onSave，因为 EventService.checkIn/uncheck 已经触发了 eventsUpdated 事件
+            // UnifiedSlateEditor 的监听器会自动同步最新的 checked/unchecked 数组
           }}
           style={{
             cursor: 'pointer',

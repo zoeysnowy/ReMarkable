@@ -2462,7 +2462,7 @@ private getUserSettings(): any {
           
           // 📝 文本字段处理
           if (action.data.title) {
-            updateData.subject = action.data.title;
+            updateData.subject = action.data.title?.simpleTitle || action.data.title; // 🔧 提取 simpleTitle（兼容字符串）
           }
           
           // 描述处理：添加同步备注管理
@@ -2941,9 +2941,17 @@ private getUserSettings(): any {
             }
           }
           
+          // 🔧 将 Outlook subject 转换为完整的 EventTitle 对象
+          const cleanTitle = action.data.subject || '';
+          const titleObject = {
+            simpleTitle: cleanTitle,
+            colorTitle: cleanTitle,
+            fullTitle: JSON.stringify([{ type: 'paragraph', children: [{ text: cleanTitle }] }])
+          };
+          
           const updatedEvent = {
             ...events[eventIndex], // 🔧 保留所有原有字段（包括source和calendarId）
-            title: action.data.subject || '',
+            title: titleObject, // 🔧 使用 EventTitle 对象而非字符串
             description: cleanDescription, // 直接使用清理后的内容，不添加同步备注
             eventlog: updatedEventlog, // 🆕 同步更新 eventlog
             startTime: this.safeFormatDateTime(action.data.start?.dateTime || action.data.start),

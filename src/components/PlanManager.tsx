@@ -2153,7 +2153,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                 
                 const newPendingItem: Event = {
                   id: baseId,
-                  title: '',
+                  title: { simpleTitle: '', fullTitle: undefined, colorTitle: undefined }, // 🔧 使用 EventTitle 格式
                   content: '',
                   description: '',
                   tags: [],
@@ -2171,7 +2171,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                   createdAt: nowLocal,
                   updatedAt: nowLocal,
                   source: 'local',
-                  syncStatus: 'local-only',
+                  syncStatus: 'pending', // 🔧 改为 'pending' 以启用 Outlook 同步
                 } as Event;
                 
                 setPendingEmptyItems(prev => new Map(prev).set(baseId, newPendingItem));
@@ -2705,31 +2705,6 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         onTimeFilterChange={(filter) => {
           console.log('[PlanManager] Time filter changed:', filter);
           // TODO: 根据时间过滤更新右侧面板事件显示
-        }}
-        onCheckboxChange={(eventId, checked) => {
-          // 🔧 处理 checkbox 状态变化
-          console.log('[PlanManager] onCheckboxChange 被调用:', { eventId: eventId.slice(-10), checked });
-          
-          if (checked) {
-            const result = EventService.checkIn(eventId);
-            console.log('[PlanManager] checkIn 结果:', result);
-          } else {
-            const result = EventService.uncheck(eventId);
-            console.log('[PlanManager] uncheck 结果:', result);
-          }
-          
-          // 🔍 检查状态
-          const status = EventService.getCheckInStatus(eventId);
-          console.log('[PlanManager] 操作后状态:', status);
-          
-          // ✅ 立即手动触发 eventsUpdated 事件，让 UpcomingEventsPanel 重新加载
-          window.dispatchEvent(new CustomEvent('eventsUpdated', {
-            detail: { 
-              eventId, 
-              checkedIn: checked,
-              source: 'checkbox-change'
-            }
-          }));
         }}
       />
     </div>
