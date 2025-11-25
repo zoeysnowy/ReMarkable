@@ -570,19 +570,18 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
           const updatedEvent = EventService.getEventById(eventId);
           
           if (updatedEvent) {
-              setEvents(prev => {
-                const index = prev.findIndex(e => e.id === eventId);
-                if (index >= 0) {
-                  // 更新现有事件
-                  const newEvents = [...prev];
-                  newEvents[index] = updatedEvent;
-                  return newEvents;
-                } else {
-                  // 新增事件
-                  return [...prev, updatedEvent];
-                }
-              });
-            }
+            setEvents(prev => {
+              const index = prev.findIndex(e => e.id === eventId);
+              if (index >= 0) {
+                // 更新现有事件
+                const newEvents = [...prev];
+                newEvents[index] = updatedEvent;
+                return newEvents;
+              } else {
+                // 新增事件
+                return [...prev, updatedEvent];
+              }
+            });
           }
           return;
         }

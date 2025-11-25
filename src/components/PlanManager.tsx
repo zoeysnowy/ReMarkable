@@ -975,7 +975,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       
       if (isChanged) {
         const now = new Date();
-        const nowISO = formatTimeForStorage(now);
+        const nowLocal = formatTimeForStorage(now);
         
         // 🆕 v1.8: 从标签中提取 calendarIds
         const tagIds = (updatedItem.tags || []).map((t: string) => {
@@ -1019,8 +1019,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           isTask: true,
           isTimeCalendar: false,
           remarkableSource: true,
-          createdAt: existingItem?.createdAt || nowISO,
-          updatedAt: nowISO,
+          createdAt: existingItem?.createdAt || nowLocal,
+          updatedAt: nowLocal,
           source: 'local',
           syncStatus: calendarIds.length > 0 ? 'pending' : 'local-only', // 🆕 v1.8: 根据日历映射设置同步状态
         } as Event;
@@ -1154,7 +1154,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       if (isEmpty && !existingItem) {
         // 新空白行：立即添加到 pendingEmptyItems
         const now = new Date();
-        const nowISO = formatTimeForStorage(now);
+        const nowLocal = formatTimeForStorage(now);
         
         const newPendingItem: Event = {
           id: updatedItem.id,
@@ -1174,8 +1174,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           startTime: '',
           endTime: '',
           isAllDay: false,
-          createdAt: nowISO,
-          updatedAt: nowISO,
+          createdAt: nowLocal,
+          updatedAt: nowLocal,
           source: 'local',
           syncStatus: 'local-only',
         } as Event;
@@ -1785,7 +1785,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         const wasPending = pendingEmptyItems.has(titleLine.id);
         
         const now = new Date();
-        const nowISO = formatTimeForStorage(now);
+        const nowLocal = formatTimeForStorage(now);
         
         const newItem: Event = {
           id: titleLine.id,
@@ -1809,8 +1809,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           endTime: '',   // ✅ 空字符串表示无时间
           dueDate: undefined, // ✅ 不预设截止日期
           isAllDay: false,
-          createdAt: nowISO, // ✅ 使用 timeUtils 格式化，避免时区问题
-          updatedAt: nowISO,
+          createdAt: nowLocal, // ✅ 使用 timeUtils 格式化，避免时区问题
+          updatedAt: nowLocal,
           source: 'local',
           syncStatus: 'local-only',
         } as any;
@@ -2144,7 +2144,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
               
               if (!existsInPending && !existsInItems) {
                 const now = new Date();
-                const nowISO = formatTimeForStorage(now);
+                const nowLocal = formatTimeForStorage(now);
                 
                 const newPendingItem: Event = {
                   id: baseId,
@@ -2163,8 +2163,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                   startTime: '',
                   endTime: '',
                   isAllDay: false,
-                  createdAt: nowISO,
-                  updatedAt: nowISO,
+                  createdAt: nowLocal,
+                  updatedAt: nowLocal,
                   source: 'local',
                   syncStatus: 'local-only',
                 } as Event;

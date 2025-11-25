@@ -172,10 +172,27 @@ export class EventService {
 
   /**
    * 根据ID获取事件
+   * 🔧 性能优化：只规范化目标事件的 title，避免全量处理
    */
   static getEventById(eventId: string): Event | null {
-    const events = this.getAllEvents();
-    return events.find(e => e.id === eventId) || null;
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
+      if (!saved) return null;
+      
+      const events: Event[] = JSON.parse(saved);
+      const event = events.find(e => e.id === eventId);
+      
+      if (!event) return null;
+      
+      // 只规范化这一个事件的 title
+      return {
+        ...event,
+        title: this.normalizeTitle(event.title)
+      };
+    } catch (error) {
+      eventLogger.error('❌ [EventService] Failed to get event by ID:', error);
+      return null;
+    }
   }
 
   /**
@@ -901,7 +918,7 @@ export class EventService {
       }
 
       const event = existingEvents[eventIndex];
-      const timestamp = new Date().toISOString();
+      const timestamp = formatTimeForStorage(new Date());
 
       // 🐛 DEBUG: Log checkType before update (checkType is at root level, not in metadata)
       console.log('🔍 [EventService.checkIn] BEFORE update:', {
@@ -970,7 +987,7 @@ export class EventService {
       }
 
       const event = existingEvents[eventIndex];
-      const timestamp = new Date().toISOString();
+      const timestamp = formatTimeForStorage(new Date());
 
       // 初始化unchecked数组（如果不存在）
       if (!event.unchecked) {
@@ -1289,9 +1306,6 @@ export class EventService {
     
     // 🔧 场景 0: 兼容旧格式 - 字符串 title（来自 Timer、Outlook 同步等）
     if (typeof titleInput === 'string') {
-      console.log('[EventService] normalizeTitle: 检测到字符串标题，自动转换为 EventTitle 对象', {
-        title: titleInput
-      });
       return {
         simpleTitle: titleInput,
         colorTitle: titleInput,
@@ -1324,12 +1338,6 @@ export class EventService {
       result.fullTitle = fullTitle;
       result.colorTitle = this.fullTitleToColorTitle(fullTitle);
       result.simpleTitle = this.colorTitleToSimpleTitle(result.colorTitle);
-      
-      console.log('[EventService] normalizeTitle: fullTitle → colorTitle + simpleTitle', {
-        fullTitleLength: fullTitle.length,
-        colorTitleLength: result.colorTitle?.length || 0,
-        simpleTitleLength: result.simpleTitle?.length || 0
-      });
     }
     
     // 场景 2: 只有 colorTitle → 升级生成 fullTitle，降级生成 simpleTitle
@@ -1338,11 +1346,6 @@ export class EventService {
       result.simpleTitle = this.colorTitleToSimpleTitle(colorTitle);
       // 简化升级：colorTitle 无法完美转换为 Slate JSON，使用纯文本升级
       result.fullTitle = this.simpleTitleToFullTitle(result.simpleTitle);
-      
-      console.log('[EventService] normalizeTitle: colorTitle → simpleTitle + fullTitle', {
-        colorTitleLength: colorTitle.length,
-        simpleTitleLength: result.simpleTitle?.length || 0
-      });
     }
     
     // 场景 3: 只有 simpleTitle → 升级生成 colorTitle 和 fullTitle
@@ -1351,10 +1354,6 @@ export class EventService {
       result.simpleTitle = simpleTitle;
       result.colorTitle = simpleTitle; // 纯文本直接赋值（无格式）
       result.fullTitle = this.simpleTitleToFullTitle(simpleTitle);
-      
-      console.log('[EventService] normalizeTitle: simpleTitle → colorTitle + fullTitle', {
-        simpleTitleLength: simpleTitle.length
-      });
     }
     
     // 场景 4: 多个字段都有 → 保持原样，填充缺失字段
