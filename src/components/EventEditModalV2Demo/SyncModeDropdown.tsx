@@ -94,6 +94,7 @@ export const SyncModeDropdown: React.FC<SyncModeDropdownProps> = ({
                 backgroundColor: isSelected ? '#f3f4f6' : 'transparent',
                 transition: 'all 0.2s ease'
               }}
+              onClick={() => onSelectionChange(mode.id)}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = isSelected ? '#f3f4f6' : '#f9fafb';
               }}
@@ -104,11 +105,12 @@ export const SyncModeDropdown: React.FC<SyncModeDropdownProps> = ({
               <input
                 type="checkbox"
                 checked={isSelected}
-                onChange={() => onSelectionChange(mode.id)}
+                readOnly
                 style={{
                   marginRight: '8px',
                   accentColor: '#3b82f6',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  pointerEvents: 'none'
                 }}
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'none' }}>

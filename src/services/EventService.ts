@@ -1032,7 +1032,7 @@ export class EventService {
         isChecked: false, 
         checkInCount: checked.length, 
         uncheckCount: unchecked.length,
-        checkType: event.checkType || 'none',
+        checkType: event.checkType || 'once', // 🔧 默认显示 checkbox（与 planItemsToSlateNodes 保持一致）
         recurringConfig: event.recurringConfig
       };
     }
@@ -1046,7 +1046,7 @@ export class EventService {
       lastUncheck,
       checkInCount: checked.length,
       uncheckCount: unchecked.length,
-      checkType: event.checkType || 'none',
+      checkType: event.checkType || 'once', // 🔧 默认显示 checkbox（与 planItemsToSlateNodes 保持一致）
       recurringConfig: event.recurringConfig
     };
   }

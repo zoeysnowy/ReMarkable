@@ -134,6 +134,7 @@ export const SimpleCalendarDropdown: React.FC<SimpleCalendarDropdownProps> = ({
                 opacity: isDisabled ? 0.5 : 1,
                 transition: 'all 0.2s ease'
               }}
+              onClick={handleSelect}
               onMouseEnter={(e) => {
                 if (!isDisabled) {
                   e.currentTarget.style.backgroundColor = isSelected ? '#f3f4f6' : '#f9fafb';
@@ -146,12 +147,13 @@ export const SimpleCalendarDropdown: React.FC<SimpleCalendarDropdownProps> = ({
               <input
                 type="checkbox"
                 checked={isSelected}
-                onChange={handleSelect}
+                readOnly
                 disabled={isDisabled}
                 style={{
                   marginRight: '8px',
                   accentColor: '#3b82f6',
-                  cursor: isDisabled ? 'not-allowed' : 'pointer'
+                  cursor: isDisabled ? 'not-allowed' : 'pointer',
+                  pointerEvents: 'none'
                 }}
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'none' }}>
