@@ -1687,6 +1687,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                       
                       {showSourceSyncModePicker && createPortal(
                         <div 
+                          onClick={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
                           style={{
                             position: 'fixed',
                             top: sourceSyncModeRef.current ? (sourceSyncModeRef.current.getBoundingClientRect().bottom + 4) : '50%',
@@ -1814,6 +1816,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                         
                         {showSyncCalendarPicker && createPortal(
                           <div 
+                            onClick={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
                             style={{
                               position: 'fixed',
                               top: syncCalendarRef.current ? (syncCalendarRef.current.getBoundingClientRect().bottom + 4) : '50%',
@@ -1874,6 +1878,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                         
                         {showSyncSyncModePicker && createPortal(
                           <div 
+                            onClick={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
                             style={{
                               position: 'fixed',
                               top: syncSyncModeRef.current ? (syncSyncModeRef.current.getBoundingClientRect().bottom + 4) : '50%',

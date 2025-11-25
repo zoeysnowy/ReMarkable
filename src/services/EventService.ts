@@ -1301,6 +1301,15 @@ export class EventService {
     
     const { fullTitle, colorTitle, simpleTitle } = titleInput;
     
+    // 🔧 边界情况：所有字段都是 undefined → 视为空标题
+    if (!fullTitle && !colorTitle && !simpleTitle) {
+      return {
+        fullTitle: this.simpleTitleToFullTitle(''),
+        colorTitle: '',
+        simpleTitle: ''
+      };
+    }
+    
     // 场景 1: 只有 fullTitle → 降级生成 colorTitle 和 simpleTitle
     if (fullTitle && !colorTitle && !simpleTitle) {
       result.fullTitle = fullTitle;
