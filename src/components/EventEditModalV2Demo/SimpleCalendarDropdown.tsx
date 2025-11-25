@@ -35,6 +35,16 @@ export const SimpleCalendarDropdown: React.FC<SimpleCalendarDropdownProps> = ({
   const currentSelectedIds = multiSelect 
     ? selectedCalendarIds 
     : (selectedCalendarId ? [selectedCalendarId] : []);
+  
+  console.log('🎯 [SimpleCalendarDropdown] Component rendered:', {
+    availableCalendarsCount: availableCalendars.length,
+    availableCalendars: availableCalendars.map(c => ({ id: c.id, name: c.name })),
+    selectedCalendarIds,
+    currentSelectedIds,
+    multiSelect,
+    hasOnMultiSelectionChange: !!onMultiSelectionChange,
+    hasOnSelectionChange: !!onSelectionChange
+  });
 
   // 获取日历显示名称
   const getCalendarName = (calendar: Calendar) => {
@@ -106,6 +116,15 @@ export const SimpleCalendarDropdown: React.FC<SimpleCalendarDropdownProps> = ({
           const isDisabled = false;
 
           const handleSelect = () => {
+            console.log('🖱️ [SimpleCalendarDropdown] handleSelect called:', {
+              calendarId: calendar.id,
+              calendarName: calendar.name,
+              isDisabled,
+              isSelected,
+              multiSelect,
+              currentSelectedIds
+            });
+            
             if (isDisabled) return;
             
             if (multiSelect) {
@@ -113,9 +132,12 @@ export const SimpleCalendarDropdown: React.FC<SimpleCalendarDropdownProps> = ({
               const newSelection = isSelected
                 ? currentSelectedIds.filter(id => id !== calendar.id)
                 : [...currentSelectedIds, calendar.id];
+              
+              console.log('📤 [SimpleCalendarDropdown] Calling onMultiSelectionChange:', newSelection);
               onMultiSelectionChange?.(newSelection);
             } else {
               // 单选模式（向后兼容）
+              console.log('📤 [SimpleCalendarDropdown] Calling onSelectionChange:', calendar.id);
               onSelectionChange?.(calendar.id);
             }
           };
@@ -134,7 +156,11 @@ export const SimpleCalendarDropdown: React.FC<SimpleCalendarDropdownProps> = ({
                 opacity: isDisabled ? 0.5 : 1,
                 transition: 'all 0.2s ease'
               }}
-              onClick={handleSelect}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleSelect();
+              }}
               onMouseEnter={(e) => {
                 if (!isDisabled) {
                   e.currentTarget.style.backgroundColor = isSelected ? '#f3f4f6' : '#f9fafb';

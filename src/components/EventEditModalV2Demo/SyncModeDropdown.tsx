@@ -94,7 +94,12 @@ export const SyncModeDropdown: React.FC<SyncModeDropdownProps> = ({
                 backgroundColor: isSelected ? '#f3f4f6' : 'transparent',
                 transition: 'all 0.2s ease'
               }}
-              onClick={() => onSelectionChange(mode.id)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🖱️ [SyncModeDropdown] Clicked mode:', mode.id, mode.name);
+                onSelectionChange(mode.id);
+              }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = isSelected ? '#f3f4f6' : '#f9fafb';
               }}
