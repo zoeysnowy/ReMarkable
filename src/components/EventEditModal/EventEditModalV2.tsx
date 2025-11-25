@@ -1679,41 +1679,93 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                   )}
                 </div>
 
-                {/* 日历来源（只读显示）*/}
+                {/* 计划同步日历选择器（v2.0.3 新设计："来自" → "同步"）*/}
                 <div className="eventmodal-v2-plan-row" style={{ marginTop: '4px' }}>
-                  <span style={{ flexShrink: 0, color: '#6b7280' }}>来自</span>
+                  <span style={{ flexShrink: 0, color: '#6b7280' }}>同步</span>
                   <div className="eventmodal-v2-plan-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    {/* 只读显示事件来源（6层优先级）*/}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', maxWidth: '180px', minWidth: '120px' }}>
-                      {(() => {
-                        const sourceInfo = getEventSourceInfo(event);
-                        return (
-                          <>
-                            {sourceInfo.emoji && (
-                              <span style={{ fontSize: '16px', flexShrink: 0 }}>{sourceInfo.emoji}</span>
-                            )}
-                            {sourceInfo.icon && (
-                              typeof sourceInfo.icon === 'string' && sourceInfo.icon.endsWith('.svg') ? (
-                                <img src={sourceInfo.icon} alt="" style={{ width: '16px', height: '16px', flexShrink: 0 }} />
-                              ) : (
-                                <span style={{ fontSize: '16px', flexShrink: 0 }}>{sourceInfo.icon}</span>
-                              )
-                            )}
-                            <span style={{ 
-                              fontSize: 'clamp(10px, 2vw, 14px)', 
-                              color: '#374151', 
-                              fontWeight: 500,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              flex: 1,
-                              minWidth: 0
-                            }}>
-                              {sourceInfo.name}
-                            </span>
-                          </>
-                        );
-                      })()}
+                    {/* 日历选择器（可编辑）*/}
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <div 
+                        ref={sourceCalendarRef}
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '6px', 
+                          maxWidth: '180px', 
+                          minWidth: '120px',
+                          cursor: 'pointer',
+                          padding: '2px 4px',
+                          borderRadius: '4px',
+                          transition: 'background-color 0.15s'
+                        }}
+                        onClick={() => setShowSourceCalendarPicker(!showSourceCalendarPicker)}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
+                        {(() => {
+                          const selectedIds = formData.planSyncConfig?.targetCalendars || [];
+                          if (selectedIds.length === 0) {
+                            return <span style={{ color: '#9ca3af', fontSize: '14px' }}>选择日历...</span>;
+                          }
+                          const firstCal = availableCalendars.find(c => c.id === selectedIds[0]);
+                          return (
+                            <>
+                              <span style={{ color: firstCal?.color || '#6b7280', fontSize: '14px' }}>●</span>
+                              <span style={{ 
+                                fontSize: 'clamp(10px, 2vw, 14px)', 
+                                color: '#374151', 
+                                fontWeight: 500,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                flex: 1,
+                                minWidth: 0
+                              }}>
+                                {firstCal?.name || '未知日历'}
+                                {selectedIds.length > 1 && <span style={{ color: '#9ca3af' }}> 等</span>}
+                              </span>
+                            </>
+                          );
+                        })()}
+                      </div>
+                      
+                      {showSourceCalendarPicker && createPortal(
+                        <div 
+                          onClick={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          style={{
+                            position: 'fixed',
+                            top: sourceCalendarRef.current ? (sourceCalendarRef.current.getBoundingClientRect().bottom + 4) : '50%',
+                            left: sourceCalendarRef.current ? sourceCalendarRef.current.getBoundingClientRect().left : '50%',
+                            zIndex: 9999,
+                            minWidth: '200px',
+                            backgroundColor: '#ffffff',
+                            border: '1px solid #e5e7eb',
+                            borderRadius: '8px',
+                            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                          }}
+                        >
+                          <SimpleCalendarDropdown
+                            availableCalendars={availableCalendars}
+                            selectedCalendarIds={formData.planSyncConfig?.targetCalendars || []}
+                            multiSelect={true}
+                            onMultiSelectionChange={(calendarIds) => {
+                              setFormData(prev => ({
+                                ...prev,
+                                calendarIds: calendarIds, // 🆕 更新 calendarIds（用于同步判断）
+                                planSyncConfig: {
+                                  ...prev.planSyncConfig,
+                                  mode: prev.planSyncConfig?.mode || 'send-only',
+                                  targetCalendars: calendarIds
+                                }
+                              }));
+                            }}
+                            onClose={() => setShowSourceCalendarPicker(false)}
+                            title="选择同步日历（可多选）"
+                          />
+                        </div>,
+                        document.body
+                      )}
                     </div>
                     
                     {/* 同步模式选择区域 */}
