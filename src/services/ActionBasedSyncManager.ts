@@ -2081,7 +2081,7 @@ private getUserSettings(): any {
 
           // 构建事件对象
           const eventData = {
-            subject: action.data.title,
+            subject: action.data.title?.simpleTitle || 'Untitled Event',
             body: { 
               contentType: 'Text', 
               content: createDescription
@@ -2310,7 +2310,7 @@ private getUserSettings(): any {
             
             // 构建事件对象
             const eventData = {
-              subject: action.data.title,
+              subject: action.data.title?.simpleTitle || 'Untitled Event',
               body: { 
                 contentType: 'text', 
                 content: createDescription
@@ -2402,7 +2402,7 @@ private getUserSettings(): any {
                 );
                 
                 const migrateEventData = {
-                  subject: action.data.title,
+                  subject: action.data.title?.simpleTitle || 'Untitled Event',
                   body: { 
                     contentType: 'text', 
                     content: migrateDescription
@@ -2562,7 +2562,7 @@ private getUserSettings(): any {
                 );
                 
                 const recreateEventData = {
-                  subject: action.data.title,
+                  subject: action.data.title?.simpleTitle || 'Untitled Event',
                   body: { 
                     contentType: 'text', 
                     content: recreateDescription
@@ -2608,7 +2608,7 @@ private getUserSettings(): any {
       // console.log('🔧 [PRIORITY 4] Attempting minimal update (title + description only)...');
             try {
               const minimalUpdate = {
-                subject: action.data.title,
+                subject: action.data.title?.simpleTitle || 'Untitled Event',
                 body: { 
                   contentType: 'text', 
                   content: action.data.description || '📱 由 ReMarkable 更新'

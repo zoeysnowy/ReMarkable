@@ -1613,7 +1613,7 @@ export class MicrosoftCalendarService {
       );
       
       const outlookEventData: any = {
-        subject: eventData.subject || eventData.title,
+        subject: eventData.subject || eventData.title?.simpleTitle || 'Untitled Event',
         body: eventData.body || { contentType: 'Text', content: description }
       };
       
@@ -1741,7 +1741,7 @@ export class MicrosoftCalendarService {
       const endDateTime = eventData.end?.dateTime || eventData.endTime;
       
       const outlookEventData = {
-        subject: eventData.subject || eventData.title,
+        subject: eventData.subject || eventData.title?.simpleTitle || 'Untitled Event',
         body: eventData.body || { contentType: 'Text', content: eventData.description || '' },
         start: {
           dateTime: typeof startDateTime === 'string' ? startDateTime : formatTimeForStorage(startDateTime),
@@ -1830,7 +1830,7 @@ export class MicrosoftCalendarService {
   private createSimulatedEvent(event: any): GraphEvent {
     return {
       id: `simulated-${Date.now()}`,
-      subject: event.title || 'Simulated Event'
+      subject: event.title?.simpleTitle || 'Simulated Event'
     };
   }
 
@@ -2357,7 +2357,7 @@ export class MicrosoftCalendarService {
       );
       
       const outlookEventData = {
-        subject: event.subject || event.title,
+        subject: event.subject || event.title?.simpleTitle || 'Untitled Event',
         body: event.body || { contentType: 'Text', content: description },
         start: {
           dateTime: typeof startDateTime === 'string' ? startDateTime : formatTimeForStorage(startDateTime),
