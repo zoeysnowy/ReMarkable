@@ -92,7 +92,7 @@ console.log(newEvent.eventlog);
 
 **验证点**:
 - ✅ `eventlog` 字段是对象格式
-- ✅ `eventlog.content` 包含 Slate JSON
+- ✅ `eventlog.slateJson` 包含 Slate JSON
 - ✅ `eventlog.createdAt` 和 `updatedAt` 已设置
 - ✅ `eventlog.syncState.status` 为 "pending"
 
@@ -118,9 +118,9 @@ console.log({
 });
 // 预期:
 // description: "新的描述内容"
-// eventlog.descriptionHtml: "新的描述内容"
-// eventlog.descriptionPlainText: "新的描述内容"
-// eventlog.content: "[{\"type\":\"paragraph\",\"children\":[{\"text\":\"新的描述内容\"}]}]"
+// eventlog.html: "新的描述内容"
+// eventlog.plainText: "新的描述内容"
+// eventlog.slateJson: "[{\"type\":\"paragraph\",\"children\":[{\"text\":\"新的描述内容\"}]}]"
 // eventlog.syncState.contentHash: "已更新"
 ```
 

@@ -99,9 +99,9 @@ export interface EventLogSyncState {
  * 用于 Event.eventlog 字段（重构后）
  */
 export interface EventLog {
-  content: string;              // Slate JSON 字符串（主存储，用户编辑）
-  descriptionHtml?: string;     // HTML（自动从 content 生成，用于 Outlook 同步）
-  descriptionPlainText?: string; // 纯文本（用于搜索）
+  slateJson: string;            // Slate JSON 格式（主数据源，用户编辑）
+  html?: string;                // HTML 格式（渲染用，Outlook 同步）
+  plainText?: string;           // 纯文本（搜索优化，性能缓存）
   attachments?: Attachment[];   // 附件列表
   versions?: EventLogVersion[]; // 版本历史（最多 50 个）
   syncState?: EventLogSyncState; // 同步状态
@@ -291,15 +291,15 @@ export interface Event {
    * if (typeof event.eventlog === 'string') {
    *   // 旧格式：HTML 字符串
    *   const html = event.eventlog;
-   * } else if (event.eventlog && 'content' in event.eventlog) {
+   * } else if (event.eventlog && 'slateJson' in event.eventlog) {
    *   // 新格式：EventLog 对象
-   *   const slateJSON = event.eventlog.content;
+   *   const slateJSON = event.eventlog.slateJson;
    * }
    * 
    * // 写入时使用新格式
    * event.eventlog = {
-   *   content: JSON.stringify(slateNodes),
-   *   descriptionHtml: '<p>...</p>',
+   *   slateJson: JSON.stringify(slateNodes),
+   *   html: '<p>...</p>',
    * };
    * ```
    */

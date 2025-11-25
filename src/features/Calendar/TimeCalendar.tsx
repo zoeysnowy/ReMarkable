@@ -1873,33 +1873,19 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
    */
   const handleSaveEventFromModal = async (updatedEvent: Event) => {
     console.log('💾 [TimeCalendar] Event saved via EditModal:', updatedEvent.id);
+    console.log('📋 [TimeCalendar] Received event data (for reference only, NOT modifying):', {
+      title: updatedEvent.title,
+      tags: updatedEvent.tags
+    });
     
     try {
       // 🎯 EditModal 已经通过 EventHub 完成了所有更新
-      // TimeCalendar 只需要刷新 UI
+      // TimeCalendar 只负责 UI 刷新，绝对不修改事件数据
       
       // 验证事件存在
       if (!updatedEvent.id) {
         console.error('❌ [TimeCalendar] Invalid event ID');
         return;
-      }
-
-      // 🏷️ Bug Fix #4: 如果标题为空，使用标签名称（含emoji）作为标题
-      if (!updatedEvent.title || !updatedEvent.title.simpleTitle?.trim()) {
-        const tagId = updatedEvent.tags?.[0];
-        if (tagId) {
-          const flatTags = TagService.getFlatTags();
-          const tag = flatTags.find(t => t.id === tagId);
-          if (tag) {
-            const tagTitle = tag.emoji ? `${tag.emoji} ${tag.name}` : tag.name;
-            updatedEvent.title = { simpleTitle: tagTitle, colorTitle: undefined, fullTitle: undefined };
-            console.log('🏷️ [TimeCalendar] Using tag name as title:', tagTitle);
-            
-            // 更新标题
-            const { EventHub } = await import('../../services/EventHub');
-            await EventHub.updateFields(updatedEvent.id, { title: updatedEvent.title });
-          }
-        }
       }
       
       // ✅ 不需要刷新 UI - EventHub 已发出 eventUpdated/eventCreated 事件

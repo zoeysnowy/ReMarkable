@@ -313,7 +313,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         const eventlog = (e as any).eventlog;
         const eventlogType = typeof eventlog;
         const eventlogContent = eventlogType === 'object' && eventlog !== null
-          ? eventlog.descriptionHtml || eventlog.content || ''
+          ? eventlog.html || eventlog.slateJson || ''
           : eventlog || '';
         
         return {
@@ -370,7 +370,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         const eventlog = (e as any).eventlog;
         const eventlogType = typeof eventlog;
         const eventlogContent = eventlogType === 'object' && eventlog !== null
-          ? eventlog.descriptionHtml || eventlog.content || ''
+          ? eventlog.html || eventlog.slateJson || ''
           : eventlog || '';
         
         return {

@@ -2070,10 +2070,10 @@ private getUserSettings(): any {
           }
 
           // 🔧 使用新的描述处理方法
-          // 🆕 v2.14.1: 优先从 eventlog 对象提取 descriptionHtml
+          // 🆕 v2.14.1: 优先从 eventlog 对象提取 html
           let descriptionSource = action.data.description || '';
           if (action.data.eventlog && typeof action.data.eventlog === 'object') {
-            descriptionSource = action.data.eventlog.descriptionHtml || action.data.eventlog.descriptionPlainText || descriptionSource;
+            descriptionSource = action.data.eventlog.html || action.data.eventlog.plainText || descriptionSource;
           }
           
           const createDescription = this.processEventDescription(
@@ -2398,10 +2398,10 @@ private getUserSettings(): any {
               
               try {
                 // 在新日历中创建事件（相当于迁移）
-                // 🆕 v2.14.1: 优先从 eventlog 对象提取 descriptionHtml
+                // 🆕 v2.14.1: 优先从 eventlog 对象提取 html
                 let descriptionSource = action.data.description || '';
                 if (action.data.eventlog && typeof action.data.eventlog === 'object') {
-                  descriptionSource = action.data.eventlog.descriptionHtml || action.data.eventlog.descriptionPlainText || descriptionSource;
+                  descriptionSource = action.data.eventlog.html || action.data.eventlog.plainText || descriptionSource;
                 }
                 
                 const migrateDescription = this.processEventDescription(
@@ -2467,10 +2467,10 @@ private getUserSettings(): any {
           
           // 描述处理：添加同步备注管理
           if (action.data.description !== undefined) {
-            // 🆕 v2.14.1: 优先从 eventlog 对象提取 descriptionHtml
+            // 🆕 v2.14.1: 优先从 eventlog 对象提取 html
             let descriptionSource = action.data.description || '';
             if (action.data.eventlog && typeof action.data.eventlog === 'object') {
-              descriptionSource = action.data.eventlog.descriptionHtml || action.data.eventlog.descriptionPlainText || descriptionSource;
+              descriptionSource = action.data.eventlog.html || action.data.eventlog.plainText || descriptionSource;
             }
             
             const updateDescription = this.processEventDescription(
@@ -2570,10 +2570,10 @@ private getUserSettings(): any {
                 }
               
                 
-                // 🆕 v2.14.1: 优先从 eventlog 对象提取 descriptionHtml
+                // 🆕 v2.14.1: 优先从 eventlog 对象提取 html
                 let descriptionSource = action.data.description || '';
                 if (action.data.eventlog && typeof action.data.eventlog === 'object') {
-                  descriptionSource = action.data.eventlog.descriptionHtml || action.data.eventlog.descriptionPlainText || descriptionSource;
+                  descriptionSource = action.data.eventlog.html || action.data.eventlog.plainText || descriptionSource;
                 }
                 
                 const recreateDescription = this.processEventDescription(

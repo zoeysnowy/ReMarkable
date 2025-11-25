@@ -242,14 +242,14 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
             }
           }
           
-          // 如果是 EventLog 对象，提取 content 字段并解析
-          if (event.eventlog.content) {
+          // 如果是 EventLog 对象，提取 slateJson 字段并解析
+          if (event.eventlog.slateJson) {
             try {
-              return typeof event.eventlog.content === 'string' 
-                ? JSON.parse(event.eventlog.content) 
-                : event.eventlog.content;
+              return typeof event.eventlog.slateJson === 'string' 
+                ? JSON.parse(event.eventlog.slateJson) 
+                : event.eventlog.slateJson;
             } catch (error) {
-              console.error('❌ [EventEditModalV2] eventlog.content 解析失败:', error);
+              console.error('❌ [EventEditModalV2] eventlog.slateJson 解析失败:', error);
               return [];
             }
           }
@@ -551,10 +551,10 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         description: finalDescription, // 🔒 Private 模式下包含参与者文本
         eventlog: currentEventlog as any,  // ✅ Slate JSON 对象（Descendant[] 数组）
         syncStatus: timerSyncStatus, // 🔧 Timer 运行中保持 local-only
-        // 🆕 日历同步配置
-        calendarIds: formData.calendarIds,
-        planSyncConfig: formData.planSyncConfig,
-        actualSyncConfig: formData.actualSyncConfig,
+        // 🆕 日历同步配置（Plan vs Actual 分离）
+        calendarIds: formData.calendarIds,          // ✅ 保留 calendarIds（含义 = planSyncConfig.targetCalendars）
+        planSyncConfig: formData.planSyncConfig,    // 计划安排同步配置
+        actualSyncConfig: formData.actualSyncConfig, // 实际进展同步配置
       } as Event;
 
       // 🔧 调试日志：验证 eventlog 字段
@@ -868,14 +868,14 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
             }
           }
           
-          // 如果是 EventLog 对象，提取 content 字段并解析
-          if (event.eventlog.content) {
+          // 如果是 EventLog 对象，提取 slateJson 字段并解析
+          if (event.eventlog.slateJson) {
             try {
-              return typeof event.eventlog.content === 'string' 
-                ? JSON.parse(event.eventlog.content) 
-                : event.eventlog.content;
+              return typeof event.eventlog.slateJson === 'string' 
+                ? JSON.parse(event.eventlog.slateJson) 
+                : event.eventlog.slateJson;
             } catch (error) {
-              console.error('❌ [EventEditModalV2] eventlog.content 解析失败:', error);
+              console.error('❌ [EventEditModalV2] eventlog.slateJson 解析失败:', error);
               return [];
             }
           }
@@ -1752,7 +1752,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                             onMultiSelectionChange={(calendarIds) => {
                               setFormData(prev => ({
                                 ...prev,
-                                calendarIds: calendarIds, // 🆕 更新 calendarIds（用于同步判断）
+                                calendarIds: calendarIds, // ✅ 保留 calendarIds（含义 = planSyncConfig.targetCalendars）
                                 planSyncConfig: {
                                   ...prev.planSyncConfig,
                                   mode: prev.planSyncConfig?.mode || 'send-only',
@@ -1944,10 +1944,10 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                                 setSyncCalendarIds(calendarIds);
                                 setFormData(prev => ({
                                   ...prev,
-                                  calendarIds: calendarIds,
                                   actualSyncConfig: {
                                     ...prev.actualSyncConfig,
-                                    targetCalendars: calendarIds
+                                    mode: prev.actualSyncConfig?.mode || 'send-only',
+                                    targetCalendars: calendarIds // ✅ 实际进展独立配置（不影响 calendarIds）
                                   }
                                 }));
                               }}

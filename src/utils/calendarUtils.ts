@@ -313,13 +313,13 @@ export function convertToCalendarEvent(
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = eventlog;
         displayTitle = (tempDiv.textContent || '').substring(0, 50).trim(); // 取前50字符
-      } else if (eventlog.descriptionPlainText) {
+      } else if (eventlog.plainText) {
         // EventLog 对象格式
-        displayTitle = eventlog.descriptionPlainText.substring(0, 50).trim();
-      } else if (eventlog.descriptionHtml) {
+        displayTitle = eventlog.plainText.substring(0, 50).trim();
+      } else if (eventlog.html) {
         // EventLog 对象格式（HTML）
         const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = eventlog.descriptionHtml;
+        tempDiv.innerHTML = eventlog.html;
         displayTitle = (tempDiv.textContent || '').substring(0, 50).trim();
       }
       

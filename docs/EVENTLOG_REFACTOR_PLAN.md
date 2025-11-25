@@ -49,7 +49,7 @@ interface Event {
   
   /**
    * description 保留为向后兼容（Outlook 同步）
-   * 自动从 eventlog.descriptionHtml 复制
+   * 自动从 eventlog.html 复制
    */
   description?: string;
 }
@@ -126,7 +126,7 @@ export interface Event {
   
   /**
    * description 保留（向后兼容 + Outlook 同步）
-   * 自动从 eventlog.descriptionHtml 同步
+   * 自动从 eventlog.html 同步
    */
   description?: string;
 }
@@ -268,11 +268,11 @@ class EventService {
     
     // 初始化 eventlog 为新格式
     const eventlog: EventLog = {
-      content: typeof event.eventlog === 'string' 
+      slateJson: typeof event.eventlog === 'string' 
         ? event.eventlog 
         : JSON.stringify([{ type: 'paragraph', children: [{ text: '' }] }]),
-      descriptionHtml: event.description || '',
-      descriptionPlainText: event.description ? stripHtml(event.description) : '',
+      html: event.description || '',
+      plainText: event.description ? stripHtml(event.description) : '',
       attachments: [],
       versions: [],
       syncState: {
@@ -288,7 +288,7 @@ class EventService {
       ...event,
       id: event.id || generateId(),
       eventlog: eventlog,
-      description: eventlog.descriptionHtml, // 同步到 description
+      description: eventlog.html, // 同步到 description
       createdAt: now,
       updatedAt: now,
     };
@@ -304,17 +304,17 @@ class EventService {
   ): Promise<Event> {
     const existingEvent = this.getEventById(eventId);
     
-    // 如果更新了 eventlog.content，自动生成 descriptionHtml
+    // 如果更新了 eventlog.slateJson，自动生成 html
     if (updates.eventlog && typeof updates.eventlog === 'object') {
       const eventlog = updates.eventlog as EventLog;
       
       // Slate JSON → HTML
-      eventlog.descriptionHtml = slateToHtml(JSON.parse(eventlog.content));
-      eventlog.descriptionPlainText = stripHtml(eventlog.descriptionHtml);
+      eventlog.html = slateToHtml(JSON.parse(eventlog.slateJson));
+      eventlog.plainText = stripHtml(eventlog.html);
       eventlog.updatedAt = new Date().toISOString();
       
       // 同步到 description 字段（Outlook 使用）
-      updates.description = eventlog.descriptionHtml;
+      updates.description = eventlog.html;
     }
     
     // ... 更新逻辑
@@ -358,8 +358,8 @@ useEffect(() => {
 
 ### 数据迁移验证
 - [ ] 旧数据（eventlog 为 string）成功转换为新格式
-- [ ] `eventlog.content` 包含有效的 Slate JSON
-- [ ] `eventlog.descriptionHtml` 保留原 HTML
+- [ ] `eventlog.slateJson` 包含有效的 Slate JSON
+- [ ] `eventlog.html` 保留原 HTML
 - [ ] `description` 字段正确同步
 
 ### 功能验证

@@ -504,7 +504,7 @@ export class EventService {
           const log = (updates as any).eventlog;
           if (!log) return '';
           if (typeof log === 'string') return log.substring(0, 50);
-          if (typeof log === 'object') return `[EventLog对象: ${log.descriptionPlainText?.substring(0, 30) || '无内容'}]`;
+          if (typeof log === 'object') return `[EventLog对象: ${log.plainText?.substring(0, 30) || '无内容'}]`;
           return '[未知格式]';
         })(), // 🆕 v1.8: 兼容新旧格式
         calendarIds: (updates as any).calendarIds, // 🔍 检查 calendarIds
@@ -602,7 +602,7 @@ export class EventService {
           };
           
           if (updates.description === undefined) {
-            updatesWithSync.description = eventLogObj.descriptionHtml || eventLogObj.descriptionPlainText || '';
+            updatesWithSync.description = eventLogObj.html || eventLogObj.plainText || '';
           }
           
           console.log('[EventService] eventlog 已是对象格式，直接使用');
@@ -615,9 +615,9 @@ export class EventService {
             
             // 构建完整的 EventLog 对象
             const eventLogObject: EventLog = {
-              content: newEventlog,
-              descriptionHtml: htmlDescription,
-              descriptionPlainText: plainTextDescription,
+              slateJson: newEventlog,
+              html: htmlDescription,
+              plainText: plainTextDescription,
               attachments: (originalEvent as any)?.eventlog?.attachments || [],
               versions: (originalEvent as any)?.eventlog?.versions || [],
               syncState: {

@@ -3352,9 +3352,9 @@ class EventService {
         
         // 构建完整的 EventLog 对象
         updates.eventlog = {
-          content: updates.eventlog,           // Slate JSON
-          descriptionHtml: html,               // HTML 版本
-          descriptionPlainText: plainText,     // 纯文本
+          slateJson: updates.eventlog,         // Slate JSON
+          html: html,                          // HTML 版本
+          plainText: plainText,                // 纯文本
           attachments: originalEvent.eventlog?.attachments || [],
           versions: originalEvent.eventlog?.versions || [],
           syncState: {
@@ -3367,7 +3367,7 @@ class EventService {
         
         // 自动同步到 description（用于 Outlook）
         if (updates.description === undefined) {
-          updates.description = html;
+          updates.description = updates.eventlog.html;
         }
       }
     }
@@ -3464,7 +3464,7 @@ EventService.updateEvent(eventId, { eventlog: slateJson })
 EventService 内部转换
   ├─ jsonToSlateNodes(slateJson)
   ├─ slateNodesToHtml(nodes)
-  └─ 构建 EventLog 对象 { content, descriptionHtml, descriptionPlainText }
+  └─ 构建 EventLog 对象 { slateJson, html, plainText }
   ↓
 localStorage 持久化 (EventLog 对象格式)
   ↓
@@ -3494,9 +3494,9 @@ Outlook 同步 (使用 descriptionHtml)
 ```typescript
 interface EventLog {
   // ===== 内容字段（三种格式） =====
-  content: string;                    // Slate JSON（主数据源）
-  descriptionHtml: string;            // HTML 格式（渲染用）
-  descriptionPlainText: string;       // 纯文本（搜索用）
+  slateJson: string;                  // Slate JSON 格式（主数据源，用户编辑）
+  html: string;                       // HTML 格式（渲染用，Outlook 同步）
+  plainText: string;                  // 纯文本（搜索用，性能优化）
   
   // ===== 元数据字段 =====
   attachments?: Attachment[];         // 附件列表
@@ -3547,7 +3547,7 @@ class EventService {
           );
           // 自动同步到 description（用于 Outlook）
           if (updates.description === undefined) {
-            updates.description = updates.eventlog.descriptionHtml;
+            updates.description = updates.eventlog.html;
           }
           break;
           
@@ -3555,16 +3555,16 @@ class EventService {
           // ✅ 完整的 EventLog 对象（已经转换好）
           // 直接使用，同步 description
           if (updates.description === undefined) {
-            updates.description = (updates.eventlog as EventLog).descriptionHtml;
+            updates.description = (updates.eventlog as EventLog).html;
           }
           break;
           
         case 'plain-html':
           // 🔧 旧版兼容：纯 HTML 字符串
           updates.eventlog = {
-            content: htmlToSlateJson(updates.eventlog as string),
-            descriptionHtml: updates.eventlog as string,
-            descriptionPlainText: stripHtmlTags(updates.eventlog as string),
+            slateJson: htmlToSlateJson(updates.eventlog as string),
+            html: updates.eventlog as string,
+            plainText: stripHtmlTags(updates.eventlog as string),
             createdAt: originalEvent.eventlog?.createdAt || formatTimeForStorage(new Date()),
             updatedAt: formatTimeForStorage(new Date()),
           };
@@ -3581,17 +3581,17 @@ class EventService {
         // 保留 eventlog 的元数据（attachments、versions、syncState）
         updates.eventlog = {
           ...existingEventLog,
-          content: htmlToSlateJson(updates.description),
-          descriptionHtml: updates.description,
-          descriptionPlainText: stripHtmlTags(updates.description),
+          slateJson: htmlToSlateJson(updates.description),
+          html: updates.description,
+          plainText: stripHtmlTags(updates.description),
           updatedAt: formatTimeForStorage(new Date()),
         };
       } else {
         // 如果原来没有 eventlog，创建新的
         updates.eventlog = {
-          content: htmlToSlateJson(updates.description),
-          descriptionHtml: updates.description,
-          descriptionPlainText: stripHtmlTags(updates.description),
+          slateJson: htmlToSlateJson(updates.description),
+          html: updates.description,
+          plainText: stripHtmlTags(updates.description),
           createdAt: formatTimeForStorage(new Date()),
           updatedAt: formatTimeForStorage(new Date()),
         };
@@ -3629,9 +3629,9 @@ class EventService {
     const existingMeta = typeof originalEventLog === 'object' ? originalEventLog : {};
     
     return {
-      content: slateJson,
-      descriptionHtml: html,
-      descriptionPlainText: plainText,
+      slateJson: slateJson,
+      html: html,
+      plainText: plainText,
       attachments: existingMeta.attachments || [],
       versions: existingMeta.versions || [],
       syncState: {
@@ -3659,8 +3659,8 @@ class ActionBasedSyncManager {
     let descriptionForSync = '';
     
     if (event.eventlog && typeof event.eventlog === 'object') {
-      // EventLog 对象 → 提取 descriptionHtml
-      descriptionForSync = event.eventlog.descriptionHtml || '';
+      // EventLog 对象 → 提取 html
+      descriptionForSync = event.eventlog.html || '';
     } else if (typeof event.eventlog === 'string') {
       // Slate JSON 字符串 → 先转换为 HTML
       const slateNodes = jsonToSlateNodes(event.eventlog);
@@ -3695,9 +3695,9 @@ class ActionBasedSyncManager {
       // 保留本地 eventlog 的元数据，只更新内容
       const updatedEventLog: EventLog = {
         ...localEvent.eventlog,
-        content: htmlToSlateJson(outlookDescription),
-        descriptionHtml: outlookDescription,
-        descriptionPlainText: stripHtmlTags(outlookDescription),
+        slateJson: htmlToSlateJson(outlookDescription),
+        html: outlookDescription,
+        plainText: stripHtmlTags(outlookDescription),
         updatedAt: formatTimeForStorage(new Date()),
         syncState: {
           ...localEvent.eventlog.syncState,
@@ -3731,7 +3731,7 @@ graph LR
     I --> J[localStorage 持久化]
     I --> K[同步 description 字段]
     K --> L[ActionBasedSyncManager]
-    L --> M[提取 descriptionHtml]
+    L --> M[提取 eventlog.html]
     M --> N[Outlook API body.content]
 ```
 
@@ -3744,7 +3744,7 @@ graph LR
     D --> E{本地 eventlog 类型?}
     E -->|EventLog 对象| F[保留元数据]
     E -->|不存在| G[创建新 EventLog]
-    F --> H[更新 content/descriptionHtml/descriptionPlainText]
+    F --> H[更新 slateJson/html/plainText]
     G --> H
     H --> I[EventService.updateEvent]
     I --> J[localStorage 持久化]
@@ -3766,9 +3766,9 @@ const handleSave = async () => {
 // EventService 自动转换为：
 {
   eventlog: {
-    content: currentSlateJson,
-    descriptionHtml: "<p>转换后的 HTML</p>",
-    descriptionPlainText: "转换后的纯文本",
+    slateJson: currentSlateJson,
+    html: "<p>转换后的 HTML</p>",
+    plainText: "转换后的纯文本",
     // ... 其他元数据
   },
   description: "<p>转换后的 HTML</p>",  // 自动同步
@@ -3792,9 +3792,9 @@ await EventService.updateEvent(localEventId, {
 // EventService 内部自动：
 {
   eventlog: {
-    content: htmlToSlateJson('<p>用户在 Outlook 修改的内容</p>'),
-    descriptionHtml: '<p>用户在 Outlook 修改的内容</p>',
-    descriptionPlainText: '用户在 Outlook 修改的内容',
+    slateJson: htmlToSlateJson('<p>用户在 Outlook 修改的内容</p>'),
+    html: '<p>用户在 Outlook 修改的内容</p>',
+    plainText: '用户在 Outlook 修改的内容',
     attachments: [...],  // ✅ 保留原有附件
     versions: [...],     // ✅ 保留版本历史
   },
@@ -3840,9 +3840,9 @@ await EventService.createEvent(localEvent);
 // EventService 内部自动创建 eventlog：
 {
   eventlog: {
-    content: htmlToSlateJson('<p>会议议程</p>'),
-    descriptionHtml: '<p>会议议程</p>',
-    descriptionPlainText: '会议议程',
+    slateJson: htmlToSlateJson('<p>会议议程</p>'),
+    html: '<p>会议议程</p>',
+    plainText: '会议议程',
     createdAt: '2025-11-25T10:00:00',
     updatedAt: '2025-11-25T10:00:00',
   }
@@ -3863,8 +3863,8 @@ await EventService.createEvent(localEvent);
    // ❌ 错误（不需要手动构建 EventLog 对象）
    EventHub.updateFields(eventId, {
      eventlog: {
-       content: slateJsonString,
-       descriptionHtml: manuallyConvertedHtml,  // EventService 会自动转换
+       slateJson: slateJsonString,
+       html: manuallyConvertedHtml,  // EventService 会自动转换
        // ...
      }
    });
@@ -3882,8 +3882,8 @@ await EventService.createEvent(localEvent);
    await EventService.updateEvent(eventId, {
      description: outlookBodyContent,
      eventlog: {
-       content: manuallyConvert(outlookBodyContent),  // 丢失 attachments、versions
-       descriptionHtml: outlookBodyContent,
+       slateJson: manuallyConvert(outlookBodyContent),  // 丢失 attachments、versions
+       html: outlookBodyContent,
      }
    });
    ```
@@ -3925,17 +3925,17 @@ await EventService.createEvent(localEvent);
    ```typescript
    // ❌ 错误：直接赋值会丢失 attachments、versions
    updates.eventlog = {
-     content: newContent,
-     descriptionHtml: newHtml,
+     slateJson: newContent,
+     html: newHtml,
      // 丢失了 attachments、versions、syncState
    };
    
    // ✅ 正确：保留原有元数据
    updates.eventlog = {
      ...originalEvent.eventlog,  // 保留元数据
-     content: newContent,
-     descriptionHtml: newHtml,
-     descriptionPlainText: newPlainText,
+     slateJson: newContent,
+     html: newHtml,
+     plainText: newPlainText,
      updatedAt: now(),
    };
    ```
@@ -3945,8 +3945,8 @@ await EventService.createEvent(localEvent);
    // ❌ 错误：Outlook API 无法反序列化对象
    outlookEvent.body.content = event.eventlog;  // 对象
    
-   // ✅ 正确：提取 descriptionHtml 字符串
-   outlookEvent.body.content = event.eventlog?.descriptionHtml || '';
+   // ✅ 正确：提取 html 字符串
+   outlookEvent.body.content = event.eventlog?.html || '';
    ```
 
 ### 6. 性能与兼容性

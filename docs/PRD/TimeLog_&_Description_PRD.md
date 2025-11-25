@@ -4182,7 +4182,7 @@ export class SyncEngine {
     
     // 2. 检测冲突
     const conflict = detectConflict(
-      localEvent.eventlog.content,
+      localEvent.eventlog.slateJson,
       remoteEvent.body.content,
       localEvent.syncState
     );
@@ -4208,8 +4208,8 @@ export class SyncEngine {
     console.log('📤 推送到 Outlook...');
     
     // 1. 转换 Slate JSON → HTML
-    const html = slateToHtml(local.eventlog.content);
-    const plainText = slateToPlainText(local.eventlog.content);
+    const html = slateToHtml(local.eventlog.slateJson);
+    const plainText = slateToPlainText(local.eventlog.slateJson);
     
     // 2. 处理附件
     const attachments = await this.uploadAttachments(local.eventlog.attachments);
@@ -4226,7 +4226,7 @@ export class SyncEngine {
     
     // 4. 更新同步状态
     await this.db.events.update(local.id, {
-      'syncState.localHash': hashContent(local.eventlog.content),
+      'syncState.localHash': hashContent(local.eventlog.slateJson),
       'syncState.remoteHash': hashContent(html),
       'syncState.lastSyncedAt': new Date(),
       'syncState.syncStatus': 'synced',
@@ -4279,7 +4279,7 @@ export class SyncEngine {
     // 策略 2: 提示用户手动选择（未来功能）
     // return {
     //   status: 'conflict',
-    //   local: local.eventlog.content,
+    //   local: local.eventlog.slateJson,
     //   remote: htmlToSlate(remote.body.content),
     // };
   }
@@ -6176,7 +6176,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ item, highlight }) => {
     return (
       <div className="task-timelog">
         <SlatePreview 
-          content={item.eventlog.content} 
+          content={item.eventlog.slateJson} 
           maxHeight={200}
           showTimestamps={false}  // 快照视图不显示时间戳
         />

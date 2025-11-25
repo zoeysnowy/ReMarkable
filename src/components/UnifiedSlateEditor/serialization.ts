@@ -33,7 +33,7 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
       示例: items.slice(0, 3).map(item => {
         const eventlogType = typeof item.eventlog;
         const eventlogContent = eventlogType === 'object' && item.eventlog !== null
-          ? item.eventlog.descriptionHtml || item.eventlog.content || ''
+          ? item.eventlog.html || item.eventlog.slateJson || ''
           : item.eventlog || '';
         
         return {
@@ -58,7 +58,7 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
       
       if (item.eventlog) {
         if (eventlogType === 'object' && item.eventlog !== null) {
-          eventlogContent = item.eventlog.descriptionHtml || item.eventlog.descriptionPlainText || '';
+          eventlogContent = item.eventlog.html || item.eventlog.plainText || '';
         } else {
           eventlogContent = item.eventlog;
         }
@@ -159,7 +159,7 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
     if (item.eventlog) {
       if (typeof item.eventlog === 'object' && item.eventlog !== null) {
         // 新格式：EventLog 对象
-        descriptionContent = item.eventlog.descriptionHtml || item.eventlog.descriptionPlainText || '';
+        descriptionContent = item.eventlog.html || item.eventlog.plainText || '';
       } else {
         // 旧格式：字符串
         descriptionContent = item.eventlog;
