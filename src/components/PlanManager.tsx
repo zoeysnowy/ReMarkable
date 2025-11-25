@@ -633,12 +633,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         // 增量更新
         const updatedEvent = EventService.getEventById(eventId);
         if (updatedEvent) {
-          // 🐛 DEBUG: Log metadata from EventService
+          // 🐛 DEBUG: Log checkType from EventService (checkType is at root level)
           console.log('🔍 [PlanManager] updatedEvent from EventService:', {
             eventId: eventId?.slice(-10),
-            hasMetadata: !!updatedEvent.metadata,
-            checkType: updatedEvent.metadata?.checkType,
-            metadataKeys: updatedEvent.metadata ? Object.keys(updatedEvent.metadata) : []
+            checkType: updatedEvent.checkType,
+            checkedCount: updatedEvent.checked?.length || 0,
+            title: updatedEvent.title?.simpleTitle?.substring(0, 20)
           });
           
           setItems(prev => {

@@ -1348,7 +1348,7 @@ export class MicrosoftCalendarService {
         
         return {
           id: `outlook-${outlookEvent.id}`,
-          title: outlookEvent.subject || 'Untitled Event',
+          title: { simpleTitle: outlookEvent.subject || 'Untitled Event', colorTitle: undefined, fullTitle: undefined },
           subject: outlookEvent.subject || 'Untitled Event',
           description: cleanDescription,
           bodyPreview: outlookEvent.bodyPreview || outlookEvent.body?.content?.substring(0, 100) || `${outlookEvent.subject} - 来自 Outlook 的日程`,
@@ -1544,7 +1544,7 @@ export class MicrosoftCalendarService {
         
         return {
           id: `outlook-${outlookEvent.id}`,
-          title: outlookEvent.subject || 'Untitled Event',
+          title: { simpleTitle: outlookEvent.subject || 'Untitled Event', colorTitle: undefined, fullTitle: undefined },
           subject: outlookEvent.subject || 'Untitled Event',
           description: cleanDescription,
           bodyPreview: outlookEvent.bodyPreview || outlookEvent.body?.content?.substring(0, 100) || `${outlookEvent.subject} - 来自 Outlook 的日程`,

@@ -894,12 +894,12 @@ export class EventService {
       const event = existingEvents[eventIndex];
       const timestamp = new Date().toISOString();
 
-      // 🐛 DEBUG: Log metadata before update
+      // 🐛 DEBUG: Log checkType before update (checkType is at root level, not in metadata)
       console.log('🔍 [EventService.checkIn] BEFORE update:', {
         eventId: eventId.slice(-10),
-        hasMetadata: !!event.metadata,
-        checkType: event.metadata?.checkType,
-        metadataKeys: event.metadata ? Object.keys(event.metadata) : []
+        checkType: event.checkType,
+        checkedCount: event.checked?.length || 0,
+        title: event.title?.simpleTitle?.substring(0, 20)
       });
 
       // 初始化checked数组（如果不存在）
@@ -917,12 +917,12 @@ export class EventService {
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
       eventLogger.log('💾 [EventService] Event checked in, saved to localStorage');
 
-      // 🐛 DEBUG: Log metadata after save
+      // 🐛 DEBUG: Log checkType after save
       console.log('🔍 [EventService.checkIn] AFTER save:', {
         eventId: eventId.slice(-10),
-        hasMetadata: !!event.metadata,
-        checkType: event.metadata?.checkType,
-        checkedCount: event.checked.length
+        checkType: event.checkType,
+        checkedCount: event.checked.length,
+        willDispatchUpdate: true
       });
 
       // 记录事件历史
@@ -1265,17 +1265,30 @@ export class EventService {
 
   /**
    * 规范化标题对象：自动填充缺失的层级
-   * @param titleInput - 部分标题数据（可能只有 fullTitle/colorTitle/simpleTitle 之一）
+   * @param titleInput - 部分标题数据（可能只有 fullTitle/colorTitle/simpleTitle 之一），或者旧格式的字符串
    * @returns 完整的 EventTitle 对象（包含三层）
    * 
    * 规则：
+   * 0. 如果是字符串（旧格式） → 转换为 simpleTitle，然后升级为三层
    * 1. 有 fullTitle → 降级生成 colorTitle 和 simpleTitle
    * 2. 有 colorTitle → 升级生成 fullTitle，降级生成 simpleTitle
    * 3. 有 simpleTitle → 升级生成 colorTitle 和 fullTitle
    * 4. 多个字段都有 → 保持原样，不覆盖
    */
-  private static normalizeTitle(titleInput: Partial<import('../types').EventTitle> | undefined): import('../types').EventTitle {
+  private static normalizeTitle(titleInput: Partial<import('../types').EventTitle> | string | undefined): import('../types').EventTitle {
     const result: import('../types').EventTitle = {};
+    
+    // 🔧 场景 0: 兼容旧格式 - 字符串 title（来自 Timer、Outlook 同步等）
+    if (typeof titleInput === 'string') {
+      console.log('[EventService] normalizeTitle: 检测到字符串标题，自动转换为 EventTitle 对象', {
+        title: titleInput
+      });
+      return {
+        simpleTitle: titleInput,
+        colorTitle: titleInput,
+        fullTitle: this.simpleTitleToFullTitle(titleInput)
+      };
+    }
     
     if (!titleInput) {
       // 空标题：返回空对象
