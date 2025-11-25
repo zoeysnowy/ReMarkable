@@ -150,11 +150,20 @@ export class EventService {
 
   /**
    * 获取所有事�?
+   * 🆕 v2.14.1: 自动规范化 title 字段，兼容旧数据
    */
   static getAllEvents(): Event[] {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
-      return saved ? JSON.parse(saved) : [];
+      if (!saved) return [];
+      
+      const events: Event[] = JSON.parse(saved);
+      
+      // 🔧 自动规范化所有事件的 title 字段（处理旧数据中的 undefined）
+      return events.map(event => ({
+        ...event,
+        title: this.normalizeTitle(event.title)
+      }));
     } catch (error) {
       eventLogger.error('�?[EventService] Failed to load events:', error);
       return [];
@@ -1337,7 +1346,8 @@ export class EventService {
     }
     
     // 场景 3: 只有 simpleTitle → 升级生成 colorTitle 和 fullTitle
-    else if (simpleTitle && !fullTitle && !colorTitle) {
+    // 🔧 修复：使用 === undefined 严格判断，避免空字符串被误判
+    else if (simpleTitle && colorTitle === undefined && fullTitle === undefined) {
       result.simpleTitle = simpleTitle;
       result.colorTitle = simpleTitle; // 纯文本直接赋值（无格式）
       result.fullTitle = this.simpleTitleToFullTitle(simpleTitle);
@@ -1349,14 +1359,15 @@ export class EventService {
     
     // 场景 4: 多个字段都有 → 保持原样，填充缺失字段
     else {
-      result.fullTitle = fullTitle || (simpleTitle ? this.simpleTitleToFullTitle(simpleTitle) : undefined);
-      result.colorTitle = colorTitle || simpleTitle || '';
-      result.simpleTitle = simpleTitle || (colorTitle ? this.colorTitleToSimpleTitle(colorTitle) : '');
+      result.fullTitle = fullTitle ?? (simpleTitle ? this.simpleTitleToFullTitle(simpleTitle) : this.simpleTitleToFullTitle(''));
+      result.colorTitle = colorTitle ?? simpleTitle ?? '';
+      result.simpleTitle = simpleTitle ?? (colorTitle ? this.colorTitleToSimpleTitle(colorTitle) : '');
       
       console.log('[EventService] normalizeTitle: 使用已有字段', {
         hasFullTitle: !!fullTitle,
         hasColorTitle: !!colorTitle,
-        hasSimpleTitle: !!simpleTitle
+        hasSimpleTitle: !!simpleTitle,
+        result: result
       });
     }
     

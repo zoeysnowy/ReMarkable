@@ -1468,6 +1468,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     if (!dateRange) return [];
     
     try {
+      // 🔧 首先检查是否是 ghost 事件（Snapshot 模式下显示为已删除）
+      const ghostEvent = items.find((item: any) => item.id === eventId && item._isDeleted);
+      if (ghostEvent) {
+        return ['deleted'];
+      }
+      
       const startTime = formatTimeForStorage(dateRange.start);
       const endTime = formatTimeForStorage(dateRange.end);
       
@@ -1596,7 +1602,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       console.error('[getEventStatuses] ❌ 错误:', error);
       return [];
     }
-  }, [dateRange]);
+  }, [dateRange, items]);
 
   // 🆕 计算状态竖线段 - 支持多状态显示
   const statusLineSegments = useMemo((): StatusLineSegment[] => {
@@ -1642,6 +1648,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         index: s.startIndex,
         status: s.status,
         label: s.label
+      })),
+      deleted数量: segments.filter(s => s.status === 'deleted').length,
+      deleted详情: segments.filter(s => s.status === 'deleted').map(s => ({
+        index: s.startIndex,
+        eventId: editorItems[s.startIndex]?.id?.slice(-10),
+        title: editorItems[s.startIndex]?.title?.simpleTitle?.substring(0, 20)
       }))
     });
     
@@ -2688,6 +2700,16 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         onTimeFilterChange={(filter) => {
           console.log('[PlanManager] Time filter changed:', filter);
           // TODO: 根据时间过滤更新右侧面板事件显示
+        }}
+        onCheckboxChange={(eventId, checked) => {
+          // 🔧 处理 checkbox 状态变化
+          if (checked) {
+            EventService.checkIn(eventId);
+          } else {
+            EventService.uncheck(eventId);
+          }
+          // 触发 UI 更新
+          setItems(prev => [...prev]);
         }}
       />
     </div>

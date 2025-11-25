@@ -19,7 +19,9 @@ import { Event, CheckType } from '../types';
  * @returns 是否显示 checkbox
  */
 export function shouldShowCheckbox(event: { checkType?: CheckType }): boolean {
-  return event.checkType !== undefined && event.checkType !== 'none';
+  // 🔧 统一逻辑：默认 fallback 为 'once'（显示 checkbox）
+  const checkType = event.checkType || 'once';
+  return checkType === 'once' || checkType === 'recurring';
 }
 
 /**

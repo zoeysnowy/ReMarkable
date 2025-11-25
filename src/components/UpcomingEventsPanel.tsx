@@ -186,7 +186,7 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
                 <div className="event-checkbox">
                   <input 
                     type="checkbox" 
-                    checked={!!event.checked} 
+                    checked={EventService.getCheckInStatus(event.id).isChecked} 
                     onChange={(e) => {
                       e.stopPropagation(); // 阻止触发卡片点击
                       handleCheckboxChange(event.id, e.target.checked);

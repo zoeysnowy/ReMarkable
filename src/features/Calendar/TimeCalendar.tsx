@@ -558,19 +558,15 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       const customEvent = event as CustomEvent;
       const detail = customEvent.detail;
       
-      console.log('🔄 [EVENT] Events updated:', detail?.eventId || 'unknown', detail);
-      
       // ⚡ 增量更新优化：根据操作类型进行精确更新
       const eventId = detail?.eventId;
       if (eventId) {
         if (detail?.deleted) {
           // 删除操作：直接从 state 中移除
-          console.log('🗑️ [EVENT] Delete detected, removing from state:', eventId);
           setEvents(prev => prev.filter(e => e.id !== eventId));
           return;
         } else if (detail?.isNewEvent || detail?.isUpdate) {
           // 新建/更新操作：从 localStorage 读取单个事件并更新
-          console.log('✏️ [EVENT] Update/Create detected, fetching event:', eventId);
           const savedEvents = localStorage.getItem(STORAGE_KEYS.EVENTS);
           if (savedEvents) {
             const parsedEvents = JSON.parse(savedEvents);
@@ -2560,7 +2556,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
               // 获取事件的开始和结束时间
               const start = event.start;
               const end = event.end;
-              const title = event.title || '';
+              const title = event.raw?.remarkableEvent?.title?.simpleTitle || '';
               const textColor = event.backgroundColor || event.borderColor || 'rgba(59, 130, 246, 0.8)';
               
               // 格式化时间显示（带开始/结束提示）
@@ -2606,7 +2602,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
             time(event: any) {
               // 获取事件的开始和结束时间
               const start = event.start;
-              const title = event.title || '';
+              const title = event.raw?.remarkableEvent?.title?.simpleTitle || '';
               
               // 格式化时间显示
               let timeDisplay = '';
