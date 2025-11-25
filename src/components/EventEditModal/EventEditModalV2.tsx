@@ -1892,8 +1892,9 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                                 setSyncCalendarIds(calendarIds);
                                 setFormData(prev => ({
                                   ...prev,
-                                  planSyncConfig: {
-                                    ...prev.planSyncConfig,
+                                  calendarIds: calendarIds,
+                                  actualSyncConfig: {
+                                    ...prev.actualSyncConfig,
                                     targetCalendars: calendarIds
                                   }
                                 }));

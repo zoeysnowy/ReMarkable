@@ -3473,8 +3473,527 @@ Outlook 同步 (使用 descriptionHtml)
 
 ---
 
-**文档版本**: v1.8  
-**最后更新**: 2025-11-24  
+## 🔧 v1.9 EventLog 与 Description 字段转换机制详解 (2025-11-25)
+
+### 核心架构概览
+
+**背景问题**：
+- `eventlog` 字段：存储富文本内容（Slate JSON），支持版本历史、附件等复杂功能
+- `description` 字段：传统文本字段，用于 Outlook/Google Calendar 同步
+- 两者需要保持同步，但格式和用途不同
+
+**设计目标**：
+1. ✅ 单一数据源：`eventlog` 为主，`description` 为同步用派生字段
+2. ✅ 自动转换：组件层无需关心格式转换，EventService 统一处理
+3. ✅ 双向同步：内部编辑 → 外部同步，外部更新 → 内部同步
+4. ✅ 数据完整性：保留 eventlog 的元数据（attachments、versions、syncState）
+
+### 1. 数据结构定义
+
+#### EventLog 对象（完整结构）
+```typescript
+interface EventLog {
+  // ===== 内容字段（三种格式） =====
+  content: string;                    // Slate JSON（主数据源）
+  descriptionHtml: string;            // HTML 格式（渲染用）
+  descriptionPlainText: string;       // 纯文本（搜索用）
+  
+  // ===== 元数据字段 =====
+  attachments?: Attachment[];         // 附件列表
+  versions?: EventLogVersion[];       // 版本历史
+  syncState?: {                       // 同步状态
+    status: 'pending' | 'synced' | 'conflict';
+    contentHash: string;              // 内容哈希（检测冲突）
+    lastSyncTime?: string;
+  };
+  
+  // ===== 时间戳 =====
+  createdAt: string;                  // 创建时间
+  updatedAt: string;                  // 最后更新时间
+}
+```
+
+#### Event 接口中的相关字段
+```typescript
+interface Event {
+  // ... 其他字段
+  
+  eventlog?: EventLog | string;       // ✅ 支持多种格式输入
+  description?: string;               // ⚠️ 仅用于外部同步，不推荐直接修改
+  notes?: string;                     // 📝 旧版字段，向后兼容
+}
+```
+
+### 2. 转换机制详解
+
+#### 2.1 输入格式自动检测与转换（EventService）
+
+```typescript
+// EventService.ts - updateEvent 方法
+class EventService {
+  async updateEvent(eventId: string, updates: Partial<Event>) {
+    const originalEvent = this.getEvent(eventId);
+    
+    // ========== 场景1: eventlog 字段更新 ==========
+    if (updates.eventlog !== undefined) {
+      const inputType = this.detectEventLogFormat(updates.eventlog);
+      
+      switch (inputType) {
+        case 'slate-json-string':
+          // 🔧 前端传递 Slate JSON 字符串（最常见）
+          updates.eventlog = this.convertSlateJsonToEventLog(
+            updates.eventlog as string,
+            originalEvent.eventlog
+          );
+          // 自动同步到 description（用于 Outlook）
+          if (updates.description === undefined) {
+            updates.description = updates.eventlog.descriptionHtml;
+          }
+          break;
+          
+        case 'eventlog-object':
+          // ✅ 完整的 EventLog 对象（已经转换好）
+          // 直接使用，同步 description
+          if (updates.description === undefined) {
+            updates.description = (updates.eventlog as EventLog).descriptionHtml;
+          }
+          break;
+          
+        case 'plain-html':
+          // 🔧 旧版兼容：纯 HTML 字符串
+          updates.eventlog = {
+            content: htmlToSlateJson(updates.eventlog as string),
+            descriptionHtml: updates.eventlog as string,
+            descriptionPlainText: stripHtmlTags(updates.eventlog as string),
+            createdAt: originalEvent.eventlog?.createdAt || formatTimeForStorage(new Date()),
+            updatedAt: formatTimeForStorage(new Date()),
+          };
+          break;
+      }
+    }
+    
+    // ========== 场景2: description 字段更新（外部同步回来的数据） ==========
+    if (updates.description !== undefined && updates.eventlog === undefined) {
+      // 🔥 外部同步更新了 description，需要反向同步到 eventlog
+      const existingEventLog = originalEvent.eventlog;
+      
+      if (typeof existingEventLog === 'object') {
+        // 保留 eventlog 的元数据（attachments、versions、syncState）
+        updates.eventlog = {
+          ...existingEventLog,
+          content: htmlToSlateJson(updates.description),
+          descriptionHtml: updates.description,
+          descriptionPlainText: stripHtmlTags(updates.description),
+          updatedAt: formatTimeForStorage(new Date()),
+        };
+      } else {
+        // 如果原来没有 eventlog，创建新的
+        updates.eventlog = {
+          content: htmlToSlateJson(updates.description),
+          descriptionHtml: updates.description,
+          descriptionPlainText: stripHtmlTags(updates.description),
+          createdAt: formatTimeForStorage(new Date()),
+          updatedAt: formatTimeForStorage(new Date()),
+        };
+      }
+    }
+    
+    // 保存到 localStorage
+    // ...
+  }
+  
+  // 格式检测辅助函数
+  private detectEventLogFormat(input: any): 'slate-json-string' | 'eventlog-object' | 'plain-html' {
+    if (typeof input === 'string') {
+      if (input.trim().startsWith('[')) {
+        return 'slate-json-string';  // Slate JSON 数组
+      } else {
+        return 'plain-html';  // HTML 字符串
+      }
+    } else if (typeof input === 'object' && input.content) {
+      return 'eventlog-object';  // 完整的 EventLog 对象
+    }
+    return 'plain-html';  // 默认
+  }
+  
+  // Slate JSON → EventLog 对象转换
+  private convertSlateJsonToEventLog(
+    slateJson: string, 
+    originalEventLog?: EventLog | string
+  ): EventLog {
+    const slateNodes = jsonToSlateNodes(slateJson);
+    const html = slateNodesToHtml(slateNodes);
+    const plainText = stripHtmlTags(html);
+    
+    // 保留原有的元数据
+    const existingMeta = typeof originalEventLog === 'object' ? originalEventLog : {};
+    
+    return {
+      content: slateJson,
+      descriptionHtml: html,
+      descriptionPlainText: plainText,
+      attachments: existingMeta.attachments || [],
+      versions: existingMeta.versions || [],
+      syncState: {
+        status: 'pending',
+        contentHash: this.hashContent(slateJson),
+        lastSyncTime: formatTimeForStorage(new Date()),
+      },
+      createdAt: existingMeta.createdAt || formatTimeForStorage(new Date()),
+      updatedAt: formatTimeForStorage(new Date()),
+    };
+  }
+}
+```
+
+#### 2.2 外部同步转换（ActionBasedSyncManager）
+
+```typescript
+// ActionBasedSyncManager.ts - 同步到 Outlook
+class ActionBasedSyncManager {
+  // ========== 发送到外部服务（CREATE/UPDATE） ==========
+  private async executeCreateAction(action: SyncAction) {
+    const event = action.data;
+    
+    // 🔥 从 eventlog 提取 description（优先）
+    let descriptionForSync = '';
+    
+    if (event.eventlog && typeof event.eventlog === 'object') {
+      // EventLog 对象 → 提取 descriptionHtml
+      descriptionForSync = event.eventlog.descriptionHtml || '';
+    } else if (typeof event.eventlog === 'string') {
+      // Slate JSON 字符串 → 先转换为 HTML
+      const slateNodes = jsonToSlateNodes(event.eventlog);
+      descriptionForSync = slateNodesToHtml(slateNodes);
+    } else if (event.description) {
+      // 降级方案：使用 description 字段
+      descriptionForSync = event.description;
+    }
+    
+    // 构建 Outlook 事件数据
+    const outlookEventData = {
+      subject: event.title?.simpleTitle || '(无标题)',
+      body: {
+        contentType: 'HTML',
+        content: descriptionForSync || ' ',  // Outlook 要求至少一个空格
+      },
+      // ... 其他字段
+    };
+    
+    // 发送到 Outlook API
+    await this.microsoftService.createEvent(outlookEventData);
+  }
+  
+  // ========== 从外部服务接收更新 ==========
+  private async handleIncomingUpdate(outlookEvent: OutlookEvent) {
+    const localEvent = EventService.getEventById(outlookEvent.localId);
+    
+    // Outlook description 变化 → 同步到本地 eventlog
+    const outlookDescription = outlookEvent.body?.content || '';
+    
+    if (localEvent.eventlog && typeof localEvent.eventlog === 'object') {
+      // 保留本地 eventlog 的元数据，只更新内容
+      const updatedEventLog: EventLog = {
+        ...localEvent.eventlog,
+        content: htmlToSlateJson(outlookDescription),
+        descriptionHtml: outlookDescription,
+        descriptionPlainText: stripHtmlTags(outlookDescription),
+        updatedAt: formatTimeForStorage(new Date()),
+        syncState: {
+          ...localEvent.eventlog.syncState,
+          status: 'synced',
+          lastSyncTime: formatTimeForStorage(new Date()),
+        },
+      };
+      
+      await EventService.updateEvent(localEvent.id, {
+        eventlog: updatedEventLog,
+        description: outlookDescription,  // 同步更新
+      });
+    }
+  }
+}
+```
+
+### 3. 数据流向图
+
+#### 3.1 内部编辑 → 外部同步
+```mermaid
+graph LR
+    A[用户编辑 EventLog] --> B[LightSlateEditor onChange]
+    B --> C[Slate JSON 字符串]
+    C --> D[EventEditModalV2 handleSave]
+    D --> E[EventHub.updateFields]
+    E --> F[EventService.updateEvent]
+    F --> G{检测格式}
+    G -->|Slate JSON| H[convertSlateJsonToEventLog]
+    H --> I[EventLog 对象]
+    I --> J[localStorage 持久化]
+    I --> K[同步 description 字段]
+    K --> L[ActionBasedSyncManager]
+    L --> M[提取 descriptionHtml]
+    M --> N[Outlook API body.content]
+```
+
+#### 3.2 外部更新 → 内部同步
+```mermaid
+graph LR
+    A[Outlook 事件更新] --> B[Webhook/轮询]
+    B --> C[ActionBasedSyncManager.handleIncomingUpdate]
+    C --> D[读取 Outlook body.content]
+    D --> E{本地 eventlog 类型?}
+    E -->|EventLog 对象| F[保留元数据]
+    E -->|不存在| G[创建新 EventLog]
+    F --> H[更新 content/descriptionHtml/descriptionPlainText]
+    G --> H
+    H --> I[EventService.updateEvent]
+    I --> J[localStorage 持久化]
+    I --> K[触发 eventsUpdated 事件]
+    K --> L[前端重新渲染]
+```
+
+### 4. 关键转换场景
+
+#### 场景1：用户在 EventEditModalV2 编辑内容
+```typescript
+// ✅ 前端只传递 Slate JSON
+const handleSave = async () => {
+  await EventHub.updateFields(eventId, {
+    eventlog: currentSlateJson,  // 字符串
+  });
+};
+
+// EventService 自动转换为：
+{
+  eventlog: {
+    content: currentSlateJson,
+    descriptionHtml: "<p>转换后的 HTML</p>",
+    descriptionPlainText: "转换后的纯文本",
+    // ... 其他元数据
+  },
+  description: "<p>转换后的 HTML</p>",  // 自动同步
+}
+```
+
+#### 场景2：Outlook 更新事件描述
+```typescript
+// Outlook 推送更新
+const outlookUpdate = {
+  id: 'outlook-123',
+  body: { content: '<p>用户在 Outlook 修改的内容</p>' }
+};
+
+// ActionBasedSyncManager 处理
+await EventService.updateEvent(localEventId, {
+  description: outlookUpdate.body.content,
+  // ⚠️ 未传递 eventlog，触发反向同步
+});
+
+// EventService 内部自动：
+{
+  eventlog: {
+    content: htmlToSlateJson('<p>用户在 Outlook 修改的内容</p>'),
+    descriptionHtml: '<p>用户在 Outlook 修改的内容</p>',
+    descriptionPlainText: '用户在 Outlook 修改的内容',
+    attachments: [...],  // ✅ 保留原有附件
+    versions: [...],     // ✅ 保留版本历史
+  },
+  description: '<p>用户在 Outlook 修改的内容</p>',
+}
+```
+
+#### 场景3：Timer 自动保存（30秒）
+```typescript
+// App.tsx - saveTimerEvent
+const timerEvent: Event = {
+  id: timerEventId,
+  startTime: formatTimeForStorage(startTime),
+  endTime: formatTimeForStorage(endTime),
+  eventlog: existingEvent?.eventlog,  // ✅ 保留用户编辑的 eventlog
+  // ⚠️ 不传递 description，避免覆盖
+};
+
+await EventService.updateEvent(timerEventId, timerEvent, {
+  skipSync: true,
+  source: 'timer-auto-save'
+});
+```
+
+#### 场景4：外部创建事件（无 eventlog）
+```typescript
+// Outlook 创建新事件
+const newOutlookEvent = {
+  subject: '新会议',
+  body: { content: '<p>会议议程</p>' }
+};
+
+// MicrosoftCalendarService 转换为本地事件
+const localEvent: Event = {
+  id: generateId(),
+  title: { simpleTitle: '新会议' },
+  description: '<p>会议议程</p>',
+  // ⚠️ 未传递 eventlog
+};
+
+await EventService.createEvent(localEvent);
+
+// EventService 内部自动创建 eventlog：
+{
+  eventlog: {
+    content: htmlToSlateJson('<p>会议议程</p>'),
+    descriptionHtml: '<p>会议议程</p>',
+    descriptionPlainText: '会议议程',
+    createdAt: '2025-11-25T10:00:00',
+    updatedAt: '2025-11-25T10:00:00',
+  }
+}
+```
+
+### 5. 最佳实践与注意事项
+
+#### ✅ 推荐做法
+
+1. **前端组件只传递 Slate JSON 字符串**
+   ```typescript
+   // ✅ 正确
+   EventHub.updateFields(eventId, {
+     eventlog: slateJsonString
+   });
+   
+   // ❌ 错误（不需要手动构建 EventLog 对象）
+   EventHub.updateFields(eventId, {
+     eventlog: {
+       content: slateJsonString,
+       descriptionHtml: manuallyConvertedHtml,  // EventService 会自动转换
+       // ...
+     }
+   });
+   ```
+
+2. **外部同步只更新 description，让 EventService 处理 eventlog**
+   ```typescript
+   // ✅ 正确
+   await EventService.updateEvent(eventId, {
+     description: outlookBodyContent,
+     // eventlog 会自动反向同步
+   });
+   
+   // ❌ 错误（手动构建可能丢失元数据）
+   await EventService.updateEvent(eventId, {
+     description: outlookBodyContent,
+     eventlog: {
+       content: manuallyConvert(outlookBodyContent),  // 丢失 attachments、versions
+       descriptionHtml: outlookBodyContent,
+     }
+   });
+   ```
+
+3. **Timer 自动保存保留 eventlog，不覆盖**
+   ```typescript
+   // ✅ 正确
+   const timerEvent = {
+     id: eventId,
+     startTime: newStartTime,
+     eventlog: existingEvent?.eventlog,  // 保留
+   };
+   
+   // ❌ 错误（会覆盖用户编辑的内容）
+   const timerEvent = {
+     id: eventId,
+     startTime: newStartTime,
+     description: '',  // 不要传递空值
+   };
+   ```
+
+#### ⚠️ 常见陷阱
+
+1. **陷阱1：直接修改 description 导致 eventlog 不一致**
+   ```typescript
+   // ❌ 错误示例
+   await EventService.updateEvent(eventId, {
+     description: newContent,  // 修改了 description
+     // 但没有同步 eventlog，导致不一致
+   });
+   
+   // ✅ 正确做法：只更新 eventlog
+   await EventService.updateEvent(eventId, {
+     eventlog: newSlateJson,  // description 会自动同步
+   });
+   ```
+
+2. **陷阱2：外部同步覆盖 eventlog 元数据**
+   ```typescript
+   // ❌ 错误：直接赋值会丢失 attachments、versions
+   updates.eventlog = {
+     content: newContent,
+     descriptionHtml: newHtml,
+     // 丢失了 attachments、versions、syncState
+   };
+   
+   // ✅ 正确：保留原有元数据
+   updates.eventlog = {
+     ...originalEvent.eventlog,  // 保留元数据
+     content: newContent,
+     descriptionHtml: newHtml,
+     descriptionPlainText: newPlainText,
+     updatedAt: now(),
+   };
+   ```
+
+3. **陷阱3：Outlook 同步时发送 EventLog 对象**
+   ```typescript
+   // ❌ 错误：Outlook API 无法反序列化对象
+   outlookEvent.body.content = event.eventlog;  // 对象
+   
+   // ✅ 正确：提取 descriptionHtml 字符串
+   outlookEvent.body.content = event.eventlog?.descriptionHtml || '';
+   ```
+
+### 6. 性能与兼容性
+
+#### 性能优化
+- ✅ **按需转换**：只在更新时转换，不在读取时重复转换
+- ✅ **缓存哈希**：使用 contentHash 检测内容变化，避免不必要的同步
+- ✅ **批量处理**：多次更新合并为一次持久化操作
+
+#### 向后兼容
+- ✅ **支持旧版 `notes` 字段**：自动迁移到 `description`
+- ✅ **支持纯 HTML 输入**：自动转换为 EventLog 对象
+- ✅ **支持纯字符串 eventlog**：兼容旧版本数据
+
+#### 错误处理
+```typescript
+// EventService.updateEvent - 错误处理示例
+try {
+  const slateNodes = jsonToSlateNodes(updates.eventlog);
+  // ... 转换逻辑
+} catch (error) {
+  console.error('[EventService] Slate JSON 解析失败，降级为纯文本', error);
+  // 降级方案：保留原始字符串
+  updates.eventlog = {
+    content: updates.eventlog as string,
+    descriptionHtml: updates.eventlog as string,
+    descriptionPlainText: stripHtmlTags(updates.eventlog as string),
+    // ...
+  };
+}
+```
+
+### 7. 测试验证
+
+#### 测试场景清单
+- [ ] 用户在 EventEditModalV2 编辑 eventlog → 自动同步到 Outlook
+- [ ] Outlook 更新 description → eventlog 反向同步（保留元数据）
+- [ ] Timer 30秒自动保存 → 不覆盖用户编辑的 eventlog
+- [ ] Timer 手动编辑保存 → 正确更新 eventlog
+- [ ] 外部创建事件（无 eventlog） → 自动创建 EventLog 对象
+- [ ] Slate JSON 解析失败 → 降级为纯文本（不崩溃）
+- [ ] 添加附件/版本 → 元数据正确保留
+
+---
+
+**文档版本**: v1.9  
+**最后更新**: 2025-11-25  
 **维护者**: GitHub Copilot  
 **变更记录**:
 - v1.0 (2025-11-06): 初始版本
@@ -3484,3 +4003,4 @@ Outlook 同步 (使用 descriptionHtml)
 - v1.4-v1.6 (2025-11-19): 循环更新防护、ID分配与时间系统优化
 - v1.7 (2025-11-20): **新增事件签到功能**，完整的时间戳记录、EventHistoryService集成和状态线显示
 - v1.8 (2025-11-24): **EventLog 保存架构优化**，统一由 EventService 负责 Slate JSON → EventLog 对象转换，修复 Timer eventlog 保存问题
+- v1.9 (2025-11-25): **EventLog 与 Description 字段转换机制详解**，包含完整的双向同步逻辑、数据流向图、最佳实践和测试清单
