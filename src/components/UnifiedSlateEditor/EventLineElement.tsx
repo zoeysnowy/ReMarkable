@@ -42,6 +42,11 @@ export const EventLineElement: React.FC<EventLineElementProps> = ({
   
   // 🆕 处理 placeholder 点击
   const handleMouseDown = (e: React.MouseEvent) => {
+    // 🔧 不要阻止 checkbox 等表单元素的事件
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement) {
+      return; // 让表单元素正常工作
+    }
+    
     if (isPlaceholder && onPlaceholderClick) {
       e.preventDefault();
       e.stopPropagation();

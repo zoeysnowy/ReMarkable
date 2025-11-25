@@ -161,7 +161,7 @@ export function prepareRemoteEventData(event: Event, syncMode: string) {
   
   // 准备基础远程事件数据
   const remoteEvent = {
-    title: event.title,
+    title: event.title?.simpleTitle || '',
     description: event.description || '',
     startTime: event.startTime,
     endTime: event.endTime,

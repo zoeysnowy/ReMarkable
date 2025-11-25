@@ -217,13 +217,6 @@ export interface Event {
   id: string;
   // ========== 标题字段（三层架构 v2.14） ==========
   title: EventTitle;          // 统一标题对象（自动降级/升级）
-  
-  // ⚠️ DEPRECATED v2.14: 向后兼容字段，将在未来版本移除
-  /** @deprecated v2.14 请使用 title.simpleTitle */
-  simpleTitle?: string;
-  /** @deprecated v2.14 请使用 title.fullTitle */
-  fullTitle?: string;
-  
   description?: string;       // 纯文本描述（后台字段，仅用于Outlook同步）
   // ========== 时间字段（由 TimeHub 管理） ==========
   // ⚠️ v1.8 重要变更：时间字段允许 undefined

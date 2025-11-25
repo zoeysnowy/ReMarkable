@@ -288,7 +288,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         数量: initialItemsRef.current.length,
         示例: initialItemsRef.current.slice(0, 3).map(e => ({
           id: e.id?.slice(-10),
-          title: e.title?.slice(0, 20),
+          title: e.title?.simpleTitle?.slice(0, 20) || '',
           isPlan: e.isPlan
         }))
       });
@@ -318,7 +318,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         
         return {
           id: e.id?.substring(0, 30),
-          title: e.title?.substring(0, 20),
+          title: e.title?.simpleTitle?.substring(0, 20) || '',
           isPlan: e.isPlan,
           eventlogType,
           hasEventlog: !!eventlog,
@@ -375,7 +375,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         
         return {
           id: e.id?.substring(0, 30),
-          title: e.title?.substring(0, 20),
+          title: e.title?.simpleTitle?.substring(0, 20) || '',
           eventlogType,
           hasEventlog: !!eventlog,
           hasDescription: !!e.description,
@@ -395,7 +395,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         TimeCalendar已过期: allEvents.filter(e => e.isTimeCalendar && e.endTime && new Date(e.endTime) <= now).length,
         示例事件: allEvents.slice(0, 3).map(e => ({
           id: e.id?.substring(0, 20),
-          title: e.title?.substring(0, 20),
+          title: e.title?.simpleTitle?.substring(0, 20) || '',
           isPlan: e.isPlan,
           isTimeCalendar: e.isTimeCalendar,
           parentEventId: e.parentEventId,
@@ -633,6 +633,14 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         // 增量更新
         const updatedEvent = EventService.getEventById(eventId);
         if (updatedEvent) {
+          // 🐛 DEBUG: Log metadata from EventService
+          console.log('🔍 [PlanManager] updatedEvent from EventService:', {
+            eventId: eventId?.slice(-10),
+            hasMetadata: !!updatedEvent.metadata,
+            checkType: updatedEvent.metadata?.checkType,
+            metadataKeys: updatedEvent.metadata ? Object.keys(updatedEvent.metadata) : []
+          });
+          
           setItems(prev => {
             return prev.map((e: Event) => e.id === eventId ? updatedEvent : e);
           });
@@ -929,7 +937,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       
       // 🆕 空白检测（使用透传后的字段）
       const isEmpty = (
-        !updatedItem.title?.trim() && 
+        !updatedItem.title?.simpleTitle?.trim() && 
         !updatedItem.content?.trim() && 
         !updatedItem.description?.trim() &&
         !updatedItem.eventlog?.trim() && // 🆕 v1.8: 检测富文本描述
@@ -978,7 +986,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         
         console.log('[executeBatchUpdate] 标签到日历映射:', {
           eventId: updatedItem.id,
-          title: updatedItem.title?.substring(0, 20),
+          title: updatedItem.title?.simpleTitle?.substring(0, 20) || '',
           tags: updatedItem.tags,
           tagIds,
           calendarIds,
@@ -1019,7 +1027,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         // 🔍 调试：显示时间来源
         console.log('[executeBatchUpdate] 时间字段来源:', {
           eventId: updatedItem.id,
-          title: updatedItem.title?.substring(0, 20),
+          title: updatedItem.title?.simpleTitle?.substring(0, 20) || '',
           timeHubStart: timeSnapshot.start,
           updatedItemStart: updatedItem.startTime,
           existingStart: existingItem?.startTime,
@@ -1052,7 +1060,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       actions.save.forEach(item => {
         console.log('[PlanManager] 准备保存到 EventService:', {
           id: item.id,
-          title: item.title?.substring(0, 20),
+          title: item.title?.simpleTitle?.substring(0, 20) || '',
           hasEventlog: !!(item as any).eventlog,
           hasDescription: !!item.description,
           eventlogLength: ((item as any).eventlog || '').length,
@@ -1090,7 +1098,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         for (const [id, item] of prev.entries()) {
           // 检查是否为完全空白的事件
           const isEmpty = (
-            !item.title?.trim() && 
+            !item.title?.simpleTitle?.trim() && 
             !item.content?.trim() && 
             !item.description?.trim() &&
             !item.startTime &&
@@ -1129,7 +1137,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       
       // 检查是否为空白新行
       const isEmpty = (
-        !updatedItem.title?.trim() && 
+        !updatedItem.title?.simpleTitle?.trim() && 
         !updatedItem.content?.trim() && 
         !updatedItem.description?.trim() &&
         !updatedItem.startTime &&
@@ -1280,7 +1288,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       result = result.filter(item => 
-        item.title?.toLowerCase().includes(query) ||
+        item.title?.simpleTitle?.toLowerCase().includes(query) ||
         item.description?.toLowerCase().includes(query) ||
         item.content?.toLowerCase().includes(query)
       );
@@ -1301,7 +1309,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       console.error('[PlanManager] 🚨 filteredItems 中发现', ghostsInFiltered.length, '个 ghost 事件！', 
         ghostsInFiltered.map((item: any) => ({
           id: item.id?.slice(-8),
-          title: item.title?.substring(0, 20) || item.content?.substring(0, 20),
+          title: item.title?.simpleTitle?.substring(0, 20) || item.content?.substring(0, 20),
           _isDeleted: item._isDeleted,
           _deletedAt: item._deletedAt ? new Date(item._deletedAt).toLocaleString() : 'N/A'
         }))
@@ -1367,8 +1375,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         }
         
         // 🎯 步骤 2: 业务类型过滤（空白事件）
-        const hasContent = log.before.title || log.before.content || 
-                          log.before.simpleTitle || log.before.fullTitle;
+        const hasContent = log.before.title?.simpleTitle || log.before.content;
         if (!hasContent) {
           console.log('[PlanManager] ⏭️ 跳过空白 ghost:', log.eventId.slice(-8));
           return;
@@ -1386,8 +1393,6 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           eventId: log.eventId.slice(-8),
           title: log.before.title,
           content: log.before.content,
-          simpleTitle: log.before.simpleTitle,
-          fullTitle: log.before.fullTitle,
           删除于: new Date(log.timestamp).toLocaleString(),
           before完整信息: log.before
         });
@@ -1404,7 +1409,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       );
       if (skippedDeletes.length > 0) {
         console.log('[PlanManager] ⏭️ 跳过（不在起点也不在范围内创建）:', skippedDeletes.length, '条', 
-          skippedDeletes.map(op => `${op.eventId?.slice(-8) || 'unknown'}-${op.before?.title?.substring(0, 15) || 'no title'}`));
+          skippedDeletes.map(op => `${op.eventId?.slice(-8) || 'unknown'}-${op.before?.title?.simpleTitle?.substring(0, 15) || 'no title'}`));
       }
       
       console.log('[PlanManager] 📊 Snapshot 完成：最终', allItems.length, '个事件', `(${allItems.filter((i: any) => i._isDeleted).length} ghost)`);
@@ -1426,7 +1431,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         pendingEmptyItems数量: pendingEmptyItems.size,
         allItems数量: allItems.length,
         过滤后数量: result.length,
-        items示例: items.slice(0, 3).map(i => ({ id: i.id, title: i.title?.substring(0, 20) }))
+        items示例: items.slice(0, 3).map(i => ({ id: i.id, title: i.title?.simpleTitle?.substring(0, 20) || '' }))
       });
     }
     
@@ -1461,7 +1466,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       
       // 获取事件基本信息
       const event = EventService.getEventById(eventId);
-      const eventTitle = event?.title?.substring(0, 15) || 'Unknown';
+      const eventTitle = event?.title?.simpleTitle?.substring(0, 15) || 'Unknown';
       
       // 🔍 检查事件的实际打勾状态
       const checkInStatus = EventService.getCheckInStatus(eventId);
@@ -1599,7 +1604,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       前3个: editorItems.slice(0, 3).map((item, idx) => ({
         index: idx,
         id: item.id?.substring(0, 10),
-        title: item.title?.substring(0, 20)
+        title: item.title?.simpleTitle?.substring(0, 20) || ''
       }))
     });
     
@@ -1608,7 +1613,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       
       const eventStatuses = getEventStatuses(item.id);
       
-      console.log(`[PlanManager] Event[${index}] ${item.title?.substring(0, 20)}: ${eventStatuses.length}个状态 ${JSON.stringify(eventStatuses)}`);
+      console.log(`[PlanManager] Event[${index}] ${item.title?.simpleTitle?.substring(0, 20) || ''}: ${eventStatuses.length}个状态 ${JSON.stringify(eventStatuses)}`);
       
       // 为每个状态创建一个segment
       eventStatuses.forEach(status => {
@@ -1801,14 +1806,14 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             next.delete(titleLine.id);
             return next;
           });
-          dbg('plan', '✅ 空行有内容，从 pending 转为正式事件', { id: titleLine.id, title: newItem.title?.substring(0, 20) });
+          dbg('plan', '✅ 空行有内容，从 pending 转为正式事件', { id: titleLine.id, title: newItem.title?.simpleTitle?.substring(0, 20) || '' });
         } else if (wasPending && !hasContent) {
           // 🔧 仍然是空行：更新 pending 中的数据但不转为正式
           setPendingEmptyItems(prev => new Map(prev).set(titleLine.id, newItem));
           dbg('plan', '📝 更新空行 pending 数据', { id: titleLine.id });
         } else if (!wasPending && hasContent) {
           // 🆕 直接创建有内容的新 item（比如粘贴文本）
-          dbg('plan', '🚀 直接创建有内容的新事件', { id: titleLine.id, title: newItem.title?.substring(0, 20) });
+          dbg('plan', '🚀 直接创建有内容的新事件', { id: titleLine.id, title: newItem.title?.simpleTitle?.substring(0, 20) || '' });
         } else {
           // ⚠️ 这种情况理论上不应该发生，因为用户激活时已经创建了 pending
           dbg('plan', '⚠️ 意外情况：新空行但未在 pending 中', { id: titleLine.id });
@@ -1939,7 +1944,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     
     const event: Event = {
       id: item.id || `event-${Date.now()}`,
-      title: `${item.emoji || ''}${item.title}`.trim(),
+      title: { simpleTitle: `${item.emoji || ''}${item.title}`.trim(), fullTitle: undefined, colorTitle: undefined },
       // 避免在描述中出现一堆 HTML，将其清洗为纯文本
       description: sanitizeHtmlToPlainText(item.description || item.content || item.notes || ''),
       // ✅ v1.8: 修复空字符串处理 - 转换为 undefined
@@ -2621,7 +2626,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                         if (item) {
                           const updatedItem = {
                             ...item,
-                            title: plainText,
+                            title: { simpleTitle: plainText, fullTitle: undefined, colorTitle: undefined },
                             content: updatedContent,
                             tags: extractedTags,
                           };

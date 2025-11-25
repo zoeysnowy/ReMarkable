@@ -2219,8 +2219,9 @@ private getUserSettings(): any {
           } catch (storageError) {
             console.error('❌ [PRIORITY 0] Failed to save user data locally:', storageError);
             // 即使本地保存失败，也要继续同步，但添加冲突标记
-            if (!action.data.title.includes('⚠️同步冲突')) {
-              action.data.title = '⚠️同步冲突 - ' + action.data.title;
+            const currentTitle = action.data.title?.simpleTitle || '';
+            if (!currentTitle.includes('⚠️同步冲突')) {
+              action.data.title = { simpleTitle: '⚠️同步冲突 - ' + currentTitle, fullTitle: undefined, colorTitle: undefined };
             }
           }
 
@@ -2636,10 +2637,11 @@ private getUserSettings(): any {
             const conflictLocalEvents = this.getLocalEvents();
             const conflictEventIndex = conflictLocalEvents.findIndex((e: any) => e.id === action.entityId);
             if (conflictEventIndex !== -1) {
-              if (!conflictLocalEvents[conflictEventIndex].title.includes('⚠️同步冲突')) {
+              const currentTitle = conflictLocalEvents[conflictEventIndex].title?.simpleTitle || '';
+              if (!currentTitle.includes('⚠️同步冲突')) {
                 const oldConflictEvent = { ...conflictLocalEvents[conflictEventIndex] };
                 
-                conflictLocalEvents[conflictEventIndex].title = '⚠️同步冲突 - ' + conflictLocalEvents[conflictEventIndex].title;
+                conflictLocalEvents[conflictEventIndex].title = { simpleTitle: '⚠️同步冲突 - ' + currentTitle, fullTitle: undefined, colorTitle: undefined };
                 conflictLocalEvents[conflictEventIndex].syncStatus = 'conflict';
                 conflictLocalEvents[conflictEventIndex].lastSyncError = updateError instanceof Error ? updateError.message : 'Unknown error';
                 

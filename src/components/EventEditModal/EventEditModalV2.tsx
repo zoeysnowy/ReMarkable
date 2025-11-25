@@ -93,7 +93,7 @@ import { SimpleCalendarDropdown } from '../EventEditModalV2Demo/SimpleCalendarDr
 import { SyncModeDropdown } from '../EventEditModalV2Demo/SyncModeDropdown';
 import { getAvailableCalendarsForSettings, getCalendarGroupColor } from '../../utils/calendarUtils';
 // TimeLog 相关导入
-import { LightSlateEditor, LightSlateEditorRef } from '../LightSlateEditor';
+import { LightSlateEditor } from '../LightSlateEditor';
 import { jsonToSlateNodes, slateNodesToHtml, slateNodesToJson } from '../LightSlateEditor/serialization';
 import { HeadlessFloatingToolbar } from '../FloatingToolbar/HeadlessFloatingToolbar';
 import { useFloatingToolbar } from '../FloatingToolbar/useFloatingToolbar';
@@ -217,7 +217,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     if (event) {
       return {
         id: event.id,
-        title: event.title || '',
+        title: event.title?.colorTitle || event.title?.simpleTitle || '',
         tags: event.tags || [],
         isTask: event.isTask || false,
         isTimer: event.isTimer || false,
@@ -334,7 +334,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
 
   // TimeLog 相关 refs
   const rightPanelRef = useRef<HTMLDivElement>(null);
-  const slateEditorRef = useRef<LightSlateEditorRef>(null);
+  const slateEditorRef = useRef<any>(null);
 
   // FloatingToolbar Hook
   const floatingToolbar = useFloatingToolbar({
@@ -514,7 +514,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         ...event, // 保留原有字段（如 createdAt, syncStatus 等）
         ...formData,
         id: eventId, // 使用验证后的 ID
-        title: finalTitle, // 使用处理后的标题
+        title: { colorTitle: finalTitle, simpleTitle: undefined, fullTitle: undefined }, // ✅ EventEditModal 使用 colorTitle（HTML格式）
         tags: finalTags, // 🏷️ 使用自动映射后的标签
         isTask: formData.isTask,
         isTimer: formData.isTimer,
@@ -820,7 +820,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     if (event && isOpen) {
       setFormData({
         id: event.id,
-        title: event.title || '',
+        title: event.title?.colorTitle || event.title?.simpleTitle || '',
         tags: event.tags || [],
         isTask: event.isTask || false,
         isTimer: event.isTimer || false,
@@ -965,7 +965,9 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
    */
   const getDisplayEmoji = useCallback((event: MockEvent): string => {
     // 优先级 1: 标题中的 emoji
-    const titleEmoji = extractFirstEmoji(event.title);
+    // MockEvent.title 是 string，但从 Event 读取时可能是 EventTitle 对象
+    const titleText = event.title; // MockEvent 中已经是 string
+    const titleEmoji = extractFirstEmoji(titleText);
     if (titleEmoji) return titleEmoji;
     
     // 优先级 2: 首个标签的 emoji

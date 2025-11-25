@@ -27,6 +27,15 @@ const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onS
   const checkType = metadata.checkType;
   const showCheckbox = checkType === 'once' || checkType === 'recurring';
   
+  console.log('🔍 [EventLinePrefix] Render:', {
+    eventId: element.eventId?.slice(-10),
+    hasMetadata: !!element.metadata,
+    metadataKeys: element.metadata ? Object.keys(element.metadata) : [],
+    checkType,
+    showCheckbox,
+    isCompleted
+  });
+  
   const emoji = metadata.emoji;
 
   // 🆕 状态配置映射 (根据用户要求的颜色方案)
@@ -80,11 +89,19 @@ const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onS
             e.stopPropagation();
             const isChecked = e.target.checked;
             
+            console.log('[EventLinePrefix] Checkbox clicked:', {
+              eventId: element.eventId,
+              isChecked,
+              checkType: metadata.checkType
+            });
+            
             // ✅ 只使用新的 check-in 机制，不再更新 isCompleted 字段
             if (isChecked) {
-              EventService.checkIn(element.eventId);
+              const result = EventService.checkIn(element.eventId);
+              console.log('[EventLinePrefix] CheckIn result:', result);
             } else {
-              EventService.uncheck(element.eventId);
+              const result = EventService.uncheck(element.eventId);
+              console.log('[EventLinePrefix] Uncheck result:', result);
             }
             
             // 触发重新渲染

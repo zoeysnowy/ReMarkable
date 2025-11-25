@@ -56,7 +56,7 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
       console.log('🔍 [UpcomingEventsPanel] 从 EventService 加载的计时事件:', 
         timerEvents.map(e => ({
           id: e.id.slice(-8),
-          title: e.title || e.simpleTitle,
+          title: e.title?.colorTitle || e.title?.simpleTitle || '',
           isTimer: e.isTimer,
           description: e.description?.substring(0, 50)
         }))
@@ -152,7 +152,7 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
     const tagName = primaryTag?.name;
     
     // 移除标签和日期mention的纯文本标题（用于显示）
-    const rawTitle = event.simpleTitle || event.title || '';
+    const rawTitle = event.title?.colorTitle || event.title?.simpleTitle || '';
     const cleanTitle = cleanEventTitle(rawTitle);
     
     // 计算是否需要显示日期（仅过期事件需要）

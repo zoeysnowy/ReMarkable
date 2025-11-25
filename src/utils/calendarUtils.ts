@@ -313,22 +313,24 @@ export function convertToCalendarEvent(
   if (isWidgetMode) {
     // 🆕 Widget模式：简化的前缀同步逻辑
     // 如果事件已经有[专注中]前缀，说明主程序认为它正在运行，Widget也应该显示前缀
-    if (event.title.startsWith('[专注中]')) {
-      displayTitle = event.title; // 保持前缀
+    const simpleTitle = event.title?.simpleTitle || '';
+    if (simpleTitle.startsWith('[专注中]')) {
+      displayTitle = simpleTitle; // 保持前缀
     } else {
-      displayTitle = event.title; // 没有前缀则不添加
+      displayTitle = simpleTitle; // 没有前缀则不添加
     }
   } else {
     // 主程序模式：使用复杂的timer状态检测逻辑
-    if (isCurrentlyRunningTimer && !event.title.startsWith('[专注中]')) {
+    const simpleTitle = event.title?.simpleTitle || '';
+    if (isCurrentlyRunningTimer && !simpleTitle.startsWith('[专注中]')) {
       // 当前运行的timer且title没有前缀 -> 添加前缀
-      displayTitle = `[专注中] ${event.title}`;
-    } else if (!isCurrentlyRunningTimer && event.title.startsWith('[专注中]')) {
+      displayTitle = `[专注中] ${simpleTitle}`;
+    } else if (!isCurrentlyRunningTimer && simpleTitle.startsWith('[专注中]')) {
       // 不是当前运行的timer但title有前缀 -> 保持原有前缀（历史事件）
-      displayTitle = event.title;
+      displayTitle = simpleTitle;
     } else {
       // 其他情况保持原title
-      displayTitle = event.title;
+      displayTitle = simpleTitle;
     }
   }
   
@@ -390,7 +392,7 @@ export function convertFromCalendarEvent(
     return {
       ...calendarEvent.raw.remarkableEvent,
       // 更新可能被修改的字段
-      title: calendarEvent.title || calendarEvent.raw.remarkableEvent.title,
+      title: calendarEvent.title ? { simpleTitle: calendarEvent.title, colorTitle: undefined, fullTitle: undefined } : calendarEvent.raw.remarkableEvent.title,
       description: calendarEvent.body || calendarEvent.raw.remarkableEvent.description,
       startTime: formatTimeForStorage(calendarEvent.start),
       endTime: formatTimeForStorage(calendarEvent.end),
@@ -403,7 +405,7 @@ export function convertFromCalendarEvent(
   // 创建新事件
   return {
     id: calendarEvent.id || generateEventId(),
-    title: calendarEvent.title || '(无标题)',
+    title: { simpleTitle: calendarEvent.title || '(无标题)', colorTitle: undefined, fullTitle: undefined },
     description: calendarEvent.body || '',
     // 🔧 修复时区问题：使用 dayjs 格式化避免 UTC 转换
     startTime: dayjs(calendarEvent.start).format('YYYY-MM-DD HH:mm:ss'),
@@ -473,7 +475,7 @@ export function createCalendarsFromTags(tags: any[]): any[] {
  * @returns 是否有效
  */
 export function validateEvent(event: Partial<Event>): boolean {
-  if (!event.title || event.title.trim() === '') {
+  if (!event.title || !event.title.simpleTitle?.trim()) {
     console.error('❌ Event validation failed: title is required');
     return false;
   }

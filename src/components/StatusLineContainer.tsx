@@ -224,7 +224,7 @@ export const StatusLineContainer: React.FC<StatusLineContainerProps> = ({
         const top = startRect.top - containerRect.top;
         const height = endRect.bottom - startRect.top;
         
-        console.log(`[StatusLineContainer] Event[${segment.startIndex}] ${eventItem.title?.substring(0, 20)} ${segment.status}: top=${top.toFixed(1)}, height=${height.toFixed(1)}, lines=${lines.length}`);
+        console.log(`[StatusLineContainer] Event[${segment.startIndex}] ${eventItem.title?.simpleTitle?.substring(0, 20) || ''} ${segment.status}: top=${top.toFixed(1)}, height=${height.toFixed(1)}, lines=${lines.length}`);
         
         return {
           ...segment,

@@ -574,7 +574,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     if (baseNodes.length === 0 && items.length > 0) {
       vlog('🔴 [诊断] planItemsToSlateNodes 返回空数组！', {
         items数量: items.length,
-        items示例: items.slice(0, 3).map(i => ({ id: i.id, title: i.title?.substring(0, 20) }))
+        items示例: items.slice(0, 3).map(i => ({ id: i.id, title: i.title?.simpleTitle?.substring(0, 20) || '' }))
       });
     }
     
@@ -693,7 +693,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
         vlog('🔴 [诊断] enhancedValue 异常为空！', {
           items数量: items.length,
           enhancedValue: enhancedValue,
-          items示例: items.slice(0, 3).map(i => ({ id: i.id, title: i.title?.substring(0, 20) }))
+          items示例: items.slice(0, 3).map(i => ({ id: i.id, title: i.title?.simpleTitle?.substring(0, 20) || '' }))
         });
       }
       

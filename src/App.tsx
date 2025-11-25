@@ -383,9 +383,7 @@ function App() {
         // Step 1: 创建父事件（继承原 Timer 的所有元数据）
         const parentEvent: Event = {
           id: `parent-${Date.now()}`,
-          title: existingEvent.title || '计时事件',
-          simpleTitle: existingEvent.simpleTitle,
-          fullTitle: existingEvent.fullTitle,
+          title: existingEvent.title || { simpleTitle: '计时事件', fullTitle: undefined, colorTitle: undefined },
           description: existingEvent.description,
           emoji: existingEvent.emoji,
           tags: existingEvent.tags || [],
@@ -460,7 +458,7 @@ function App() {
       // ✅ 立即创建初始事件（syncStatus: 'local-only'，运行中不同步）
       const initialEvent: Event = {
         id: timerEventId,
-        title: '计时中的事件',
+        title: { simpleTitle: '计时中的事件', fullTitle: undefined, colorTitle: undefined },
         startTime: formatTimeForStorage(startDate),
         endTime: formatTimeForStorage(startDate), // 结束时更新
         tags: tagIdArray,
@@ -720,7 +718,7 @@ function App() {
       // 🔧 复用同一个 eventId，更新状态为 pending 以触发同步
       const finalEvent: Event = {
         id: timerEventId, // ✅ 复用启动时创建的 ID
-        title: eventTitle,
+        title: { simpleTitle: eventTitle, fullTitle: undefined, colorTitle: undefined },
         startTime: formatTimeForStorage(startTime),
         endTime: formatTimeForStorage(new Date(startTime.getTime() + totalElapsed)),
         tags: globalTimer.tagIds || [],
@@ -805,7 +803,7 @@ function App() {
       const now = new Date();
       const tempEvent: Event = {
         id: '', // 🔧 使用空ID，表示这是新Timer
-        title: '',
+        title: { simpleTitle: '', fullTitle: undefined, colorTitle: undefined },
         startTime: formatTimeForStorage(now),
         endTime: formatTimeForStorage(new Date(now.getTime() + 3600000)), // 默认1小时
         tags: [],
@@ -847,7 +845,7 @@ function App() {
 
     const tempEvent: Event = {
       id: timerEventId,
-      title: globalTimer.eventTitle || (tag?.name || ''),
+      title: { simpleTitle: globalTimer.eventTitle || (tag?.name || ''), fullTitle: undefined, colorTitle: undefined },
       startTime: formatTimeForStorage(startTime),
       endTime: formatTimeForStorage(endTime),
       tags: globalTimer.tagIds, // 使用完整的标签数组
@@ -870,7 +868,7 @@ function App() {
   // 保存计时器事件编✅
   const handleTimerEditSave = async (updatedEvent: Event) => {
     // 提取emoji（使用Array.from正确处理多字节字符）
-    const titleChars = Array.from(updatedEvent.title);
+    const titleChars = Array.from(updatedEvent.title?.simpleTitle || '');
     const firstChar = titleChars.length > 0 ? titleChars[0] : '';
     
     // 🔧 如果没有计时器，创建新的计时✅
@@ -956,7 +954,7 @@ function App() {
         elapsedTime: 0,
         isPaused: false,
         eventEmoji: firstChar,
-        eventTitle: updatedEvent.title || tag.name,
+        eventTitle: updatedEvent.title?.simpleTitle || tag.name,
         eventId: realTimerEventId // 🔧 [BUG FIX] 保存事件ID，供 handleTimerEdit 使用
       });
 
@@ -979,7 +977,7 @@ function App() {
     
     setGlobalTimer({
       ...globalTimer,
-      eventTitle: updatedEvent.title,
+      eventTitle: updatedEvent.title?.simpleTitle || '',
       eventEmoji: possibleEmoji,
       // 如果标签改变了，更新标签数组及第一个标签的显示信息
       ...(tagsChanged ? (() => {
@@ -1003,10 +1001,7 @@ function App() {
           eventlog: updatedEvent.eventlog,  // EventService 会自动转换 Slate JSON → EventLog 对象
           location: updatedEvent.location,
           title: updatedEvent.title,
-        }, {
-          skipSync: true,  // Timer 运行中不同步
-          source: 'timer-edit'
-        });
+        }, true); // skipSync = true
         
         AppLogger.log('💾 [Timer Edit] Saved user edits via EventService:', {
           eventId: globalTimer.eventId,
@@ -1068,7 +1063,7 @@ function App() {
         
         const timerEvent: Event = {
           id: timerEventId, // ✅ 固定 ID，整个运行过程不变
-          title: eventTitle,
+          title: { simpleTitle: eventTitle, fullTitle: undefined, colorTitle: undefined },
           startTime: formatTimeForStorage(startTime),
           endTime: formatTimeForStorage(endTime),
           location: existingEvent?.location || '',
@@ -1148,7 +1143,7 @@ function App() {
           
           const timerEvent: Event = {
             id: timerEventId,
-            title: eventTitle, // 保存时移除"[专注中]"标记
+            title: { simpleTitle: eventTitle, fullTitle: undefined, colorTitle: undefined }, // 保存时移除"[专注中]"标记
             startTime: formatTimeForStorage(startTime),
             endTime: formatTimeForStorage(endTime),
             location: existingEvent?.location || '', // 🔧 保留location
@@ -1204,7 +1199,7 @@ function App() {
     
     // 🔧 [BUG FIX] 空行（刚点击graytext创建的行）不保存到EventService
     // 只保存到本地状态（items数组），等用户输入内容后再真正创建event
-    if (!item.title || !item.title.trim()) {
+    if (!item.title || !item.title.simpleTitle?.trim()) {
       // 空标题，只更新本地状态，不调用EventService
       AppLogger.log('⏭️ [App] 跳过空行保存（等待用户输入）', item.id);
       return;

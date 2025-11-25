@@ -167,7 +167,7 @@ export function filterAndSortEvents(
     
     // 步骤3：排除明确标记为 true 的系统事件
     if (event.isTimer === true || event.isOutsideApp === true || event.isTimeLog === true) {
-      console.log('🚫 [Panel] 过滤系统事件:', event.title || event.simpleTitle, {
+      console.log('🚫 [Panel] 过滤系统事件:', event.title?.simpleTitle || '', {
         checkType: event.checkType,
         isTimer: event.isTimer,
         isOutsideApp: event.isOutsideApp,
@@ -201,7 +201,7 @@ export function filterAndSortEvents(
     过滤后事件数: filteredEvents.length,
     即将开始: upcoming.length,
     已过期: expired.length,
-    已过期事件标题: expired.map(e => e.title || e.simpleTitle)
+    已过期事件标题: expired.map(e => e.title?.simpleTitle || '')
   });
 
   return { upcoming, expired };
