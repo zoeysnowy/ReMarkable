@@ -309,29 +309,13 @@ export class EventService {
       }
       
       // 🆕 v2.14: 标题三层架构自动规范化
-      // 处理标题输入（可能是旧格式或新格式）
-      let normalizedTitle: import('../types').EventTitle;
-      
-      if (typeof event.title === 'object' && event.title !== null) {
-        // 新格式：已经是 EventTitle 对象
-        normalizedTitle = this.normalizeTitle(event.title);
-      } else {
-        // 旧格式或兼容处理：从 simpleTitle/fullTitle/title 字段构建
-        normalizedTitle = this.normalizeTitle({
-          simpleTitle: event.simpleTitle || (typeof event.title === 'string' ? event.title : undefined),
-          fullTitle: event.fullTitle,
-          colorTitle: undefined // 让 normalizeTitle 自动生成
-        });
-      }
+      const normalizedTitle = this.normalizeTitle(event.title);
       
       // 确保必要字段
       // 🔧 [BUG FIX] skipSync=true时，强制设置syncStatus='local-only'，忽略event.syncStatus
       const finalEvent: Event = {
         ...event,
         title: normalizedTitle, // 🆕 v2.14: 使用规范化后的标题对象
-        // 向后兼容字段（废弃警告将在 getter 中处理）
-        simpleTitle: normalizedTitle.simpleTitle,
-        fullTitle: normalizedTitle.fullTitle,
         remarkableSource: true,
         syncStatus: skipSync ? 'local-only' : (event.syncStatus || 'pending'), // skipSync优先级最高
         createdAt: event.createdAt || now,
@@ -421,7 +405,7 @@ export class EventService {
           try {
             console.log('[EventService.createEvent] ✅ 触发同步:', {
               eventId: finalEvent.id,
-              title: finalEvent.title?.substring(0, 30),
+              title: finalEvent.title?.simpleTitle?.substring(0, 30) || '',
               syncStatus: finalEvent.syncStatus,
               syncTarget: syncRoute.target,
               syncReason: syncRoute.reason,
@@ -441,7 +425,7 @@ export class EventService {
         } else if (finalEvent.syncStatus === 'local-only') {
           console.log('[EventService.createEvent] ⏭️ 跳过同步 (syncStatus=local-only):', {
             eventId: finalEvent.id,
-            title: finalEvent.title?.substring(0, 30),
+            title: finalEvent.title?.simpleTitle?.substring(0, 30) || '',
             calendarIds: (finalEvent as any).calendarIds,
             tags: finalEvent.tags
           });
@@ -521,71 +505,29 @@ export class EventService {
       const updatesWithSync = { ...updates };
       
       // ========== Title 三层架构同步 (v2.14) ==========
-      // 处理标题更新（支持新旧格式）
       if ((updates as any).title !== undefined) {
         const titleUpdate = (updates as any).title;
         
-        if (typeof titleUpdate === 'object' && titleUpdate !== null) {
-          // 新格式：EventTitle 对象
-          const currentTitle = typeof originalEvent.title === 'object' ? originalEvent.title : {
-            simpleTitle: originalEvent.simpleTitle,
-            fullTitle: originalEvent.fullTitle,
-            colorTitle: undefined
-          };
-          
-          // 合并更新，自动规范化
-          const normalizedTitle = this.normalizeTitle({
-            ...currentTitle,
-            ...titleUpdate
-          });
-          
-          (updatesWithSync as any).title = normalizedTitle;
-          // 同步向后兼容字段
-          (updatesWithSync as any).simpleTitle = normalizedTitle.simpleTitle;
-          (updatesWithSync as any).fullTitle = normalizedTitle.fullTitle;
-          
-          console.log('[EventService] title 对象更新（v2.14）:', {
-            eventId,
-            hasFullTitle: !!titleUpdate.fullTitle,
-            hasColorTitle: !!titleUpdate.colorTitle,
-            hasSimpleTitle: !!titleUpdate.simpleTitle
-          });
-        } else {
-          // 旧格式：字符串（当作 simpleTitle 处理）
-          const normalizedTitle = this.normalizeTitle({
-            simpleTitle: titleUpdate as string
-          });
-          
-          (updatesWithSync as any).title = normalizedTitle;
-          (updatesWithSync as any).simpleTitle = normalizedTitle.simpleTitle;
-          (updatesWithSync as any).fullTitle = normalizedTitle.fullTitle;
-          
-          console.log('[EventService] title 字符串更新（兼容模式）:', {
-            eventId,
-            titleLength: (titleUpdate as string).length
-          });
-        }
-      }
-      
-      // 兼容旧代码：simpleTitle/fullTitle 直接更新
-      else if ((updates as any).simpleTitle !== undefined || (updates as any).fullTitle !== undefined) {
-        console.warn('[EventService] ⚠️ 检测到旧格式标题更新，将自动转换为 v2.14 格式');
-        
-        const currentTitle = typeof originalEvent.title === 'object' ? originalEvent.title : {
-          simpleTitle: originalEvent.simpleTitle,
-          fullTitle: originalEvent.fullTitle,
-          colorTitle: undefined
+        // 🔧 FIX: 只合并非 undefined 的字段，避免覆盖已有值
+        const mergedTitle: Partial<import('../types').EventTitle> = {
+          ...(originalEvent.title || {}),
         };
+        if (titleUpdate.fullTitle !== undefined) mergedTitle.fullTitle = titleUpdate.fullTitle;
+        if (titleUpdate.colorTitle !== undefined) mergedTitle.colorTitle = titleUpdate.colorTitle;
+        if (titleUpdate.simpleTitle !== undefined) mergedTitle.simpleTitle = titleUpdate.simpleTitle;
         
-        const normalizedTitle = this.normalizeTitle({
-          ...currentTitle,
-          simpleTitle: (updates as any).simpleTitle,
-          fullTitle: (updates as any).fullTitle
-        });
+        // 自动规范化
+        const normalizedTitle = this.normalizeTitle(mergedTitle);
         
         (updatesWithSync as any).title = normalizedTitle;
-        (updatesWithSync as any).simpleTitle = normalizedTitle.simpleTitle;
-        (updatesWithSync as any).fullTitle = normalizedTitle.fullTitle;
+        
+        console.log('[EventService] title 更新（v2.14）:', {
+          eventId,
+          hasFullTitle: !!titleUpdate.fullTitle,
+          hasColorTitle: !!titleUpdate.colorTitle,
+          hasSimpleTitle: !!titleUpdate.simpleTitle,
+          merged: mergedTitle
+        });
       }
       
       // ========== Description 双向同步 ==========
@@ -927,6 +869,14 @@ export class EventService {
       const event = existingEvents[eventIndex];
       const timestamp = new Date().toISOString();
 
+      // 🐛 DEBUG: Log metadata before update
+      console.log('🔍 [EventService.checkIn] BEFORE update:', {
+        eventId: eventId.slice(-10),
+        hasMetadata: !!event.metadata,
+        checkType: event.metadata?.checkType,
+        metadataKeys: event.metadata ? Object.keys(event.metadata) : []
+      });
+
       // 初始化checked数组（如果不存在）
       if (!event.checked) {
         event.checked = [];
@@ -941,6 +891,14 @@ export class EventService {
       // 保存到localStorage
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
       eventLogger.log('💾 [EventService] Event checked in, saved to localStorage');
+
+      // 🐛 DEBUG: Log metadata after save
+      console.log('🔍 [EventService.checkIn] AFTER save:', {
+        eventId: eventId.slice(-10),
+        hasMetadata: !!event.metadata,
+        checkType: event.metadata?.checkType,
+        checkedCount: event.checked.length
+      });
 
       // 记录事件历史
       EventHistoryService.logCheckin(eventId, event.title || 'Untitled Event', { action: 'check-in', timestamp });
@@ -1196,41 +1154,6 @@ export class EventService {
       }
       return '';
     }).join('');
-  }
-
-  // ==================== 数据迁移工具 (v2.14) ====================
-
-  /**
-   * 迁移单个事件的标题格式（旧格式 → 新格式）
-   * @param event - 可能包含旧格式标题的事件
-   * @returns 迁移后的事件（新格式标题）
-   */
-  private static migrateEventTitle(event: any): Event {
-    // 检测旧格式：title 是字符串或存在独立的 simpleTitle/fullTitle 字段
-    const isOldFormat = typeof event.title !== 'object' || 
-                       event.title === null ||
-                       event.simpleTitle !== undefined || 
-                       event.fullTitle !== undefined;
-    
-    if (!isOldFormat) {
-      // 已经是新格式，直接返回
-      return event as Event;
-    }
-    
-    // 迁移标题
-    const normalizedTitle = this.normalizeTitle({
-      simpleTitle: event.simpleTitle || (typeof event.title === 'string' ? event.title : ''),
-      fullTitle: event.fullTitle,
-      colorTitle: undefined // 自动生成
-    });
-    
-    return {
-      ...event,
-      title: normalizedTitle,
-      // 保留向后兼容字段
-      simpleTitle: normalizedTitle.simpleTitle,
-      fullTitle: normalizedTitle.fullTitle
-    };
   }
 
   // ==================== 标题三层架构转换工具 (v2.14) ====================
