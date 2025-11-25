@@ -509,12 +509,29 @@ export class EventService {
         const titleUpdate = (updates as any).title;
         
         // 🔧 FIX: 只合并非 undefined 的字段，避免覆盖已有值
-        const mergedTitle: Partial<import('../types').EventTitle> = {
-          ...(originalEvent.title || {}),
-        };
-        if (titleUpdate.fullTitle !== undefined) mergedTitle.fullTitle = titleUpdate.fullTitle;
-        if (titleUpdate.colorTitle !== undefined) mergedTitle.colorTitle = titleUpdate.colorTitle;
-        if (titleUpdate.simpleTitle !== undefined) mergedTitle.simpleTitle = titleUpdate.simpleTitle;
+        const mergedTitle: Partial<import('../types').EventTitle> = {};
+        
+        // 先复制原有的非 undefined 字段
+        if (originalEvent.title?.fullTitle !== undefined) {
+          mergedTitle.fullTitle = originalEvent.title.fullTitle;
+        }
+        if (originalEvent.title?.colorTitle !== undefined) {
+          mergedTitle.colorTitle = originalEvent.title.colorTitle;
+        }
+        if (originalEvent.title?.simpleTitle !== undefined) {
+          mergedTitle.simpleTitle = originalEvent.title.simpleTitle;
+        }
+        
+        // 再用 titleUpdate 中非 undefined 的字段覆盖
+        if (titleUpdate?.fullTitle !== undefined) {
+          mergedTitle.fullTitle = titleUpdate.fullTitle;
+        }
+        if (titleUpdate?.colorTitle !== undefined) {
+          mergedTitle.colorTitle = titleUpdate.colorTitle;
+        }
+        if (titleUpdate?.simpleTitle !== undefined) {
+          mergedTitle.simpleTitle = titleUpdate.simpleTitle;
+        }
         
         // 自动规范化
         const normalizedTitle = this.normalizeTitle(mergedTitle);
@@ -523,10 +540,18 @@ export class EventService {
         
         console.log('[EventService] title 更新（v2.14）:', {
           eventId,
-          hasFullTitle: !!titleUpdate.fullTitle,
-          hasColorTitle: !!titleUpdate.colorTitle,
-          hasSimpleTitle: !!titleUpdate.simpleTitle,
-          merged: mergedTitle
+          'original.fullTitle': !!originalEvent.title?.fullTitle,
+          'original.colorTitle': !!originalEvent.title?.colorTitle,
+          'original.simpleTitle': !!originalEvent.title?.simpleTitle,
+          'update.fullTitle': !!titleUpdate?.fullTitle,
+          'update.colorTitle': !!titleUpdate?.colorTitle,
+          'update.simpleTitle': !!titleUpdate?.simpleTitle,
+          'merged.fullTitle': !!mergedTitle.fullTitle,
+          'merged.colorTitle': !!mergedTitle.colorTitle,
+          'merged.simpleTitle': !!mergedTitle.simpleTitle,
+          'normalized.fullTitle': !!normalizedTitle.fullTitle,
+          'normalized.colorTitle': !!normalizedTitle.colorTitle,
+          'normalized.simpleTitle': !!normalizedTitle.simpleTitle
         });
       }
       
