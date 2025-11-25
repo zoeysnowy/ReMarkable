@@ -453,6 +453,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   const getEventStatus = useCallback((eventId: string): 'new' | 'updated' | 'done' | 'missed' | 'deleted' | undefined => {
     if (!dateRange) return undefined;
     
+    // 🔧 首先检查是否是 ghost 事件（Snapshot 模式下显示为已删除）
+    const ghostEvent = items.find((item: any) => item.id === eventId && item._isDeleted);
+    if (ghostEvent) {
+      return 'deleted';
+    }
+    
     // 🚀 检查缓存 (5秒内有效)
     const cached = eventStatusCacheRef.current.get(eventId);
     if (cached && Date.now() - cached.timestamp < 5000) {
@@ -545,7 +551,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       console.warn(`[getEventStatus] Error getting status for event ${eventId}:`, error);
       return undefined;
     }
-  }, [dateRange]);
+  }, [dateRange, items]);
   
   // 避免重复插入同一标签的防抖标记（同一行同一标签在短时间内仅插入一次）
   const lastTagInsertRef = useRef<{ lineId: string; tagId: string; time: number } | null>(null);
@@ -1375,7 +1381,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         }
         
         // 🎯 步骤 2: 业务类型过滤（空白事件）
-        const hasContent = log.before.title?.simpleTitle || log.before.content;
+        const hasContent = log.before.title || log.before.content || 
+                          log.before.simpleTitle || log.before.fullTitle;
         if (!hasContent) {
           console.log('[PlanManager] ⏭️ 跳过空白 ghost:', log.eventId.slice(-8));
           return;
@@ -2626,7 +2633,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                         if (item) {
                           const updatedItem = {
                             ...item,
-                            title: { simpleTitle: plainText, fullTitle: undefined, colorTitle: undefined },
+                            title: plainText,
                             content: updatedContent,
                             tags: extractedTags,
                           };

@@ -1345,13 +1345,14 @@ export class MicrosoftCalendarService {
           attendees = extractedContacts.attendees;
         }
         const cleanDescription = extractedContacts.cleanDescription || rawDescription;
+        const eventTitle = outlookEvent.subject || 'Untitled Event';
         
         return {
           id: `outlook-${outlookEvent.id}`,
-          title: { simpleTitle: outlookEvent.subject || 'Untitled Event', colorTitle: undefined, fullTitle: undefined },
-          subject: outlookEvent.subject || 'Untitled Event',
+          title: { simpleTitle: eventTitle, colorTitle: eventTitle, fullTitle: JSON.stringify([{ type: 'paragraph', children: [{ text: eventTitle }] }]) },
+          subject: eventTitle,
           description: cleanDescription,
-          bodyPreview: outlookEvent.bodyPreview || outlookEvent.body?.content?.substring(0, 100) || `${outlookEvent.subject} - 来自 Outlook 的日程`,
+          bodyPreview: outlookEvent.bodyPreview || outlookEvent.body?.content?.substring(0, 100) || `${eventTitle} - 来自 Outlook 的日程`,
           startTime: startTime,
           endTime: endTime,
           start: startTime,
@@ -1541,13 +1542,14 @@ export class MicrosoftCalendarService {
           attendees = extractedContacts.attendees;
         }
         const cleanDescription = extractedContacts.cleanDescription || rawDescription;
+        const eventTitle = outlookEvent.subject || 'Untitled Event';
         
         return {
           id: `outlook-${outlookEvent.id}`,
-          title: { simpleTitle: outlookEvent.subject || 'Untitled Event', colorTitle: undefined, fullTitle: undefined },
-          subject: outlookEvent.subject || 'Untitled Event',
+          title: { simpleTitle: eventTitle, colorTitle: eventTitle, fullTitle: JSON.stringify([{ type: 'paragraph', children: [{ text: eventTitle }] }]) },
+          subject: eventTitle,
           description: cleanDescription,
-          bodyPreview: outlookEvent.bodyPreview || outlookEvent.body?.content?.substring(0, 100) || `${outlookEvent.subject} - 来自 Outlook 的日程`,
+          bodyPreview: outlookEvent.bodyPreview || outlookEvent.body?.content?.substring(0, 100) || `${eventTitle} - 来自 Outlook 的日程`,
           startTime: startTime,
           endTime: endTime,
           start: {

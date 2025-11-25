@@ -3397,7 +3397,7 @@ private getUserSettings(): any {
     
     return {
       id: remoteEvent.id, // 已经是 'outlook-AAMkAD...'
-      title: { simpleTitle: cleanTitle, colorTitle: undefined, fullTitle: undefined }, // 🔧 转换为 EventTitle 对象
+      title: { simpleTitle: cleanTitle, colorTitle: cleanTitle, fullTitle: JSON.stringify([{ type: 'paragraph', children: [{ text: cleanTitle }] }]) }, // 🔧 转换为完整的 EventTitle 对象（避免 normalizeTitle 重复计算）
       description: cleanDescription,
       startTime: this.safeFormatDateTime(remoteEvent.start?.dateTime || remoteEvent.start),
       endTime: this.safeFormatDateTime(remoteEvent.end?.dateTime || remoteEvent.end),
