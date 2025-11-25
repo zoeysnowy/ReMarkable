@@ -854,6 +854,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
             isCompleted: updatedEvent.isCompleted,
             isTask: updatedEvent.isTask,
             type: updatedEvent.type,
+            checkType: updatedEvent.checkType || 'once', // 🔧 FIX: 添加 checkType 字段
             isPlan: updatedEvent.isPlan,
             isTimeCalendar: updatedEvent.isTimeCalendar,
             calendarIds: updatedEvent.calendarIds,

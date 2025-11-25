@@ -2560,7 +2560,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
               // 获取事件的开始和结束时间
               const start = event.start;
               const end = event.end;
-              const title = event.title?.simpleTitle || '';
+              const title = event.title || '';
               const textColor = event.backgroundColor || event.borderColor || 'rgba(59, 130, 246, 0.8)';
               
               // 格式化时间显示（带开始/结束提示）
@@ -2606,7 +2606,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
             time(event: any) {
               // 获取事件的开始和结束时间
               const start = event.start;
-              const title = event.title?.simpleTitle || '';
+              const title = event.title || '';
               
               // 格式化时间显示
               let timeDisplay = '';
