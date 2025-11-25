@@ -1739,7 +1739,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         const updatedItem: Event = {
           ...(titleLine.data as any),
           id: (titleLine.data as any)?.id ?? itemId,
-          title: hasContent ? plainText : '', // 保持空标题检查
+          title: hasContent ? { simpleTitle: plainText, fullTitle: undefined, colorTitle: undefined } : { simpleTitle: '', fullTitle: undefined, colorTitle: undefined }, // 🔧 使用 EventTitle 格式
           content: titleLine.content,
           tags: extractedTags,
           level: titleLine.level,
@@ -1789,7 +1789,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         
         const newItem: Event = {
           id: titleLine.id,
-          title: hasContent ? (plainText || '(无标题)') : '', // 空行保持空标题
+          title: hasContent ? { simpleTitle: plainText || '(无标题)', fullTitle: undefined, colorTitle: undefined } : { simpleTitle: '', fullTitle: undefined, colorTitle: undefined }, // 🔧 使用 EventTitle 格式
           content: titleLine.content,
           tags: extractedTags,
           priority: 'medium',
@@ -1963,7 +1963,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     
     const event: Event = {
       id: item.id || `event-${Date.now()}`,
-      title: { simpleTitle: `${item.emoji || ''}${item.title}`.trim(), fullTitle: undefined, colorTitle: undefined },
+      title: (() => {
+        // 🔧 处理 item.title 可能是字符串或 EventTitle 对象的情况
+        const titleText = typeof item.title === 'string' ? item.title : (item.title?.simpleTitle || '');
+        const fullTitle = `${item.emoji || ''}${titleText}`.trim();
+        return { simpleTitle: fullTitle, fullTitle: undefined, colorTitle: undefined };
+      })(),
       // 避免在描述中出现一堆 HTML，将其清洗为纯文本
       description: sanitizeHtmlToPlainText(item.description || item.content || item.notes || ''),
       // ✅ v1.8: 修复空字符串处理 - 转换为 undefined
@@ -2645,7 +2650,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                         if (item) {
                           const updatedItem = {
                             ...item,
-                            title: plainText,
+                            title: { simpleTitle: plainText, fullTitle: undefined, colorTitle: undefined }, // 🔧 使用 EventTitle 格式
                             content: updatedContent,
                             tags: extractedTags,
                           };
