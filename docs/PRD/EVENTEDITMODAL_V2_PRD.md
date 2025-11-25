@@ -1,8 +1,8 @@
 ﻿# EventEditModal v2 产品需求文档 (PRD)
 
-> **版本**: v2.0.2  
+> **版本**: v2.0.3  
 > **创建时间**: 2025-11-06  
-> **最后更新**: 2025-11-24  
+> **最后更新**: 2025-11-26  
 > **Figma 设计稿**: [EventEditModal v2 设计稿](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=201-630&m=dev)  
 > **基于**: EventEditModal v1 + Figma 设计稿  
 > **依赖模块**: EventHub, TimeHub, LightSlateEditor, HeadlessFloatingToolbar, Timer Module  
@@ -13,7 +13,15 @@
 > - [TIME_ARCHITECTURE.md](../TIME_ARCHITECTURE.md)
 > - [SLATE_DEVELOPMENT_GUIDE.md](../SLATE_DEVELOPMENT_GUIDE.md)
 
-> **🔥 v2.0.2 最新更新** (2025-11-24):
+> **🔥 v2.0.3 最新更新** (2025-11-26):
+> - ✅ **同步日历选择器重设计**: "来自" → "同步"，从只读改为可编辑 Picker
+> - ✅ **"来源"标志永久保留**: 来源日历右对齐显示灰色"来源"文本，可取消勾选但标志保留
+> - ✅ **标签智能映射显示**: 标签触发的日历右对齐显示标签名称和颜色，多标签显示第一个
+> - ✅ **同步完全基于 calendarIds**: 标签不作为同步判断条件，仅用于智能勾选建议
+> - ✅ **用户完全控制**: 取消勾选日历不删除标签，重新勾选"来源"标志继续显示
+> - ✅ **计划 vs 实际区分**: 计划显示"来源"+标签映射，实际不显示"来源"（本地生成）
+> 
+> **🔥 v2.0.2 历史更新** (2025-11-24):
 > - ✅ **LightSlateEditor 集成**: 轻量级 Slate 编辑器替代 UnifiedSlateEditor，专为 EventLog 优化
 > - ✅ **FloatingBar 完整支持**: HeadlessFloatingToolbar 集成完成，支持 tag/emoji/dateMention 插入
 > - ✅ **文本格式功能**: 支持粗体 (Ctrl+B)、斜体 (Ctrl+I)、下划线 (Ctrl+U)、文字颜色、背景颜色
@@ -92,7 +100,7 @@
 | **参会人搜索与编辑** | 左侧 - 中 Section | AttendeeDisplay + ContactModal | 2025-11-18 |
 | **时间选择器 Tippy 集成** | 左侧 - 中 Section | Tippy + UnifiedDateTimePicker | 2025-11-19 |
 | **地址智能输入** | 左侧 - 中 Section | LocationInput | 2025-11-19 |
-| **日历来源显示** | 左侧 - 中 Section | 6层优先级逻辑 + 多选日历 UI | 2025-11-25 |
+| **同步日历选择器** | 左侧 - 中 Section | 可编辑日历选择器 + "来源"标志 + 标签映射 | 2025-11-26 |
 | **标签区域静态显示** | 右侧 - Event Log | 静态 UI | 2025-11-15 |
 | **Plan 提示区域** | 右侧 - Event Log | 静态 UI | 2025-11-15 |
 | **时间戳分隔线自动生成** | 右侧 - Event Log | EventLogTimestampService | 2025-11-24 |
@@ -112,7 +120,7 @@
 
 | 功能模块 | 所在区域 | 工作量估算 | 优先级 | 技术文档 |
 |---------|---------|-----------|--------|----------|
-| **日历来源 + 同步机制选择** | 左侧 - 中 Section | 3-4 天 | P0 | ✅ 完整规范化：9种场景+Private模式+独立事件架构（已整合在本 PRD 中） |
+| **标签映射日历管理** | 左侧 - 中 Section | 1-2 天 | P1 | 支持用户自定义标签与日历的映射关系 |
 | **实际进展数据集成** | 左侧 - 下 Section | 2-3 天 | P0 | - |
 | **Timer 二次计时自动升级** | 左侧 - Timer 按钮 | 2 天 | P2 | - |
 
@@ -454,7 +462,7 @@ const handleSave = async () => {
 - ✅ **参会人**（2.1）- AttendeeDisplay + ContactModal，多来源搜索 + 悬浮预览
 - ✅ **时间范围**（2.2）- Tippy + UnifiedDateTimePicker，自然语言解析
 - ✅ **位置**（2.3）- LocationInput，高德地图 API 集成
-- ✅ **日历来源**（静态显示）- 显示来源平台（Outlook/Google/iCloud）+ 同步模式
+- ✅ **同步日历选择器**（可编辑）- "来源"标志 + 标签映射 + 多选日历
 
 **待实现功能**:
 - ❌ **实际进展区域**（3.1-3.2）- 时间片段列表、总时长汇总、计划 vs 实际对比、DDL 状态
@@ -2670,8 +2678,9 @@ docs/
 
 ---
 
-#### 2.4 来源日历 + 同步机制选择
+#### 2.4 同步日历选择器（计划安排）
 
+> **📌 UI 设计变更** (2025-11-26): 将"来自"改为"同步"，使用可编辑选择器  
 > **📌 技术分析文档**: [CALENDAR_SYNC_CONFIG_TECHNICAL_ANALYSIS.md](./CALENDAR_SYNC_CONFIG_TECHNICAL_ANALYSIS.md)  
 > **📌 场景矩阵分析**: 9种相同日历场景 + Private模式 + 独立事件架构（已整合在本 PRD 中）
 
@@ -2682,18 +2691,21 @@ docs/
 3. **Actual 支持 4 种模式**: send-only, send-only-private, bidirectional, bidirectional-private（不支持 receive-only）
 4. **Private 模式机制**: 参与者不被邀请，而是作为文本添加到事件描述中
 5. **远程事件数量**: A1/A2/B1: 1+N个，B2/C1/C2: 2个独立事件，不同日历: 1+M个
+6. **🆕 同步完全基于 calendarIds**: 标签不再作为同步判断条件，只用于智能勾选建议
 
 **位置**: 【中 Section】- 计划安排
 
-**✅ 已实现功能 (2025-11-25)**:
-- ✅ **6层优先级来源显示**: Timer子事件→外部日历→独立Timer→Plan→TimeCalendar→本地事件
-- ✅ **多选日历 UI**: "来自"区域只读显示，"同步到"区域支持多选，显示"第一个日历+等"
+**✅ 已实现功能 (2025-11-26)**:
+- ✅ **"同步"日历选择器**: 可编辑的多选 Picker，替代原"来自"静态显示
+- ✅ **"来源"标志**: 来源日历右对齐显示灰色"来源"文本，永久保留（可重新勾选）
+- ✅ **标签智能映射**: 标签触发的日历自动勾选，右对齐显示标签名称和颜色
+- ✅ **用户完全控制**: 取消勾选日历不删除标签，同步仅依据 calendarIds
 - ✅ **Private 模式**: send-only-private 和 bidirectional-private 参与者格式化为📧文本
-- ✅ **标签自动映射**: 根据目标日历自动添加标签（Outlook→工作, Google→生活, iCloud→个人）
 
 **设计理念**:
-- **"来自"** 表示事件的原始数据源（6层优先级自动判断，只读显示）
-- **"同步到"** 支持多选日历，允许用户选择该计划与外部日历的同步方式
+- **"同步"** 表示该事件会同步到哪些外部日历（用户可多选）
+- **"来源"标志** 永久标记事件的原始日历，可取消勾选但标志保留
+- **标签映射** 仅作为智能勾选建议，不影响实际同步逻辑
 
 **数据来源**: 
 ```typescript
@@ -2797,47 +2809,256 @@ function getMultiCalendarDisplayInfo(
   return { firstCalendar, remainCount };
 }
 
-// UI 渲染示例
-function renderCalendarSourceWithSync(
-  event: Event, 
-  syncConfig?: SyncConfig,
-  isActualProgress: boolean = false
-): ReactNode {
-  // 1. 获取事件来源信息（6层优先级）
-  const source = getEventSourceInfo(event);
-  const label = isActualProgress ? '同步到' : '来自';
-  
-  // 2. "来自"区域：只读显示
-  if (!isActualProgress) {
-    return (
-      <div className="calendar-source-row">
-        <span className="label">{label}</span>
-        {source.emoji && (
-          <span className="source-emoji">{source.emoji}</span>
-        )}
-        {source.icon && (
-          <img src={source.icon} alt="calendar" className="icon-platform" />
-        )}
-        <span className="source-name">{source.name}</span>
-      </div>
-    );
+/**
+ * 🆕 日历选择器选项数据结构
+ * 用于 Picker 中显示每个日历的状态和标识
+ */
+interface CalendarPickerOption {
+  calendarId: string;
+  displayName: string;          // 日历名称
+  color: string;                 // 日历颜色
+  isChecked: boolean;            // 是否勾选
+  isSource: boolean;             // 是否为来源日历（显示"来源"标志）
+  tagInfo?: {                    // 标签映射信息（可选）
+    tagName: string;             // 标签名称（如"工作"）
+    tagColor: string;            // 标签颜色
+  };
+}
+
+/**
+ * 🆕 获取来源日历 ID
+ * 基于 6层优先级逻辑自动识别事件的原始日历
+ */
+function getSourceCalendarId(event: Event): string | null {
+  // 1️⃣ Timer 子事件 → 递归获取父事件的来源
+  if (event.isTimer && event.parentEventId) {
+    const parentEvent = EventService.getEventById(event.parentEventId);
+    if (parentEvent) {
+      return getSourceCalendarId(parentEvent);
+    }
   }
   
-  // 3. "同步到"区域：多选日历 + 同步模式选择器
+  // 2️⃣ 外部日历同步的事件 → 第一个日历视为来源
+  if (event.calendarIds && event.calendarIds.length > 0) {
+    return event.calendarIds[0];
+  }
+  
+  // 3️⃣-6️⃣ 其他情况（独立Timer/Plan/TimeCalendar/本地）→ 无外部来源
+  return null;
+}
+
+/**
+ * 🆕 获取标签映射的日历 IDs
+ * 根据事件标签自动推荐日历
+ */
+function getTagMappedCalendarIds(
+  event: Event,
+  tagCalendarMapping: Map<string, string>
+): string[] {
+  if (!event.tags || event.tags.length === 0) {
+    return [];
+  }
+  
+  const mappedCalendarIds: string[] = [];
+  for (const tagId of event.tags) {
+    const calendarId = tagCalendarMapping.get(tagId);
+    if (calendarId && !mappedCalendarIds.includes(calendarId)) {
+      mappedCalendarIds.push(calendarId);
+    }
+  }
+  
+  return mappedCalendarIds;
+}
+
+/**
+ * 🆕 构建日历选择器选项
+ * 合并来源日历 + 标签映射 + 用户已选
+ */
+function buildCalendarPickerOptions(
+  event: Event,
+  availableCalendars: Calendar[],
+  selectedCalendarIds: string[],
+  tagCalendarMapping: Map<string, string>
+): CalendarPickerOption[] {
+  const sourceCalendarId = getSourceCalendarId(event);
+  const tagMappedCalendarIds = getTagMappedCalendarIds(event, tagCalendarMapping);
+  
+  return availableCalendars.map(calendar => {
+    const isSource = calendar.id === sourceCalendarId;
+    const isTagMapped = tagMappedCalendarIds.includes(calendar.id);
+    const isChecked = selectedCalendarIds.includes(calendar.id);
+    
+    // 获取触发该日历的第一个标签信息
+    let tagInfo: { tagName: string; tagColor: string } | undefined;
+    if (isTagMapped && event.tags) {
+      for (const tagId of event.tags) {
+        if (tagCalendarMapping.get(tagId) === calendar.id) {
+          const tag = getTagById(tagId);
+          if (tag) {
+            tagInfo = { tagName: tag.name, tagColor: tag.color };
+            break;  // 只显示第一个标签
+          }
+        }
+      }
+    }
+    
+    return {
+      calendarId: calendar.id,
+      displayName: calendar.name,
+      color: calendar.color,
+      isChecked,
+      isSource,
+      tagInfo
+    };
+  });
+}
+
+// 🆕 UI 渲染 - 计划安排区域（新设计）
+function renderPlanSyncCalendarSelector(
+  event: Event,
+  planSyncConfig: PlanSyncConfig,
+  availableCalendars: Calendar[],
+  tagCalendarMapping: Map<string, string>,
+  onCalendarIdsChange: (ids: string[]) => void
+): ReactNode {
+  const sourceCalendarId = getSourceCalendarId(event);
+  const tagMappedCalendarIds = getTagMappedCalendarIds(event, tagCalendarMapping);
+  
+  // 初始化选中的日历列表
+  const initialSelectedIds = [
+    ...(sourceCalendarId ? [sourceCalendarId] : []),  // 来源日历默认勾选
+    ...tagMappedCalendarIds,                           // 标签映射日历默认勾选
+    ...(planSyncConfig.targetCalendars || [])         // 用户已选日历
+  ].filter((id, index, self) => self.indexOf(id) === index);  // 去重
+  
+  const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>(initialSelectedIds);
+  const [pickerVisible, setPickerVisible] = useState(false);
+  
+  // 构建选项列表
+  const options = buildCalendarPickerOptions(
+    event,
+    availableCalendars,
+    selectedCalendarIds,
+    tagCalendarMapping
+  );
+  
+  // 显示区域文本
+  const displayText = selectedCalendarIds.length === 0 
+    ? '选择同步日历...'
+    : `${availableCalendars.find(c => c.id === selectedCalendarIds[0])?.name || ''}${
+        selectedCalendarIds.length > 1 ? ' 等' : ''
+      }`;
+  
+  return (
+    <div className="plan-sync-selector">
+      <span className="label">同步</span>
+      
+      {/* 点击打开 Picker */}
+      <button 
+        className="sync-selector-button"
+        onClick={() => setPickerVisible(true)}
+      >
+        {displayText}
+      </button>
+      
+      {/* 日历选择 Picker */}
+      {pickerVisible && (
+        <div className="calendar-picker-modal">
+          <div className="picker-header">
+            <h3>选择同步日历（可多选）</h3>
+            <button onClick={() => setPickerVisible(false)}>✕</button>
+          </div>
+          
+          <div className="picker-options">
+            {options.map(option => (
+              <label key={option.calendarId} className="calendar-option">
+                <input
+                  type="checkbox"
+                  checked={option.isChecked}
+                  onChange={(e) => {
+                    const newIds = e.target.checked
+                      ? [...selectedCalendarIds, option.calendarId]
+                      : selectedCalendarIds.filter(id => id !== option.calendarId);
+                    setSelectedCalendarIds(newIds);
+                    onCalendarIdsChange(newIds);
+                  }}
+                />
+                
+                <span 
+                  className="calendar-dot" 
+                  style={{ backgroundColor: option.color }}
+                >●</span>
+                
+                <span className="calendar-name">{option.displayName}</span>
+                
+                {/* 右对齐标识 */}
+                <div className="calendar-badges">
+                  {/* 来源标志 */}
+                  {option.isSource && (
+                    <span className="badge-source">来源</span>
+                  )}
+                  
+                  {/* 标签映射标志 */}
+                  {option.tagInfo && (
+                    <span 
+                      className="badge-tag"
+                      style={{ 
+                        color: option.tagInfo.tagColor,
+                        borderColor: option.tagInfo.tagColor 
+                      }}
+                    >
+                      {option.tagInfo.tagName}
+                    </span>
+                  )}
+                </div>
+              </label>
+            ))}
+          </div>
+          
+          <div className="picker-footer">
+            <button onClick={() => setPickerVisible(false)}>确定</button>
+          </div>
+        </div>
+      )}
+      
+      {/* 同步模式选择器 */}
+      <SyncModeSelector
+        mode={planSyncConfig.mode}
+        isActual={false}
+        onChange={(newMode) => {
+          // 更新同步模式
+        }}
+      />
+    </div>
+  );
+}
+
+// UI 渲染 - 实际进展区域（保持原有设计）
+function renderActualSyncCalendarSelector(
+  event: Event, 
+  actualSyncConfig: ActualSyncConfig | null,
+  availableCalendars: Calendar[],
+  onCalendarIdsChange: (ids: string[]) => void
+): ReactNode {
+  // 实际进展区域保持原有的多选设计
+  // 不显示"来源"标志（因为实际进展都是 ReMarkable 本地生成）
   const { firstCalendar, remainCount } = getMultiCalendarDisplayInfo(
-    syncConfig?.targetCalendars || [],
+    actualSyncConfig?.targetCalendars || [],
     availableCalendars
   );
   
   return (
-    <div className="calendar-sync-row">
+    <div className="actual-sync-row">
+      <span className="label">同步到</span>
+      
       {/* 日历多选下拉 */}
       <SimpleCalendarDropdown
         multiSelect={true}
-        selectedCalendarIds={syncConfig?.targetCalendars || []}
-        onMultiSelectionChange={(ids) => handleCalendarIdsChange(ids)}
+        selectedCalendarIds={actualSyncConfig?.targetCalendars || []}
+        onMultiSelectionChange={onCalendarIdsChange}
         availableCalendars={availableCalendars}
       />
+      
       {/* 显示"第一个日历+等" */}
       {firstCalendar && (
         <div className="calendar-display">
@@ -2849,9 +3070,11 @@ function renderCalendarSourceWithSync(
       
       {/* 同步模式选择器 */}
       <SyncModeSelector
-        mode={syncConfig?.mode || 'send-only'}
-        isActual={isActualProgress}
-        onChange={(newMode) => handleSyncModeChange(newMode)}
+        mode={actualSyncConfig?.mode || 'send-only'}
+        isActual={true}
+        onChange={(newMode) => {
+          // 更新同步模式
+        }}
       />
     </div>
   );
@@ -2948,61 +3171,192 @@ function cycleSyncMode(
 **UI 样式**:
 
 ```css
-/* ✅ "来自"区域：只读显示（6层优先级） */
-.calendar-source-row {
+/* 🆕 计划安排区域：同步选择器 */
+.plan-sync-selector {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   padding: 12px 16px;
   background: #f5f5f5;
   border-radius: 8px;
   margin-bottom: 12px;
 }
 
-.calendar-source-row .label {
+.plan-sync-selector .label {
   font-weight: 500;
   color: #666;
   min-width: 40px;
 }
 
-.calendar-source-row .source-emoji {
-  font-size: 16px;
+.sync-selector-button {
+  flex: 1;
+  padding: 8px 12px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
 }
 
-.calendar-source-row .icon-platform {
-  width: 16px;
-  height: 16px;
+.sync-selector-button:hover {
+  border-color: #3b82f6;
+  background: #f9fafb;
 }
 
-.calendar-source-row .source-name {
-  font-weight: 500;
-  color: #333;
+/* 🆕 日历选择 Picker Modal */
+.calendar-picker-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90%;
+  max-width: 500px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
 }
 
-/* ✅ "同步到"区域：多选日历 + 同步模式选择器 */
-.calendar-sync-row {
+.picker-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.picker-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.picker-header button {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #9ca3af;
+}
+
+.picker-options {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 20px;
+}
+
+.calendar-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+  position: relative;
+}
+
+.calendar-option:hover {
+  background: #f9fafb;
+}
+
+.calendar-option input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.calendar-option .calendar-dot {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.calendar-option .calendar-name {
+  flex: 1;
+  font-size: 14px;
+}
+
+/* 🆕 右对齐标识区域 */
+.calendar-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.badge-source {
+  padding: 4px 8px;
+  background: #e5e7eb;
+  color: #6b7280;
+  font-size: 12px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.badge-tag {
+  padding: 4px 8px;
+  border: 1px solid;
+  font-size: 12px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.picker-footer {
+  padding: 12px 20px;
+  border-top: 1px solid #e5e7eb;
+  text-align: right;
+}
+
+.picker-footer button {
+  padding: 8px 20px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.picker-footer button:hover {
+  background: #2563eb;
+}
+
+/* ✅ 实际进展区域：多选日历 + 同步模式选择器 */
+.actual-sync-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   padding: 12px 16px;
   background: #f5f5f5;
   border-radius: 8px;
   margin-bottom: 12px;
 }
 
-.calendar-sync-row .calendar-display {
+.actual-sync-row .label {
+  font-weight: 500;
+  color: #666;
+  min-width: 60px;
+}
+
+.actual-sync-row .calendar-display {
   display: flex;
   align-items: center;
   gap: 6px;
   flex: 1;
 }
 
-.calendar-sync-row .calendar-dot {
+.actual-sync-row .calendar-dot {
   font-size: 14px;
   line-height: 1;
 }
 
-.calendar-sync-row .remain-count {
+.actual-sync-row .remain-count {
   font-size: 12px;
   color: #999;
   margin-left: 4px;
@@ -3044,7 +3398,7 @@ function cycleSyncMode(
   font-weight: 500;
 }
 
-/* 日历多选器 */
+/* 日历多选器（已废弃，使用 Picker Modal） */
 .calendar-multi-selector {
   display: flex;
   flex-direction: column;
@@ -3081,46 +3435,110 @@ function cycleSyncMode(
 }
 ```
 
-**同步机制交互逻辑**:
+**🔑 核心同步逻辑说明**:
 
 ```typescript
-// 处理同步模式变更
-function handleSyncModeChange(
-  newMode: 'receive-only' | 'send-only' | 'bidirectional',
-  isActualProgress: boolean
-) {
-  if (isActualProgress) {
-    // 实际进展同步模式变更
-    event.actualSyncConfig = {
-      ...event.actualSyncConfig,
-      mode: newMode
-    };
-  } else {
-    // 计划安排同步模式变更
-    event.planSyncConfig = {
-      ...event.planSyncConfig,
-      mode: newMode
-    };
-  }
+/**
+ * 🆕 关键架构说明：
+ * 
+ * 1. **同步完全基于 calendarIds**
+ *    - ActionBasedSyncManager 优先使用 event.calendarIds 决定同步目标
+ *    - 标签映射（tagCalendarMapping）仅用于：
+ *      a) 初始化时自动勾选对应日历
+ *      b) 在 Picker 中右对齐显示标签名称
+ *    - 用户取消勾选日历后，保留标签但不同步到该日历
+ * 
+ * 2. **"来源"标志永久保留**
+ *    - 来源日历由 getSourceCalendarId() 自动识别（6层优先级）
+ *    - 即使用户取消勾选，"来源"标志依然存在
+ *    - 重新勾选后，"来源"标志继续显示
+ * 
+ * 3. **计划 vs 实际的区别**
+ *    - 计划安排：显示"来源"标志 + 标签映射
+ *    - 实际进展：不显示"来源"（都是 ReMarkable 本地生成）
+ */
+
+// 处理计划同步日历变更
+function handlePlanCalendarsChange(calendarIds: string[]) {
+  // 1. 更新 planSyncConfig.targetCalendars
+  const updatedPlanSyncConfig = {
+    ...event.planSyncConfig,
+    targetCalendars: calendarIds
+  };
   
-  // 触发同步
-  syncEventToExternalCalendars(event);
+  // 2. 同时更新 event.calendarIds（用于实际同步判断）
+  event.calendarIds = calendarIds;
+  event.planSyncConfig = updatedPlanSyncConfig;
+  
+  // 3. 自动更新事件标签（仅添加，不删除）
+  autoApplyCalendarTags(event, calendarIds);
+  
+  // 4. 触发同步
+  EventService.update(event.id, {
+    calendarIds: event.calendarIds,
+    planSyncConfig: updatedPlanSyncConfig,
+    tags: event.tags
+  });
 }
 
-// 处理实际进展多日历选择
+// 处理实际进展同步日历变更
 function handleActualCalendarsChange(calendarIds: string[]) {
-  event.actualSyncConfig = {
+  // 1. 更新 actualSyncConfig.targetCalendars
+  const updatedActualSyncConfig = {
     ...event.actualSyncConfig,
     targetCalendars: calendarIds
   };
   
-  // 自动应用标签映射
-  applyTagMapping(event, calendarIds);
+  // 2. 实际进展同步不修改 event.calendarIds（由 Timer 子事件独立管理）
+  event.actualSyncConfig = updatedActualSyncConfig;
   
-  // 触发多日历同步
-  syncEventToMultipleCalendars(event);
+  // 3. 触发多日历同步（每个 Timer 子事件同步到所有目标日历）
+  EventService.update(event.id, {
+    actualSyncConfig: updatedActualSyncConfig
+  });
+}
+
+/**
+ * 自动应用日历标签
+ * 根据选中的日历，自动添加对应标签（不删除现有标签）
+ */
+function autoApplyCalendarTags(event: Event, calendarIds: string[]) {
+  const tagCalendarMapping = getTagCalendarMapping();  // 从配置读取映射关系
+  const reversedMapping = new Map<string, string>();   // calendarId → tagId
+  
+  // 构建反向映射
+  tagCalendarMapping.forEach((calendarId, tagId) => {
+    reversedMapping.set(calendarId, tagId);
+  });
+  
+  // 为每个日历添加对应标签
+  const newTags = [...event.tags];
+  for (const calendarId of calendarIds) {
+    const tagId = reversedMapping.get(calendarId);
+    if (tagId && !newTags.includes(tagId)) {
+      newTags.push(tagId);
+    }
+  }
+  
+  event.tags = newTags;
 }
 ```
+
+**交互设计要点**:
+
+1. **计划安排区域**：
+   - 点击"同步"按钮 → 打开 Picker
+   - 来源日历自动勾选 + 显示"来源"标志（右对齐灰色文本）
+   - 标签映射的日历自动勾选 + 显示标签名称和颜色（右对齐）
+   - 用户可取消任意日历（包括来源日历）
+   - 取消勾选日历 → 不同步到该日历，但保留标签和"来源"标志
+
+2. **实际进展区域**：
+   - 使用原有的多选下拉设计
+   - 不显示"来源"标志（因为实际进展都是本地生成）
+   - 不显示标签映射（实际进展按时间段独立同步）
+
+---
 
 #### 2.4.1 实际进展同步机制
 
@@ -8685,6 +9103,79 @@ sequenceDiagram
 
 ---
 
+## 📋 v2.0.3 测试清单 (2025-11-26)
+
+### 同步日历选择器（计划安排区域）
+
+#### 基础功能
+- [ ] **打开 Picker**: 点击"同步"按钮，弹出日历选择 Modal
+- [ ] **显示所有可用日历**: Picker 中列出所有外部日历（Outlook/Google/iCloud）
+- [ ] **关闭 Picker**: 点击 ✕ 或"确定"按钮关闭 Modal
+
+#### "来源"标志功能
+- [ ] **自动识别来源**: 打开从外部日历同步的事件，来源日历显示"来源"标志（右对齐灰色）
+- [ ] **默认勾选来源**: 来源日历默认勾选
+- [ ] **取消勾选来源**: 可以取消勾选来源日历，"来源"标志保留
+- [ ] **重新勾选来源**: 重新勾选来源日历，"来源"标志继续显示
+- [ ] **6层优先级正确**: Timer子事件→外部日历→独立Timer→Plan→TimeCalendar→本地
+
+#### 标签映射功能
+- [ ] **自动勾选标签日历**: 事件有标签时，标签映射的日历自动勾选
+- [ ] **显示标签名称**: 标签映射的日历右对齐显示标签名称（带颜色边框）
+- [ ] **多标签显示第一个**: 多个标签映射到同一日历，只显示第一个标签
+- [ ] **取消勾选标签日历**: 可以取消勾选，保留标签但不同步
+- [ ] **标签颜色正确**: 标签名称的颜色和边框与标签本身一致
+
+#### 同步逻辑
+- [ ] **基于 calendarIds 同步**: 取消勾选日历后，不同步到该日历
+- [ ] **保留标签**: 取消勾选日历后，标签不被删除
+- [ ] **自动添加标签**: 勾选日历后，自动添加对应标签（如果有映射）
+- [ ] **更新 planSyncConfig**: 选择变更后正确更新 `planSyncConfig.targetCalendars`
+- [ ] **更新 calendarIds**: 选择变更后正确更新 `event.calendarIds`
+
+#### UI 交互
+- [ ] **选项悬停高亮**: 鼠标悬停日历选项时背景变浅灰
+- [ ] **Checkbox 正确状态**: 已选日历 checkbox 勾选，未选日历未勾选
+- [ ] **日历颜色正确**: 日历圆点颜色与日历本身颜色一致
+- [ ] **标志右对齐**: "来源"和标签名称都在右侧对齐
+- [ ] **Modal 遮罩**: Picker 打开时背景半透明遮罩
+
+### 实际进展同步选择器
+
+#### 功能验证
+- [ ] **不显示"来源"**: 实际进展区域不显示"来源"标志
+- [ ] **多选下拉正确**: 使用原有的多选下拉组件
+- [ ] **显示"第一个+等"**: 选中多个日历时显示"第一个日历名 +等"
+- [ ] **更新 actualSyncConfig**: 选择变更后正确更新 `actualSyncConfig.targetCalendars`
+
+### 边界情况
+
+#### 特殊事件类型
+- [ ] **Timer 子事件**: 显示父事件的来源日历
+- [ ] **独立 Timer**: 无来源日历，不显示"来源"标志
+- [ ] **Plan 事件**: 显示 Plan 模块图标作为来源
+- [ ] **TimeCalendar 事件**: 显示 TimeCalendar 图标作为来源
+- [ ] **本地事件**: 显示 ReMarkable 图标作为来源
+
+#### 数据一致性
+- [ ] **刷新后保持**: 刷新页面后，选择的日历和标志状态保持
+- [ ] **父子事件一致**: Timer 子事件和父事件显示相同的来源
+- [ ] **标签同步**: 多个标签映射到同一日历时，取消后所有标签保留
+- [ ] **空状态**: 没有可用日历时显示提示信息
+
+### 性能测试
+- [ ] **大量日历**: 测试 20+ 个日历时 Picker 性能
+- [ ] **快速切换**: 快速勾选/取消多个日历，UI 响应流畅
+- [ ] **长标签名称**: 测试超长日历名称的显示（是否截断）
+
+### 兼容性测试
+- [ ] **Outlook 日历**: Outlook 日历同步的事件显示正确
+- [ ] **Google 日历**: Google 日历同步的事件显示正确
+- [ ] **iCloud 日历**: iCloud 日历同步的事件显示正确
+- [ ] **混合来源**: 同时连接多个平台，标志和映射正确
+
+---
+
 ## 📚 相关文档更新
 
 需要同步更新以下文档：
@@ -8701,8 +9192,13 @@ sequenceDiagram
    - 更新 `src/types.ts` 中的 Event 接口
    - 添加新字段的 JSDoc 注释
 
+4. **ActionBasedSyncManager 技术文档**
+   - 🆕 更新同步逻辑说明：完全基于 calendarIds
+   - 🆕 添加标签映射仅用于 UI 提示的说明
+   - 🆕 补充 getSourceCalendarId() 函数文档
+
 ---
 
-**最后更新**: 2025-11-06  
+**最后更新**: 2025-11-26  
 **维护者**: ReMarkable Team
 
