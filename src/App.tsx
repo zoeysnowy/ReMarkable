@@ -1349,7 +1349,10 @@ function App() {
       syncManager.stop();
       setSyncManager(null);
     } else if (syncManager) {
-      console.log('🔍 [App] syncManager 已存在，跳过初始化');
+      // 🔧 [HMR FIX] syncManager 存在时，重新初始化 EventService（防止 HMR 导致丢失引用）
+      console.log('🔍 [App] syncManager 已存在，重新初始化 EventService...');
+      EventService.initialize(syncManager);
+      console.log('✅ [App] EventService 重新初始化完成');
     } else {
       console.log('🔍 [App] 未登录或 syncManager 已存在');
     }

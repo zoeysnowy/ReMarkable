@@ -24,6 +24,9 @@ const eventLogger = logger.module('EventService');
 // 同步管理器实例（将在初始化时设置）
 let syncManagerInstance: any = null;
 
+// 🔍 模块加载时的调试
+console.log('🔍 [EventService] 模块加载，syncManagerInstance 初始化为 null');
+
 // 跨标签页广播通道
 let broadcastChannel: BroadcastChannel | null = null;
 
