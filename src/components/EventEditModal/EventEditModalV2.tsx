@@ -337,6 +337,41 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     return [];
   });
 
+  // 🆕 加载子事件列表（用于显示和批量更新）
+  const childEvents = React.useMemo(() => {
+    if (!event?.timerLogs || event.timerLogs.length === 0) {
+      return [];
+    }
+    return event.timerLogs
+      .map(childId => EventService.getEvent(childId))
+      .filter(e => e !== null) as Event[];
+  }, [event?.timerLogs]);
+
+  // 🆕 父事件信息（如果当前是子事件）
+  const parentEvent = React.useMemo(() => {
+    if (!event?.parentEventId) {
+      return null;
+    }
+    return EventService.getEvent(event.parentEventId);
+  }, [event?.parentEventId]);
+
+  React.useEffect(() => {
+    if (childEvents.length > 0) {
+      console.log('🔗 [EventEditModalV2] 加载子事件:', {
+        parentId: event?.id,
+        childCount: childEvents.length,
+        childIds: childEvents.map(e => e.id)
+      });
+    }
+    if (parentEvent) {
+      console.log('🔗 [EventEditModalV2] 当前是子事件，父事件:', {
+        childId: event?.id,
+        parentId: parentEvent.id,
+        parentTitle: parentEvent.title
+      });
+    }
+  }, [childEvents, parentEvent]);
+
   // 同步模式数据
   const syncModes = [
     { id: 'receive-only', name: '只接收同步', emoji: '📥' },
@@ -560,6 +595,50 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         hasEventlog: !!currentEventlog,
         eventlogType: typeof currentEventlog,
       });
+
+      // 🆕 Step 6.5: 父子事件架构处理
+      // 如果当前是子事件，需要同步计划字段到父事件
+      if (formData.parentEventId) {
+        const parentEvent = EventService.getEvent(formData.parentEventId);
+        if (parentEvent) {
+          console.log('🔗 [EventEditModalV2] 子事件检测到，同步计划字段到父事件:', formData.parentEventId);
+          
+          // 子事件的计划字段（标题、标签等）修改时，同步到父事件
+          await EventHub.updateFields(formData.parentEventId, {
+            title: updatedEvent.title,
+            tags: updatedEvent.tags,
+            emoji: updatedEvent.emoji,
+            color: updatedEvent.color,
+            planSyncConfig: updatedEvent.planSyncConfig, // 计划同步配置也同步到父事件
+            calendarIds: updatedEvent.calendarIds, // calendarIds 同步到父事件
+          }, {
+            source: 'EventEditModalV2-ChildToParent'
+          });
+          
+          console.log('✅ [EventEditModalV2] 父事件计划字段已同步');
+        }
+      }
+      
+      // 🆕 如果修改了 actualSyncConfig，批量更新所有子事件的 calendarIds
+      if (updatedEvent.actualSyncConfig && event?.timerLogs?.length > 0) {
+        console.log('🔗 [EventEditModalV2] 检测到 actualSyncConfig 变更，批量更新子事件:', {
+          childCount: event.timerLogs.length,
+          targetCalendars: updatedEvent.actualSyncConfig.targetCalendars
+        });
+        
+        for (const childId of event.timerLogs) {
+          const childEvent = EventService.getEvent(childId);
+          if (childEvent && childEvent.isTimer) {
+            await EventHub.updateFields(childId, {
+              calendarIds: updatedEvent.actualSyncConfig.targetCalendars,
+            }, {
+              source: 'EventEditModalV2-ParentToChild'
+            });
+          }
+        }
+        
+        console.log('✅ [EventEditModalV2] 所有子事件 calendarIds 已更新');
+      }
 
       // 🔧 Step 7: 特殊处理 - 新 Timer 事件创建
       // 如果是通过 App.tsx 的 timerEditModal 打开（event.id === '' && event.isTimer === true）
@@ -1743,7 +1822,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                             availableCalendars={availableCalendars}
                             selectedCalendarIds={formData.planSyncConfig?.targetCalendars || []}
                             multiSelect={true}
-                            onMultiSelectionChange={(calendarIds) => {
+                            onMultiSelectionChange={async (calendarIds) => {
                               console.log('📝 [EventEditModalV2] 计划同步日历变更:', calendarIds);
                               setFormData(prev => {
                                 const updated = {
@@ -1762,6 +1841,25 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                                 });
                                 return updated;
                               });
+                              
+                              // 🆕 如果当前是子事件，实时同步到父事件
+                              if (parentEvent) {
+                                console.log('🔗 [EventEditModalV2] 子事件计划日历变更，同步到父事件:', parentEvent.id);
+                                
+                                const { EventHub } = await import('../../services/EventHub');
+                                await EventHub.updateFields(parentEvent.id, {
+                                  calendarIds: calendarIds,
+                                  planSyncConfig: {
+                                    ...parentEvent.planSyncConfig,
+                                    mode: parentEvent.planSyncConfig?.mode || 'send-only',
+                                    targetCalendars: calendarIds
+                                  }
+                                }, {
+                                  source: 'EventEditModalV2-ChildToParent-PlanSync'
+                                });
+                                
+                                console.log('✅ [EventEditModalV2] 父事件计划配置已实时同步');
+                              }
                             }}
                             onClose={() => setShowSourceCalendarPicker(false)}
                             title="选择同步日历（可多选）"
@@ -1943,7 +2041,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                               availableCalendars={availableCalendars}
                               selectedCalendarIds={syncCalendarIds}
                               multiSelect={true}
-                              onMultiSelectionChange={(calendarIds) => {
+                              onMultiSelectionChange={async (calendarIds) => {
                                 console.log('📝 [EventEditModalV2] 实际进展同步日历变更:', calendarIds);
                                 setSyncCalendarIds(calendarIds);
                                 setFormData(prev => {
@@ -1962,6 +2060,27 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                                   });
                                   return updated;
                                 });
+                                
+                                // 🆕 实时批量更新所有子事件的 calendarIds
+                                if (childEvents.length > 0) {
+                                  console.log('🔗 [EventEditModalV2] 实时更新子事件 calendarIds:', {
+                                    childCount: childEvents.length,
+                                    targetCalendars: calendarIds
+                                  });
+                                  
+                                  const { EventHub } = await import('../../services/EventHub');
+                                  for (const childEvent of childEvents) {
+                                    if (childEvent.isTimer) {
+                                      await EventHub.updateFields(childEvent.id, {
+                                        calendarIds: calendarIds,
+                                      }, {
+                                        source: 'EventEditModalV2-ActualSync'
+                                      });
+                                    }
+                                  }
+                                  
+                                  console.log('✅ [EventEditModalV2] 子事件 calendarIds 已实时更新');
+                                }
                               }}
                               onClose={() => setShowSyncCalendarPicker(false)}
                               title="选择同步日历（可多选）"
@@ -2052,6 +2171,30 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                                   });
                                   return updated;
                                 });
+                                
+                                // 🆕 实时批量更新所有子事件的 calendarIds
+                                (async () => {
+                                  if (childEvents.length > 0) {
+                                    console.log('🔗 [EventEditModalV2] 实际进展模式变更，批量更新子事件 calendarIds:', {
+                                      childCount: childEvents.length,
+                                      targetCalendars: allCalendarIds
+                                    });
+                                    
+                                    const { EventHub } = await import('../../services/EventHub');
+                                    for (const childEvent of childEvents) {
+                                      if (childEvent.isTimer) {
+                                        await EventHub.updateFields(childEvent.id, {
+                                          calendarIds: allCalendarIds,
+                                        }, {
+                                          source: 'EventEditModalV2-ActualSyncMode'
+                                        });
+                                      }
+                                    }
+                                    
+                                    console.log('✅ [EventEditModalV2] 子事件 calendarIds 已批量更新');
+                                  }
+                                })();
+                                
                                 setShowSyncSyncModePicker(false);
                               }}
                               onClose={() => setShowSyncSyncModePicker(false)}
