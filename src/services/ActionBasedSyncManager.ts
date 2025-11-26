@@ -2076,6 +2076,16 @@ private getUserSettings(): any {
             descriptionSource = action.data.eventlog.html || action.data.eventlog.plainText || descriptionSource;
           }
           
+          console.log('🔍 [ActionBasedSyncManager CREATE] Description extraction:', {
+            eventId: action.entityId,
+            hasEventlog: !!action.data.eventlog,
+            eventlogType: typeof action.data.eventlog,
+            hasHtml: !!(action.data.eventlog?.html),
+            hasPlainText: !!(action.data.eventlog?.plainText),
+            descriptionSourceLength: descriptionSource.length,
+            descriptionPreview: descriptionSource.substring(0, 100)
+          });
+          
           const createDescription = this.processEventDescription(
             descriptionSource,
             'remarkable',
@@ -2473,6 +2483,16 @@ private getUserSettings(): any {
               descriptionSource = action.data.eventlog.html || action.data.eventlog.plainText || descriptionSource;
             }
             
+            console.log('🔍 [ActionBasedSyncManager UPDATE] Description extraction:', {
+              eventId: action.entityId,
+              hasEventlog: !!action.data.eventlog,
+              eventlogType: typeof action.data.eventlog,
+              hasHtml: !!(action.data.eventlog?.html),
+              hasPlainText: !!(action.data.eventlog?.plainText),
+              descriptionSourceLength: descriptionSource.length,
+              descriptionPreview: descriptionSource.substring(0, 100)
+            });
+            
             const updateDescription = this.processEventDescription(
               descriptionSource,
               'remarkable',
@@ -2480,6 +2500,12 @@ private getUserSettings(): any {
               action.data
             );
             updateData.body = { contentType: 'text', content: updateDescription };
+            
+            console.log('🔍 [ActionBasedSyncManager UPDATE] Final body:', {
+              contentType: updateData.body.contentType,
+              contentLength: updateData.body.content.length,
+              contentPreview: updateData.body.content.substring(0, 150)
+            });
           }
           
           if (action.data.location !== undefined) {

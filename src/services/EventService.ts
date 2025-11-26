@@ -590,8 +590,17 @@ export class EventService {
       // 场景2: eventlog 有变化 → 自动转换为 EventLog 对象并同步到 description
       if ((updates as any).eventlog !== undefined && (updates as any).eventlog !== (originalEvent as any).eventlog) {
         const newEventlog = (updates as any).eventlog;
-        const isEventLogObject = typeof newEventlog === 'object' && newEventlog !== null && 'content' in newEventlog;
+        const isEventLogObject = typeof newEventlog === 'object' && newEventlog !== null && 'slateJson' in newEventlog;
         const isSlateJsonString = typeof newEventlog === 'string' && newEventlog.trim().startsWith('[');
+        
+        console.log('🔍 [EventService] eventlog 变化检测:', {
+          eventId,
+          type: typeof newEventlog,
+          isArray: Array.isArray(newEventlog),
+          isEventLogObject,
+          isSlateJsonString,
+          preview: typeof newEventlog === 'string' ? newEventlog.substring(0, 100) : JSON.stringify(newEventlog).substring(0, 100)
+        });
         
         if (isEventLogObject) {
           // 格式1: 已经是 EventLog 对象 - 直接使用
@@ -639,6 +648,8 @@ export class EventService {
               contentLength: newEventlog.length,
               htmlLength: htmlDescription.length,
               plainTextLength: plainTextDescription.length,
+              htmlPreview: htmlDescription.substring(0, 100),
+              descriptionSet: updates.description === undefined
             });
           } catch (error) {
             console.error('[EventService] ❌ Slate JSON 转换失败:', error);
