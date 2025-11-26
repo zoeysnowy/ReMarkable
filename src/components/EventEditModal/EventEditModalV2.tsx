@@ -2345,7 +2345,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                   <div ref={rightPanelRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '200px' }}>
                     <LightSlateEditor
                       ref={slateEditorRef}
-                      key={`editor-${formData.id}-${timelogContent.length}`}
+                      key={`editor-${formData.id}`}
                       content={timelogContent}
                       parentEventId={formData.id || 'new-event'}
                       enableTimestamp={true}
