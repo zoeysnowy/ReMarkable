@@ -806,6 +806,14 @@ export class EventService {
       });
 
       // 同步到Outlook
+      console.log('🔍 [EventService] Sync condition check:', {
+        eventId,
+        skipSync,
+        hasSyncManager: !!syncManagerInstance,
+        syncStatus: updatedEvent.syncStatus,
+        willEnterSyncBlock: !skipSync && !!syncManagerInstance && updatedEvent.syncStatus !== 'local-only'
+      });
+      
       if (!skipSync && syncManagerInstance && updatedEvent.syncStatus !== 'local-only') {
         // ✅ v1.8: 检查同步路由
         const syncRoute = determineSyncTarget(updatedEvent);
