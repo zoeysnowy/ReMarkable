@@ -329,18 +329,12 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   // 获取真实的可用日历数据
   const availableCalendars = getAvailableCalendarsForSettings();
 
-  // 日历来源状态 - 从 formData.calendarIds 初始化（多选）
-  const [sourceCalendarIds, setSourceCalendarIds] = useState<string[]>(() => {
-    if (event?.calendarIds && event.calendarIds.length > 0) {
-      return event.calendarIds;
-    }
-    return availableCalendars.length > 0 ? [availableCalendars[0].id] : ['local-created'];
-  });
+  // 实际进展日历状态 - 从 actualSyncConfig 初始化
   const [syncCalendarIds, setSyncCalendarIds] = useState<string[]>(() => {
-    if (event?.planSyncConfig?.targetCalendars && event.planSyncConfig.targetCalendars.length > 0) {
-      return event.planSyncConfig.targetCalendars;
+    if (event?.actualSyncConfig?.targetCalendars && event.actualSyncConfig.targetCalendars.length > 0) {
+      return event.actualSyncConfig.targetCalendars;
     }
-    return availableCalendars.length > 1 ? [availableCalendars[1].id] : [];
+    return [];
   });
 
   // 同步模式数据
@@ -537,7 +531,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         ...event, // 保留原有字段（如 createdAt, syncStatus 等）
         ...formData,
         id: eventId, // 使用验证后的 ID
-        title: { colorTitle: finalTitle }, // ✅ 传 colorTitle（可能包含 emoji），让 EventService.normalizeTitle 自动生成 fullTitle 和 simpleTitle
+        title: { colorTitle: finalTitle }, // ✅ 传 colorTitle（HTML 富文本+emoji），让 EventService.normalizeTitle 自动生成 simpleTitle + fullTitle
         tags: finalTags, // 🏷️ 使用自动映射后的标签
         isTask: formData.isTask,
         isTimer: formData.isTimer,
@@ -557,14 +551,14 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         actualSyncConfig: formData.actualSyncConfig, // 实际进展同步配置
       } as Event;
 
-      // 🔧 调试日志：验证 eventlog 字段
-      console.log('💾 [EventEditModalV2] Saving event with Slate JSON:', {
+      // 🔧 调试日志：验证同步配置
+      console.log('💾 [EventEditModalV2] Saving event with sync config:', {
+        eventId: eventId,
+        calendarIds: formData.calendarIds,
+        planSyncConfig: formData.planSyncConfig,
+        actualSyncConfig: formData.actualSyncConfig,
         hasEventlog: !!currentEventlog,
         eventlogType: typeof currentEventlog,
-        eventlogLength: typeof currentEventlog === 'string' ? currentEventlog.length : JSON.stringify(currentEventlog).length,
-        eventlogPreview: typeof currentEventlog === 'string' 
-          ? currentEventlog.substring(0, 100) 
-          : JSON.stringify(currentEventlog).substring(0, 100)
       });
 
       // 🔧 Step 7: 特殊处理 - 新 Timer 事件创建
@@ -890,7 +884,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         description: event.description || '',
       });
     }
-  }, [event?.id, isOpen]); // 🔧 添加 isOpen 依赖，确保 Modal 打开时同步数据
+  }, [event?.id, event?.title?.colorTitle, isOpen]); // 🔧 监听 colorTitle 变化（EditModal 使用 HTML 富文本）
 
   // 初始化时手动提取演示数据的联系人到联系人库
   useEffect(() => {
@@ -1750,6 +1744,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                             selectedCalendarIds={formData.planSyncConfig?.targetCalendars || []}
                             multiSelect={true}
                             onMultiSelectionChange={(calendarIds) => {
+                              console.log('📝 [EventEditModalV2] 计划同步日历变更:', calendarIds);
                               setFormData(prev => ({
                                 ...prev,
                                 calendarIds: calendarIds, // ✅ 保留 calendarIds（含义 = planSyncConfig.targetCalendars）
@@ -1941,6 +1936,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                               selectedCalendarIds={syncCalendarIds}
                               multiSelect={true}
                               onMultiSelectionChange={(calendarIds) => {
+                                console.log('📝 [EventEditModalV2] 实际进展同步日历变更:', calendarIds);
                                 setSyncCalendarIds(calendarIds);
                                 setFormData(prev => ({
                                   ...prev,
