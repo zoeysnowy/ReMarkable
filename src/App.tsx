@@ -1348,20 +1348,21 @@ function App() {
       AppLogger.log('⏸️ 用户已登出，停止同步管理器...');
       syncManager.stop();
       setSyncManager(null);
-    } else if (syncManager) {
-      // 🔧 [HMR FIX] syncManager 存在时，重新初始化 EventService（防止 HMR 导致丢失引用）
+    } else if (currentAuthState && syncManager) {
+      // 🔧 [HMR FIX] 已登录且 syncManager 存在时，重新初始化 EventService
+      // 这个分支会在 HMR 后被触发，因为 syncManager 在依赖数组中
       console.log('🔍 [App] syncManager 已存在，重新初始化 EventService...');
       EventService.initialize(syncManager);
       console.log('✅ [App] EventService 重新初始化完成');
     } else {
-      console.log('🔍 [App] 未登录或 syncManager 已存在');
+      console.log('🔍 [App] 未登录，跳过同步管理器初始化');
     }
     
     // 更新 lastAuthState
     if (currentAuthState !== lastAuthState) {
       setLastAuthState(currentAuthState);
     }
-  }, [microsoftService, lastAuthState]);  // 🔧 移除 syncManager 依赖，避免循环
+  }, [microsoftService, lastAuthState, syncManager]);  // 🔧 [HMR FIX] 添加 syncManager 依赖，确保 HMR 后自动重新初始化
 
   // 🔐 监听全局认证状态变化事件（登录成功后触发）
   useEffect(() => {
