@@ -734,6 +734,19 @@ export class EventService {
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
       eventLogger.log('💾 [EventService] Event updated in localStorage');
       
+      // 🔍 验证同步配置是否保存
+      if (filteredUpdates.planSyncConfig || filteredUpdates.actualSyncConfig) {
+        console.log('🔍 [EventService] 同步配置保存验证:', {
+          eventId,
+          保存前_planSyncConfig: originalEvent.planSyncConfig,
+          保存后_planSyncConfig: updatedEvent.planSyncConfig,
+          保存前_actualSyncConfig: originalEvent.actualSyncConfig,
+          保存后_actualSyncConfig: updatedEvent.actualSyncConfig,
+          更新字段包含planSyncConfig: !!filteredUpdates.planSyncConfig,
+          更新字段包含actualSyncConfig: !!filteredUpdates.actualSyncConfig
+        });
+      }
+      
       // 记录事件历史
       EventHistoryService.logUpdate(eventId, originalEvent, filteredUpdates, options?.source || 'user-edit');
       

@@ -98,12 +98,21 @@ class EventHubClass {
 
     // 3. 记录变化（用于调试）
     const changes: string[] = [];
+    const allFields: string[] = [];
     for (const key in updates) {
       if (updates.hasOwnProperty(key)) {
         const oldValue = (currentEvent as any)[key];
         const newValue = (updates as any)[key];
+        allFields.push(key);
         if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
           changes.push(`${key}: ${this.formatValue(oldValue)} → ${this.formatValue(newValue)}`);
+        } else if (key === 'planSyncConfig' || key === 'actualSyncConfig') {
+          // 🔍 特别记录同步配置字段（即使没有变化）
+          dbg(`🔍 [EventHub] ${key} 比较:`, {
+            oldValue: JSON.stringify(oldValue),
+            newValue: JSON.stringify(newValue),
+            相同: JSON.stringify(oldValue) === JSON.stringify(newValue)
+          });
         }
       }
     }
@@ -111,6 +120,8 @@ class EventHubClass {
     if (changes.length > 0) {
       dbg('🔄 [EventHub] 字段变化:', changes);
     }
+    
+    dbg('📋 [EventHub] 所有更新字段:', allFields);
 
     // 4. 更新缓存
     this.cache.set(eventId, {

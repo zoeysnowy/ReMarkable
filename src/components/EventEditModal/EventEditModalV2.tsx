@@ -595,11 +595,25 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         hasEventlog: !!currentEventlog,
         eventlogType: typeof currentEventlog,
       });
+      
+      // 🔧 调试：对比保存前后的值
+      const currentEvent = EventService.getEventById(eventId);
+      console.log('🔍 [EventEditModalV2] 保存前后对比:', {
+        '当前calendarIds': currentEvent?.calendarIds,
+        '新calendarIds': formData.calendarIds,
+        '当前planSyncConfig': currentEvent?.planSyncConfig,
+        '新planSyncConfig': formData.planSyncConfig,
+        '当前actualSyncConfig': currentEvent?.actualSyncConfig,
+        '新actualSyncConfig': formData.actualSyncConfig,
+      });
+
+      // 🔧 提前导入 EventHub
+      const { EventHub } = await import('../../services/EventHub');
 
       // 🆕 Step 6.5: 父子事件架构处理
       // 如果当前是子事件，需要同步计划字段到父事件
       if (formData.parentEventId) {
-        const parentEvent = EventService.getEvent(formData.parentEventId);
+        const parentEvent = EventService.getEventById(formData.parentEventId);
         if (parentEvent) {
           console.log('🔗 [EventEditModalV2] 子事件检测到，同步计划字段到父事件:', formData.parentEventId);
           
@@ -620,14 +634,14 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
       }
       
       // 🆕 如果修改了 actualSyncConfig，批量更新所有子事件的 calendarIds
-      if (updatedEvent.actualSyncConfig && event?.timerLogs?.length > 0) {
+      if (updatedEvent.actualSyncConfig && event?.timerLogs && event.timerLogs.length > 0) {
         console.log('🔗 [EventEditModalV2] 检测到 actualSyncConfig 变更，批量更新子事件:', {
           childCount: event.timerLogs.length,
           targetCalendars: updatedEvent.actualSyncConfig.targetCalendars
         });
         
         for (const childId of event.timerLogs) {
-          const childEvent = EventService.getEvent(childId);
+          const childEvent = EventService.getEventById(childId);
           if (childEvent && childEvent.isTimer) {
             await EventHub.updateFields(childId, {
               calendarIds: updatedEvent.actualSyncConfig.targetCalendars,
@@ -651,8 +665,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         return;
       }
       
-      // 🔧 Step 8: 导入 EventHub（统一事件管理中心）
-      const { EventHub } = await import('../../services/EventHub');
+      // 🔧 Step 8: EventHub 已在上面导入
       
       // 🔧 Step 9: 判断是创建还是更新
       // 检查 EventService（持久化层）而不是 EventHub 缓存
