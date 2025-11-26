@@ -1745,15 +1745,23 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                             multiSelect={true}
                             onMultiSelectionChange={(calendarIds) => {
                               console.log('📝 [EventEditModalV2] 计划同步日历变更:', calendarIds);
-                              setFormData(prev => ({
-                                ...prev,
-                                calendarIds: calendarIds, // ✅ 保留 calendarIds（含义 = planSyncConfig.targetCalendars）
-                                planSyncConfig: {
-                                  ...prev.planSyncConfig,
-                                  mode: prev.planSyncConfig?.mode || 'send-only',
-                                  targetCalendars: calendarIds
-                                }
-                              }));
+                              setFormData(prev => {
+                                const updated = {
+                                  ...prev,
+                                  calendarIds: calendarIds, // ✅ 保留 calendarIds（含义 = planSyncConfig.targetCalendars）
+                                  planSyncConfig: {
+                                    ...prev.planSyncConfig,
+                                    mode: prev.planSyncConfig?.mode || 'send-only',
+                                    targetCalendars: calendarIds
+                                  }
+                                };
+                                console.log('📝 [EventEditModalV2] 更新后 formData:', {
+                                  calendarIds: updated.calendarIds,
+                                  planSyncConfig: updated.planSyncConfig,
+                                  actualSyncConfig: updated.actualSyncConfig
+                                });
+                                return updated;
+                              });
                             }}
                             onClose={() => setShowSourceCalendarPicker(false)}
                             title="选择同步日历（可多选）"
@@ -1938,14 +1946,22 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                               onMultiSelectionChange={(calendarIds) => {
                                 console.log('📝 [EventEditModalV2] 实际进展同步日历变更:', calendarIds);
                                 setSyncCalendarIds(calendarIds);
-                                setFormData(prev => ({
-                                  ...prev,
-                                  actualSyncConfig: {
-                                    ...prev.actualSyncConfig,
-                                    mode: prev.actualSyncConfig?.mode || 'send-only',
-                                    targetCalendars: calendarIds // ✅ 实际进展独立配置（不影响 calendarIds）
-                                  }
-                                }));
+                                setFormData(prev => {
+                                  const updated = {
+                                    ...prev,
+                                    actualSyncConfig: {
+                                      ...(prev.actualSyncConfig || {}),
+                                      mode: prev.actualSyncConfig?.mode || 'send-only',
+                                      targetCalendars: calendarIds // ✅ 实际进展独立配置（不影响 calendarIds）
+                                    }
+                                  };
+                                  console.log('📝 [EventEditModalV2] 更新后 formData:', {
+                                    calendarIds: updated.calendarIds,
+                                    planSyncConfig: updated.planSyncConfig,
+                                    actualSyncConfig: updated.actualSyncConfig
+                                  });
+                                  return updated;
+                                });
                               }}
                               onClose={() => setShowSyncCalendarPicker(false)}
                               title="选择同步日历（可多选）"
@@ -2019,15 +2035,23 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                                 // 合并用户选择的日历和标签映射的日历
                                 const allCalendarIds = [...new Set([...syncCalendarIds, ...mappedCalendarIds])];
                                 
-                                setFormData(prev => ({
-                                  ...prev,
-                                  calendarIds: allCalendarIds.length > 0 ? allCalendarIds : prev.calendarIds,
-                                  actualSyncConfig: {
-                                    mode: modeId as any,
+                                setFormData(prev => {
+                                  const updated = {
+                                    ...prev,
+                                    // ❌ 不修改 calendarIds（它属于 planSyncConfig）
+                                    actualSyncConfig: {
+                                      mode: modeId as any,
+                                      targetCalendars: allCalendarIds,
+                                      tagMapping: prev.actualSyncConfig?.tagMapping
+                                    }
+                                  };
+                                  console.log('📝 [EventEditModalV2] 实际进展同步模式变更:', {
+                                    mode: modeId,
                                     targetCalendars: allCalendarIds,
-                                    tagMapping: prev.actualSyncConfig?.tagMapping
-                                  }
-                                }));
+                                    actualSyncConfig: updated.actualSyncConfig
+                                  });
+                                  return updated;
+                                });
                                 setShowSyncSyncModePicker(false);
                               }}
                               onClose={() => setShowSyncSyncModePicker(false)}
