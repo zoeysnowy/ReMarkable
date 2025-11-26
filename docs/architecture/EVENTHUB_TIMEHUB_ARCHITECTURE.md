@@ -1,11 +1,11 @@
 # EventHub & TimeHub 统一架构文档
 
-> **文档版本**: v2.15  
+> **文档版本**: v2.15.1  
 > **创建时间**: 2025-11-06  
 > **最后更新**: 2025-11-27  
-> **关联模块**: EventHub, TimeHub, EventService, EventHistoryService, TimeParsingService, PlanManager, UpcomingEventsPanel, EventEditModal V2  
+> **关联模块**: EventHub, TimeHub, EventService, EventHistoryService, TimeParsingService, PlanManager, UpcomingEventsPanel, EventEditModal V2, ActionBasedSyncManager, syncRouter  
 > **文档类型**: 核心架构文档
-> **新增关联**: EventTitle 三层架构、EventHistoryService 时间快照查询、Snapshot 功能优化、checkType 与 checkbox 关联、父-子事件单一配置架构（subEventConfig）
+> **新增关联**: EventTitle 三层架构、EventHistoryService 时间快照查询、Snapshot 功能优化、checkType 与 checkbox 关联、父-子事件单一配置架构（subEventConfig）、**syncMode 同步控制（已实现）**
 
 ---
 
@@ -44,6 +44,19 @@ interface Event {
 **子事件（ChildEvent/Timer）**:
 - `calendarIds/syncMode`: 子事件自己的同步配置（实际进展）
 - 创建时继承父事件的 `subEventConfig`
+
+#### 2.1 syncMode 同步控制（✅ v2.15.1 已实现）
+
+**syncMode 取值**:
+- `receive-only`: 仅接收远端更新，不推送本地修改到远端
+- `send-only`: 仅推送本地修改到远端，不接收远端更新
+- `send-only-private`: 推送到远端（标记为私密），不接收远端更新
+- `bidirectional`: 双向同步（默认模式）
+- `bidirectional-private`: 双向同步（标记为私密）
+
+**实现位置**:
+1. **syncRouter.ts** (`determineSyncTarget`): 检查 `syncMode === 'receive-only'` 时阻止本地→远端推送
+2. **ActionBasedSyncManager.ts** (`applyRemoteActionToLocal`): 检查 `syncMode === 'send-only'` 时阻止远端→本地更新
 
 #### 3. EventEditModal V2 集成
 

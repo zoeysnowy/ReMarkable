@@ -287,29 +287,52 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastContentRef = useRef<string>(content);
   
-  // 监听外部 content 变化，同步到编辑器
+  // 🔧 监听外部 content 变化，但只在必要时同步（避免循环更新导致光标乱跳）
+  // 
+  // 问题：如果每次 onChange 回调都更新父组件，父组件又通过 props 传回来，
+  // 就会触发这个 useEffect，导致编辑器被重置，光标丢失。
+  // 
+  // 解决方案：只在真正的外部变化时才同步（例如切换事件、初始加载）
+  // 使用 parentEventId 作为依赖，只有切换事件时才重置编辑器
+  const isInitialMount = useRef(true);
+  
   useEffect(() => {
-    // 避免循环更新：只有当外部 content 与当前编辑器内容不同时才更新
+    // 初次挂载时跳过（由 initialValue 处理）
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      lastContentRef.current = content;
+      return;
+    }
+    
+    // 只在外部内容真正不同时才同步（排除 onChange 循环回来的情况）
     const currentContent = slateNodesToJson(editor.children);
-    if (content && content !== currentContent && content !== lastContentRef.current) {
-      console.log('[LightSlateEditor] 外部 content 变化，更新编辑器');
-      console.log('旧内容:', currentContent);
-      console.log('新内容:', content);
+    const contentChanged = content !== currentContent;
+    const notFromSelf = content !== lastContentRef.current;
+    
+    if (content && contentChanged && notFromSelf) {
+      console.log('[LightSlateEditor] 🔄 外部 content 变化（可能是切换事件），更新编辑器');
+      console.log('当前内容长度:', currentContent.length);
+      console.log('新内容长度:', content.length);
       
       const nodes = jsonToSlateNodes(content);
       
-      // 使用 Transforms 来更新内容（推荐的方式）
-      Transforms.delete(editor, {
-        at: {
-          anchor: Editor.start(editor, []),
-          focus: Editor.end(editor, [])
-        }
+      // 使用 withoutNormalizing 包裹，提高性能
+      Editor.withoutNormalizing(editor, () => {
+        // 删除所有内容
+        Transforms.delete(editor, {
+          at: {
+            anchor: Editor.start(editor, []),
+            focus: Editor.end(editor, [])
+          }
+        });
+        
+        // 插入新内容
+        Transforms.insertNodes(editor, nodes, { at: [0] });
       });
       
-      Transforms.insertNodes(editor, nodes, { at: [0] });
       lastContentRef.current = content;
     }
-  }, [content, editor]);
+  }, [parentEventId]); // 🔧 只监听 parentEventId，切换事件时才重置编辑器
   
   // Timestamp 相关状态
   const timestampServiceRef = useRef<EventLogTimestampService | null>(null);

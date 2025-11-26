@@ -20,6 +20,10 @@ export interface SyncRoute {
  * 决定事件的同步目标
  * 
  * 规则：
+ * 0. syncMode 检查（v2.15）
+ *    - receive-only: 不推送到远端（仅接收远端更新）
+ *    - send-only / send-only-private: 推送到远端（不接收远端更新）
+ *    - bidirectional / bidirectional-private: 双向同步
  * 1. Task 类型（isTask=true）→ Microsoft To Do
  * 2. Calendar 事件且有时间 → Outlook Calendar
  * 3. Calendar 事件但无时间 → 不同步
@@ -28,6 +32,14 @@ export interface SyncRoute {
  * @returns 同步路由信息
  */
 export function determineSyncTarget(event: Event): SyncRoute {
+  // 0. 🆕 [v2.15] syncMode 检查 - receive-only 不推送到远端
+  if (event.syncMode === 'receive-only') {
+    return {
+      target: 'none',
+      reason: 'syncMode=receive-only: Only receive remote updates, do not push',
+    };
+  }
+  
   // 1. Task 类型 → Microsoft To Do
   if (event.isTask === true) {
     return {

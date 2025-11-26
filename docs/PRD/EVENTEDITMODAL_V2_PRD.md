@@ -19,6 +19,7 @@
 > - ✅ **计划安排区域**: 父模式更新 mainEvent.calendarIds/syncMode，子模式更新 parentEvent（计划字段同步到父）
 > - ✅ **实际进展区域**: 父模式更新 subEventConfig（模板）并批量更新子事件，子模式更新 mainEvent（子事件自己的配置）
 > - ✅ **模板继承机制**: 创建子事件时从父事件的 subEventConfig 继承配置，父事件无子事件时模板持久化
+> - ✅ **syncMode 同步控制**: 实现 receive-only（仅接收）、send-only（仅推送）、bidirectional（双向）模式，控制本地↔远端同步行为
 > 
 > **🔥 v2.0.3 历史更新** (2025-11-26):
 > - ✅ **同步日历选择器重设计**: "来自" → "同步"，从只读改为可编辑 Picker

@@ -2783,6 +2783,29 @@ private getUserSettings(): any {
     // 🚀 批量模式：如果传入了localEvents，说明是批量处理，不立即保存
     const isBatchMode = !!localEvents;
     const events = localEvents || this.getLocalEvents();
+    
+    // 🆕 [v2.15] syncMode 检查：send-only 模式不接收远端更新
+    if (action.type === 'create' || action.type === 'update') {
+      // 对于 create，检查远程事件的 data
+      // 对于 update，需要找到本地事件检查其 syncMode
+      let eventSyncMode: string | undefined;
+      
+      if (action.type === 'update') {
+        // 查找本地事件的 syncMode
+        const localEvent = events.find((e: any) => 
+          e.id === action.entityId || 
+          e.externalId === action.entityId ||
+          e.externalId === action.entityId?.replace('outlook-', '')
+        );
+        eventSyncMode = localEvent?.syncMode;
+      }
+      // create 时暂时不检查（新事件从远端来，应该创建）
+      
+      if (eventSyncMode === 'send-only' || eventSyncMode === 'send-only-private') {
+        console.log(`⏭️ [Sync] Skipping remote ${action.type} for send-only event:`, action.entityId);
+        return events; // 跳过远端更新
+      }
+    }
 
     switch (action.type) {
       case 'create':
