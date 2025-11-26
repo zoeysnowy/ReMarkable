@@ -3008,8 +3008,22 @@ private getUserSettings(): any {
             fullTitle: JSON.stringify([{ type: 'paragraph', children: [{ text: cleanTitle }] }])
           };
           
+          // 🔧 [v2.15.2 FIX] 明确保留本地自定义字段，防止远程回调覆盖
+          // Outlook API 响应不包含 syncMode, subEventConfig 等自定义字段
+          const localOnlyFields = {
+            syncMode: events[eventIndex].syncMode,
+            subEventConfig: events[eventIndex].subEventConfig,
+            calendarIds: events[eventIndex].calendarIds,
+            tags: events[eventIndex].tags,
+            isTask: events[eventIndex].isTask,
+            isTimer: events[eventIndex].isTimer,
+            parentEventId: events[eventIndex].parentEventId,
+            timerLogs: events[eventIndex].timerLogs,
+          };
+          
           const updatedEvent = {
             ...events[eventIndex], // 🔧 保留所有原有字段（包括source和calendarId）
+            ...localOnlyFields,    // 🔧 [v2.15.2] 明确恢复本地自定义字段
             title: titleObject, // 🔧 使用 EventTitle 对象而非字符串
             description: cleanDescription, // 直接使用清理后的内容，不添加同步备注
             eventlog: updatedEventlog, // 🆕 同步更新 eventlog
