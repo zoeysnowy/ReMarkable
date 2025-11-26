@@ -1,11 +1,11 @@
 # EventHub & TimeHub 统一架构文档
 
-> **文档版本**: v2.15.1  
+> **文档版本**: v2.15.2  
 > **创建时间**: 2025-11-06  
 > **最后更新**: 2025-11-27  
 > **关联模块**: EventHub, TimeHub, EventService, EventHistoryService, TimeParsingService, PlanManager, UpcomingEventsPanel, EventEditModal V2, ActionBasedSyncManager, syncRouter  
 > **文档类型**: 核心架构文档
-> **新增关联**: EventTitle 三层架构、EventHistoryService 时间快照查询、Snapshot 功能优化、checkType 与 checkbox 关联、父-子事件单一配置架构（subEventConfig）、**syncMode 同步控制（已实现）**
+> **新增关联**: EventTitle 三层架构、EventHistoryService 时间快照查询、Snapshot 功能优化、checkType 与 checkbox 关联、父-子事件单一配置架构（subEventConfig）、**syncMode 同步控制（已实现）**、**EventService 生命周期管理（HMR 修复）**
 
 ---
 
@@ -102,6 +102,133 @@ event.subEventConfig = {
 childEvent.calendarIds = ['outlook-work'];
 childEvent.syncMode = 'send-only';
 ```
+
+---
+
+## 🔧 v2.15.2 EventService 生命周期管理 (2025-11-27)
+
+### 问题背景
+
+**现象**: 开发环境热重载（HMR）后，EventService 无法同步事件到 Outlook
+**根因**: HMR 导致 EventService 模块重新加载，内部 `syncManagerInstance` 变量重置为 `null`
+**影响**: `hasSyncManager: false`，导致同步代码块不执行
+
+### 技术分析
+
+#### 1. 模块级变量的生命周期问题
+
+```typescript
+// EventService.ts - 模块级变量
+let syncManagerInstance: any = null;  // ❌ HMR 时会重置为 null
+
+export class EventService {
+  static initialize(syncManager: any) {
+    syncManagerInstance = syncManager;  // ✅ 初始化时赋值
+  }
+  
+  static async updateEvent(eventId: string, updates: Partial<Event>) {
+    // ...
+    if (!skipSync && syncManagerInstance && ...) {  // ❌ HMR 后 syncManagerInstance 为 null
+      await syncManagerInstance.recordLocalAction(...);
+    }
+  }
+}
+```
+
+#### 2. App.tsx 的初始化时机
+
+**旧逻辑**（有问题）:
+```typescript
+useEffect(() => {
+  if (currentAuthState && !syncManager) {
+    // 只在首次创建时初始化 EventService
+    const newSyncManager = new ActionBasedSyncManager(microsoftService);
+    setSyncManager(newSyncManager);
+    EventService.initialize(newSyncManager);
+  } else if (syncManager) {
+    // ❌ syncManager 存在时不做任何事
+    console.log('🔍 [App] syncManager 已存在，跳过初始化');
+  }
+}, [microsoftService, lastAuthState]);  // ❌ 依赖数组不包含 syncManager
+```
+
+**问题**:
+1. HMR 触发 EventService 模块重新加载 → `syncManagerInstance` 重置为 `null`
+2. App.tsx 的 `syncManager` state 仍存在（React state 不受 HMR 影响）
+3. useEffect 因为 `syncManager` 存在而不执行 `EventService.initialize()`
+4. 导致 EventService 永久丢失 syncManager 引用
+
+### 解决方案
+
+**核心思路**: 每次 useEffect 运行时，如果 `syncManager` 存在，**重新初始化 EventService**
+
+```typescript
+// App.tsx L1318-1363
+useEffect(() => {
+  const currentAuthState = microsoftService?.isSignedIn() || false;
+  
+  if (currentAuthState && !syncManager) {
+    // 首次创建 syncManager
+    console.log('🔍 [App] 开始创建 ActionBasedSyncManager...');
+    const newSyncManager = new ActionBasedSyncManager(microsoftService);
+    setSyncManager(newSyncManager);
+    EventService.initialize(newSyncManager);
+    newSyncManager.start();
+  } else if (syncManager) {
+    // 🔧 [HMR FIX] syncManager 存在时，重新初始化 EventService
+    // 防止 HMR 导致 EventService 丢失 syncManager 引用
+    console.log('🔍 [App] syncManager 已存在，重新初始化 EventService...');
+    EventService.initialize(syncManager);
+    console.log('✅ [App] EventService 重新初始化完成');
+  }
+}, [microsoftService, lastAuthState]);
+```
+
+### 性能评估
+
+| 指标 | 评估 | 说明 |
+|------|------|------|
+| **操作开销** | ✅ 极低 | `EventService.initialize()` 只是变量赋值（`syncManagerInstance = syncManager`） |
+| **运行频率** | ✅ 极低 | useEffect 仅在登录/登出或页面加载时运行，正常使用中几乎不触发 |
+| **内存影响** | ✅ 无 | 不创建新对象，只是更新引用 |
+| **可靠性** | ✅ 大幅提升 | 确保 EventService 始终持有有效的 syncManager 引用 |
+| **开发体验** | ✅ 改善 | 解决 HMR 导致的同步失效问题 |
+
+### 验证日志
+
+**修复前**:
+```
+🔍 [EventService] Sync condition check: {
+  eventId: 'local-xxx',
+  skipSync: false,
+  hasSyncManager: false,  // ❌ syncManager 丢失
+  syncStatus: 'synced',
+  willEnterSyncBlock: false
+}
+```
+
+**修复后**:
+```
+🔍 [App] syncManager 已存在，重新初始化 EventService...
+✅ [App] EventService 重新初始化完成
+
+🔍 [EventService] Sync condition check: {
+  eventId: 'local-xxx',
+  skipSync: false,
+  hasSyncManager: true,  // ✅ syncManager 恢复
+  syncStatus: 'synced',
+  willEnterSyncBlock: true
+}
+
+🔍 [ActionBasedSyncManager UPDATE] action.data 检查: { hasDescription: true, ... }
+✅ 已更新1个事件到Outlook
+```
+
+### 相关文件
+
+- `src/App.tsx` L1318-1363: syncManager 初始化逻辑
+- `src/services/EventService.ts` L25-45: `initialize()` 方法和 `syncManagerInstance` 变量
+- `src/services/EventService.ts` L809-850: 同步条件检查和执行
 
 ---
 
@@ -695,6 +822,8 @@ EventService.exportEventHistory();    // 导出事件历史
 | **v1.4** | 2025-11-16 | 🆕 添加 Timer 父子事件自动升级机制（parentEventId, timerLogs） |
 | **v1.5** | 2025-11-19 | 🎉 循环更新防护机制，性能优化，测试基础设施保护 |
 | **v2.15** | 2025-11-27 | 🆕 父-子事件单一配置架构（calendarIds + syncMode + subEventConfig） |
+| **v2.15.1** | 2025-11-27 | 🆕 syncMode 同步控制实现（receive-only/send-only/bidirectional） |
+| **v2.15.2** | 2025-11-27 | 🔧 EventService 生命周期管理（修复 HMR 导致 syncManager 引用丢失） |
 
 ### 1.2 架构图
 

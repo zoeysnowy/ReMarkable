@@ -1,8 +1,8 @@
 # ActionBasedSyncManager PRD
 
-> **文档版本**: v1.1  
+> **文档版本**: v1.2  
 > **创建日期**: 2025-11-08  
-> **最后更新**: 2025-11-09  
+> **最后更新**: 2025-11-27  
 > **文档状态**: ✅ 从代码反向生成  
 > **参考框架**: Copilot PRD Reverse Engineering Framework v1.0
 
@@ -48,6 +48,46 @@ ActionBasedSyncManager 是 ReMarkable 的**增量同步引擎**，负责本地�
 - **原因**: 与 TimeCalendar 显示范围一致
 - **替代逻辑**: 移除了 legacy 的 `ongoingDays` 设置
 - **Graph API 限制**: 单次请求最多 1000 个事件
+
+### 1.4 初始化与生命周期管理（v1.2 更新）
+
+**问题**: HMR（热模块重载）会导致 EventService 模块重新加载，`syncManagerInstance` 引用丢失
+
+**现象**:
+- 开发环境热重载后，EventService 内部的 `syncManagerInstance` 重置为 `null`
+- App.tsx 的 `syncManager` state 仍存在，但 EventService 已丢失引用
+- 导致之前能同步，热重载后无法同步（`hasSyncManager: false`）
+
+**解决方案** (App.tsx L1318-1363):
+```typescript
+useEffect(() => {
+  const currentAuthState = microsoftService?.isSignedIn() || false;
+  
+  if (currentAuthState && !syncManager) {
+    // 首次创建 syncManager
+    const newSyncManager = new ActionBasedSyncManager(microsoftService);
+    setSyncManager(newSyncManager);
+    EventService.initialize(newSyncManager);
+    newSyncManager.start();
+  } else if (syncManager) {
+    // 🔧 [HMR FIX] syncManager 存在时，重新初始化 EventService
+    // 防止 HMR 导致 EventService 丢失 syncManager 引用
+    EventService.initialize(syncManager);
+  }
+}, [microsoftService, lastAuthState]);
+```
+
+**关键机制**:
+1. **无性能影响**: `EventService.initialize()` 只是变量赋值，开销极小
+2. **运行频率低**: useEffect 仅在登录/登出或页面加载时运行
+3. **可靠性提升**: 确保 EventService 始终持有有效的 syncManager 引用
+4. **开发体验**: 解决 HMR 导致的同步失效问题
+
+**相关日志**:
+```
+🔍 [EventService] Sync condition check: { hasSyncManager: true, ... }
+✅ [App] EventService 重新初始化完成
+```
 
 ---
 
