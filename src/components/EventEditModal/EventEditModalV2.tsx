@@ -317,6 +317,10 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     console.log('📥 eventlog type:', typeof event?.eventlog);
     console.log('📦 formData.eventlog:', formData.eventlog);
     console.log('📦 formData.eventlog type:', typeof formData.eventlog);
+    console.log('🔍 [同步配置] props.event.planSyncConfig:', event?.planSyncConfig);
+    console.log('🔍 [同步配置] props.event.actualSyncConfig:', event?.actualSyncConfig);
+    console.log('🔍 [同步配置] formData.planSyncConfig:', formData.planSyncConfig);
+    console.log('🔍 [同步配置] formData.actualSyncConfig:', formData.actualSyncConfig);
     console.log('================================================================');
   }, [event, formData.eventlog]);
 
@@ -1790,6 +1794,11 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                       >
                         {(() => {
                           const selectedIds = formData.planSyncConfig?.targetCalendars || [];
+                          console.log('🎨 [计划日历选择器] 渲染:', {
+                            selectedIds,
+                            'formData.planSyncConfig': formData.planSyncConfig,
+                            'availableCalendars数量': availableCalendars.length
+                          });
                           if (selectedIds.length === 0) {
                             return <span style={{ color: '#9ca3af', fontSize: '14px' }}>选择日历...</span>;
                           }
