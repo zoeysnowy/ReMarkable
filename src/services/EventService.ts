@@ -810,6 +810,14 @@ export class EventService {
         // ✅ v1.8: 检查同步路由
         const syncRoute = determineSyncTarget(updatedEvent);
         
+        console.log('🔍 [EventService] Sync route check:', {
+          eventId,
+          syncMode: updatedEvent.syncMode,
+          syncTarget: syncRoute.target,
+          syncReason: syncRoute.reason,
+          willSync: syncRoute.target !== 'none'
+        });
+        
         if (syncRoute.target === 'none') {
           eventLogger.log(`⏭️ [EventService] Skipping sync: ${syncRoute.reason}`);
         } else {
