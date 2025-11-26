@@ -585,17 +585,10 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
       });
       
       // 🔧 Step 6: 处理 Private 模式（send-only-private, bidirectional-private）
-      // 如果选择了 Private 模式，参与者不邀请，添加到 description
+      // Private 模式：参与者信息会在 ActionBasedSyncManager 同步时添加到 description
+      // 这里只需要保存 attendees，不修改 description（让 EventService 从 eventlog.html 自动提取）
       const isPrivateMode = formData.syncMode?.includes('-private');
       let finalAttendees = formData.attendees;
-      let finalDescription = formData.description || '';
-      
-      if (isPrivateMode && formData.attendees && formData.attendees.length > 0) {
-        console.log('🔒 [EventEditModalV2] Private mode detected, formatting participants to description');
-        const participantText = formatParticipantsToDescription(formData.attendees);
-        finalDescription = participantText + finalDescription;
-        finalAttendees = []; // Private 模式下清空 attendees
-      }
 
       // 🔧 Step 6.5: 标签自动映射（根据同步目标日历自动添加标签）
       let finalTags = [...(formData.tags || [])];
@@ -636,8 +629,9 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         isAllDay: formData.allDay,
         location: formData.location,
         organizer: formData.organizer,
-        attendees: finalAttendees, // 🔒 Private 模式下为空数组
-        description: finalDescription, // 🔒 Private 模式下包含参与者文本
+        attendees: finalAttendees,
+        // 🔧 关键：不传 description，让 EventService 从 eventlog.html 自动提取最新内容
+        // Private 模式的参与者文本会在 ActionBasedSyncManager 同步时添加
         eventlog: currentEventlogJson,  // ✅ Slate JSON 字符串（EventService 自动转换为 EventLog 对象）
         syncStatus: timerSyncStatus, // 🔧 Timer 运行中保持 local-only
         // 🔧 日历同步配置（单一数据结构）
