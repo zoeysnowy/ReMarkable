@@ -473,9 +473,9 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
       //   - 如果编辑器有焦点 → 读取编辑器最新内容（Slate JSON）
       //   - 如果编辑器无焦点 → 使用 formData（已通过失焦保存更新）
       // 
-      // ✅ 架构优化：只传递 Slate JSON 字符串给 EventService
-      // EventService 会自动转换为 EventLog 对象（content, descriptionHtml, descriptionPlainText）
-      let currentEventlog = formData.eventlog;
+      // ✅ 架构优化：传递 Slate JSON **字符串**给 EventService
+      // EventService 会自动转换为 EventLog 对象（slateJson, html, plainText）
+      let currentEventlogJson = '';
       
       if (slateEditorRef.current?.editor) {
         const editorElement = document.querySelector('.slate-editable');
@@ -483,14 +483,31 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
           console.log('📝 [EventEditModalV2] 编辑器有焦点，读取最新内容');
           try {
             const editorContent = slateEditorRef.current.editor.children;
-            const jsonString = slateNodesToJson(editorContent);
-            // 🔧 将 JSON 字符串转换回对象（EventService 需要对象格式）
-            currentEventlog = JSON.parse(jsonString);
+            currentEventlogJson = slateNodesToJson(editorContent); // ✅ 保持为 JSON 字符串
           } catch (error) {
             console.error('❌ [EventEditModalV2] 读取编辑器内容失败，使用 formData:', error);
+            // 降级：如果 formData.eventlog 是数组，转为字符串
+            if (Array.isArray(formData.eventlog)) {
+              currentEventlogJson = JSON.stringify(formData.eventlog);
+            } else if (typeof formData.eventlog === 'string') {
+              currentEventlogJson = formData.eventlog;
+            }
           }
         } else {
           console.log('📝 [EventEditModalV2] 编辑器无焦点，使用 formData（已通过失焦或自动保存更新）');
+          // ✅ 将 formData.eventlog 转换为 JSON 字符串
+          if (Array.isArray(formData.eventlog)) {
+            currentEventlogJson = JSON.stringify(formData.eventlog);
+          } else if (typeof formData.eventlog === 'string') {
+            currentEventlogJson = formData.eventlog;
+          }
+        }
+      } else {
+        // 无编辑器，使用 formData
+        if (Array.isArray(formData.eventlog)) {
+          currentEventlogJson = JSON.stringify(formData.eventlog);
+        } else if (typeof formData.eventlog === 'string') {
+          currentEventlogJson = formData.eventlog;
         }
       }
       
@@ -621,7 +638,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         organizer: formData.organizer,
         attendees: finalAttendees, // 🔒 Private 模式下为空数组
         description: finalDescription, // 🔒 Private 模式下包含参与者文本
-        eventlog: currentEventlog as any,  // ✅ Slate JSON 对象（Descendant[] 数组）
+        eventlog: currentEventlogJson,  // ✅ Slate JSON 字符串（EventService 自动转换为 EventLog 对象）
         syncStatus: timerSyncStatus, // 🔧 Timer 运行中保持 local-only
         // 🔧 日历同步配置（单一数据结构）
         calendarIds: formData.calendarIds,
@@ -633,8 +650,9 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         eventId: eventId,
         calendarIds: formData.calendarIds,
         syncMode: formData.syncMode,
-        hasEventlog: !!currentEventlog,
-        eventlogType: typeof currentEventlog,
+        hasEventlog: !!currentEventlogJson,
+        eventlogType: typeof currentEventlogJson,
+        eventlogLength: currentEventlogJson.length,
       });
       
       // 🔧 调试：对比保存前后的值
