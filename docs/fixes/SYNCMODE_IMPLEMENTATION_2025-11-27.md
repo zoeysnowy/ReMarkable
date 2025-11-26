@@ -180,10 +180,74 @@ if (action.type === 'create' || action.type === 'update') {
 
 ---
 
+## 🔧 v2.15.2 关键修复 (2025-11-27)
+
+### 修复：远程同步回调覆盖本地自定义字段
+
+**问题症状**：
+- 首次同步事件到 Outlook 后，本地 `syncMode` 从 `'bidirectional'` 变为 `undefined` 或 `'receive-only'`
+- 用户设置的同步模式丢失
+
+**根本原因**：
+1. **Outlook API 响应不完整**：微软 Graph API 返回的事件对象只包含标准字段（subject, startTime, endTime 等），**不包含自定义字段**（syncMode, subEventConfig, calendarIds 等）
+2. **远程回调覆盖**：`ActionBasedSyncManager.applyRemoteActionToLocal` 的 UPDATE 分支用远程数据更新本地事件
+3. **JavaScript 展开陷阱**：`{ ...events[i], ...remoteData }` 中，如果 remoteData 的字段是 `undefined`，会覆盖原有值
+
+**数据流示例**：
+```
+本地创建事件
+  ↓ syncMode: 'bidirectional'
+同步到 Outlook (CREATE)
+  ↓ Graph API: POST /calendars/{id}/events
+Outlook 返回响应
+  ↓ { subject, startTime, endTime, ... } (无 syncMode)
+applyRemoteActionToLocal (UPDATE)
+  ↓ { ...events[i], startTime: ..., syncMode: undefined }
+本地更新
+  ↓ syncMode: undefined ❌ (被覆盖)
+```
+
+**解决方案** (ActionBasedSyncManager.ts L3005-3030)：
+```typescript
+// 🔧 [v2.15.2 FIX] 明确保留本地自定义字段，防止远程回调覆盖
+const localOnlyFields = {
+  syncMode: events[eventIndex].syncMode,
+  subEventConfig: events[eventIndex].subEventConfig,
+  calendarIds: events[eventIndex].calendarIds,
+  tags: events[eventIndex].tags,
+  isTask: events[eventIndex].isTask,
+  isTimer: events[eventIndex].isTimer,
+  parentEventId: events[eventIndex].parentEventId,
+  timerLogs: events[eventIndex].timerLogs,
+};
+
+const updatedEvent = {
+  ...events[eventIndex],  // 原有所有字段
+  ...localOnlyFields,     // 🔧 明确恢复本地字段
+  // ... 远程字段更新
+};
+```
+
+**受保护字段列表**：
+- ✅ `syncMode` - 同步模式控制
+- ✅ `subEventConfig` - 子事件配置模板
+- ✅ `calendarIds` - 目标日历列表
+- ✅ `tags` - 标签
+- ✅ `isTask`/`isTimer` - 事件类型标记
+- ✅ `parentEventId`/`timerLogs` - 父子事件关联
+
+**验证**：
+- ✅ 首次同步后 `syncMode` 保持原值
+- ✅ 多次往返同步后配置不丢失
+- ✅ 子事件配置模板（subEventConfig）正确保留
+
+---
+
 ## 🔄 版本历史
 
 | 版本 | 日期 | 变更内容 |
 |-----|------|---------|
+| v2.15.2 | 2025-11-27 | 🔧 修复远程同步回调覆盖本地自定义字段 |
 | v2.15.1 | 2025-11-27 | 🆕 实现 syncMode 同步控制功能 |
 | v2.15 | 2025-11-27 | 父-子事件单一配置架构（subEventConfig） |
 | v2.14 | 2025-11-25 | EventTitle 三层架构重构 |

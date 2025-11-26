@@ -1,10 +1,11 @@
 # ActionBasedSyncManager PRD
 
-> **文档版本**: v1.2  
+> **文档版本**: v1.3  
 > **创建日期**: 2025-11-08  
 > **最后更新**: 2025-11-27  
 > **文档状态**: ✅ 从代码反向生成  
 > **参考框架**: Copilot PRD Reverse Engineering Framework v1.0
+> **v1.3 更新**: syncMode 同步控制、远程回调字段保护机制
 
 ---
 
@@ -69,12 +70,12 @@ useEffect(() => {
     setSyncManager(newSyncManager);
     EventService.initialize(newSyncManager);
     newSyncManager.start();
-  } else if (syncManager) {
+  } else if (currentAuthState && syncManager) {
     // 🔧 [HMR FIX] syncManager 存在时，重新初始化 EventService
     // 防止 HMR 导致 EventService 丢失 syncManager 引用
     EventService.initialize(syncManager);
   }
-}, [microsoftService, lastAuthState]);
+}, [microsoftService, lastAuthState, syncManager]);  // 🔧 添加 syncManager 依赖
 ```
 
 **关键机制**:
@@ -82,11 +83,109 @@ useEffect(() => {
 2. **运行频率低**: useEffect 仅在登录/登出或页面加载时运行
 3. **可靠性提升**: 确保 EventService 始终持有有效的 syncManager 引用
 4. **开发体验**: 解决 HMR 导致的同步失效问题
+5. **鲁棒性**: 添加 syncManager 到依赖数组，HMR 后自动重新初始化
 
 **相关日志**:
 ```
 🔍 [EventService] Sync condition check: { hasSyncManager: true, ... }
 ✅ [App] EventService 重新初始化完成
+```
+
+---
+
+### 1.5 同步模式控制（v1.3 更新）
+
+**功能**: 支持事件级别的同步方向控制，满足不同场景需求
+
+**syncMode 取值**:
+```typescript
+type SyncMode = 
+  | 'receive-only'           // 仅接收远端更新，不推送本地修改
+  | 'send-only'              // 仅推送本地修改，不接收远端更新
+  | 'send-only-private'      // 推送到远端（标记为私密），不接收远端更新
+  | 'bidirectional'          // 双向同步（默认模式）
+  | 'bidirectional-private'; // 双向同步（标记为私密）
+```
+
+**实现位置**:
+
+1. **本地→远端推送控制** (syncRouter.ts)
+   - `receive-only` 模式：阻止调用 `recordLocalAction`
+   - 本地修改不会推送到 Outlook
+
+2. **远端→本地接收控制** (ActionBasedSyncManager.ts L2830-2845)
+   - `send-only` 模式：跳过 `applyRemoteActionToLocal` 的 create/update
+   - 远端修改不会同步到本地
+
+**同步行为矩阵**:
+
+| syncMode | 本地→远端 | 远端→本地 | 典型场景 |
+|----------|----------|----------|---------|
+| `receive-only` | ❌ 不推送 | ✅ 接收 | 只读订阅日历 |
+| `send-only` | ✅ 推送 | ❌ 不接收 | 单向发布事件 |
+| `bidirectional` | ✅ 推送 | ✅ 接收 | 正常工作事件（默认） |
+
+---
+
+### 1.6 远程回调字段保护机制（v1.3 更新）
+
+**问题**: 首次同步到 Outlook 后，本地自定义字段（syncMode, subEventConfig 等）被覆盖为 `undefined`
+
+**根本原因**:
+1. **Outlook API 响应不完整**: Graph API 只返回标准字段（subject, startTime 等），不包含自定义字段
+2. **远程回调覆盖**: `applyRemoteActionToLocal` UPDATE 分支用远程数据更新本地
+3. **JavaScript 展开陷阱**: `{ ...events[i], ...remoteData }` 中，undefined 值会覆盖原有值
+
+**数据流示例**:
+```
+本地创建事件 (syncMode: 'bidirectional')
+  ↓
+同步到 Outlook (CREATE)
+  ↓
+Outlook 返回: { subject, startTime, ... } (无 syncMode)
+  ↓
+applyRemoteActionToLocal (UPDATE): { ...events[i], syncMode: undefined }
+  ↓
+本地更新: syncMode 被覆盖为 undefined ❌
+```
+
+**解决方案** (ActionBasedSyncManager.ts L3005-3030):
+```typescript
+// 🔧 [v2.15.2 FIX] 明确保留本地自定义字段
+const localOnlyFields = {
+  syncMode: events[eventIndex].syncMode,
+  subEventConfig: events[eventIndex].subEventConfig,
+  calendarIds: events[eventIndex].calendarIds,
+  tags: events[eventIndex].tags,
+  isTask: events[eventIndex].isTask,
+  isTimer: events[eventIndex].isTimer,
+  parentEventId: events[eventIndex].parentEventId,
+  timerLogs: events[eventIndex].timerLogs,
+};
+
+const updatedEvent = {
+  ...events[eventIndex],  // 原有所有字段
+  ...localOnlyFields,     // 🔧 明确恢复本地字段（防止被 undefined 覆盖）
+  // ... 远程字段更新（title, description, startTime, endTime 等）
+};
+```
+
+**受保护字段列表**:
+- ✅ `syncMode` - 同步模式控制
+- ✅ `subEventConfig` - 子事件配置模板
+- ✅ `calendarIds` - 目标日历列表
+- ✅ `tags` - 标签
+- ✅ `isTask`/`isTimer` - 事件类型标记
+- ✅ `parentEventId`/`timerLogs` - 父子事件关联
+
+**验证方法**:
+```typescript
+// 1. 创建事件，设置 syncMode: 'bidirectional'
+// 2. 首次同步到 Outlook
+// 3. 检查本地事件
+const event = EventService.getEventById(eventId);
+console.log('syncMode after first sync:', event.syncMode);
+// 应该仍为 'bidirectional'，而不是 undefined
 ```
 
 ---
