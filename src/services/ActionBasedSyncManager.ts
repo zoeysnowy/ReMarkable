@@ -2470,6 +2470,16 @@ private getUserSettings(): any {
           // 3️⃣ 构建更新数据
           const updateData: any = {};
           
+          console.log('🔍 [ActionBasedSyncManager UPDATE] action.data 检查:', {
+            eventId: action.entityId,
+            hasDescription: 'description' in action.data,
+            descriptionValue: action.data.description,
+            descriptionType: typeof action.data.description,
+            hasEventlog: !!action.data.eventlog,
+            eventlogType: typeof action.data.eventlog,
+            allKeys: Object.keys(action.data).slice(0, 20)
+          });
+          
           // 📝 文本字段处理
           if (action.data.title) {
             updateData.subject = action.data.title?.simpleTitle || action.data.title; // 🔧 提取 simpleTitle（兼容字符串）
