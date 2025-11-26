@@ -1,8 +1,18 @@
 # 日历同步配置功能 - 技术分析与实施方案
 
-> **文档版本**: v2.0（基于场景矩阵分析）  
+> **⚠️ 文档状态**: **已废弃** - 此文档描述的是旧的 `planSyncConfig`/`actualSyncConfig` 双配置架构  
+> **废弃日期**: 2025-11-27  
+> **替代方案**: 请参考 v2.15 的单一配置架构（calendarIds + syncMode + subEventConfig）  
+> **最新文档**: 
+> - [EventEditModal V2 PRD v2.0.4](./EVENTEDITMODAL_V2_PRD.md)
+> - [EventHub Architecture v2.15](../architecture/EVENTHUB_TIMEHUB_ARCHITECTURE.md)
+> - [同步配置修复文档](../fixes/EVENTEDITMODAL_V2_SYNC_CONFIG_FIX.md)
+
+---
+
+> **文档版本**: v2.0（基于场景矩阵分析 - 已废弃）  
 > **创建时间**: 2025-11-19  
-> **更新时间**: 2025-11-19  
+> **更新时间**: 2025-11-19（已废弃：2025-11-27）  
 > **负责人**: Zoey & AI Assistant  
 > **关联 PRD**: [EVENTEDITMODAL_V2_PRD.md](./EVENTEDITMODAL_V2_PRD.md#24-来源日历--同步机制选择)  
 > **⚠️ 必读**: 场景矩阵分析已整合到 [EventEditModal v2 PRD](./EVENTEDITMODAL_V2_PRD.md#242-日历同步场景矩阵概览) - 详细规划了相同日历 9 种场景和 Actual 多日历支持

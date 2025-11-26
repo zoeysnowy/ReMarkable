@@ -231,6 +231,11 @@ export interface Event {
   reminder?: number;
   externalId?: string;
   calendarIds?: string[]; // 🆕 多日历分组支持（用于事件同步到 Calendar）
+  syncMode?: string; // 🔧 新增：同步模式（单一数据结构，替代 planSyncConfig/actualSyncConfig 的 mode 字段）
+  subEventConfig?: {
+    calendarIds?: string[];  // 子事件默认日历配置（父事件专用，用于创建子事件时继承）
+    syncMode?: string;       // 子事件默认同步模式
+  };
   todoListIds?: string[]; // 🆕 To Do List 分组支持（用于任务同步到 To Do）
   source?: 'local' | 'outlook' | 'google' | 'icloud'; // 🆕 事件来源
   syncStatus?: SyncStatusType; // 🔧 unified: 'pending' 表示所有待同步状态（新建或更新）

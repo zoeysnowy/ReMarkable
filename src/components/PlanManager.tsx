@@ -1901,6 +1901,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       createdAt: formatTimeForStorage(new Date()),
       updatedAt: formatTimeForStorage(new Date()),
       remarkableSource: true,
+      // 🆕 保留日历同步配置（Plan vs Actual）
+      planSyncConfig: item.planSyncConfig,
+      actualSyncConfig: item.actualSyncConfig,
+      // 🆕 保留父子事件关系
+      parentEventId: item.parentEventId,
+      timerLogs: item.timerLogs,
     };
   };
 

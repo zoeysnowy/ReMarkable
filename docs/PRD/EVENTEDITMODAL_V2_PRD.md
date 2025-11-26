@@ -1,8 +1,8 @@
 ﻿# EventEditModal v2 产品需求文档 (PRD)
 
-> **版本**: v2.0.3  
+> **版本**: v2.0.4  
 > **创建时间**: 2025-11-06  
-> **最后更新**: 2025-11-26  
+> **最后更新**: 2025-11-27  
 > **Figma 设计稿**: [EventEditModal v2 设计稿](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=201-630&m=dev)  
 > **基于**: EventEditModal v1 + Figma 设计稿  
 > **依赖模块**: EventHub, TimeHub, LightSlateEditor, HeadlessFloatingToolbar, Timer Module  
@@ -13,7 +13,14 @@
 > - [TIME_ARCHITECTURE.md](../TIME_ARCHITECTURE.md)
 > - [SLATE_DEVELOPMENT_GUIDE.md](../SLATE_DEVELOPMENT_GUIDE.md)
 
-> **🔥 v2.0.3 最新更新** (2025-11-26):
+> **🔥 v2.0.4 最新更新** (2025-11-27):
+> - ✅ **父-子事件单一配置架构**: 移除 planSyncConfig/actualSyncConfig 双配置，改用 calendarIds + syncMode 单一配置
+> - ✅ **subEventConfig 模板机制**: 父事件使用 subEventConfig 存储子事件配置模板，解决无子事件时无法保存实际进展配置问题
+> - ✅ **计划安排区域**: 父模式更新 mainEvent.calendarIds/syncMode，子模式更新 parentEvent（计划字段同步到父）
+> - ✅ **实际进展区域**: 父模式更新 subEventConfig（模板）并批量更新子事件，子模式更新 mainEvent（子事件自己的配置）
+> - ✅ **模板继承机制**: 创建子事件时从父事件的 subEventConfig 继承配置，父事件无子事件时模板持久化
+> 
+> **🔥 v2.0.3 历史更新** (2025-11-26):
 > - ✅ **同步日历选择器重设计**: "来自" → "同步"，从只读改为可编辑 Picker
 > - ✅ **"来源"标志永久保留**: 来源日历右对齐显示灰色"来源"文本，可取消勾选但标志保留
 > - ✅ **标签智能映射显示**: 标签触发的日历右对齐显示标签名称和颜色，多标签显示第一个
@@ -36,7 +43,7 @@
 > - ✅ **独立事件架构**: Plan 和 Actual 永远创建独立的远程事件，使用 syncedPlanEventId 和 syncedActualEventId
 > - ✅ **9种同步场景规范**: 相同日历场景 A1-C2 完整规范，包含事件数量（1+N, 2）和典型用例
 > - ✅ **Private 模式函数**: formatParticipantsToDescription, extractParticipantsFromDescription, syncToRemoteCalendar 等核心函数
-> - ✅ **同步配置类型**: PlanSyncConfig（5种模式）和 ActualSyncConfig（4种模式，不支持 receive-only）
+> - ✅ **单一配置架构**: 每个事件使用 calendarIds + syncMode，父事件另外支持 subEventConfig 模板
 > - ✅ **技术实现完善**: 更新 SyncModeSelector 组件支持 Private 模式，完善 Event 接口字段定义
 > 
 > **🔥 v2.0.0 历史更新** (2025-11-19):
@@ -2713,30 +2720,50 @@ import { OutlookIcon, GoogleCalendarIcon, ICloudIcon, SyncIcon } from '@/assets/
 
 const calendar = availableCalendars.find(cal => cal.id === event.calendarId);
 
-// 事件的同步配置
-type PlanSyncConfig = {
-  mode: 'receive-only' | 'send-only' | 'send-only-private' | 'bidirectional' | 'bidirectional-private';  // 同步模式
-  targetCalendars: string[];  // 目标日历 ID 列表
-};
-
-type ActualSyncConfig = {
-  mode: 'send-only' | 'send-only-private' | 'bidirectional' | 'bidirectional-private';  // 同步模式（不支持 receive-only）
-  targetCalendars: string[];  // 目标日历 ID 列表
-} | null;  // null 表示继承 planSyncConfig
+// 🆕 v2.0.4 单一同步配置架构（每个事件一份配置）
+interface Event {
+  // 日历同步配置（每个事件自己的配置）
+  calendarIds?: string[];  // 同步目标日历 ID 列表
+  syncMode?: string;       // 同步模式: 'receive-only' | 'send-only' | 'send-only-private' | 'bidirectional' | 'bidirectional-private'
+  
+  // 🆕 父事件专用：子事件配置模板
+  subEventConfig?: {
+    calendarIds?: string[];  // 子事件默认日历配置
+    syncMode?: string;       // 子事件默认同步模式
+  };
+  
+  // 父-子事件关联
+  parentEventId?: string;    // 子 → 父指针
+  timerLogs?: string[];      // 父 → 子事件 ID 列表
+}
 
 /**
- * 📌 Private 模式说明：
- * - send-only-private: 只发送（仅自己），不邀请 participants，将 participants 作为文本添加到 description
- * - bidirectional-private: 双向同步（仅自己），不邀请 participants，将 participants 作为文本添加到 description
+ * 📌 架构说明 - 父子事件模式：
  * 
- * 🔑 核心机制：
- * 普通模式: { attendees: ['alice@company.com'], description: '...' }
- * Private模式: { attendees: [], description: '📧 参与者：alice@company.com\n\n...' }
+ * 1. **父事件（ParentEvent）**:
+ *    - calendarIds + syncMode: 父事件自己的同步配置（计划安排）
+ *    - subEventConfig: 子事件配置模板（实际进展），用于批量更新和新建继承
+ *    - timerLogs: 子事件 ID 列表
+ * 
+ * 2. **子事件（ChildEvent/Timer）**:
+ *    - calendarIds + syncMode: 子事件自己的同步配置（实际进展）
+ *    - parentEventId: 指向父事件
+ *    - 创建时继承父事件的 subEventConfig
+ * 
+ * 3. **Modal 显示逻辑**:
+ *    - 中区（计划安排）: 父模式显示 mainEvent 配置，子模式显示 parentEvent 配置
+ *    - 下区（实际进展）: 父模式显示 subEventConfig 模板，子模式显示 mainEvent 配置
+ * 
+ * 4. **Private 模式**:
+ *    - send-only-private: 只发送（仅自己），participants 作为文本添加到 description
+ *    - bidirectional-private: 双向同步（仅自己），同上
+ *    - 普通模式: { attendees: ['alice@company.com'], description: '...' }
+ *    - Private模式: { attendees: [], description: '📧 参与者：alice@company.com\n\n...' }
  */
 
-// 获取同步配置（分为计划和实际）
-const planSyncConfig = event.planSyncConfig || { mode: 'receive-only', targetCalendars: [] };
-const actualSyncConfig = event.actualSyncConfig || null;  // null 表示继承计划配置
+// 获取事件的同步配置
+const calendarIds = event.calendarIds || [];
+const syncMode = event.syncMode || 'receive-only';
 ```
 
 **显示逻辑（✅ 已实现 6层优先级 + 多选日历）**:
@@ -2913,10 +2940,9 @@ function buildCalendarPickerOptions(
   });
 }
 
-// 🆕 UI 渲染 - 计划安排区域（新设计）
+// 🆕 v2.0.4 UI 渲染 - 计划安排区域（单一配置架构）
 function renderPlanSyncCalendarSelector(
   event: Event,
-  planSyncConfig: PlanSyncConfig,
   availableCalendars: Calendar[],
   tagCalendarMapping: Map<string, string>,
   onCalendarIdsChange: (ids: string[]) => void
@@ -2924,11 +2950,11 @@ function renderPlanSyncCalendarSelector(
   const sourceCalendarId = getSourceCalendarId(event);
   const tagMappedCalendarIds = getTagMappedCalendarIds(event, tagCalendarMapping);
   
-  // 初始化选中的日历列表
+  // 初始化选中的日历列表（从 event.calendarIds 读取）
   const initialSelectedIds = [
     ...(sourceCalendarId ? [sourceCalendarId] : []),  // 来源日历默认勾选
     ...tagMappedCalendarIds,                           // 标签映射日历默认勾选
-    ...(planSyncConfig.targetCalendars || [])         // 用户已选日历
+    ...(event.calendarIds || [])                       // 🆕 从单一配置读取
   ].filter((id, index, self) => self.indexOf(id) === index);  // 去重
   
   const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>(initialSelectedIds);
@@ -3023,7 +3049,7 @@ function renderPlanSyncCalendarSelector(
       
       {/* 同步模式选择器 */}
       <SyncModeSelector
-        mode={planSyncConfig.mode}
+        mode={event.syncMode || 'receive-only'}
         isActual={false}
         onChange={(newMode) => {
           // 更新同步模式
@@ -3033,17 +3059,29 @@ function renderPlanSyncCalendarSelector(
   );
 }
 
-// UI 渲染 - 实际进展区域（保持原有设计）
+// 🆕 v2.0.4 UI 渲染 - 实际进展区域（subEventConfig 模板）
 function renderActualSyncCalendarSelector(
-  event: Event, 
-  actualSyncConfig: ActualSyncConfig | null,
+  event: Event,
+  isParentMode: boolean,
   availableCalendars: Calendar[],
-  onCalendarIdsChange: (ids: string[]) => void
+  onCalendarIdsChange: (ids: string[]) => void,
+  onSyncModeChange: (mode: string) => void
 ): ReactNode {
-  // 实际进展区域保持原有的多选设计
-  // 不显示"来源"标志（因为实际进展都是 ReMarkable 本地生成）
+  /**
+   * 🆕 v2.0.4 实际进展区域逻辑：
+   * - 父模式: 显示 subEventConfig 模板，更新时同时保存模板并批量更新子事件
+   * - 子模式: 显示 mainEvent 的 calendarIds/syncMode，直接更新当前子事件
+   */
+  const calendarIds = isParentMode 
+    ? (event.subEventConfig?.calendarIds || [])
+    : (event.calendarIds || []);
+  
+  const syncMode = isParentMode
+    ? (event.subEventConfig?.syncMode || 'send-only')
+    : (event.syncMode || 'send-only');
+  
   const { firstCalendar, remainCount } = getMultiCalendarDisplayInfo(
-    actualSyncConfig?.targetCalendars || [],
+    calendarIds,
     availableCalendars
   );
   
@@ -3054,8 +3092,16 @@ function renderActualSyncCalendarSelector(
       {/* 日历多选下拉 */}
       <SimpleCalendarDropdown
         multiSelect={true}
-        selectedCalendarIds={actualSyncConfig?.targetCalendars || []}
-        onMultiSelectionChange={onCalendarIdsChange}
+        selectedCalendarIds={calendarIds}
+        onMultiSelectionChange={(ids) => {
+          if (isParentMode) {
+            // 父模式：更新 subEventConfig + 批量更新子事件
+            onCalendarIdsChange(ids);
+          } else {
+            // 子模式：直接更新 mainEvent
+            onCalendarIdsChange(ids);
+          }
+        }}
         availableCalendars={availableCalendars}
       />
       
@@ -3070,11 +3116,9 @@ function renderActualSyncCalendarSelector(
       
       {/* 同步模式选择器 */}
       <SyncModeSelector
-        mode={actualSyncConfig?.mode || 'send-only'}
+        mode={syncMode}
         isActual={true}
-        onChange={(newMode) => {
-          // 更新同步模式
-        }}
+        onChange={onSyncModeChange}
       />
     </div>
   );
@@ -3435,64 +3479,83 @@ function cycleSyncMode(
 }
 ```
 
-**🔑 核心同步逻辑说明**:
+**🔑 v2.0.4 核心同步逻辑说明**:
 
 ```typescript
 /**
- * 🆕 关键架构说明：
+ * 🆕 v2.0.4 父-子事件单一配置架构：
  * 
- * 1. **同步完全基于 calendarIds**
- *    - ActionBasedSyncManager 优先使用 event.calendarIds 决定同步目标
- *    - 标签映射（tagCalendarMapping）仅用于：
- *      a) 初始化时自动勾选对应日历
- *      b) 在 Picker 中右对齐显示标签名称
+ * 1. **每个事件独立配置**
+ *    - 每个事件有自己的 calendarIds + syncMode
+ *    - 父事件的 calendarIds/syncMode 是父事件自己的配置（计划安排）
+ *    - 子事件的 calendarIds/syncMode 是子事件自己的配置（实际进展）
+ * 
+ * 2. **父事件的 subEventConfig 模板**
+ *    - 用于存储子事件的默认配置
+ *    - 创建新子事件时继承此配置
+ *    - 父事件还没有子事件时，"实际进展"配置保存到 subEventConfig
+ * 
+ * 3. **Modal 编辑逻辑**
+ *    - 中区（计划安排）：
+ *      - 父模式：编辑 mainEvent 的 calendarIds/syncMode
+ *      - 子模式：编辑 parentEvent 的 calendarIds/syncMode（计划字段同步到父）
+ *    - 下区（实际进展）：
+ *      - 父模式：编辑 subEventConfig，并批量更新所有子事件
+ *      - 子模式：编辑 mainEvent 的 calendarIds/syncMode（子事件自己的配置）
+ * 
+ * 4. **同步完全基于 calendarIds**
+ *    - ActionBasedSyncManager 使用 event.calendarIds 决定同步目标
+ *    - 标签映射仅用于初始化时自动勾选和显示标签名称
  *    - 用户取消勾选日历后，保留标签但不同步到该日历
- * 
- * 2. **"来源"标志永久保留**
- *    - 来源日历由 getSourceCalendarId() 自动识别（6层优先级）
- *    - 即使用户取消勾选，"来源"标志依然存在
- *    - 重新勾选后，"来源"标志继续显示
- * 
- * 3. **计划 vs 实际的区别**
- *    - 计划安排：显示"来源"标志 + 标签映射
- *    - 实际进展：不显示"来源"（都是 ReMarkable 本地生成）
  */
 
-// 处理计划同步日历变更
-function handlePlanCalendarsChange(calendarIds: string[]) {
-  // 1. 更新 planSyncConfig.targetCalendars
-  const updatedPlanSyncConfig = {
-    ...event.planSyncConfig,
-    targetCalendars: calendarIds
-  };
+// 🆕 v2.0.4 处理计划安排日历变更（中区）
+function handlePlanCalendarsChange(calendarIds: string[], isParentMode: boolean) {
+  if (isParentMode) {
+    // 父模式：更新父事件自己的 calendarIds
+    await EventHub.updateFields(event.id, {
+      calendarIds: calendarIds
+    });
+  } else {
+    // 子模式：同步计划字段到父事件
+    if (event.parentEventId) {
+      await EventHub.updateFields(event.parentEventId, {
+        calendarIds: calendarIds  // 更新父事件的计划配置
+      });
+    }
+  }
   
-  // 2. 同时更新 event.calendarIds（用于实际同步判断）
-  event.calendarIds = calendarIds;
-  event.planSyncConfig = updatedPlanSyncConfig;
-  
-  // 3. 自动更新事件标签（仅添加，不删除）
+  // 自动更新事件标签（仅添加，不删除）
   autoApplyCalendarTags(event, calendarIds);
-  
-  // 4. 触发同步
-  EventService.update(event.id, {
-    calendarIds: event.calendarIds,
-    planSyncConfig: updatedPlanSyncConfig,
-    tags: event.tags
-  });
 }
 
-// 处理实际进展同步日历变更
-function handleActualCalendarsChange(calendarIds: string[]) {
-  // 1. 更新 actualSyncConfig.targetCalendars
-  const updatedActualSyncConfig = {
-    ...event.actualSyncConfig,
-    targetCalendars: calendarIds
-  };
-  
-  // 2. 实际进展同步不修改 event.calendarIds（由 Timer 子事件独立管理）
-  event.actualSyncConfig = updatedActualSyncConfig;
-  
-  // 3. 触发多日历同步（每个 Timer 子事件同步到所有目标日历）
+// 🆕 v2.0.4 处理实际进展日历变更（下区）
+function handleActualCalendarsChange(calendarIds: string[], isParentMode: boolean) {
+  if (isParentMode) {
+    // 父模式：更新 subEventConfig 模板
+    const updatedSubEventConfig = {
+      ...event.subEventConfig,
+      calendarIds: calendarIds
+    };
+    
+    await EventHub.updateFields(event.id, {
+      subEventConfig: updatedSubEventConfig
+    });
+    
+    // 如果有子事件，批量更新
+    if (event.timerLogs && event.timerLogs.length > 0) {
+      for (const childId of event.timerLogs) {
+        await EventHub.updateFields(childId, {
+          calendarIds: calendarIds
+        });
+      }
+    }
+  } else {
+    // 子模式：更新子事件自己的 calendarIds
+    await EventHub.updateFields(event.id, {
+      calendarIds: calendarIds
+    });
+  }
   EventService.update(event.id, {
     actualSyncConfig: updatedActualSyncConfig
   });
@@ -3548,30 +3611,38 @@ function autoApplyCalendarTags(event: Event, calendarIds: string[]) {
 - **双向同步**: 支持与外部日历的双向数据同步
 - **继承计划设置**: 默认继承计划安排的同步配置
 
-**数据结构**:
+**🆕 v2.0.4 数据结构**:
 
 ```typescript
-type ActualSyncConfig = {
-  mode: 'receive-only' | 'send-only' | 'bidirectional';
-  targetCalendars: string[];  // 目标日历ID列表
-  tagMapping: { [calendarId: string]: string[] };  // 日历→标签映射
-} | null;  // null表示继承planSyncConfig
-
-event.actualSyncConfig = {
-  mode: 'bidirectional',
-  targetCalendars: ['outlook-work', 'google-personal'],
-  tagMapping: {
-    'outlook-work': ['工作', 'Outlook'],
-    'google-personal': ['生活', 'Google']
+// 父事件：使用 subEventConfig 存储子事件配置模板
+const parentEvent = {
+  calendarIds: ['outlook-work'],       // 父事件自己的配置（计划安排）
+  syncMode: 'bidirectional',
+  subEventConfig: {                     // 子事件配置模板（实际进展）
+    calendarIds: ['outlook-work', 'google-personal'],
+    syncMode: 'send-only'
   }
+};
+
+// 子事件：有自己的独立配置
+const childEvent = {
+  parentEventId: 'parent-123',
+  calendarIds: ['outlook-work'],       // 子事件自己的配置（从 subEventConfig 继承）
+  syncMode: 'send-only'
 };
 ```
 
-**UI渲染** (在"实际进展"区域):
+**🆕 v2.0.4 UI渲染** (在"实际进展"区域):
 
 ```typescript
-function renderActualProgressSync(event: Event): ReactNode {
-  const actualConfig = event.actualSyncConfig || event.planSyncConfig;  // 继承计划配置
+function renderActualProgressSync(event: Event, isParentMode: boolean): ReactNode {
+  // 父模式显示 subEventConfig，子模式显示 event 自己的配置
+  const calendarIds = isParentMode 
+    ? (event.subEventConfig?.calendarIds || [])
+    : (event.calendarIds || []);
+  const syncMode = isParentMode
+    ? (event.subEventConfig?.syncMode || 'send-only')
+    : (event.syncMode || 'send-only');
   
   return (
     <div className="actual-sync-section">
@@ -3619,10 +3690,10 @@ function renderActualProgressSync(event: Event): ReactNode {
 **实现逻辑**:
 
 ```typescript
-// ✅ 已实现于 EventEditModalV2.tsx Line 494-518
-// Step 6.5: 标签自动映射（根据同步目标日历自动添加标签）
+// ✅ v2.0.4 已实现于 EventEditModalV2.tsx
+// 标签自动映射（根据同步目标日历自动添加标签）
 let finalTags = [...(formData.tags || [])];
-const targetCalendars = formData.planSyncConfig?.targetCalendars || [];
+const targetCalendars = formData.calendarIds || [];  // 🆕 从单一配置读取
 
 if (targetCalendars.length > 0) {
   console.log('🏷️ [EventEditModalV2] Auto-mapping tags from target calendars:', targetCalendars);
@@ -8328,35 +8399,27 @@ interface Event {
   type?: 'parent' | 'timer' | 'timelog' | 'outsideapp' | 'event' | 'task';
   
   /**
-   * 🆕 计划安排同步配置
-   * 支持 5 种模式：receive-only, send-only, send-only-private, bidirectional, bidirectional-private
+   * 🆕 v2.0.4 日历同步配置（单一配置架构）
+   * 每个事件有自己的同步配置
    */
-  planSyncConfig?: PlanSyncConfig;
+  calendarIds?: string[];  // 同步目标日历 ID 列表
+  syncMode?: string;       // 同步模式: 'receive-only' | 'send-only' | 'send-only-private' | 'bidirectional' | 'bidirectional-private'
   
   /**
-   * 🆕 实际进展同步配置
-   * 支持 4 种模式：send-only, send-only-private, bidirectional, bidirectional-private
-   * null 表示继承 planSyncConfig
+   * 🆕 v2.0.4 父事件专用：子事件配置模板
+   * 用于存储子事件的默认配置，解决父事件还没有子事件时无法保存实际进展配置的问题
+   * 创建子事件时会继承该配置
    */
-  actualSyncConfig?: ActualSyncConfig;
+  subEventConfig?: {
+    calendarIds?: string[];  // 子事件默认日历配置
+    syncMode?: string;       // 子事件默认同步模式
+  };
   
   /**
-   * 🆕 计划安排的远程事件 ID
-   * Plan 同步创建的远程事件 ID（独立于 Actual）
+   * 同步到远程日历的事件 ID（通用字段）
+   * 存储同步创建的远程事件 ID，用于双向同步和更新
    */
-  syncedPlanEventId?: string | null;
-  
-  /**
-   * 🆕 实际进展的远程事件 ID  
-   * Actual 同步创建的远程事件 ID（独立于 Plan）
-   * 对于 Timer 子事件，存储对应的远程子事件 ID
-   */
-  syncedActualEventId?: string | null;
-  
-  /**
-   * @deprecated 旧的同步事件 ID，将被 syncedPlanEventId 和 syncedActualEventId 替代
-   */
-  syncedOutlookEventId?: string | null;
+  syncedEventId?: string | null;
 }
 ```
 
@@ -9130,8 +9193,8 @@ sequenceDiagram
 - [ ] **基于 calendarIds 同步**: 取消勾选日历后，不同步到该日历
 - [ ] **保留标签**: 取消勾选日历后，标签不被删除
 - [ ] **自动添加标签**: 勾选日历后，自动添加对应标签（如果有映射）
-- [ ] **更新 planSyncConfig**: 选择变更后正确更新 `planSyncConfig.targetCalendars`
 - [ ] **更新 calendarIds**: 选择变更后正确更新 `event.calendarIds`
+- [ ] **更新 syncMode**: 选择同步模式后正确更新 `event.syncMode`
 
 #### UI 交互
 - [ ] **选项悬停高亮**: 鼠标悬停日历选项时背景变浅灰
@@ -9140,13 +9203,25 @@ sequenceDiagram
 - [ ] **标志右对齐**: "来源"和标签名称都在右侧对齐
 - [ ] **Modal 遮罩**: Picker 打开时背景半透明遮罩
 
-### 实际进展同步选择器
+### 🆕 v2.0.4 实际进展同步选择器（subEventConfig）
 
-#### 功能验证
-- [ ] **不显示"来源"**: 实际进展区域不显示"来源"标志
-- [ ] **多选下拉正确**: 使用原有的多选下拉组件
-- [ ] **显示"第一个+等"**: 选中多个日历时显示"第一个日历名 +等"
-- [ ] **更新 actualSyncConfig**: 选择变更后正确更新 `actualSyncConfig.targetCalendars`
+#### 父模式（ParentEvent）
+- [ ] **显示 subEventConfig 配置**: 打开父事件时显示 subEventConfig 的 calendarIds 和 syncMode
+- [ ] **更新 subEventConfig**: 修改后正确更新 `event.subEventConfig`
+- [ ] **批量更新子事件**: 如果有子事件，同时批量更新所有子事件的 calendarIds 和 syncMode
+- [ ] **无子事件时保存**: 父事件还没有子事件时，配置仍然保存到 subEventConfig
+- [ ] **创建子事件继承**: 创建新子事件时，自动继承父事件的 subEventConfig
+
+#### 子模式（ChildEvent/Timer）
+- [ ] **显示子事件配置**: 打开子事件时显示子事件自己的 calendarIds 和 syncMode
+- [ ] **更新子事件配置**: 修改后正确更新子事件自己的 calendarIds 和 syncMode
+- [ ] **不影响父事件**: 修改子事件配置不影响父事件的 subEventConfig
+- [ ] **不影响其他子事件**: 修改子事件配置不影响其他兄弟子事件
+
+#### 模式切换
+- [ ] **父→子切换**: 从父事件打开子事件，配置正确切换
+- [ ] **子→父切换**: 从子事件打开父事件，配置正确切换
+- [ ] **初始化正确**: 打开 Modal 时根据 isParentMode 正确初始化显示
 
 ### 边界情况
 

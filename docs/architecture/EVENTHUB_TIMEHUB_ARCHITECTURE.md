@@ -1,11 +1,94 @@
 # EventHub & TimeHub 统一架构文档
 
-> **文档版本**: v2.14  
+> **文档版本**: v2.15  
 > **创建时间**: 2025-11-06  
-> **最后更新**: 2025-11-25  
-> **关联模块**: EventHub, TimeHub, EventService, EventHistoryService, TimeParsingService, PlanManager, UpcomingEventsPanel  
+> **最后更新**: 2025-11-27  
+> **关联模块**: EventHub, TimeHub, EventService, EventHistoryService, TimeParsingService, PlanManager, UpcomingEventsPanel, EventEditModal V2  
 > **文档类型**: 核心架构文档
-> **新增关联**: EventTitle 三层架构、EventHistoryService 时间快照查询、Snapshot 功能优化、checkType 与 checkbox 关联
+> **新增关联**: EventTitle 三层架构、EventHistoryService 时间快照查询、Snapshot 功能优化、checkType 与 checkbox 关联、父-子事件单一配置架构（subEventConfig）
+
+---
+
+## 🎉 v2.15 父-子事件单一配置架构 (2025-11-27)
+
+### 核心变更
+
+**背景**: 旧架构使用 `planSyncConfig` 和 `actualSyncConfig` 双配置（Plan vs Actual 范式），导致父事件无子事件时"实际进展"配置无处保存
+**解决方案**: 单一配置架构 - 每个事件使用 `calendarIds + syncMode`，父事件使用 `subEventConfig` 存储子事件配置模板
+**状态**: ✅ 已完成实现，EventEditModalV2 已集成
+
+### 架构改进
+
+#### 1. 单一配置结构
+
+```typescript
+interface Event {
+  // 每个事件独立的同步配置
+  calendarIds?: string[];  // 同步目标日历 ID 列表
+  syncMode?: string;       // 同步模式
+  
+  // 父事件专用：子事件配置模板
+  subEventConfig?: {
+    calendarIds?: string[];
+    syncMode?: string;
+  };
+}
+```
+
+#### 2. 父-子事件清晰分离
+
+**父事件（ParentEvent）**:
+- `calendarIds/syncMode`: 父事件自己的同步配置（计划安排）
+- `subEventConfig`: 子事件配置模板（实际进展），用于批量更新和新建继承
+
+**子事件（ChildEvent/Timer）**:
+- `calendarIds/syncMode`: 子事件自己的同步配置（实际进展）
+- 创建时继承父事件的 `subEventConfig`
+
+#### 3. EventEditModal V2 集成
+
+**中区（计划安排）**:
+- 父模式：编辑 `mainEvent.calendarIds/syncMode`
+- 子模式：编辑 `parentEvent.calendarIds/syncMode`（计划字段同步到父）
+
+**下区（实际进展）**:
+- 父模式：编辑 `subEventConfig` + 批量更新现有子事件
+- 子模式：编辑 `mainEvent.calendarIds/syncMode`（子事件自己的配置）
+
+#### 4. 核心优势
+
+- ✅ 父事件无子事件时，`subEventConfig` 始终可保存
+- ✅ 架构清晰：父事件配置是父事件的，子事件配置是子事件的
+- ✅ 简化逻辑：移除双配置结构，单一配置 + 模板机制
+- ✅ 模板继承：创建子事件时自动继承父事件配置
+- ✅ 批量更新：父事件更新"实际进展"配置时，同步更新所有子事件
+
+### 迁移指南
+
+```typescript
+// ❌ 旧架构 (v2.0.3)
+event.planSyncConfig = {
+  mode: 'bidirectional',
+  targetCalendars: ['outlook-work']
+};
+event.actualSyncConfig = {
+  mode: 'send-only',
+  targetCalendars: ['outlook-work']
+};
+
+// ✅ 新架构 (v2.15)
+// 父事件
+event.calendarIds = ['outlook-work'];
+event.syncMode = 'bidirectional';
+event.subEventConfig = {
+  calendarIds: ['outlook-work'],
+  syncMode: 'send-only'
+};
+
+// 子事件
+childEvent.calendarIds = ['outlook-work'];
+childEvent.syncMode = 'send-only';
+```
 
 ---
 
@@ -598,6 +681,7 @@ EventService.exportEventHistory();    // 导出事件历史
 | **v1.3** | 2025-11-14 | 🆕 支持 undefined 时间字段，完善自然语言处理链路文档 |
 | **v1.4** | 2025-11-16 | 🆕 添加 Timer 父子事件自动升级机制（parentEventId, timerLogs） |
 | **v1.5** | 2025-11-19 | 🎉 循环更新防护机制，性能优化，测试基础设施保护 |
+| **v2.15** | 2025-11-27 | 🆕 父-子事件单一配置架构（calendarIds + syncMode + subEventConfig） |
 
 ### 1.2 架构图
 
@@ -2153,6 +2237,19 @@ interface Event {
   parentEventId?: string;          // 🆕 v1.4：父事件 ID（用于 Timer 子事件关联）
   timerLogs?: string[];            // 🆕 v1.4：计时日志（子 Timer 事件 ID 列表）
   
+  // ========== 日历同步配置（v2.15） ==========
+  // 🆕 v2.15: 单一配置架构（每个事件独立配置）
+  calendarIds?: string[];          // 同步目标日历 ID 列表
+  syncMode?: string;               // 同步模式: 'receive-only' | 'send-only' | 'send-only-private' | 'bidirectional' | 'bidirectional-private'
+  
+  // 🆕 v2.15: 父事件专用 - 子事件配置模板
+  subEventConfig?: {
+    calendarIds?: string[];        // 子事件默认日历配置
+    syncMode?: string;             // 子事件默认同步模式
+  };
+  
+  syncedEventId?: string | null;   // 同步到远程日历的事件 ID
+  
   // ========== 元数据 ==========
   createdAt?: string;              // 创建时间
   updatedAt?: string;              // 更新时间
@@ -2642,7 +2739,210 @@ const handleTaskCompleted = async (eventId: string, isCompleted: boolean) => {
 
 ---
 
-### 8.4 🆕 签到功能字段（v1.7）
+### 8.4 🆕 日历同步配置字段（v2.15 - 父子事件单一配置架构）
+
+#### 8.4.1 架构设计理念
+
+**问题背景**:
+- ❌ 旧架构使用 `planSyncConfig` 和 `actualSyncConfig` 双配置（Plan vs Actual 范式）
+- ❌ 父事件没有子事件时，"实际进展"配置无处保存
+- ❌ 配置复杂度高，容易混淆计划和实际的概念
+
+**v2.15 解决方案**:
+- ✅ 每个事件使用单一配置：`calendarIds` + `syncMode`
+- ✅ 父事件使用 `subEventConfig` 存储子事件配置模板
+- ✅ 架构清晰：父事件配置是父事件的，子事件配置是子事件的
+
+#### 8.4.2 calendarIds - 同步目标日历列表
+
+```typescript
+calendarIds?: string[];  // 同步目标日历 ID 列表
+```
+
+**用途**: 指定事件同步到哪些外部日历（Outlook/Google/iCloud）
+
+**特性**:
+- 支持多选日历（可同时同步到多个日历）
+- ActionBasedSyncManager 使用此字段决定同步目标
+- 标签映射仅用于智能勾选建议，不影响同步逻辑
+
+**使用场景**:
+```typescript
+// 父事件：计划安排同步配置
+const parentEvent = {
+  id: 'parent-123',
+  calendarIds: ['outlook-work', 'google-personal'],
+  syncMode: 'bidirectional'
+};
+
+// 子事件：实际进展同步配置
+const childEvent = {
+  id: 'child-456',
+  parentEventId: 'parent-123',
+  calendarIds: ['outlook-work'],  // 继承自父的 subEventConfig
+  syncMode: 'send-only'
+};
+```
+
+#### 8.4.3 syncMode - 同步模式
+
+```typescript
+syncMode?: string;  
+// 'receive-only' | 'send-only' | 'send-only-private' | 'bidirectional' | 'bidirectional-private'
+```
+
+**用途**: 指定与外部日历的同步方向和隐私级别
+
+**模式说明**:
+- `receive-only`: 只接收外部更新（导入外部日历事件）
+- `send-only`: 只发送到外部（单向导出，会邀请参会人）
+- `send-only-private`: 只发送（仅自己），参会人作为文本添加到描述
+- `bidirectional`: 双向同步（会邀请参会人）
+- `bidirectional-private`: 双向同步（仅自己），参会人作为文本添加到描述
+
+**Private 模式机制**:
+```typescript
+// 普通模式
+{
+  attendees: ['alice@company.com'],
+  description: '讨论项目进展'
+}
+
+// Private 模式
+{
+  attendees: [],  // 不邀请参会人
+  description: '📧 参与者：alice@company.com\n\n讨论项目进展'  // 参会人作为文本
+}
+```
+
+#### 8.4.4 subEventConfig - 子事件配置模板（父事件专用）
+
+```typescript
+subEventConfig?: {
+  calendarIds?: string[];  // 子事件默认日历配置
+  syncMode?: string;       // 子事件默认同步模式
+};
+```
+
+**用途**: 父事件存储子事件的默认配置，解决无子事件时"实际进展"配置无法保存的问题
+
+**特性**:
+- 仅父事件（有 `timerLogs` 字段的事件）使用
+- 创建新子事件时，子事件的 `calendarIds` 和 `syncMode` 继承自此模板
+- 在 EventEditModal V2 的"实际进展"区域编辑时，父模式更新此字段
+
+**数据流**:
+```typescript
+// 1. 父事件编辑"实际进展"配置
+parentEvent.subEventConfig = {
+  calendarIds: ['outlook-work'],
+  syncMode: 'send-only'
+};
+
+// 2. 创建子事件时继承配置
+const childEvent = {
+  parentEventId: parentEvent.id,
+  calendarIds: parentEvent.subEventConfig.calendarIds,  // 继承
+  syncMode: parentEvent.subEventConfig.syncMode          // 继承
+};
+
+// 3. 父事件更新"实际进展"配置时，批量更新现有子事件
+if (parentEvent.timerLogs && parentEvent.timerLogs.length > 0) {
+  for (const childId of parentEvent.timerLogs) {
+    await EventHub.updateFields(childId, {
+      calendarIds: newCalendarIds,
+      syncMode: newSyncMode
+    });
+  }
+}
+```
+
+#### 8.4.5 EventEditModal V2 中的使用逻辑
+
+**中区（计划安排）**:
+```typescript
+// 父模式：编辑父事件自己的配置
+if (isParentMode) {
+  // 显示和编辑 mainEvent 的 calendarIds/syncMode
+  await EventHub.updateFields(event.id, {
+    calendarIds: newCalendarIds,
+    syncMode: newSyncMode
+  });
+} else {
+  // 子模式：同步计划字段到父事件
+  await EventHub.updateFields(event.parentEventId, {
+    calendarIds: newCalendarIds,
+    syncMode: newSyncMode
+  });
+}
+```
+
+**下区（实际进展）**:
+```typescript
+// 父模式：编辑 subEventConfig 模板 + 批量更新子事件
+if (isParentMode) {
+  await EventHub.updateFields(event.id, {
+    subEventConfig: {
+      calendarIds: newCalendarIds,
+      syncMode: newSyncMode
+    }
+  });
+  
+  // 批量更新现有子事件
+  for (const childId of event.timerLogs || []) {
+    await EventHub.updateFields(childId, {
+      calendarIds: newCalendarIds,
+      syncMode: newSyncMode
+    });
+  }
+} else {
+  // 子模式：编辑子事件自己的配置
+  await EventHub.updateFields(event.id, {
+    calendarIds: newCalendarIds,
+    syncMode: newSyncMode
+  });
+}
+```
+
+#### 8.4.6 与旧架构的对比
+
+| 旧架构 (v2.0.3) | 新架构 (v2.15) |
+|----------------|----------------|
+| `planSyncConfig: { mode, targetCalendars }` | `calendarIds + syncMode`（父事件自己的） |
+| `actualSyncConfig: { mode, targetCalendars }` | `subEventConfig`（父事件专用模板） |
+| 父事件无子事件时无法保存实际配置 | ✅ `subEventConfig` 始终可保存 |
+| 计划 vs 实际范式（容易混淆） | ✅ 父 vs 子范式（清晰明确） |
+| 双配置结构复杂 | ✅ 单一配置 + 模板机制 |
+
+**迁移指南**:
+```typescript
+// ❌ 旧代码
+event.planSyncConfig = {
+  mode: 'bidirectional',
+  targetCalendars: ['outlook-work']
+};
+event.actualSyncConfig = {
+  mode: 'send-only',
+  targetCalendars: ['outlook-work']
+};
+
+// ✅ 新代码
+// 父事件
+event.calendarIds = ['outlook-work'];
+event.syncMode = 'bidirectional';
+event.subEventConfig = {
+  calendarIds: ['outlook-work'],
+  syncMode: 'send-only'
+};
+
+// 子事件
+childEvent.calendarIds = ['outlook-work'];
+childEvent.syncMode = 'send-only';
+```
+
+---
+
+### 8.5 🆕 签到功能字段（v1.7）
 
 #### 8.4.1 checked - 签到时间戳数组
 
