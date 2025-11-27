@@ -453,16 +453,27 @@ function App() {
       // ✅ 立即生成固定 eventId（整个计时过程保持不变）
       const timerEventId = `timer-${tagIdArray[0] || 'notag'}-${startTime}`;
       
+      // 🔧 如果有父事件，继承父事件的元数据
+      let parentEvent = null;
+      if (parentEventId) {
+        parentEvent = EventService.getEventById(parentEventId);
+      }
+      
       // ✅ 立即创建初始事件（syncStatus: 'local-only'，运行中不同步）
       const initialEvent: Event = {
         id: timerEventId,
-        title: { simpleTitle: '计时中的事件' },
+        title: parentEvent?.title || { simpleTitle: '计时中的事件' },
+        emoji: parentEvent?.emoji,
         startTime: formatTimeForStorage(startDate),
         endTime: formatTimeForStorage(startDate), // 结束时更新
-        tags: tagIdArray,
-        calendarIds: (tag as any)?.calendarId ? [(tag as any).calendarId] : [],
-        location: '',
-        description: '计时中的事件',
+        tags: parentEvent?.tags || tagIdArray,
+        calendarIds: parentEvent?.calendarIds || ((tag as any)?.calendarId ? [(tag as any).calendarId] : []),
+        syncMode: parentEvent?.syncMode,
+        location: parentEvent?.location || '',
+        description: parentEvent?.description || '计时中的事件',
+        eventlog: parentEvent?.eventlog,
+        organizer: parentEvent?.organizer,
+        attendees: parentEvent?.attendees,
         isAllDay: false,
         createdAt: formatTimeForStorage(startDate),
         updatedAt: formatTimeForStorage(startDate),
@@ -711,16 +722,27 @@ function App() {
         finalDescription = timerSignature;
       }
       
+      // 🔧 如果有父事件，继承父事件的最新元数据
+      let currentParentEvent = null;
+      if (globalTimer.parentEventId) {
+        currentParentEvent = EventService.getEventById(globalTimer.parentEventId);
+      }
+      
       // 🔧 复用同一个 eventId，更新状态为 pending 以触发同步
       const finalEvent: Event = {
         id: timerEventId, // ✅ 复用启动时创建的 ID
-        title: { simpleTitle: eventTitle }, // ✅ 只传 simpleTitle，让 normalizeTitle 自动填充
+        title: currentParentEvent?.title || { simpleTitle: eventTitle }, // ✅ 继承父事件标题
+        emoji: currentParentEvent?.emoji || eventEmoji,
         startTime: formatTimeForStorage(startTime),
         endTime: formatTimeForStorage(new Date(startTime.getTime() + totalElapsed)),
-        tags: globalTimer.tagIds || [],
-        calendarIds: (tag as any)?.calendarId ? [(tag as any).calendarId] : [],
-        location: existingEvent?.location || '',
+        tags: currentParentEvent?.tags || globalTimer.tagIds || [],
+        calendarIds: currentParentEvent?.calendarIds || ((tag as any)?.calendarId ? [(tag as any).calendarId] : []),
+        syncMode: currentParentEvent?.syncMode,
+        location: currentParentEvent?.location || existingEvent?.location || '',
         description: finalDescription,
+        eventlog: currentParentEvent?.eventlog || existingEvent?.eventlog,
+        organizer: currentParentEvent?.organizer,
+        attendees: currentParentEvent?.attendees,
         isAllDay: false,
         remarkableSource: true,
         syncStatus: 'pending' as const, // ✅ Timer 停止后改为 pending，触发同步
@@ -756,7 +778,7 @@ function App() {
         
         // 🆕 Issue #12: 更新父事件的 timerLogs
         if (globalTimer.parentEventId) {
-          const parentEvent = existingEvents.find((e: Event) => e.id === globalTimer.parentEventId);
+          const parentEvent = EventService.getEventById(globalTimer.parentEventId);
           if (parentEvent) {
             const updatedTimerLogs = [...(parentEvent.timerLogs || []), timerEventId];
             await EventService.updateEvent(globalTimer.parentEventId, {

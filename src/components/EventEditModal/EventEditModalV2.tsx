@@ -416,6 +416,9 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   // TimeLog 相关 refs
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const slateEditorRef = useRef<any>(null);
+  
+  // 滚动阴影状态
+  const [showTopShadow, setShowTopShadow] = useState(false);
 
   // FloatingToolbar Hook
   const floatingToolbar = useFloatingToolbar({
@@ -1059,6 +1062,26 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     console.log('[EventEditModalV2] 初始化：手动提取联系人');
     ContactService.extractAndAddFromEvent(formData.organizer, formData.attendees);
   }, []); // 只在挂载时执行一次
+  
+  // 监听滚动位置，控制顶部阴影
+  useEffect(() => {
+    const editorWrapper = rightPanelRef.current;
+    if (!editorWrapper) return;
+    
+    const handleScroll = () => {
+      const scrollTop = editorWrapper.scrollTop;
+      // 当滚动超过 10px 时显示阴影
+      setShowTopShadow(scrollTop > 10);
+    };
+    
+    editorWrapper.addEventListener('scroll', handleScroll);
+    // 初始检查
+    handleScroll();
+    
+    return () => {
+      editorWrapper.removeEventListener('scroll', handleScroll);
+    };
+  }, [isDetailView]); // 当视图切换时重新绑定
 
   // Ref for title input
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -2068,80 +2091,69 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
 
                 </div>
 
-                {/* 实际进展区域 */}
-                <div className="eventmodal-v2-section-header" style={{ marginTop: '20px' }}>
-                  <div className="eventmodal-v2-section-header-title">实际进展</div>
-                  {childEvents.length > 0 && (
-                    <span className="total-duration">总时长: {formatDuration(totalDuration)}</span>
-                  )}
-                </div>
+                {/* 实际进展区域 - 只在有计时记录时显示 */}
+                {childEvents.length > 0 && (
+                  <>
+                    <div className="eventmodal-v2-section-header" style={{ marginTop: '20px' }}>
+                      <div className="eventmodal-v2-section-header-title">实际进展</div>
+                      <span className="total-duration">总时长: {formatDuration(totalDuration)}</span>
+                    </div>
 
-                {/* 实际进展滚动容器 */}
-                <div className="progress-section-wrapper">
-                  {/* 时间片段列表 */}
-                  {childEvents.length > 0 ? (
-                    <div className="timer-segments-list">
-                      {childEvents.map((timerEvent) => {
-                        if (!timerEvent.startTime || !timerEvent.endTime) return null;
-                        
-                        const start = new Date(timerEvent.startTime);
-                        const end = new Date(timerEvent.endTime);
-                        const isCrossDay = isCrossingDay(timerEvent.startTime, timerEvent.endTime);
-                        
-                        // 格式化日期和星期
-                        const dateStr = start.toLocaleDateString('zh-CN', { 
-                          year: 'numeric', 
-                          month: '2-digit', 
-                          day: '2-digit' 
-                        }).replace(/\//g, '-');
-                        const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][start.getDay()];
-                        
-                        // 格式化时间
-                        const startTimeStr = start.toLocaleTimeString('zh-CN', { 
-                          hour: '2-digit', 
-                          minute: '2-digit',
-                          hour12: false 
-                        });
-                        const endTimeStr = end.toLocaleTimeString('zh-CN', { 
-                          hour: '2-digit', 
-                          minute: '2-digit',
-                          hour12: false 
-                        });
-                        
-                        // 计算时长
-                        const duration = formatDuration(calculateTimerDuration(timerEvent));
-                        
-                        return (
-                          <div key={timerEvent.id} className="timer-segment">
-                            <img src={timerCheckIcon} alt="" className="timer-check-icon" />
-                            <span>{dateStr} ({weekday}) {startTimeStr}</span>
-                            <div className="time-arrow-section">
-                              <span className="duration-text">{duration}</span>
-                              <img src={arrowBlueIcon} alt="" className="arrow-icon" />
+                    {/* 实际进展滚动容器 */}
+                    <div className="progress-section-wrapper">
+                      {/* 时间片段列表 */}
+                      <div className="timer-segments-list">
+                        {childEvents.map((timerEvent) => {
+                          if (!timerEvent.startTime || !timerEvent.endTime) return null;
+                          
+                          const start = new Date(timerEvent.startTime);
+                          const end = new Date(timerEvent.endTime);
+                          const isCrossDay = isCrossingDay(timerEvent.startTime, timerEvent.endTime);
+                          
+                          // 格式化日期和星期
+                          const dateStr = start.toLocaleDateString('zh-CN', { 
+                            year: 'numeric', 
+                            month: '2-digit', 
+                            day: '2-digit' 
+                          }).replace(/\//g, '-');
+                          const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][start.getDay()];
+                          
+                          // 格式化时间
+                          const startTimeStr = start.toLocaleTimeString('zh-CN', { 
+                            hour: '2-digit', 
+                            minute: '2-digit',
+                            hour12: false 
+                          });
+                          const endTimeStr = end.toLocaleTimeString('zh-CN', { 
+                            hour: '2-digit', 
+                            minute: '2-digit',
+                            hour12: false 
+                          });
+                          
+                          // 计算时长
+                          const duration = formatDuration(calculateTimerDuration(timerEvent));
+                          
+                          return (
+                            <div key={timerEvent.id} className="timer-segment">
+                              <img src={timerCheckIcon} alt="" className="timer-check-icon" />
+                              <span>{dateStr} ({weekday}) {startTimeStr}</span>
+                              <div className="time-arrow-section">
+                                <span className="duration-text">{duration}</span>
+                                <img src={arrowBlueIcon} alt="" className="arrow-icon" />
+                              </div>
+                              <span>
+                                {endTimeStr}
+                                {isCrossDay && (
+                                  <sup style={{ color: '#3b82f6', fontSize: '10px', marginLeft: '2px' }}>+1</sup>
+                                )}
+                              </span>
                             </div>
-                            <span>
-                              {endTimeStr}
-                              {isCrossDay && (
-                                <sup style={{ color: '#3b82f6', fontSize: '10px', marginLeft: '2px' }}>+1</sup>
-                              )}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div style={{ 
-                      padding: '20px', 
-                      textAlign: 'center', 
-                      color: '#9ca3af',
-                      fontSize: '14px'
-                    }}>
-                      还没有计时记录
-                    </div>
-                  )}
+                          );
+                        })}
+                      </div>
 
-                  {/* 同步状态 */}
-                  <div className="eventmodal-v2-plan-row" style={{ marginTop: '12px', position: 'relative' }}>
+                      {/* 同步状态 */}
+                      <div className="eventmodal-v2-plan-row" style={{ marginTop: '12px', position: 'relative' }}>
                     <span style={{ flexShrink: 0, color: '#6b7280' }}>同步</span>
                     <div className="eventmodal-v2-plan-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       {/* 日历选择区域 */}
@@ -2381,19 +2393,10 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                       </div>
                     </div>
 
-                  </div>
-
-                  {/* 对比信息 */}
-                  <div style={{ marginTop: '12px', padding: '8px 12px', background: '#fef3c7', borderRadius: '6px', fontSize: '13px', color: '#92400e' }}>
-                    比计划多 30min
-                  </div>
-
-                  {/* ddl完成状态 */}
-                  <div className="ddl-completion">
-                    <img src={ddlCheckedIcon} alt="" />
-                    <span>ddl提前3h完成于2025-10-19 13:16</span>
-                  </div>
-                </div>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* 右侧：Event Log（仅详情视图） */}
@@ -2427,7 +2430,10 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                   </div>
 
                   {/* 可滚动编辑区域 */}
-                  <div className="event-log-editor-wrapper" ref={rightPanelRef}>
+                  <div 
+                    className={`event-log-editor-wrapper ${showTopShadow ? 'show-top-shadow' : ''}`}
+                    ref={rightPanelRef}
+                  >
                     <LightSlateEditor
                       ref={slateEditorRef}
                       key={`editor-${formData.id}`}

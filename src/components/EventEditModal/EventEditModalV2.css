@@ -605,19 +605,52 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 24px;
-  padding-right: 98px; /* 36px (到按钮距离) + 26px (按钮宽度) + 36px (按钮到边缘) */
-  overflow-y: auto;
   background: transparent;
   border-left: none !important; /* 覆盖 EventEditModalV2.css 中的左边框 */
+  overflow: hidden; /* 防止整体滚动 */
+}
+
+/* Event Log 固定顶部区域 */
+.event-log-header {
+  flex-shrink: 0; /* 不参与压缩 */
+  padding: 24px 98px 0 24px; /* 右侧留出收起按钮空间 */
+}
+
+/* Event Log 可滚动编辑区域 */
+.event-log-editor-wrapper {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0 98px 24px 24px; /* 右侧留出收起按钮空间 */
+  overflow-y: auto;
   min-height: 200px; /* 最小高度，保证可以点击和输入 */
   /* 隐藏滚动条但保持滚动功能 */
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE/Edge */
 }
 
+/* 顶部阴影 - 当内容向上滚动时显示 */
+.event-log-editor-wrapper::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 20px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.06), transparent);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.event-log-editor-wrapper.show-top-shadow::before {
+  opacity: 1;
+}
+
 /* 隐藏 Webkit 浏览器的滚动条 */
-.event-log::-webkit-scrollbar {
+.event-log-editor-wrapper::-webkit-scrollbar {
   display: none;
 }
 
