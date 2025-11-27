@@ -1771,6 +1771,7 @@ export function insertDateMention(editor, startDate, endDate?, ...): boolean
 export function applyTextFormat(editor, command): boolean
   // 支持: 'bold', 'italic', 'underline', 'strikeThrough', 'removeFormat'
   //      'toggleBulletList', 'increaseBulletLevel', 'decreaseBulletLevel'
+  // 🆕 v2.15: Bullet Point (项目符号) - 5级层级结构 ●○–□▸
 
 // 📌 数据提取
 export function extractTagsFromLine(editor, lineId): string[]  // 🆕 提取指定行的所有标签
@@ -3765,7 +3766,489 @@ function MyComponent() {
 
 ---
 
+## ✅ v2.15 Bullet Point (项目符号) 功能 (2025-11-27)
+
+### 概述
+
+**状态**: ✅ 已实现并集成到 LightSlateEditor (EventEditModal v2)  
+**用途**: 为事件日志记录提供结构化的列表编辑能力  
+**层级**: 支持 5 级嵌套（Level 0-4）  
+**符号**: ●（实心圆）→ ○（空心圆）→ –（短横线）→ □（方块）→ ▸（三角）
+
+### 核心特性
+
+#### 1. 数据结构
+
+```typescript
+interface ParagraphElement {
+  type: 'paragraph';
+  bullet?: boolean;        // 是否为 bullet 段落
+  bulletLevel?: number;    // 层级 0-4
+  children: Text[];
+}
+```
+
+#### 2. 键盘快捷键
+
+| 操作 | 快捷键 | 效果 |
+|------|--------|------|
+| 增加层级 | `Tab` | bulletLevel + 1（最多到 4） |
+| 减少层级 | `Shift+Tab` | bulletLevel - 1（Level 0 时移除 bullet） |
+| 插入 bullet | FloatingBar 按钮 | toggleBulletList |
+
+#### 3. 渲染逻辑
+
+**HTML 结构**:
+```html
+<div class="slate-paragraph with-preline bullet-paragraph">
+  <!-- Preline (时间轴连线) -->
+  <div class="paragraph-preline" style="left: 8px; width: 2px; background: #e5e7eb"></div>
+  
+  <!-- Bullet 符号 -->
+  <span class="bullet-symbol" style="left: ${20 + bulletLevel * 24}px; color: #6b7280">
+    ● (或 ○ – □ ▸)
+  </span>
+  
+  <!-- 文本内容 -->
+  <div style="padding-left: ${bulletLevel * 24 + 18}px">
+    {children}
+  </div>
+</div>
+```
+
+**CSS 样式**:
+```css
+/* Bullet 段落容器 */
+.bullet-paragraph {
+  position: relative;
+  padding-left: 20px; /* preline 左侧空间 */
+  min-height: 20px;
+}
+
+/* Preline (时间轴) */
+.paragraph-preline {
+  position: absolute;
+  left: 8px;
+  top: -28px;        /* 向上延伸到 timestamp */
+  bottom: 0;         /* 最后段落向下延伸 -8px */
+  width: 2px;
+  background: #e5e7eb;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Bullet 符号 */
+.bullet-symbol {
+  position: absolute;
+  left: ${20 + bulletLevel * 24}px;  /* 基于 preline 偏移 */
+  top: 0;
+  user-select: none;
+  color: #6b7280;
+  font-weight: bold;
+  z-index: 1;
+}
+
+/* 文本内容缩进 */
+.bullet-paragraph > div {
+  padding-left: ${bulletLevel * 24 + 18}px;  /* 符号后 18px 间距 */
+  position: relative;
+  z-index: 2;
+}
+```
+
+#### 4. 核心实现
+
+**位置**: `src/components/LightSlateEditor/LightSlateEditor.tsx`
+
+**applyTextFormat 方法** (L234-337):
+```typescript
+const applyTextFormat = useCallback((command: string): boolean => {
+  try {
+    switch (command) {
+      case 'toggleBulletList': {
+        const [paraMatch] = Editor.nodes(editor, {
+          match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+        });
+        
+        if (paraMatch) {
+          const [node] = paraMatch;
+          const para = node as any;
+          
+          if (para.bullet) {
+            // 取消 bullet
+            Transforms.setNodes(editor, { bullet: undefined, bulletLevel: undefined } as any);
+          } else {
+            // 设置为 bullet（默认 level 0）
+            Transforms.setNodes(editor, { bullet: true, bulletLevel: 0 } as any);
+            
+            // 🔥 清除 pendingTimestamp 标记，bullet 算作有效内容
+            setPendingTimestamp(false);
+            console.log('[LightSlateEditor] 插入 bullet，清除 pendingTimestamp');
+          }
+        }
+        break;
+      }
+      
+      case 'increaseBulletLevel': {
+        const [paraMatch] = Editor.nodes(editor, {
+          match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+        });
+        
+        if (paraMatch) {
+          const [node] = paraMatch;
+          const para = node as any;
+          
+          if (para.bullet) {
+            const currentLevel = para.bulletLevel || 0;
+            if (currentLevel < 4) {
+              Transforms.setNodes(editor, { bulletLevel: currentLevel + 1 } as any);
+            }
+          }
+        }
+        break;
+      }
+      
+      case 'decreaseBulletLevel': {
+        const [paraMatch] = Editor.nodes(editor, {
+          match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+        });
+        
+        if (paraMatch) {
+          const [node] = paraMatch;
+          const para = node as any;
+          
+          if (para.bullet) {
+            const currentLevel = para.bulletLevel || 0;
+            if (currentLevel > 0) {
+              Transforms.setNodes(editor, { bulletLevel: currentLevel - 1 } as any);
+            } else {
+              Transforms.setNodes(editor, { bullet: undefined, bulletLevel: undefined } as any);
+            }
+          }
+        }
+        break;
+      }
+    }
+    return true;
+  } catch (err) {
+    console.error('[LightSlateEditor.applyTextFormat] Failed:', err);
+    return false;
+  }
+}, [editor]);
+```
+
+**renderElement 方法** (L650-701):
+```typescript
+case 'paragraph': {
+  const isBullet = element.bullet === true;
+  const bulletLevel = element.bulletLevel || 0;
+  
+  // 判断是否需要显示 preline
+  const needsPreline = checkNeedsPreline(element);
+  
+  // 判断是否是最后一个有内容的段落
+  const isLastContentParagraph = (() => {
+    try {
+      const path = ReactEditor.findPath(editor, element);
+      const nodeIndex = path[0];
+      
+      for (let i = nodeIndex + 1; i < editor.children.length; i++) {
+        const nextNode = editor.children[i] as any;
+        if (nextNode.type === 'paragraph' && nextNode.children?.[0]?.text?.trim()) {
+          return false;
+        }
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  
+  // 计算 bullet 符号
+  const bulletSymbols = ['●', '○', '–', '□', '▸'];
+  const bulletSymbol = isBullet ? bulletSymbols[bulletLevel] || '●' : null;
+  
+  return (
+    <div
+      {...props.attributes}
+      className={`slate-paragraph ${needsPreline ? 'with-preline' : ''} ${isBullet ? 'bullet-paragraph' : ''}`}
+      style={{
+        position: 'relative',
+        paddingLeft: needsPreline ? '20px' : '0',
+        minHeight: needsPreline ? '20px' : 'auto'
+      }}
+    >
+      {needsPreline && (
+        <div
+          className="paragraph-preline"
+          contentEditable={false}
+          style={{
+            position: 'absolute',
+            left: '8px',
+            top: '-28px',
+            bottom: isLastContentParagraph ? '-8px' : '0',
+            width: '2px',
+            background: '#e5e7eb',
+            zIndex: 0,
+            pointerEvents: 'none'
+          }}
+        />
+      )}
+      {isBullet && bulletSymbol && (
+        <span
+          className="bullet-symbol"
+          contentEditable={false}
+          style={{
+            position: 'absolute',
+            left: needsPreline ? `${20 + bulletLevel * 24}px` : `${bulletLevel * 24}px`,
+            top: '0',
+            userSelect: 'none',
+            color: '#6b7280',
+            fontWeight: 'bold',
+            zIndex: 1
+          }}
+        >
+          {bulletSymbol}
+        </span>
+      )}
+      <div style={{ 
+        paddingLeft: isBullet ? `${bulletLevel * 24 + 18}px` : '0',
+        position: 'relative',
+        zIndex: 2
+      }}>
+        {props.children}
+      </div>
+    </div>
+  );
+}
+```
+
+**handleKeyDown 方法** (L745-905):
+```typescript
+const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
+  // Tab: 增加 bullet 层级
+  if (event.key === 'Tab' && !event.shiftKey) {
+    const [match] = Editor.nodes(editor, {
+      match: (n: any) => Element.isElement(n) && n.type === 'paragraph',
+    });
+    
+    if (match) {
+      const [node] = match;
+      const para = node as any;
+      
+      if (para.bullet) {
+        event.preventDefault();
+        const currentLevel = para.bulletLevel || 0;
+        if (currentLevel < 4) {
+          Transforms.setNodes(editor, { bulletLevel: currentLevel + 1 } as any);
+        }
+        return;
+      }
+    }
+  }
+  
+  // Shift+Tab: 减少 bullet 层级
+  if (event.key === 'Tab' && event.shiftKey) {
+    const [match] = Editor.nodes(editor, {
+      match: (n: any) => Element.isElement(n) && n.type === 'paragraph',
+    });
+    
+    if (match) {
+      const [node] = match;
+      const para = node as any;
+      
+      if (para.bullet) {
+        event.preventDefault();
+        const currentLevel = para.bulletLevel || 0;
+        if (currentLevel > 0) {
+          Transforms.setNodes(editor, { bulletLevel: currentLevel - 1 } as any);
+        } else {
+          Transforms.setNodes(editor, { bullet: undefined, bulletLevel: undefined } as any);
+        }
+        return;
+      }
+    }
+  }
+}, [editor]);
+```
+
+### 5. FloatingBar 集成
+
+**HeadlessFloatingToolbar 配置** (L102):
+```typescript
+bullet: { icon: 'bulletpoints-svg', label: '项目符号', command: 'toggleBulletList' }
+```
+
+**按钮渲染** (L680-701):
+```typescript
+if (feature === 'bullet') {
+  return (
+    <Tippy key={feature} content={btnConfig.label} placement="top">
+      <button
+        className="headless-toolbar-btn headless-toolbar-text-btn"
+        onMouseDown={(e) => {
+          e.preventDefault(); // 🔥 阻止焦点转移
+          e.stopPropagation();
+        }}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onTextFormat?.(btnConfig.command);
+          onRequestClose?.();
+        }}
+      >
+        <svg width="16" height="14" viewBox="0 0 16 14" fill="none">
+          <path d="..." fill="#4B5563"/>
+        </svg>
+      </button>
+    </Tippy>
+  );
+}
+```
+
+**EventEditModalV2 路由** (L2558-2577):
+```typescript
+const onTextFormat = useCallback((command: string) => {
+  if (['toggleBulletList', 'increaseBulletLevel', 'decreaseBulletLevel'].includes(command)) {
+    // Bullet 命令路由到 LightSlateEditor
+    slateEditorRef.current?.applyTextFormat?.(command);
+  } else {
+    // 其他格式命令使用 helpers
+    applyTextFormat(slateEditorRef.current?.editor, command);
+  }
+}, []);
+```
+
+### 6. 关键问题修复
+
+#### 问题 1: 点击 FloatingBar 导致失焦
+
+**原因**: 按钮点击触发浏览器默认行为，焦点从编辑器转移到按钮  
+**症状**: 点击 bullet 按钮后，timestamp 和 preline 消失  
+**修复**: 添加 `onMouseDown` 和 `onClick` 的 `e.preventDefault()`
+
+```typescript
+onMouseDown={(e) => {
+  e.preventDefault(); // 🔥 阻止焦点转移
+  e.stopPropagation();
+}}
+onClick={(e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  onTextFormat?.(btnConfig.command);
+}}
+```
+
+#### 问题 2: 空 bullet 段落导致 timestamp 删除
+
+**原因**: `handleBlur` 检测到 timestamp 后无文本内容，判定为空  
+**症状**: 插入 bullet 后失焦，timestamp 被删除  
+**修复**: 修改内容检测逻辑，`bullet: true` 算作有效内容
+
+```typescript
+// handleBlur (L805-810)
+if (node.type === 'paragraph' && (node.children?.[0]?.text?.trim() || node.bullet === true)) {
+  hasContentAfterTimestamp = true;
+  break;
+}
+```
+
+#### 问题 3: Placeholder 与 bullet 重叠
+
+**原因**: 有 timestamp 时仍显示 "记录时间轴..." placeholder  
+**修复**: 动态检测 timestamp 存在性
+
+```typescript
+// 检查是否有 timestamp，用于控制 placeholder 显示 (L939-940)
+const hasTimestamp = editor.children.some((node: any) => node.type === 'timestamp-divider');
+
+<Editable
+  placeholder={hasTimestamp ? '' : placeholder}
+  // ...
+/>
+```
+
+### 7. 与 Timestamp/Preline 集成
+
+**设计原则**:
+- ✅ **Bullet 在 preline 内部**: Bullet 是 timestamp 下的内容，不替代 preline
+- ✅ **Bullet 算作有效内容**: 即使文本为空，有 `bullet: true` 就保留 timestamp
+- ✅ **正确缩进计算**: 
+  - Preline: 固定 20px paddingLeft
+  - Bullet 符号: `20 + bulletLevel * 24` (从 preline 偏移)
+  - 文本内容: `bulletLevel * 24 + 18` (符号后 18px 间距)
+
+### 8. 使用示例
+
+```typescript
+// EventEditModalV2.tsx
+<LightSlateEditor
+  ref={slateEditorRef}
+  eventId={currentEvent.id}
+  content={currentEvent.eventLog || ''}
+  enableTimestamp={true}
+  parentEventId={currentEvent.id}
+  placeholder="记录时间轴..."
+  onContentChange={handleSlateContentChange}
+/>
+
+<HeadlessFloatingToolbar
+  features={[/* ... */, 'textStyle']}
+  textStyleSubmenu={['bold', 'italic', 'strikethrough', 'textColor', 'bgColor', 'bullet', 'clearFormat']}
+  onTextFormat={onTextFormat}
+  slateEditorRef={slateEditorRef}
+/>
+```
+
+**用户操作流程**:
+1. 焦点在编辑器中
+2. 点击 FloatingBar 的 "文本样式" 按钮 → 展开子菜单
+3. 点击 "项目符号" 按钮 → 当前段落变为 bullet（●）
+4. 继续输入文字，按 `Tab` 增加层级（○ → – → □ → ▸）
+5. 按 `Shift+Tab` 减少层级，Level 0 时按 `Shift+Tab` 移除 bullet
+
+### 9. 数据持久化
+
+**存储格式** (JSON):
+```json
+{
+  "type": "paragraph",
+  "bullet": true,
+  "bulletLevel": 1,
+  "children": [
+    { "text": "这是一个二级 bullet 项" }
+  ]
+}
+```
+
+**序列化** (保存到 localStorage):
+- `LightSlateEditor` 将 Slate value 转为 JSON 字符串
+- 存储在 `event.eventLog` 字段
+- 加载时 `jsonToSlateNodes` 反序列化
+
+### 10. 性能优化
+
+- ✅ **最小化重渲染**: 只在 bullet 属性变化时重新渲染
+- ✅ **键盘快捷键**: Tab/Shift+Tab 直接修改 Slate 节点，无需重新计算
+- ✅ **CSS 层级**: Bullet 符号 z-index: 1，内容 z-index: 2，避免重叠
+- ✅ **事件防抖**: FloatingBar 按钮使用 onMouseDown 阻止失焦
+
+---
+
 ## 🔄 更新历史
+
+### v2.15 (2025-11-27)
+- ✅ 新增 Bullet Point (项目符号) 功能
+- ✅ 支持 5 级嵌套层级 (●○–□▸)
+- ✅ Tab/Shift+Tab 快捷键调整层级
+- ✅ 修复点击 FloatingBar 失焦问题
+- ✅ 修复空 bullet 段落导致 timestamp 删除
+- ✅ 修复 placeholder 与 bullet 重叠
+- ✅ 完整集成到 LightSlateEditor
+
+### v2.14 (2025-11-25)
+- ✅ Checkbox 状态实时同步机制
+- ✅ React.memo 比较函数优化
 
 ### v2.11 (2025-11-18)
 - ✅ 新增文本颜色和背景颜色功能

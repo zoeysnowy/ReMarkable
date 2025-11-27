@@ -453,9 +453,15 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   // 🆕 监听 localStorage 变化，实时刷新父事件的 timerLogs
   React.useEffect(() => {
     const handleEventsUpdated = (e: any) => {
-      const updatedEventId = e.detail;
+      // 🔧 e.detail 是一个对象，包含 eventId 字段
+      const updatedEventId = e.detail?.eventId || e.detail;
       
-      console.log('🔔 [EventEditModalV2] 监听到 eventsUpdated:', updatedEventId);
+      console.log('🔔 [EventEditModalV2] 监听到 eventsUpdated:', {
+        rawDetail: e.detail,
+        eventId: updatedEventId,
+        currentEventId: event?.id,
+        parentEventId: event?.parentEventId
+      });
       
       // 如果更新的是当前事件或父事件，触发刷新
       if (updatedEventId === event?.id || updatedEventId === event?.parentEventId) {
@@ -1889,6 +1895,13 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                                 ? { simpleTitle: formData.title }
                                 : formData.title;
                               
+                              console.log('🔧 [Timer Start Button] 准备保存事件:', {
+                                'formData.title': formData.title,
+                                'titleObj': titleObj,
+                                'event.title': event.title,
+                                'formData keys': Object.keys(formData)
+                              });
+                              
                               const newEvent: Event = {
                                 ...event,  // 保留原始事件的所有字段
                                 ...formData,  // 覆盖用户修改的字段
@@ -1899,13 +1912,35 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                                 source: event.source || 'local',
                               } as Event;
                               
-                              await EventService.createEvent(newEvent);
-                              console.log('✅ [Timer Start Button] 事件已保存到 localStorage:', {
-                                eventId: newEvent.id,
+                              console.log('💾 [Timer Start Button] 合并后的 newEvent:', {
+                                id: newEvent.id,
                                 title: newEvent.title,
+                                'title type': typeof newEvent.title,
                                 tags: newEvent.tags,
-                                formDataTitle: formData.title
+                                source: newEvent.source,
+                                remarkableSource: newEvent.remarkableSource
                               });
+                              
+                              await EventService.createEvent(newEvent);
+                              console.log('✅ [Timer Start Button] 事件已保存到 localStorage');
+                              
+                              // ⏱️ 等待一小段时间，确保 eventsUpdated 事件已触发并处理完毕
+                              await new Promise(resolve => setTimeout(resolve, 50));
+                              
+                              // 验证保存结果
+                              const savedEvent = EventService.getEventById(newEvent.id);
+                              console.log('🔍 [Timer Start Button] 验证保存结果:', {
+                                eventId: savedEvent?.id,
+                                title: savedEvent?.title,
+                                'title type': typeof savedEvent?.title,
+                                tags: savedEvent?.tags
+                              });
+                              
+                              if (!savedEvent) {
+                                console.error('❌ [Timer Start Button] 验证失败：无法读取已保存的事件');
+                                alert('保存事件失败，无法开始计时');
+                                return;
+                              }
                             } catch (error) {
                               console.error('❌ [Timer Start Button] 保存事件失败:', error);
                               alert('保存事件失败，无法开始计时');

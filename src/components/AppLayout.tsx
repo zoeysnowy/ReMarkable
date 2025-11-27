@@ -20,6 +20,7 @@ interface AppLayoutProps {
     startTime: number;
     elapsedTime: number;
     isPaused: boolean;
+    eventTitle?: string; // ✅ 事件标题（优先级高于 tagName）
   } | null;
   onTimerClick?: () => void;
   clickTrackerEnabled?: boolean;
@@ -38,6 +39,7 @@ interface HeaderProps {
     startTime: number;
     elapsedTime: number;
     isPaused: boolean;
+    eventTitle?: string; // ✅ 事件标题（优先级高于 tagName）
   } | null;
   onTimerClick?: () => void;
   onSettingsClick?: () => void;
@@ -90,7 +92,7 @@ const Header: React.FC<HeaderProps> = ({ globalTimer, onTimerClick, onSettingsCl
               className={`global-timer-compact ${globalTimer.isRunning ? 'running' : 'paused'}`}
               onClick={onTimerClick}
             >
-              {/* 第一行：标签（使用标签颜色） */}
+              {/* 第一行：标签或标题（使用标签颜色） */}
               <div 
                 className="timer-tag-line"
                 style={{ 
@@ -98,7 +100,8 @@ const Header: React.FC<HeaderProps> = ({ globalTimer, onTimerClick, onSettingsCl
                 }}
               >
                 {globalTimer.tagEmoji ? `${globalTimer.tagEmoji} ` : ''}
-                {globalTimer.tagName}
+                {/* ✅ 优先显示 eventTitle，如果没有则显示 tagName */}
+                {globalTimer.eventTitle || globalTimer.tagName}
               </div>
               
               {/* 第二行：计时（使用首页timer渐变色） */}

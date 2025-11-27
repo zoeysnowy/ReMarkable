@@ -515,8 +515,15 @@ function App() {
         elapsedTime: 0,
         isPaused: false,
         parentEventId,
-        eventId: timerEventId // ✅ 保存固定 eventId
+        eventId: timerEventId, // ✅ 保存固定 eventId
+        eventTitle: parentEvent?.title?.simpleTitle || (typeof parentEvent?.title === 'string' ? parentEvent.title : '') || '' // ✅ 继承父事件标题
       };
+      console.log('🎯 [Timer Start] timerState 初始化:', {
+        eventId: timerState.eventId,
+        eventTitle: timerState.eventTitle,
+        'parentEvent.title': parentEvent?.title,
+        'parentEvent.title type': typeof parentEvent?.title
+      });
       setGlobalTimer(timerState);
       // 💾 持久化到 localStorage，供 Widget 读取
       localStorage.setItem('remarkable-global-timer', JSON.stringify(timerState));

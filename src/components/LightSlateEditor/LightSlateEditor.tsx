@@ -695,7 +695,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
               </span>
             )}
             <div style={{ 
-              paddingLeft: isBullet ? `${bulletLevel * 24 + 24}px` : '0',
+              paddingLeft: isBullet ? `${bulletLevel * 24 + 18}px` : '0',
               position: 'relative',
               zIndex: 2
             }}>
@@ -813,8 +813,9 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
         let hasContentAfterTimestamp = false;
         for (let i = lastTimestampIndex + 1; i < editor.children.length; i++) {
           const node = editor.children[i] as any;
-          // 有文本内容，或者有 bullet 属性（即使文本为空），都算作"有内容"
-          if (node.type === 'paragraph' && (node.children?.[0]?.text?.trim() || node.bullet === true)) {
+          // 有文本内容算作"有内容"
+          // ⚠️ 空 bullet 不算内容，会被一起清理
+          if (node.type === 'paragraph' && node.children?.[0]?.text?.trim()) {
             hasContentAfterTimestamp = true;
             break;
           }
@@ -890,6 +891,108 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
           event.preventDefault();
           Editor.addMark(editor, 'underline', true);
           return;
+      }
+    }
+    
+    // Backspace 删除 bullet 机制（OneNote 风格）
+    if (event.key === 'Backspace') {
+      const { selection } = editor;
+      if (!selection || !Range.isCollapsed(selection)) return;
+      
+      // 获取当前段落节点
+      const [paraMatch] = Editor.nodes(editor, {
+        match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+      });
+      
+      if (paraMatch) {
+        const [node, path] = paraMatch;
+        const para = node as any;
+        
+        // 只在行首且有 bullet 时处理
+        if (para.bullet && selection.anchor.offset === 0) {
+          event.preventDefault();
+          
+          const currentLevel = para.bulletLevel || 0;
+          
+          if (currentLevel > 0) {
+            // 有层级：减少层级
+            Transforms.setNodes(editor, { bulletLevel: currentLevel - 1 } as any);
+            console.log('[LightSlateEditor] Backspace 行首：降低 bullet 层级', currentLevel, '→', currentLevel - 1);
+          } else {
+            // Level 0：删除 bullet，保留文本
+            Transforms.setNodes(editor, { bullet: undefined, bulletLevel: undefined } as any);
+            console.log('[LightSlateEditor] Backspace 行首：删除 bullet，保留文本');
+          }
+          return;
+        }
+      }
+    }
+    
+    // Backspace/Delete 禁止删除 timestamp
+    if (event.key === 'Backspace' || event.key === 'Delete') {
+      const { selection } = editor;
+      if (!selection) return;
+      
+      // 检查是否试图删除 timestamp
+      const [nodeEntry] = Editor.nodes(editor, {
+        match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'timestamp-divider',
+      });
+      
+      if (nodeEntry) {
+        event.preventDefault();
+        console.log('[LightSlateEditor] ⛔ 禁止删除 timestamp');
+        return;
+      }
+    }
+    
+    // Backspace 删除 bullet 机制（OneNote 风格）
+    if (event.key === 'Backspace') {
+      const { selection } = editor;
+      if (!selection || !Range.isCollapsed(selection)) return;
+      
+      // 获取当前段落节点
+      const [paraMatch] = Editor.nodes(editor, {
+        match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+      });
+      
+      if (paraMatch) {
+        const [node, path] = paraMatch;
+        const para = node as any;
+        
+        // 只在行首且有 bullet 时处理
+        if (para.bullet && selection.anchor.offset === 0) {
+          event.preventDefault();
+          
+          const currentLevel = para.bulletLevel || 0;
+          
+          if (currentLevel > 0) {
+            // 有层级：减少层级
+            Transforms.setNodes(editor, { bulletLevel: currentLevel - 1 } as any);
+            console.log('[LightSlateEditor] Backspace 行首：降低 bullet 层级', currentLevel, '→', currentLevel - 1);
+          } else {
+            // Level 0：删除 bullet，保留文本
+            Transforms.setNodes(editor, { bullet: undefined, bulletLevel: undefined } as any);
+            console.log('[LightSlateEditor] Backspace 行首：删除 bullet，保留文本');
+          }
+          return;
+        }
+      }
+    }
+    
+    // Backspace/Delete 禁止删除 timestamp
+    if (event.key === 'Backspace' || event.key === 'Delete') {
+      const { selection } = editor;
+      if (!selection) return;
+      
+      // 检查是否试图删除 timestamp
+      const [nodeEntry] = Editor.nodes(editor, {
+        match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'timestamp-divider',
+      });
+      
+      if (nodeEntry) {
+        event.preventDefault();
+        console.log('[LightSlateEditor] ⛔ 禁止删除 timestamp');
+        return;
       }
     }
     

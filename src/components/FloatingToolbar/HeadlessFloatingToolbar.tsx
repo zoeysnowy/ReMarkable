@@ -657,7 +657,12 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
               activePicker === feature ? 'headless-toolbar-btn-active' : ''
             }`}
             data-submenu-trigger="true"
+            onMouseDown={(e) => {
+              e.preventDefault(); // 🔥 阻止焦点转移
+              e.stopPropagation();
+            }}
             onClick={(e) => {
+              e.preventDefault();
               e.stopPropagation();
               const newValue = activePicker === feature ? null : feature;
               console.log(`[textColor/bgColor onClick] 🎨 activePicker: ${activePicker} → ${newValue}, feature: ${feature}`);
@@ -680,8 +685,13 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
         <Tippy key={feature} content={btnConfig.label} placement="top">
           <button
             className="headless-toolbar-btn headless-toolbar-text-btn"
+            onMouseDown={(e) => {
+              e.preventDefault(); // 🔥 阻止焦点转移
+              e.stopPropagation();
+            }}
             onClick={(e) => {
               console.log('[bullet onClick] 🔔 被触发！', { command: btnConfig.command, hasCallback: !!onTextFormat });
+              e.preventDefault();
               e.stopPropagation();
               onTextFormat?.(btnConfig.command);
               // 🆕 执行完 bullet 命令后关闭 FloatingBar
@@ -700,7 +710,12 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
       <Tippy key={feature} content={btnConfig.label} placement="top">
         <button
           className="headless-toolbar-btn headless-toolbar-text-btn"
+          onMouseDown={(e) => {
+            e.preventDefault(); // 🔥 阻止焦点转移
+            e.stopPropagation();
+          }}
           onClick={(e) => {
+            e.preventDefault();
             e.stopPropagation();
             onTextFormat?.(btnConfig.command);
           }}
@@ -731,7 +746,12 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
             className={`headless-toolbar-btn headless-toolbar-action-btn ${
               currentIsTask ? 'headless-toolbar-btn-active' : ''
             }`}
+            onMouseDown={(e) => {
+              e.preventDefault(); // 🔥 阻止焦点转移
+              e.stopPropagation();
+            }}
             onClick={(e) => {
+              e.preventDefault();
               e.stopPropagation();
               onTaskToggle?.(!currentIsTask);
             }}
@@ -789,7 +809,12 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
               activePicker === feature ? 'headless-toolbar-btn-active' : ''
             }`}
             style={{ backgroundColor: activePicker === feature ? btnConfig.color : undefined }}
+            onMouseDown={(e) => {
+              e.preventDefault(); // 🔥 阻止焦点转移
+              e.stopPropagation();
+            }}
             onClick={(e) => {
+              e.preventDefault();
               e.stopPropagation();
               setActivePicker(activePicker === feature ? null : feature);
             }}
@@ -859,7 +884,12 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
               activePicker === feature ? 'headless-toolbar-btn-active' : ''
             }`}
             style={{ backgroundColor: activePicker === feature ? btnConfig.color : undefined }}
+            onMouseDown={(e) => {
+              e.preventDefault(); // 🔥 阻止焦点转移
+              e.stopPropagation();
+            }}
             onClick={(e) => {
+              e.preventDefault();
               e.stopPropagation();
               setActivePicker(activePicker === feature ? null : feature);
             }}
@@ -997,7 +1027,12 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
             activePicker === feature ? 'headless-toolbar-btn-active' : ''
           }`}
           style={{ backgroundColor: activePicker === feature ? btnConfig.color : undefined }}
+          onMouseDown={(e) => {
+            e.preventDefault(); // 🔥 阻止焦点转移
+            e.stopPropagation();
+          }}
           onClick={(e) => {
+            e.preventDefault();
             e.stopPropagation();
             
             console.log(`[textStyle 主按钮 onClick] 🔔 被触发！当前 activePicker: ${activePicker}, feature: ${feature}`);

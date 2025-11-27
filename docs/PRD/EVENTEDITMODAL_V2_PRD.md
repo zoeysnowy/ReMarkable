@@ -161,12 +161,17 @@
    - ⏳ 计划 vs 实际时间对比（待实现）
    - ⏳ DDL 完成状态显示（待实现）
 
-2. ✅ **LightSlateEditor 集成** - 已完成 (2025-11-24)
+2. ✅ **LightSlateEditor 集成** - 已完成 (2025-11-27)
    - ✅ 主日志富文本编辑器
    - ✅ 时间戳分隔线自动生成（5分钟间隔）
    - ✅ FloatingBar 完整集成（tag/emoji/dateMention）
    - ✅ 文本格式支持（粗体/斜体/下划线/颜色）
    - ✅ 颜色选择器数字键功能
+   - ✅ **Bullet Point (项目符号)** - 新增 (2025-11-27)
+     - ✅ 5级层级结构 (●○–□▸)
+     - ✅ Tab/Shift+Tab 快捷键
+     - ✅ FloatingBar 按钮集成
+     - ✅ 与 timestamp/preline 完美集成
    - ⏳ 父事件 + Timer 子事件日志合并（待实现）
    - ⏳ 点击 Timer 色块自动滚动（待实现）
 
@@ -203,14 +208,25 @@
 
 ### v2.16.0 更新（2025-11-27）
 
-**功能**: 实际进展数据集成（P0 核心功能）
+**功能**: ✅ 实际进展数据集成 + ✅ Bullet Point 项目符号（P0 核心功能）
 
 **实现内容**:
+
+#### 1. 实际进展数据集成
 - ✅ **动态数据渲染**: 替换硬编码模拟数据，从 `childEvents` 动态读取 Timer 子事件
 - ✅ **总时长汇总**: 自动计算所有子事件的累积时长（`reduce` 累加 `endTime - startTime`）
 - ✅ **跨天标记**: 自动检测并显示蓝色 `+1` 上标（`isCrossingDay` 函数）
 - ✅ **空状态提示**: 无计时记录时显示"还没有计时记录"，避免空白区域
 - ✅ **时间格式化**: 统一的日期、星期、时间显示格式（`zh-CN` locale）
+
+#### 2. Bullet Point (项目符号) 功能
+- ✅ **5级层级结构**: ● (Level 0) → ○ (Level 1) → – (Level 2) → □ (Level 3) → ▸ (Level 4)
+- ✅ **键盘快捷键**: Tab 增加层级 / Shift+Tab 减少层级
+- ✅ **FloatingBar 集成**: textStyle 子菜单中的 "项目符号" 按钮
+- ✅ **与 Timestamp 集成**: Bullet 在 preline 内部渲染，不替代时间轴
+- ✅ **焦点管理修复**: 点击 FloatingBar 按钮不会导致编辑器失焦
+- ✅ **内容保护**: 空 bullet 段落算作有效内容，不会触发 timestamp 删除
+- ✅ **精确缩进**: Bullet 符号与文字间距 18px，层级间距 24px
 
 **代码位置**: `src/components/EventEditModal/EventEditModalV2.tsx`
 - L1390-1430: 时长计算工具函数（`calculateTimerDuration`, `formatDuration`, `totalDuration` useMemo）
