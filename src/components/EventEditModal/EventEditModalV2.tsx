@@ -1378,6 +1378,49 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   };
 
   /**
+   * 计算 Timer 事件的时长（毫秒）
+   */
+  const calculateTimerDuration = (timerEvent: Event): number => {
+    if (!timerEvent.startTime || !timerEvent.endTime) return 0;
+    const start = new Date(timerEvent.startTime).getTime();
+    const end = new Date(timerEvent.endTime).getTime();
+    return end - start;
+  };
+
+  /**
+   * 格式化时长（毫秒 → 人类可读格式）
+   */
+  const formatDuration = (durationMs: number): string => {
+    const totalMinutes = Math.floor(durationMs / (1000 * 60));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    
+    if (hours > 0) {
+      return `${hours}h${minutes > 0 ? minutes + 'min' : ''}`;
+    }
+    return `${minutes}min`;
+  };
+
+  /**
+   * 计算总时长（所有 Timer 子事件的累积时长）
+   */
+  const totalDuration = React.useMemo(() => {
+    if (childEvents.length === 0) return 0;
+    return childEvents.reduce((sum, timerEvent) => {
+      return sum + calculateTimerDuration(timerEvent);
+    }, 0);
+  }, [childEvents]);
+
+  /**
+   * 检查两个时间是否跨天
+   */
+  const isCrossingDay = (startTime: string, endTime: string): boolean => {
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    return start.getDate() !== end.getDate() || start.getMonth() !== end.getMonth() || start.getFullYear() !== end.getFullYear();
+  };
+
+  /**
    * 处理时间选择完成
    * 
    * 架构说明：
@@ -2028,35 +2071,74 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                 {/* 实际进展区域 */}
                 <div className="eventmodal-v2-section-header" style={{ marginTop: '20px' }}>
                   <div className="eventmodal-v2-section-header-title">实际进展</div>
-                  <span className="total-duration">总时长: 3小时</span>
+                  {childEvents.length > 0 && (
+                    <span className="total-duration">总时长: {formatDuration(totalDuration)}</span>
+                  )}
                 </div>
 
                 {/* 实际进展滚动容器 */}
                 <div className="progress-section-wrapper">
                   {/* 时间片段列表 */}
-                  <div className="timer-segments-list">
-                    {/* 片段 1 */}
-                    <div className="timer-segment">
-                      <img src={timerCheckIcon} alt="" className="timer-check-icon" />
-                      <span>2025-10-18 (周六) 10:00</span>
-                      <div className="time-arrow-section">
-                        <span className="duration-text">2h30min</span>
-                        <img src={arrowBlueIcon} alt="" className="arrow-icon" />
-                      </div>
-                      <span>12:00</span>
+                  {childEvents.length > 0 ? (
+                    <div className="timer-segments-list">
+                      {childEvents.map((timerEvent) => {
+                        if (!timerEvent.startTime || !timerEvent.endTime) return null;
+                        
+                        const start = new Date(timerEvent.startTime);
+                        const end = new Date(timerEvent.endTime);
+                        const isCrossDay = isCrossingDay(timerEvent.startTime, timerEvent.endTime);
+                        
+                        // 格式化日期和星期
+                        const dateStr = start.toLocaleDateString('zh-CN', { 
+                          year: 'numeric', 
+                          month: '2-digit', 
+                          day: '2-digit' 
+                        }).replace(/\//g, '-');
+                        const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][start.getDay()];
+                        
+                        // 格式化时间
+                        const startTimeStr = start.toLocaleTimeString('zh-CN', { 
+                          hour: '2-digit', 
+                          minute: '2-digit',
+                          hour12: false 
+                        });
+                        const endTimeStr = end.toLocaleTimeString('zh-CN', { 
+                          hour: '2-digit', 
+                          minute: '2-digit',
+                          hour12: false 
+                        });
+                        
+                        // 计算时长
+                        const duration = formatDuration(calculateTimerDuration(timerEvent));
+                        
+                        return (
+                          <div key={timerEvent.id} className="timer-segment">
+                            <img src={timerCheckIcon} alt="" className="timer-check-icon" />
+                            <span>{dateStr} ({weekday}) {startTimeStr}</span>
+                            <div className="time-arrow-section">
+                              <span className="duration-text">{duration}</span>
+                              <img src={arrowBlueIcon} alt="" className="arrow-icon" />
+                            </div>
+                            <span>
+                              {endTimeStr}
+                              {isCrossDay && (
+                                <sup style={{ color: '#3b82f6', fontSize: '10px', marginLeft: '2px' }}>+1</sup>
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
-                    
-                    {/* 片段 2 (跨天) */}
-                    <div className="timer-segment">
-                      <img src={timerCheckIcon} alt="" className="timer-check-icon" />
-                      <span>2025-10-18 (周六) 23:00</span>
-                      <div className="time-arrow-section">
-                        <span className="duration-text">2h</span>
-                        <img src={arrowBlueIcon} alt="" className="arrow-icon" />
-                      </div>
-                      <span>01:00<sup style={{ color: '#3b82f6', fontSize: '10px', marginLeft: '2px' }}>+1</sup></span>
+                  ) : (
+                    <div style={{ 
+                      padding: '20px', 
+                      textAlign: 'center', 
+                      color: '#9ca3af',
+                      fontSize: '14px'
+                    }}>
+                      还没有计时记录
                     </div>
-                  </div>
+                  )}
 
                   {/* 同步状态 */}
                   <div className="eventmodal-v2-plan-row" style={{ marginTop: '12px', position: 'relative' }}>
@@ -2322,27 +2404,30 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                     <img src={backIcon} alt="收起" className="collapse-icon" />
                   </button>
                   
-                  {/* 标签区域 */}
-                  <div className="tags-area">
-                    <span className="tag-mention tag-work">#🔗工作/#📝文档编辑</span>
-                    <span className="tag-mention tag-client">#📮重点客户/#📮腾讯</span>
+                  {/* 固定顶部区域 - 不参与滚动 */}
+                  <div className="event-log-header">
+                    {/* 标签区域 */}
+                    <div className="tags-area">
+                      <span className="tag-mention tag-work">#🔗工作/#📝文档编辑</span>
+                      <span className="tag-mention tag-client">#📮重点客户/#📮腾讯</span>
+                    </div>
+
+                    {/* Plan 提示区域 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#6b7280', marginBottom: '12px', lineHeight: '26px' }}>
+                      <img src={taskGrayIcon} style={{ width: '16px', height: '16px' }} alt="" />
+                      <img src={ddlWarnIcon} style={{ width: '20px', height: '20px' }} alt="" />
+                      <span>创建于 12h前，ddl 还有 2h30min</span>
+                    </div>
+
+                    {/* 关联区域 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#6b7280', marginBottom: '16px', lineHeight: '26px' }}>
+                      <img src={linkColorIcon} style={{ width: '20px', height: '20px' }} alt="" />
+                      <span>上级任务：Project Ace (5/7)</span>
+                    </div>
                   </div>
 
-                  {/* Plan 提示区域 */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#6b7280', marginBottom: '12px', lineHeight: '26px' }}>
-                    <img src={taskGrayIcon} style={{ width: '16px', height: '16px' }} alt="" />
-                    <img src={ddlWarnIcon} style={{ width: '20px', height: '20px' }} alt="" />
-                    <span>创建于 12h前，ddl 还有 2h30min</span>
-                  </div>
-
-                  {/* 关联区域 */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#6b7280', marginBottom: '16px', lineHeight: '26px' }}>
-                    <img src={linkColorIcon} style={{ width: '20px', height: '20px' }} alt="" />
-                    <span>上级任务：Project Ace (5/7)</span>
-                  </div>
-
-                  {/* TimeLog 编辑区 */}
-                  <div ref={rightPanelRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '200px' }}>
+                  {/* 可滚动编辑区域 */}
+                  <div className="event-log-editor-wrapper" ref={rightPanelRef}>
                     <LightSlateEditor
                       ref={slateEditorRef}
                       key={`editor-${formData.id}`}

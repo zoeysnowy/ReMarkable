@@ -611,6 +611,14 @@
   background: transparent;
   border-left: none !important; /* 覆盖 EventEditModalV2.css 中的左边框 */
   min-height: 200px; /* 最小高度，保证可以点击和输入 */
+  /* 隐藏滚动条但保持滚动功能 */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+/* 隐藏 Webkit 浏览器的滚动条 */
+.event-log::-webkit-scrollbar {
+  display: none;
 }
 
 /* 收起按钮 - 固定在右侧中间 */
