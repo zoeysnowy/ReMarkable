@@ -812,36 +812,44 @@ function App() {
             parentEventId: globalTimer.parentEventId,
             parentEventFound: !!parentEvent,
             currentTimerLogs: parentEvent?.timerLogs,
-            timerEventId
+            timerEventId,
+            hasParentEventId: !!globalTimer.parentEventId,
+            globalTimer
           });
           if (parentEvent) {
-            const updatedTimerLogs = [...(parentEvent.timerLogs || []), timerEventId];
-            console.log('📝 [Timer Stop] 调用 EventService.updateEvent 前:', {
-              parentId: globalTimer.parentEventId,
-              oldTimerLogs: parentEvent.timerLogs,
-              newTimerLogs: updatedTimerLogs,
-              updatePayload: {
+            // 🔧 避免重复添加：检查 timerEventId 是否已存在
+            const currentTimerLogs = parentEvent.timerLogs || [];
+            if (currentTimerLogs.includes(timerEventId)) {
+              console.log('⚠️ [Timer Stop] timerEventId 已存在于 timerLogs，跳过添加:', timerEventId);
+            } else {
+              const updatedTimerLogs = [...currentTimerLogs, timerEventId];
+              console.log('📝 [Timer Stop] 调用 EventService.updateEvent 前:', {
+                parentId: globalTimer.parentEventId,
+                oldTimerLogs: parentEvent.timerLogs,
+                newTimerLogs: updatedTimerLogs,
+                updatePayload: {
+                  timerLogs: updatedTimerLogs,
+                  updatedAt: formatTimeForStorage(new Date())
+                }
+              });
+            
+              const updateResult = await EventService.updateEvent(globalTimer.parentEventId, {
                 timerLogs: updatedTimerLogs,
                 updatedAt: formatTimeForStorage(new Date())
-              }
-            });
-            
-            const updateResult = await EventService.updateEvent(globalTimer.parentEventId, {
-              timerLogs: updatedTimerLogs,
-              updatedAt: formatTimeForStorage(new Date())
-            } as Partial<Event>);
-            
-            console.log('📝 [Timer Stop] EventService.updateEvent 返回:', updateResult);
-            
-            // 验证更新是否成功
-            const verifyParent = EventService.getEventById(globalTimer.parentEventId);
-            console.log('✅ [Timer Stop] 验证父事件 timerLogs:', {
-              parentId: globalTimer.parentEventId,
-              timerLogs: verifyParent?.timerLogs,
-              updateSuccessful: updateResult.success,
-              expectedCount: updatedTimerLogs.length,
-              actualCount: verifyParent?.timerLogs?.length || 0
-            });
+              } as Partial<Event>);
+              
+              console.log('📝 [Timer Stop] EventService.updateEvent 返回:', updateResult);
+              
+              // 验证更新是否成功
+              const verifyParent = EventService.getEventById(globalTimer.parentEventId);
+              console.log('✅ [Timer Stop] 验证父事件 timerLogs:', {
+                parentId: globalTimer.parentEventId,
+                timerLogs: verifyParent?.timerLogs,
+                updateSuccessful: updateResult.success,
+                expectedCount: updatedTimerLogs.length,
+                actualCount: verifyParent?.timerLogs?.length || 0
+              });
+            }
           } else {
             console.error('❌ [Timer Stop] 找不到父事件:', globalTimer.parentEventId);
           }

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **FloatingToolbar textStyle 子菜单数字键修复** (2025-11-28):
+  - 🐛 修复 textStyle 子菜单数字键超出范围错误（"菜单索引 5 超出范围 (最大 4)"）
+  - **根因**: `useFloatingToolbar` 使用固定的 `menuItemCount: 5`，但 textStyle 子菜单有 7 个选项
+  - **架构限制**: `activePicker` 状态存在于 `HeadlessFloatingToolbar` 内部，`EventEditModalV2` 无法直接访问
+  - **解决方案**: 
+    - 修改 `onSubPickerStateChange` 回调签名：从 `(isOpen: boolean)` 改为 `(isOpen: boolean, activePicker?: string | null)`
+    - `EventEditModalV2` 添加 `currentActivePicker` 状态追踪
+    - 动态计算 `menuItemCount`：textStyle 为 7，其他为 5
+    - 添加 `'textStyle'` 和 `'addTask'` 到 `ToolbarFeatureType` 枚举
+  - Files: 
+    - `HeadlessFloatingToolbar.tsx` (L220: 传递 activePicker 参数)
+    - `types.ts` (L75: 更新回调签名, L49-50: 添加枚举类型)
+    - `EventEditModalV2.tsx` (L365: currentActivePicker 状态, L533: 动态 menuItemCount, L2737: 回调处理)
+  - **测试验证**: textStyle 子菜单数字键 1-7 全部可用，不再出现范围错误
+
 ### Added
 - **EventEditModal V2 日历同步功能完整实现** (2025-11-25):
   - ✅ **6层优先级来源显示**: 自动判断事件来源（Timer子事件→外部日历→独立Timer→Plan→TimeCalendar→本地事件）

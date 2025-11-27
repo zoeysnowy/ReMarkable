@@ -217,7 +217,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
     
     // 🔑 通知父组件：textColor 或 bgColor 打开时，子选择器处于打开状态
     const isSubPickerOpen = activePicker === 'textColor' || activePicker === 'bgColor';
-    onSubPickerStateChange?.(isSubPickerOpen);
+    onSubPickerStateChange?.(isSubPickerOpen, activePicker);
     console.log(`[activePicker useEffect] 🎨 子选择器状态: ${isSubPickerOpen ? '打开' : '关闭'}`);
     
     // 🆕 重置 emoji 选择索引和焦点区域

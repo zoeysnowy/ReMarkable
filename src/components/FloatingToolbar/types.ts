@@ -48,6 +48,8 @@ export type ToolbarFeatureType =
   | 'calendar'      // 日历映射
   | 'color'         // 颜色选择
   | 'link'          // 链接
+  | 'textStyle'     // 🆕 文本样式子菜单
+  | 'addTask'       // 🆕 添加任务开关
   | 'addTask';      // 🆕 任务开关（控制 checkbox 显示）
 
 export interface FloatingToolbarProps {
@@ -72,7 +74,7 @@ export interface FloatingToolbarProps {
   onTaskToggle?: (isTask: boolean) => void; // 🆕 任务开关回调
   onTimeApplied?: (startIso: string, endIso?: string, allDay?: boolean) => void; // 🆕 TimeHub 模式下，时间写入完成后的回调（用于插入可视化/保存非时间字段）
   onRequestClose?: () => void; // 🆕 Picker 关闭时请求关闭整个 FloatingBar
-  onSubPickerStateChange?: (isOpen: boolean) => void; // 🆕 子选择器（颜色选择器）打开/关闭时通知父组件
+  onSubPickerStateChange?: (isOpen: boolean, activePicker?: string | null) => void; // 🆕 子选择器（颜色选择器）打开/关闭时通知父组件，并传递当前 activePicker
   
   // 数据源
   availableTags?: Array<{

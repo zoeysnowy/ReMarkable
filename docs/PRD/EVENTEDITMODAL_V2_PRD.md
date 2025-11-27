@@ -1,8 +1,8 @@
 ﻿# EventEditModal v2 产品需求文档 (PRD)
 
-> **版本**: v2.0.4  
+> **版本**: v2.0.5  
 > **创建时间**: 2025-11-06  
-> **最后更新**: 2025-11-27  
+> **最后更新**: 2025-11-28  
 > **Figma 设计稿**: [EventEditModal v2 设计稿](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=201-630&m=dev)  
 > **基于**: EventEditModal v1 + Figma 设计稿  
 > **依赖模块**: EventHub, TimeHub, LightSlateEditor, HeadlessFloatingToolbar, Timer Module  
@@ -13,7 +13,13 @@
 > - [TIME_ARCHITECTURE.md](../TIME_ARCHITECTURE.md)
 > - [SLATE_DEVELOPMENT_GUIDE.md](../SLATE_DEVELOPMENT_GUIDE.md)
 
-> **🔥 v2.0.4 最新更新** (2025-11-27):
+> **🔥 v2.0.5 最新更新** (2025-11-28):
+> - ✅ **FloatingToolbar textStyle 子菜单修复**: 修复数字键 5-7 超出范围错误
+> - ✅ **动态 menuItemCount 机制**: 根据 activePicker 状态动态计算菜单项数量（主菜单 5 项，textStyle 子菜单 7 项）
+> - ✅ **状态同步架构**: `onSubPickerStateChange(isOpen, activePicker)` 回调传递当前菜单状态
+> - ✅ **键盘快捷键文档**: 完善 FloatingToolbar 数字键快捷键说明（主菜单 1-5，textStyle 子菜单 1-7）
+> 
+> **🔥 v2.0.4 历史更新** (2025-11-27):
 > - ✅ **父-子事件单一配置架构**: 移除 planSyncConfig/actualSyncConfig 双配置，改用 calendarIds + syncMode 单一配置
 > - ✅ **subEventConfig 模板机制**: 父事件使用 subEventConfig 存储子事件配置模板，解决无子事件时无法保存实际进展配置问题
 > - ✅ **计划安排区域**: 父模式更新 mainEvent.calendarIds/syncMode，子模式更新 parentEvent（计划字段同步到父）
@@ -3945,6 +3951,98 @@ function shouldShowActualProgress(event: Event, activeTimers: Map<string, TimerS
 - ✅ TimeCalendar 上同时显示父事件色块 + 多个 Timer 子事件色块
 - ✅ 点击任意 Timer 子事件色块 → 打开 Modal，显示**父事件的完整计时汇总**（而不是单次计时）
 
+**实时刷新机制**（v2.15 架构修复）:
+
+```typescript
+// ✅ 关键修复：遵循 EventHub 架构，主动从 EventService 读取最新数据
+const childEvents = React.useMemo(() => {
+  // 🔧 每次都从 EventService 重新读取最新数据
+  // 原因：EventService 的 eventsUpdated 会忽略同标签页的更新（防循环机制）
+  
+  if (!event?.id) return [];
+  
+  // 🆕 从 EventService 重新读取当前事件的最新数据
+  const latestEvent = EventService.getEventById(event.id);
+  if (!latestEvent) return [];
+  
+  // 情况 1: 当前是子事件 → 读取父事件的最新 timerLogs
+  if (latestEvent.parentEventId) {
+    const latestParent = EventService.getEventById(latestEvent.parentEventId);
+    if (!latestParent) return [];
+    
+    const timerLogs = latestParent.timerLogs || [];
+    return timerLogs
+      .map(childId => EventService.getEventById(childId))
+      .filter(e => e !== null) as Event[];
+  }
+  
+  // 情况 2: 当前是父事件 → 读取自己的最新 timerLogs
+  const timerLogs = latestEvent.timerLogs || [];
+  return timerLogs
+    .map(childId => EventService.getEventById(childId))
+    .filter(e => e !== null) as Event[];
+}, [event?.id, refreshCounter]); // ✅ 简化依赖：不再依赖过时的 prop
+
+// 监听事件更新（包括同标签页和跨标签页）
+// EventService 的架构：
+// - 同标签页：通过 window.dispatchEvent 直接触发（不经过 BroadcastChannel）
+// - 跨标签页：通过 BroadcastChannel 广播（会检测 senderId 防止接收自己的广播）
+React.useEffect(() => {
+  const handleEventsUpdated = (e: any) => {
+    const updatedEventId = e.detail?.eventId || e.detail;
+    
+    // 如果更新的是当前事件或父事件，触发刷新
+    if (updatedEventId === event?.id || updatedEventId === event?.parentEventId) {
+      setRefreshCounter(prev => prev + 1);
+    }
+  };
+  
+  window.addEventListener('eventsUpdated', handleEventsUpdated);
+  return () => window.removeEventListener('eventsUpdated', handleEventsUpdated);
+}, [event?.id, event?.parentEventId]);
+```
+
+**架构原则**:
+- ✅ **单一数据源（SSOT）**: EventService 是数据的唯一真实来源
+- ✅ **主动读取**: 组件应该主动从 EventService 读取最新数据，而不是被动等待事件通知
+- ✅ **防循环机制**: EventService 会忽略同标签页内自己的广播消息（防止循环更新）
+- ✅ **自己负责渲染**: 更新数据的模块应该自己负责 UI 刷新，不依赖广播回调
+
+**问题场景与解决方案**:
+
+**问题**: 停止计时后，EditModal 的实际进展没有立即显示新的 timerLog，需要关闭再打开才能看到。
+
+**根本原因**:
+1. EventService 有防循环机制：忽略同标签页内自己的广播消息（`senderId === tabId`）
+2. EventEditModalV2 原本依赖 `event` prop 中的 `timerLogs`，但 prop 在 Modal 打开时传递一次后不会更新
+3. 即使 `refreshCounter` 触发 useMemo 重新执行，读取的仍然是过时的 `event.timerLogs`
+
+**解决方案**:
+1. **不依赖过时的 prop**: 每次都从 EventService 重新读取最新数据
+2. **简化依赖**: 从 `[event?.id, event?.timerLogs, parentEvent, refreshCounter]` 简化为 `[event?.id, refreshCounter]`
+3. **主动查询**: 使用 `EventService.getEventById()` 获取最新的事件数据
+
+**数据流**:
+```
+App.tsx 停止计时
+  ↓
+EventService.updateEvent(parentId, { timerLogs: [..., newTimerId] })
+  ↓
+localStorage 保存成功
+  ↓
+dispatchEventUpdate(parentId) → window.dispatchEvent('eventsUpdated')
+  ↓
+EventEditModalV2 监听到事件 → setRefreshCounter(+1)
+  ↓
+childEvents useMemo 重新执行
+  ↓
+EventService.getEventById(parentId) → 读取最新 timerLogs ✅
+  ↓
+渲染新的 timerLog 列表 ✅
+```
+
+---
+
 **数据来源**: 
 ```typescript
 function getActualProgressData(event: Event, activeTimers: Map<string, TimerState>) {
@@ -7855,10 +7953,14 @@ import { useFloatingToolbar } from '@/hooks/useFloatingToolbar';
 const rightPanelRef = useRef<HTMLDivElement>(null);
 const slateEditorRef = useRef<Editor>(null);
 
+// 🎯 动态计算 menuItemCount（根据当前菜单状态）
+const [currentActivePicker, setCurrentActivePicker] = useState<string | null>(null);
+const menuItemCount = currentActivePicker === 'textStyle' ? 7 : 5;
+
 const floatingToolbar = useFloatingToolbar({
   editorRef: rightPanelRef,
   enabled: true,
-  menuItemCount: 6,
+  menuItemCount, // 🆕 动态计算：textStyle 为 7，其他为 5
   onMenuSelect: (index) => setActivePickerIndex(index),
 });
 
@@ -7889,6 +7991,10 @@ return (
       config={{ features: ['emoji', 'tag', 'dateRange', 'bullet', 'color', 'addTask'] }}
       icons={floatingBarIcons}
       activePickerIndex={activePickerIndex}
+      onSubPickerStateChange={(isOpen: boolean, activePicker?: string | null) => {
+        setIsSubPickerOpen(isOpen);
+        setCurrentActivePicker(activePicker || null);
+      }} // 🆕 追踪子菜单状态，动态调整 menuItemCount
       onEmojiSelect={(emoji) => insertEmoji(slateEditorRef.current, emoji)}
       onTagSelect={(tagIds) => {
         const tag = getTagById(tagIds[0]);
@@ -7903,6 +8009,35 @@ return (
   </div>
 );
 ```
+
+**🎹 FloatingToolbar 键盘快捷键**:
+
+**主菜单模式** (Menu FloatingBar - 5 个选项):
+- `1`: 标签选择器 (tag)
+- `2`: Emoji 选择器 (emoji)
+- `3`: 日期范围选择器 (dateRange)
+- `4`: 添加任务开关 (addTask)
+- `5`: **文本样式子菜单** (textStyle)
+
+**文本样式子菜单** (TextStyle Submenu - 7 个选项):
+- `1`: 粗体 (bold)
+- `2`: 斜体 (italic)
+- `3`: 文字颜色 (textColor)
+- `4`: 背景颜色 (bgColor)
+- `5`: 删除线 (strikethrough)
+- `6`: 清除格式 (clearFormat)
+- `7`: 项目符号 (bullet)
+
+**文本格式模式** (Text FloatingBar - 7 个选项):
+- `1-7`: 同 textStyle 子菜单
+
+**架构说明**:
+- **动态 menuItemCount**: 根据 `currentActivePicker` 状态动态计算
+  - 主菜单/其他子菜单: `menuItemCount = 5`
+  - textStyle 子菜单: `menuItemCount = 7`
+- **状态同步**: `HeadlessFloatingToolbar` 通过 `onSubPickerStateChange(isOpen, activePicker)` 回调传递当前状态
+- **范围检查**: `useFloatingToolbar` 使用动态 `menuItemCount` 进行数字键范围检查
+- **修复历史**: v2.17.0 修复 textStyle 子菜单数字键超出范围问题（原固定 `menuItemCount: 5` 导致数字键 5-7 失效）
 
 #### 3. 特殊场景：多 Timer 日志合并显示
 

@@ -362,6 +362,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   
   const [activePickerIndex, setActivePickerIndex] = useState(-1);
   const [isSubPickerOpen, setIsSubPickerOpen] = useState(false); // 🆕 追踪子选择器（颜色选择器）是否打开
+  const [currentActivePicker, setCurrentActivePicker] = useState<string | null>(null); // 🆕 追踪当前 activePicker 状态
 
   // 获取真实的可用日历数据
   const availableCalendars = getAvailableCalendarsForSettings();
@@ -400,13 +401,33 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
 
   // 🔧 子事件列表：如果当前是子事件，显示父事件的所有子事件；否则显示自己的子事件
   const childEvents = React.useMemo(() => {
+    // 🔧 关键修复：每次都从 EventService 重新读取最新数据，而不是依赖 prop
+    // 原因：EventService 的 eventsUpdated 会忽略同标签页的更新（防循环），
+    // 所以当 App.tsx 更新父事件时，Modal 不会收到事件通知，需要主动读取
+    
+    if (!event?.id) {
+      return [];
+    }
+    
+    // 🆕 从 EventService 重新读取当前事件的最新数据
+    const latestEvent = EventService.getEventById(event.id);
+    if (!latestEvent) {
+      return [];
+    }
+    
     // 情况 1: 当前是子事件 → 显示父事件的所有子事件
-    if (parentEvent) {
-      const timerLogs = parentEvent.timerLogs || [];
-      console.log('🔍 [childEvents] 子事件模式 - 读取父事件的 timerLogs:', {
-        parentId: parentEvent.id,
+    if (latestEvent.parentEventId) {
+      const latestParent = EventService.getEventById(latestEvent.parentEventId);
+      if (!latestParent) {
+        return [];
+      }
+      
+      const timerLogs = latestParent.timerLogs || [];
+      console.log('🔍 [childEvents] 子事件模式 - 读取父事件的最新 timerLogs:', {
+        parentId: latestParent.id,
         timerLogsCount: timerLogs.length,
-        timerLogs
+        timerLogs,
+        refreshCounter
       });
       
       if (timerLogs.length === 0) {
@@ -426,11 +447,12 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     }
     
     // 情况 2: 当前是父事件 → 显示自己的子事件
-    const timerLogs = event?.timerLogs || [];
-    console.log('🔍 [childEvents] 父事件模式 - 读取自己的 timerLogs:', {
-      eventId: event?.id,
+    const timerLogs = latestEvent.timerLogs || [];
+    console.log('🔍 [childEvents] 父事件模式 - 读取自己的最新 timerLogs:', {
+      eventId: latestEvent.id,
       timerLogsCount: timerLogs.length,
-      timerLogs
+      timerLogs,
+      refreshCounter
     });
     
     if (timerLogs.length === 0) {
@@ -444,28 +466,27 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     console.log('🔍 [childEvents] 成功加载子事件:', {
       count: children.length,
       ids: children.map(e => e.id),
-      refreshCounter  // 🔧 添加日志验证刷新
+      refreshCounter
     });
     
     return children;
-  }, [event?.id, event?.timerLogs, parentEvent, refreshCounter]);
+  }, [event?.id, refreshCounter]);
 
-  // 🆕 监听 localStorage 变化，实时刷新父事件的 timerLogs
+  // 🆕 监听事件更新（包括同标签页和跨标签页）
+  // EventService 的架构：
+  // - 同标签页：通过 window.dispatchEvent 直接触发（不经过 BroadcastChannel）
+  // - 跨标签页：通过 BroadcastChannel 广播（会检测 senderId 防止接收自己的广播）
   React.useEffect(() => {
     const handleEventsUpdated = (e: any) => {
-      // 🔧 e.detail 是一个对象，包含 eventId 字段
       const updatedEventId = e.detail?.eventId || e.detail;
-      
-      console.log('🔔 [EventEditModalV2] 监听到 eventsUpdated:', {
-        rawDetail: e.detail,
-        eventId: updatedEventId,
-        currentEventId: event?.id,
-        parentEventId: event?.parentEventId
-      });
       
       // 如果更新的是当前事件或父事件，触发刷新
       if (updatedEventId === event?.id || updatedEventId === event?.parentEventId) {
-        console.log('🔄 [EventEditModalV2] 触发刷新计数器，当前值:', refreshCounter);
+        console.log('🔄 [EventEditModalV2] 匹配到更新事件，触发刷新:', {
+          updatedEventId,
+          currentEventId: event?.id,
+          parentEventId: event?.parentEventId
+        });
         setRefreshCounter(prev => prev + 1);
       }
     };
@@ -475,7 +496,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     return () => {
       window.removeEventListener('eventsUpdated', handleEventsUpdated);
     };
-  }, [event?.id, event?.parentEventId, refreshCounter]);
+  }, [event?.id, event?.parentEventId]);
 
   React.useEffect(() => {
     if (parentEvent) {
@@ -511,11 +532,14 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   // 滚动阴影状态
   const [showTopShadow, setShowTopShadow] = useState(false);
 
+  // 🎯 根据 currentActivePicker 动态计算 menuItemCount
+  const menuItemCount = currentActivePicker === 'textStyle' ? 7 : 5;
+
   // FloatingToolbar Hook
   const floatingToolbar = useFloatingToolbar({
     editorRef: rightPanelRef as RefObject<HTMLElement>,
     enabled: isDetailView,
-    menuItemCount: 5, // tag, emoji, dateRange, addTask, textStyle
+    menuItemCount, // 🆕 动态计算：textStyle 为 7，其他为 5
     isSubPickerOpen, // 🆕 传递子选择器状态，打开时不拦截数字键
     onMenuSelect: (index) => {
       console.log('[EventEditModalV2] Menu selected:', index);
@@ -2710,7 +2734,10 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                       slateEditorRef={slateEditorRef}
                       activePickerIndex={activePickerIndex}
                       onActivePickerIndexConsumed={() => setActivePickerIndex(-1)}
-                      onSubPickerStateChange={setIsSubPickerOpen} // 🆕 追踪颜色选择器状态
+                      onSubPickerStateChange={(isOpen: boolean, activePicker?: string | null) => {
+                        setIsSubPickerOpen(isOpen);
+                        setCurrentActivePicker(activePicker || null);
+                      }} // 🆕 追踪颜色选择器状态和 activePicker
                       onTextFormat={(command, value) => {
                         console.log('[EventEditModalV2] onTextFormat called:', { command, value, hasRef: !!slateEditorRef.current });
                         
@@ -2748,7 +2775,6 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                       availableTags={hierarchicalTags}
                       currentTags={formData.tags}
                       eventId={formData.id}
-                      editorMode="eventlog"
                     />
                   )}
                 </div>
