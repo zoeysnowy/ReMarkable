@@ -183,6 +183,112 @@ const timer2New = {
 
 ---
 
+### 1.5 实时刷新机制（v2.15 架构改进）
+
+**问题背景**:
+停止计时后，如果 EventEditModal 正在显示该事件（或其父事件），Modal 的实际进展区域应该**立即显示**新的 timerLog，而不需要用户关闭再打开。
+
+**EventHub 架构原则**:
+
+EventService 采用 **EventHub 架构**，通过 BroadcastChannel 实现跨标签页同步，同时避免同标签页内的循环更新：
+
+```typescript
+// EventService.ts - 防循环机制
+broadcastChannel.onmessage = (event) => {
+  const { senderId, eventId, type } = event.data;
+  
+  if (senderId === tabId) {
+    // ✅ 忽略自己的广播消息（防止循环）
+    eventLogger.log('🔄 [EventService] 忽略自己的广播消息');
+    return;
+  }
+  
+  // 处理其他标签页的更新
+  window.dispatchEvent(new CustomEvent('eventsUpdated', { detail: { eventId } }));
+};
+
+// 同标签页的更新：直接触发事件（不经过 BroadcastChannel）
+this.dispatchEventUpdate(eventId, { isUpdate: true });
+// ↓
+window.dispatchEvent(new CustomEvent('eventsUpdated', { detail: { eventId } }));
+```
+
+**架构原则**:
+1. **单一数据源（SSOT）**: EventService 是数据的唯一真实来源
+2. **主动读取**: 组件应该主动从 EventService 读取最新数据，而不是被动等待事件通知
+3. **防循环机制**: 同标签页内，BroadcastChannel 的消息会被忽略（`senderId === tabId`）
+4. **自己负责渲染**: 更新数据的模块应该自己负责 UI 刷新，不依赖广播回调
+
+**EventEditModalV2 的实现**:
+
+```typescript
+// ✅ 关键修复：每次都从 EventService 重新读取最新数据
+const childEvents = React.useMemo(() => {
+  if (!event?.id) return [];
+  
+  // 🆕 从 EventService 重新读取当前事件的最新数据
+  const latestEvent = EventService.getEventById(event.id);
+  if (!latestEvent) return [];
+  
+  // 情况 1: 当前是子事件 → 读取父事件的最新 timerLogs
+  if (latestEvent.parentEventId) {
+    const latestParent = EventService.getEventById(latestEvent.parentEventId);
+    if (!latestParent) return [];
+    
+    const timerLogs = latestParent.timerLogs || [];
+    return timerLogs
+      .map(childId => EventService.getEventById(childId))
+      .filter(e => e !== null) as Event[];
+  }
+  
+  // 情况 2: 当前是父事件 → 读取自己的最新 timerLogs
+  const timerLogs = latestEvent.timerLogs || [];
+  return timerLogs
+    .map(childId => EventService.getEventById(childId))
+    .filter(e => e !== null) as Event[];
+}, [event?.id, refreshCounter]); // ✅ 简化依赖：不再依赖过时的 prop
+
+// 监听同标签页和跨标签页的事件更新
+React.useEffect(() => {
+  const handleEventsUpdated = (e: any) => {
+    const updatedEventId = e.detail?.eventId || e.detail;
+    
+    if (updatedEventId === event?.id || updatedEventId === event?.parentEventId) {
+      setRefreshCounter(prev => prev + 1); // 触发 useMemo 重新执行
+    }
+  };
+  
+  window.addEventListener('eventsUpdated', handleEventsUpdated);
+  return () => window.removeEventListener('eventsUpdated', handleEventsUpdated);
+}, [event?.id, event?.parentEventId]);
+```
+
+**数据流**:
+```
+App.tsx 停止计时
+  ↓
+EventService.updateEvent(parentId, { timerLogs: [..., newTimerId] })
+  ↓
+localStorage 保存成功
+  ↓
+dispatchEventUpdate(parentId) → window.dispatchEvent('eventsUpdated')
+  ↓
+EventEditModalV2 监听到事件 → setRefreshCounter(+1)
+  ↓
+childEvents useMemo 重新执行
+  ↓
+EventService.getEventById(parentId) → 读取最新 timerLogs ✅
+  ↓
+渲染新的 timerLog 列表 ✅
+```
+
+**关键改进**:
+- ❌ **修复前**: 依赖过时的 `event.timerLogs` prop，停止计时后不刷新
+- ✅ **修复后**: 主动从 EventService 读取最新数据，立即刷新
+- ✅ **架构正确**: 遵循 EventHub 的 SSOT 原则，不依赖广播回调
+
+---
+
 ## 2. 用户场景
 
 ### 2.1 典型用户故事
