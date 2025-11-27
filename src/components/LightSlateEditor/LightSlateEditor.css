@@ -11,6 +11,21 @@
   flex-direction: column;
 }
 
+/* Bullet Point 样式 */
+.light-slate-editor .bullet-paragraph {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+}
+
+.light-slate-editor .bullet-symbol {
+  position: absolute;
+  user-select: none;
+  color: #666;
+  font-weight: bold;
+  pointer-events: none;
+}
+
 .light-slate-editor .slate-editable {
   outline: none;
   line-height: 1.6;

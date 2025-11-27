@@ -144,6 +144,15 @@ interface MockEvent {
     calendarIds?: string[];
     syncMode?: string;
   };
+  // 🆕 父子事件日历同步配置
+  planSyncConfig?: {
+    mode: 'receive-only' | 'send-only' | 'send-only-private' | 'bidirectional' | 'bidirectional-private';
+    targetCalendars: string[];
+  };
+  actualSyncConfig?: {
+    mode: 'send-only' | 'send-only-private' | 'bidirectional' | 'bidirectional-private';
+    targetCalendars: string[];
+  } | null;
 }
 
 interface EventEditModalV2Props {
@@ -369,40 +378,116 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     }
   });
 
-  // 🆕 加载子事件列表（用于显示和批量更新）
-  const childEvents = React.useMemo(() => {
-    if (!event?.timerLogs || event.timerLogs.length === 0) {
-      return [];
-    }
-    return event.timerLogs
-      .map(childId => EventService.getEventById(childId))
-      .filter(e => e !== null) as Event[];
-  }, [event?.timerLogs]);
+  // 🆕 刷新计数器：用于强制刷新 parentEvent 和 childEvents
+  const [refreshCounter, setRefreshCounter] = React.useState(0);
 
+  // 🆕 加载子事件列表（用于显示和批量更新）
   // 🆕 父事件信息（如果当前是子事件）
   const parentEvent = React.useMemo(() => {
     if (!event?.parentEventId) {
       return null;
     }
-    return EventService.getEventById(event.parentEventId);
-  }, [event?.parentEventId]);
+    const parent = EventService.getEventById(event.parentEventId);
+    console.log('🔍 [parentEvent] 读取父事件:', {
+      childEventId: event.id,
+      parentEventId: event.parentEventId,
+      found: !!parent,
+      parentTimerLogs: parent?.timerLogs,
+      refreshCounter  // 🔧 添加日志验证刷新
+    });
+    return parent;
+  }, [event?.id, event?.parentEventId, refreshCounter]);
+
+  // 🔧 子事件列表：如果当前是子事件，显示父事件的所有子事件；否则显示自己的子事件
+  const childEvents = React.useMemo(() => {
+    // 情况 1: 当前是子事件 → 显示父事件的所有子事件
+    if (parentEvent) {
+      const timerLogs = parentEvent.timerLogs || [];
+      console.log('🔍 [childEvents] 子事件模式 - 读取父事件的 timerLogs:', {
+        parentId: parentEvent.id,
+        timerLogsCount: timerLogs.length,
+        timerLogs
+      });
+      
+      if (timerLogs.length === 0) {
+        return [];
+      }
+      
+      const children = timerLogs
+        .map(childId => EventService.getEventById(childId))
+        .filter(e => e !== null) as Event[];
+      
+      console.log('🔍 [childEvents] 成功加载子事件:', {
+        count: children.length,
+        ids: children.map(e => e.id)
+      });
+      
+      return children;
+    }
+    
+    // 情况 2: 当前是父事件 → 显示自己的子事件
+    const timerLogs = event?.timerLogs || [];
+    console.log('🔍 [childEvents] 父事件模式 - 读取自己的 timerLogs:', {
+      eventId: event?.id,
+      timerLogsCount: timerLogs.length,
+      timerLogs
+    });
+    
+    if (timerLogs.length === 0) {
+      return [];
+    }
+    
+    const children = timerLogs
+      .map(childId => EventService.getEventById(childId))
+      .filter(e => e !== null) as Event[];
+    
+    console.log('🔍 [childEvents] 成功加载子事件:', {
+      count: children.length,
+      ids: children.map(e => e.id),
+      refreshCounter  // 🔧 添加日志验证刷新
+    });
+    
+    return children;
+  }, [event?.id, event?.timerLogs, parentEvent, refreshCounter]);
+
+  // 🆕 监听 localStorage 变化，实时刷新父事件的 timerLogs
+  React.useEffect(() => {
+    const handleEventsUpdated = (e: any) => {
+      const updatedEventId = e.detail;
+      
+      console.log('🔔 [EventEditModalV2] 监听到 eventsUpdated:', updatedEventId);
+      
+      // 如果更新的是当前事件或父事件，触发刷新
+      if (updatedEventId === event?.id || updatedEventId === event?.parentEventId) {
+        console.log('🔄 [EventEditModalV2] 触发刷新计数器，当前值:', refreshCounter);
+        setRefreshCounter(prev => prev + 1);
+      }
+    };
+    
+    window.addEventListener('eventsUpdated', handleEventsUpdated);
+    
+    return () => {
+      window.removeEventListener('eventsUpdated', handleEventsUpdated);
+    };
+  }, [event?.id, event?.parentEventId, refreshCounter]);
 
   React.useEffect(() => {
-    if (childEvents.length > 0) {
-      console.log('🔗 [EventEditModalV2] 加载子事件:', {
-        parentId: event?.id,
-        childCount: childEvents.length,
-        childIds: childEvents.map(e => e.id)
-      });
-    }
     if (parentEvent) {
-      console.log('🔗 [EventEditModalV2] 当前是子事件，父事件:', {
-        childId: event?.id,
-        parentId: parentEvent.id,
-        parentTitle: parentEvent.title
+      console.log('🔗 [EventEditModalV2] 子事件模式 - 显示父事件数据:', {
+        当前子事件ID: event?.id,
+        父事件ID: parentEvent.id,
+        父事件标题: parentEvent.title?.simpleTitle,
+        父事件所有子事件: childEvents.length,
+        子事件列表: childEvents.map(e => ({ id: e.id, title: e.title?.simpleTitle }))
+      });
+    } else if (childEvents.length > 0) {
+      console.log('🔗 [EventEditModalV2] 父事件模式 - 显示子事件列表:', {
+        父事件ID: event?.id,
+        子事件数量: childEvents.length,
+        子事件列表: childEvents.map(e => ({ id: e.id, title: e.title?.simpleTitle }))
       });
     }
-  }, [childEvents, parentEvent, isParentMode]);
+  }, [childEvents, parentEvent, event?.id]);
 
   // 同步模式数据
   const syncModes = [
@@ -1687,7 +1772,71 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                         }))}
                         selectedTagIds={formData.tags}
                         onSelectionChange={(selectedIds) => {
-                          setFormData({ ...formData, tags: selectedIds });
+                          // 🆕 标签变更时，自动处理日历映射
+                          const isLocalEvent = event?.remarkableSource === true || event?.source === 'local';
+                          
+                          // 提取标签的日历映射
+                          const mappedCalendars = selectedIds
+                            .map(tagId => {
+                              const tag = TagService.getFlatTags().find(t => t.id === tagId);
+                              return tag?.calendarMapping?.calendarId;
+                            })
+                            .filter((id): id is string => !!id);
+                          
+                          console.log('🏷️ [EventEditModalV2] 标签变更，自动映射日历:', {
+                            selectedTags: selectedIds,
+                            mappedCalendars,
+                            isLocalEvent,
+                            '当前planSyncConfig': formData.planSyncConfig,
+                            '当前actualSyncConfig': formData.actualSyncConfig
+                          });
+                          
+                          // 更新 formData
+                          setFormData(prev => {
+                            const updates: any = {
+                              ...prev,
+                              tags: selectedIds
+                            };
+                            
+                            // 规则 1: 本地事件 - Plan 和 Actual 都自动添加映射日历
+                            if (isLocalEvent) {
+                              if (mappedCalendars.length > 0) {
+                                updates.calendarIds = mappedCalendars;
+                                updates.planSyncConfig = {
+                                  mode: 'bidirectional-private',
+                                  targetCalendars: mappedCalendars
+                                };
+                                updates.actualSyncConfig = {
+                                  mode: 'bidirectional-private',
+                                  targetCalendars: mappedCalendars
+                                };
+                                console.log('✅ [EventEditModalV2] 本地事件：Plan + Actual 都添加映射日历');
+                              }
+                            }
+                            // 规则 2: 远程事件 - Plan 保持 receive-only，Actual 自动添加映射日历
+                            else {
+                              // Plan 保持不变（receive-only）
+                              if (!prev.planSyncConfig || prev.planSyncConfig.mode === 'receive-only') {
+                                updates.planSyncConfig = {
+                                  mode: 'receive-only',
+                                  targetCalendars: prev.planSyncConfig?.targetCalendars || []
+                                };
+                                console.log('✅ [EventEditModalV2] 远程事件：Plan 保持 receive-only');
+                              }
+                              
+                              // Actual 添加映射日历
+                              if (mappedCalendars.length > 0) {
+                                updates.actualSyncConfig = {
+                                  mode: 'bidirectional-private',
+                                  targetCalendars: mappedCalendars
+                                };
+                                console.log('✅ [EventEditModalV2] 远程事件：Actual 添加映射日历');
+                              }
+                            }
+                            
+                            return updates;
+                          });
+                          
                           setShowTagPicker(false);
                         }}
                         multiSelect={true}
@@ -1703,7 +1852,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                 {(() => {
                   // 检查当前事件是否正在计时
                   // Timer 的 eventId 是自动生成的 timer-xxx，需要通过 parentEventId 匹配
-                  const isCurrentEventRunning = globalTimer?.isRunning && globalTimer?.parentEventId === formData.id;
+                  // 🔧 使用 event.id 而不是 formData.id，确保父事件 ID 正确
+                  const isCurrentEventRunning = globalTimer?.isRunning && globalTimer?.parentEventId === event?.id;
                   const isPaused = globalTimer?.isPaused;
 
                   // 状态1: 未开始计时 - 显示"开始专注"按钮
@@ -1711,11 +1861,65 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                     return (
                       <button 
                         className="timer-button-start"
-                        onClick={() => {
-                          if (onTimerAction) {
-                            // 🔧 传递 tagIds 数组和 eventId
-                            onTimerAction('start', formData.tags || [], formData.id);
+                        onClick={async () => {
+                          if (!onTimerAction || !event) return;
+                          
+                          // 🔧 检查事件是否存在于 localStorage
+                          const eventExists = !!EventService.getEventById(event.id);
+                          console.log('🔗 [Timer Start Button] 点击开始专注:', {
+                            eventId: event.id,
+                            eventExists,
+                            tags: formData.tags
+                          });
+                          
+                          // 🆕 如果事件不存在，直接使用 EventService 保存（不关闭 Modal）
+                          if (!eventExists) {
+                            console.log('⚠️ [Timer Start Button] 事件未保存，先保存事件...', {
+                              formDataTitle: formData.title,
+                              formDataTags: formData.tags,
+                              eventId: event.id
+                            });
+                            
+                            try {
+                              // 直接使用 EventService 创建事件（不会关闭 Modal）
+                              // 注意：根据 PRD，即使没有标题、没有标签也可以计时
+                              
+                              // 🔧 转换 title 格式：formData.title 是字符串，Event.title 需要对象
+                              const titleObj = typeof formData.title === 'string' 
+                                ? { simpleTitle: formData.title }
+                                : formData.title;
+                              
+                              const newEvent: Event = {
+                                ...event,  // 保留原始事件的所有字段
+                                ...formData,  // 覆盖用户修改的字段
+                                title: titleObj,  // 确保 title 格式正确
+                                id: event.id,
+                                createdAt: event.createdAt || formatTimeForStorage(new Date()),
+                                updatedAt: formatTimeForStorage(new Date()),
+                                source: event.source || 'local',
+                              } as Event;
+                              
+                              await EventService.createEvent(newEvent);
+                              console.log('✅ [Timer Start Button] 事件已保存到 localStorage:', {
+                                eventId: newEvent.id,
+                                title: newEvent.title,
+                                tags: newEvent.tags,
+                                formDataTitle: formData.title
+                              });
+                            } catch (error) {
+                              console.error('❌ [Timer Start Button] 保存事件失败:', error);
+                              alert('保存事件失败，无法开始计时');
+                              return;
+                            }
                           }
+                          
+                          // 开始计时
+                          console.log('🔗 [Timer Start Button] 传递参数:', {
+                            tags: formData.tags,
+                            parentEventId: event.id,
+                            eventExists: true
+                          });
+                          onTimerAction('start', formData.tags || [], event.id);
                         }}
                         title="开始计时"
                       >
@@ -2091,16 +2295,16 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
 
                 </div>
 
-                {/* 实际进展区域 - 只在有计时记录时显示 */}
-                {childEvents.length > 0 && (
-                  <>
-                    <div className="eventmodal-v2-section-header" style={{ marginTop: '20px' }}>
-                      <div className="eventmodal-v2-section-header-title">实际进展</div>
-                      <span className="total-duration">总时长: {formatDuration(totalDuration)}</span>
-                    </div>
+                {/* 实际进展区域 */}
+                <div className="eventmodal-v2-section-header" style={{ marginTop: '20px' }}>
+                  <div className="eventmodal-v2-section-header-title">实际进展</div>
+                  {childEvents.length > 0 && (
+                    <span className="total-duration">总时长: {formatDuration(totalDuration)}</span>
+                  )}
+                </div>
 
-                    {/* 实际进展滚动容器 */}
-                    <div className="progress-section-wrapper">
+                {/* 实际进展滚动容器 */}
+                <div className="progress-section-wrapper">
                       {/* 时间片段列表 */}
                       <div className="timer-segments-list">
                         {childEvents.map((timerEvent) => {
@@ -2151,6 +2355,18 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                           );
                         })}
                       </div>
+
+                      {/* 空状态提示 */}
+                      {childEvents.length === 0 && (
+                        <div style={{ 
+                          padding: '12px 0', 
+                          textAlign: 'center', 
+                          color: '#9ca3af', 
+                          fontSize: '13px' 
+                        }}>
+                          还没有计时记录
+                        </div>
+                      )}
 
                       {/* 同步状态 */}
                       <div className="eventmodal-v2-plan-row" style={{ marginTop: '12px', position: 'relative' }}>
@@ -2395,8 +2611,6 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
 
                       </div>
                     </div>
-                  </>
-                )}
               </div>
 
               {/* 右侧：Event Log（仅详情视图） */}
@@ -2452,16 +2666,32 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                       position={floatingToolbar.position}
                       mode={floatingToolbar.mode}
                       config={{ 
-                        features: [],
+                        features: floatingToolbar.mode === 'text_floatingbar' 
+                          ? ['bold', 'italic', 'textColor', 'bgColor', 'strikethrough', 'clearFormat', 'bullet']
+                          : ['tag', 'emoji', 'dateRange', 'addTask', 'textStyle'],
                         mode: 'basic' as any
                       }}
+                      editorMode="eventlog"
                       slateEditorRef={slateEditorRef}
                       activePickerIndex={activePickerIndex}
                       onActivePickerIndexConsumed={() => setActivePickerIndex(-1)}
                       onSubPickerStateChange={setIsSubPickerOpen} // 🆕 追踪颜色选择器状态
                       onTextFormat={(command, value) => {
-                        if (slateEditorRef.current?.editor) {
-                          applyTextFormat(slateEditorRef.current.editor, command, value);
+                        console.log('[EventEditModalV2] onTextFormat called:', { command, value, hasRef: !!slateEditorRef.current });
+                        
+                        // 🔧 对于 bullet 相关命令，使用 LightSlateEditor 的内部方法
+                        if (command === 'toggleBulletList' || command === 'increaseBulletLevel' || command === 'decreaseBulletLevel') {
+                          if (slateEditorRef.current?.applyTextFormat) {
+                            console.log('[EventEditModalV2] 调用 LightSlateEditor.applyTextFormat');
+                            slateEditorRef.current.applyTextFormat(command);
+                          } else {
+                            console.error('[EventEditModalV2] slateEditorRef.current.applyTextFormat 不存在');
+                          }
+                        } else {
+                          // 其他命令使用 helpers.ts 的 applyTextFormat
+                          if (slateEditorRef.current?.editor) {
+                            applyTextFormat(slateEditorRef.current.editor, command, value);
+                          }
                         }
                       }}
                       onTagSelect={(tagIds) => {

@@ -96,11 +96,17 @@ export interface LightSlateEditorProps {
   
   /** 是否只读 */
   readOnly?: boolean;
+  
+  /** FloatingBar 容器 ref（可选，用于定位） */
+  floatingBarContainerRef?: React.RefObject<HTMLElement>;
 }
 
 export interface LightSlateEditorRef {
   /** Slate Editor 实例 */
   editor: Editor;
+  
+  /** 应用文本格式化（支持 bullet point） */
+  applyTextFormat: (command: string) => boolean;
 }
 
 // 转换函数现在从 serialization.ts 导入
@@ -131,7 +137,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
 ) => {
   // 创建 Slate 编辑器实例
   const editor = useMemo(() => {
-    let editorInstance = createEditor();
+    let editorInstance = withReact(createEditor());
     
     // 自定义编辑器配置
     const { isInline, isVoid, normalizeNode } = editorInstance;
@@ -153,7 +159,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
       const [node, path] = entry;
       
       // 检查 tag 或 dateMention 元素
-      if (SlateElement.isElement(node) && (node.type === 'tag' || node.type === 'dateMention')) {
+      if (SlateElement.isElement(node) && ('type' in node) && (node.type === 'tag' || node.type === 'dateMention')) {
         // 获取父节点和当前节点在父节点中的索引
         const parentPath = path.slice(0, -1);
         const parent = SlateNode.get(editorInstance, parentPath);
@@ -218,18 +224,116 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
       normalizeNode(entry);
     };
     
-    // 应用 React 和 History 插件
-    editorInstance = withReact(editorInstance);
+    // 应用 History 插件
     editorInstance = withHistory(editorInstance);
     
     console.log('[LightSlateEditor] 创建编辑器实例（已配置 isInline, isVoid, normalizeNode）');
     return editorInstance;
   }, []);
   
-  // 暴露 editor 实例给父组件
+  /**
+   * 应用文本格式化（复用 helpers 逻辑）
+   */
+  const applyTextFormat = useCallback((command: string): boolean => {
+    try {
+      switch (command) {
+        case 'bold':
+          Editor.addMark(editor, 'bold', true);
+          break;
+        case 'italic':
+          Editor.addMark(editor, 'italic', true);
+          break;
+        case 'underline':
+          Editor.addMark(editor, 'underline', true);
+          break;
+        case 'strikethrough':
+          Editor.addMark(editor, 'strikethrough', true);
+          break;
+        case 'removeFormat':
+          Editor.removeMark(editor, 'bold');
+          Editor.removeMark(editor, 'italic');
+          Editor.removeMark(editor, 'underline');
+          Editor.removeMark(editor, 'strikethrough');
+          Editor.removeMark(editor, 'color');
+          Editor.removeMark(editor, 'backgroundColor');
+          break;
+        case 'toggleBulletList': {
+          const [paraMatch] = Editor.nodes(editor, {
+            match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+          });
+          
+          if (paraMatch) {
+            const [node] = paraMatch;
+            const para = node as any;
+            
+            if (para.bullet) {
+              // 已是 bullet，取消
+              Transforms.setNodes(editor, { bullet: undefined, bulletLevel: undefined } as any);
+            } else {
+              // 设置为 bullet（默认 level 0）
+              Transforms.setNodes(editor, { bullet: true, bulletLevel: 0 } as any);
+              
+              // 🔥 清除 pendingTimestamp 标记，bullet 算作有效内容
+              setPendingTimestamp(false);
+              console.log('[LightSlateEditor] 插入 bullet，清除 pendingTimestamp');
+            }
+          }
+          break;
+        }
+        case 'increaseBulletLevel': {
+          const [paraMatch] = Editor.nodes(editor, {
+            match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+          });
+          
+          if (paraMatch) {
+            const [node] = paraMatch;
+            const para = node as any;
+            
+            if (para.bullet) {
+              const currentLevel = para.bulletLevel || 0;
+              if (currentLevel < 4) {
+                Transforms.setNodes(editor, { bulletLevel: currentLevel + 1 } as any);
+              }
+            }
+          }
+          break;
+        }
+        case 'decreaseBulletLevel': {
+          const [paraMatch] = Editor.nodes(editor, {
+            match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+          });
+          
+          if (paraMatch) {
+            const [node] = paraMatch;
+            const para = node as any;
+            
+            if (para.bullet) {
+              const currentLevel = para.bulletLevel || 0;
+              if (currentLevel > 0) {
+                Transforms.setNodes(editor, { bulletLevel: currentLevel - 1 } as any);
+              } else {
+                Transforms.setNodes(editor, { bullet: undefined, bulletLevel: undefined } as any);
+              }
+            }
+          }
+          break;
+        }
+        default:
+          console.warn('[LightSlateEditor.applyTextFormat] Unknown command:', command);
+          return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('[LightSlateEditor.applyTextFormat] Failed:', err);
+      return false;
+    }
+  }, [editor]);
+  
+  // 暴露 editor 实例和方法给父组件
   useImperativeHandle(ref, () => ({
-    editor
-  }), [editor]);
+    editor,
+    applyTextFormat
+  }), [editor, applyTextFormat]);
   
   // 记录已添加 timestamp 的 content (必须在 initialValue 之前定义)
   const timestampAddedForContentRef = useRef<string | null>(null);
@@ -476,9 +580,14 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
    */
   const renderElement = useCallback((props: RenderElementProps) => {
     const { element } = props;
+    const para = element as any;
     
-    switch ((element as any).type) {
+    switch (para.type) {
       case 'paragraph':
+        // 检查是否是 bullet 段落
+        const isBullet = para.bullet === true;
+        const bulletLevel = para.bulletLevel ?? 0;
+        
         // 检查是否应该绘制 preline
         const needsPreline = (() => {
           try {
@@ -538,10 +647,14 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
           }
         })();
         
+        // 计算 bullet 符号
+        const bulletSymbols = ['●', '○', '–', '□', '▸'];
+        const bulletSymbol = isBullet ? bulletSymbols[bulletLevel] || '●' : null;
+        
         return (
           <div
             {...props.attributes}
-            className={`slate-paragraph ${needsPreline ? 'with-preline' : ''}`}
+            className={`slate-paragraph ${needsPreline ? 'with-preline' : ''} ${isBullet ? 'bullet-paragraph' : ''}`}
             style={{
               position: 'relative',
               paddingLeft: needsPreline ? '20px' : '0',
@@ -564,7 +677,30 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
                 }}
               />
             )}
-            {props.children}
+            {isBullet && bulletSymbol && (
+              <span
+                className="bullet-symbol"
+                contentEditable={false}
+                style={{
+                  position: 'absolute',
+                  left: needsPreline ? `${20 + bulletLevel * 24}px` : `${bulletLevel * 24}px`,
+                  top: '0',
+                  userSelect: 'none',
+                  color: '#6b7280',
+                  fontWeight: 'bold',
+                  zIndex: 1
+                }}
+              >
+                {bulletSymbol}
+              </span>
+            )}
+            <div style={{ 
+              paddingLeft: isBullet ? `${bulletLevel * 24 + 24}px` : '0',
+              position: 'relative',
+              zIndex: 2
+            }}>
+              {props.children}
+            </div>
           </div>
         );
         
@@ -677,7 +813,8 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
         let hasContentAfterTimestamp = false;
         for (let i = lastTimestampIndex + 1; i < editor.children.length; i++) {
           const node = editor.children[i] as any;
-          if (node.type === 'paragraph' && node.children?.[0]?.text?.trim()) {
+          // 有文本内容，或者有 bullet 属性（即使文本为空），都算作"有内容"
+          if (node.type === 'paragraph' && (node.children?.[0]?.text?.trim() || node.bullet === true)) {
             hasContentAfterTimestamp = true;
             break;
           }
@@ -755,6 +892,41 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
           return;
       }
     }
+    
+    // Tab/Shift+Tab 调整 bullet 层级
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      
+      // 获取当前段落节点
+      const [paraMatch] = Editor.nodes(editor, {
+        match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+      });
+      
+      if (paraMatch) {
+        const [node] = paraMatch;
+        const para = node as any;
+        
+        if (para.bullet) {
+          const currentLevel = para.bulletLevel || 0;
+          
+          if (event.shiftKey) {
+            // Shift+Tab: 减少层级
+            if (currentLevel > 0) {
+              Transforms.setNodes(editor, { bulletLevel: currentLevel - 1 } as any);
+            } else {
+              // Level 0 再减少就取消 bullet
+              Transforms.setNodes(editor, { bullet: undefined, bulletLevel: undefined } as any);
+            }
+          } else {
+            // Tab: 增加层级（最多 5 层 0-4）
+            if (currentLevel < 4) {
+              Transforms.setNodes(editor, { bulletLevel: currentLevel + 1 } as any);
+            }
+          }
+        }
+      }
+      return;
+    }
   }, [editor]);
   
   // 组件卸载时清理定时器
@@ -765,6 +937,9 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
       }
     };
   }, []);
+  
+  // 检查是否有 timestamp，用于控制 placeholder 显示
+  const hasTimestamp = editor.children.some((node: any) => node.type === 'timestamp-divider');
   
   return (
     <div 
@@ -787,7 +962,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
           onBlur={handleBlur}
-          placeholder={placeholder}
+          placeholder={hasTimestamp ? '' : placeholder}
           readOnly={readOnly}
           className="slate-editable"
           style={{ 

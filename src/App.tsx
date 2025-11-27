@@ -457,6 +457,17 @@ function App() {
       let parentEvent = null;
       if (parentEventId) {
         parentEvent = EventService.getEventById(parentEventId);
+        console.log('🔗 [Timer Start] 读取父事件元数据:', {
+          parentEventId,
+          found: !!parentEvent,
+          title: parentEvent?.title,
+          tags: parentEvent?.tags,
+          calendarIds: parentEvent?.calendarIds,
+          syncMode: parentEvent?.syncMode,
+          eventlog: parentEvent?.eventlog
+        });
+      } else {
+        console.log('⚠️ [Timer Start] 没有 parentEventId');
       }
       
       // ✅ 立即创建初始事件（syncStatus: 'local-only'，运行中不同步）
@@ -726,6 +737,17 @@ function App() {
       let currentParentEvent = null;
       if (globalTimer.parentEventId) {
         currentParentEvent = EventService.getEventById(globalTimer.parentEventId);
+        console.log('🔗 [Timer Stop] 读取父事件最新元数据:', {
+          parentEventId: globalTimer.parentEventId,
+          found: !!currentParentEvent,
+          title: currentParentEvent?.title,
+          tags: currentParentEvent?.tags,
+          calendarIds: currentParentEvent?.calendarIds,
+          syncMode: currentParentEvent?.syncMode,
+          eventlog: currentParentEvent?.eventlog
+        });
+      } else {
+        console.log('⚠️ [Timer Stop] globalTimer 没有 parentEventId');
       }
       
       // 🔧 复用同一个 eventId，更新状态为 pending 以触发同步
@@ -779,17 +801,45 @@ function App() {
         // 🆕 Issue #12: 更新父事件的 timerLogs
         if (globalTimer.parentEventId) {
           const parentEvent = EventService.getEventById(globalTimer.parentEventId);
+          console.log('📝 [Timer Stop] 准备更新父事件 timerLogs:', {
+            parentEventId: globalTimer.parentEventId,
+            parentEventFound: !!parentEvent,
+            currentTimerLogs: parentEvent?.timerLogs,
+            timerEventId
+          });
           if (parentEvent) {
             const updatedTimerLogs = [...(parentEvent.timerLogs || []), timerEventId];
-            await EventService.updateEvent(globalTimer.parentEventId, {
+            console.log('📝 [Timer Stop] 调用 EventService.updateEvent 前:', {
+              parentId: globalTimer.parentEventId,
+              oldTimerLogs: parentEvent.timerLogs,
+              newTimerLogs: updatedTimerLogs,
+              updatePayload: {
+                timerLogs: updatedTimerLogs,
+                updatedAt: formatTimeForStorage(new Date())
+              }
+            });
+            
+            const updateResult = await EventService.updateEvent(globalTimer.parentEventId, {
               timerLogs: updatedTimerLogs,
               updatedAt: formatTimeForStorage(new Date())
             } as Partial<Event>);
-            AppLogger.log('📝 [Timer Stop] Updated parent event timerLogs:', {
+            
+            console.log('📝 [Timer Stop] EventService.updateEvent 返回:', updateResult);
+            
+            // 验证更新是否成功
+            const verifyParent = EventService.getEventById(globalTimer.parentEventId);
+            console.log('✅ [Timer Stop] 验证父事件 timerLogs:', {
               parentId: globalTimer.parentEventId,
-              timerLogs: updatedTimerLogs
+              timerLogs: verifyParent?.timerLogs,
+              updateSuccessful: updateResult.success,
+              expectedCount: updatedTimerLogs.length,
+              actualCount: verifyParent?.timerLogs?.length || 0
             });
+          } else {
+            console.error('❌ [Timer Stop] 找不到父事件:', globalTimer.parentEventId);
           }
+        } else {
+          console.log('⚠️ [Timer Stop] 没有 parentEventId，跳过 timerLogs 更新');
         }
         
         // ✅ 不需要手动 setAllEvents，storage 监听器会自动更新

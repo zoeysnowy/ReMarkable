@@ -523,8 +523,12 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
 
   // 渲染文本格式化按钮
   const renderTextFormatButton = (feature: ToolbarFeatureType) => {
+    console.log('[renderTextFormatButton] 🎬 渲染特性:', feature);
     const btnConfig = textFeatureConfig[feature as keyof typeof textFeatureConfig];
-    if (!btnConfig) return null;
+    if (!btnConfig) {
+      console.log('[renderTextFormatButton] ❌ 没有找到配置:', feature);
+      return null;
+    }
 
     // 🆕 textColor 和 bgColor 使用 Tippy 展示 Picker
     if (feature === 'textColor' || feature === 'bgColor') {
@@ -677,6 +681,7 @@ export const HeadlessFloatingToolbar: React.FC<FloatingToolbarProps & { mode?: F
           <button
             className="headless-toolbar-btn headless-toolbar-text-btn"
             onClick={(e) => {
+              console.log('[bullet onClick] 🔔 被触发！', { command: btnConfig.command, hasCallback: !!onTextFormat });
               e.stopPropagation();
               onTextFormat?.(btnConfig.command);
               // 🆕 执行完 bullet 命令后关闭 FloatingBar
