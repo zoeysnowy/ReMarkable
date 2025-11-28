@@ -5081,11 +5081,17 @@ const isLocalEvent = event.remarkableSource === true || event.source === 'local'
 if (isLocalEvent) {
   // ✅ 计划安排部分：自动添加标签映射日历到 calendarIds
   event.calendarIds = [...event.calendarIds, ...tagMappedCalendarIds];
-  event.syncMode = event.syncMode || 'bidirectional-private';
+  // ✅ syncMode 只在首次设置（保留用户手动修改的值）
+  if (!event.syncMode) {
+    event.syncMode = 'bidirectional-private';
+  }
   
   // ✅ 实际进展部分：自动添加标签映射日历到 subEventConfig
   event.subEventConfig.calendarIds = [...event.subEventConfig.calendarIds, ...tagMappedCalendarIds];
-  event.subEventConfig.syncMode = event.subEventConfig.syncMode || 'bidirectional-private';
+  // ✅ syncMode 只在首次设置（保留用户手动修改的值）
+  if (!event.subEventConfig.syncMode) {
+    event.subEventConfig.syncMode = 'bidirectional-private';
+  }
 }
 ```
 
@@ -5098,11 +5104,17 @@ if (isRemoteEvent) {
   // ⛔ 计划安排部分：不添加标签映射，保持原有配置
   // 原因：避免修改外部日历的原始事件
   event.calendarIds = event.calendarIds;  // 保持不变
-  event.syncMode = 'receive-only';        // 保持只接收
+  // ✅ syncMode 只在首次设置（保留用户手动修改的值）
+  if (!event.syncMode) {
+    event.syncMode = 'receive-only';
+  }
   
   // ✅ 实际进展部分：自动添加标签映射日历到 subEventConfig
   event.subEventConfig.calendarIds = [...event.subEventConfig.calendarIds, ...tagMappedCalendarIds];
-  event.subEventConfig.syncMode = event.subEventConfig.syncMode || 'bidirectional-private';
+  // ✅ syncMode 只在首次设置（保留用户手动修改的值）
+  if (!event.subEventConfig.syncMode) {
+    event.subEventConfig.syncMode = 'bidirectional-private';
+  }
 }
 ```
 
@@ -5112,16 +5124,52 @@ if (isRemoteEvent) {
 - ✅ **去重处理**：同一日历被多个标签映射时自动去重
 - ✅ **保护来源**：远程事件的计划安排部分保持 receive-only，不被标签映射影响
 - ✅ **默认 Private**：自动添加的日历默认使用 'bidirectional-private' 模式（避免通知打扰）
+- ✅ **🆕 syncMode 只在首次设置**：一旦用户手动修改 syncMode，后续标签变化不会覆盖用户的选择
+
+**syncMode 设置逻辑** (v2.0.5 修复):
+
+```typescript
+// ✅ 正确逻辑：只在首次设置，保留用户手动修改的值
+if (!prev.syncMode) {
+  updates.syncMode = 'bidirectional-private'; // 首次设置默认值
+  console.log('🆕 首次设置 syncMode');
+} else {
+  updates.syncMode = prev.syncMode; // 保留用户设置
+}
+
+// ❌ 错误逻辑（已修复）：每次都覆盖
+updates.syncMode = prev.syncMode || 'bidirectional-private'; // 这会导致无法保留用户修改
+```
+
+**触发时机**:
+1. **标签选择器变更**: 添加/删除标签时
+   - 自动添加标签映射的日历到 calendarIds
+   - 首次设置 syncMode 为默认值
+   - 后续标签变化不影响 syncMode（保留用户设置）
+
+2. **日历选择器变更**: 用户手动选择日历时
+   - Plan 日历：首次设置 syncMode = 'bidirectional-private'
+   - Actual 日历：首次设置 syncMode = 'bidirectional-private'
+   - 用户可以随后通过 syncMode 选择器修改
+
+3. **syncMode 选择器**: 用户手动修改同步模式
+   - 用户的选择会被保留
+   - 后续标签/日历变化不会覆盖
 
 **用户体验**:
 1. 用户在 EventEditModal 添加标签 `#工作`
 2. 如果标签 `#工作` 映射到 `Outlook Work` 日历
 3. 系统自动勾选该日历，并在日历选择器中显示标签名称
-4. 用户可以取消勾选，此时标签保留但不同步到该日历
-5. 保存事件后，calendarIds 和 subEventConfig 正确更新
+4. 如果是首次设置，syncMode 默认为 'bidirectional-private'
+5. 用户可以手动修改 syncMode 为其他值（如 'send-only'）
+6. 后续添加/删除标签时，syncMode 保持用户修改的值
+7. 用户可以取消勾选日历，此时标签保留但不同步到该日历
+8. 保存事件后，calendarIds、syncMode 和 subEventConfig 正确更新
 
 **实现位置**:
-- `EventEditModalV2.tsx` (L1765-1830): 标签选择器 onSelectionChange 回调
+- `EventEditModalV2.tsx` (L1830-1880): 标签选择器 onSelectionChange 回调（syncMode 只在首次设置）
+- `EventEditModalV2.tsx` (L2300): Plan 日历选择器逻辑（syncMode 只在首次设置）
+- `EventEditModalV2.tsx` (L2550): Actual 日历选择器逻辑（syncMode 只在首次设置）
 - `EventEditModalV2.tsx` (L382-388): actualSyncConfig → syncCalendarIds 同步 useEffect
 - `EventEditModalV2.tsx` (L318-345): event prop → formData 同步 useEffect
 
