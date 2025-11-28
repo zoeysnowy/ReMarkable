@@ -197,11 +197,18 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
   };
 
   const renderEventCard = (event: Event) => {
+    // ✅ 符合 TIME_ARCHITECTURE：优先使用 timeSpec.resolved
+    const resolvedTime = event.timeSpec?.resolved || {
+      start: event.startTime,
+      end: event.endTime
+    };
+    const isAllDay = event.timeSpec?.allDay ?? event.isAllDay;
+    
     // 使用 formatRelativeTimeDisplay 格式化时间显示
     const timeLabel = formatRelativeTimeDisplay(
-      event.startTime,
-      event.endTime,
-      event.isAllDay
+      resolvedTime.start,
+      resolvedTime.end,
+      isAllDay
     );
     
     const countdown = formatCountdown(event, currentTime);
@@ -220,8 +227,8 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
     
     // 计算是否需要显示日期（仅过期事件需要）
     let dateDisplay: string | undefined;
-    if (isExpired && (event.startTime || event.endTime)) {
-      const eventDate = new Date(event.startTime || event.endTime!);
+    if (isExpired && (resolvedTime.start || resolvedTime.end)) {
+      const eventDate = new Date(resolvedTime.start || resolvedTime.end!);
       const relativeDate = formatRelativeDate(eventDate, currentTime);
       // 只有不是"今天"或"明天"时才显示
       if (relativeDate !== '今天' && relativeDate !== '明天') {

@@ -1224,8 +1224,24 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         description: event.description || '',
         // 🔧 日历同步配置（单一数据结构）
         calendarIds: event.calendarIds || [],
-        syncMode: event.syncMode || 'receive-only',
-        subEventConfig: event.subEventConfig || { calendarIds: [], syncMode: 'send-only' },
+        // ✅ syncMode 根据事件来源设置正确的默认值
+        syncMode: event.syncMode || (() => {
+          const isLocalEvent = event.remarkableSource === true || event.source === 'local';
+          const defaultMode = isLocalEvent ? 'bidirectional-private' : 'receive-only';
+          console.log('🎬 [useEffect同步formData] 事件来源检测:', {
+            eventId: event.id,
+            remarkableSource: event.remarkableSource,
+            source: event.source,
+            isLocalEvent,
+            eventSyncMode: event.syncMode,
+            计算得到的defaultMode: defaultMode
+          });
+          return defaultMode;
+        })(),
+        subEventConfig: event.subEventConfig || { 
+          calendarIds: [], 
+          syncMode: 'bidirectional-private'  // ✅ 修正默认值
+        },
       });
     }
   }, [event?.id, event?.title?.colorTitle, isOpen]); // 🔧 监听 colorTitle 变化（EditModal 使用 HTML 富文本）

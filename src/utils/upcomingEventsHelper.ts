@@ -54,14 +54,20 @@ export function getTimeRange(filter: TimeFilter, now: Date = new Date()): { star
 
 /**
  * 判断事件是否在指定时间范围内
+ * ✅ 符合 TIME_ARCHITECTURE：优先使用 timeSpec.resolved
  */
 export function isEventInRange(event: Event, start: Date, end: Date): boolean {
-  // startTime 和 endTime 格式: 'YYYY-MM-DD HH:mm:ss'
+  // ✅ 优先检查 timeSpec.resolved（TIME_ARCHITECTURE 规范）
+  if (event.timeSpec?.resolved?.start) {
+    const eventStart = new Date(event.timeSpec.resolved.start);
+    return eventStart >= start && eventStart <= end;
+  }
+  
+  // ⚠️ Fallback: 向后兼容旧数据（没有 timeSpec 的事件）
   if (!event.startTime && !event.endTime) {
     return false; // 没有时间信息的事件不显示
   }
 
-  // 使用 startTime 或 endTime（优先 startTime）
   const timeString = event.startTime || event.endTime;
   if (!timeString) return false;
 
@@ -72,28 +78,54 @@ export function isEventInRange(event: Event, start: Date, end: Date): boolean {
 
 /**
  * 判断事件是否已过期
+ * ✅ 符合 TIME_ARCHITECTURE：优先使用 timeSpec.resolved
  */
 export function isEventExpired(event: Event, now: Date = new Date()): boolean {
-  // endTime 和 startTime 格式: 'YYYY-MM-DD HH:mm:ss'
-  if (event.endTime) {
+  // ✅ 优先检查 timeSpec.resolved（TIME_ARCHITECTURE 规范）
+  if (event.timeSpec?.resolved) {
+    const resolved = event.timeSpec.resolved;
+    
     // 如果有结束时间，使用结束时间判断
+    if (resolved.end) {
+      const eventEnd = new Date(resolved.end);
+      return eventEnd < now;
+    }
+    
+    // 如果只有开始时间，使用开始时间判断
+    if (resolved.start) {
+      const eventStart = new Date(resolved.start);
+      return eventStart < now;
+    }
+  }
+  
+  // ⚠️ Fallback: 向后兼容旧数据（没有 timeSpec 的事件）
+  if (event.endTime) {
     const eventDate = new Date(event.endTime);
     return eventDate < now;
   } else if (event.startTime) {
-    // 如果只有开始时间，使用开始时间判断
     const eventDate = new Date(event.startTime);
     return eventDate < now;
-  } else {
-    // 没有时间信息，认为未过期
-    return false;
   }
+  
+  // 没有时间信息，认为未过期
+  return false;
 }
 
 /**
  * 计算事件距离现在的时间差（用于排序）
+ * ✅ 符合 TIME_ARCHITECTURE：优先使用 timeSpec.resolved
  */
 export function getEventTimeDiff(event: Event, now: Date = new Date()): number {
-  // startTime 格式: 'YYYY-MM-DD HH:mm:ss'
+  // ✅ 优先检查 timeSpec.resolved（TIME_ARCHITECTURE 规范）
+  if (event.timeSpec?.resolved) {
+    const timeString = event.timeSpec.resolved.start || event.timeSpec.resolved.end;
+    if (timeString) {
+      const eventDate = new Date(timeString);
+      return eventDate.getTime() - now.getTime();
+    }
+  }
+  
+  // ⚠️ Fallback: 向后兼容旧数据（没有 timeSpec 的事件）
   if (!event.startTime && !event.endTime) {
     return Infinity; // 没有时间信息的排到最后
   }
@@ -223,19 +255,9 @@ export function formatCountdown(event: Event, now: Date = new Date()): string | 
   const days = Math.floor(hours / 24);
 
   if (days > 0) {
-    return `还有${days}天`;
-  } else if (hours > 0) {
-    return `还有${hours}h`;
-  } else if (minutes > 0) {
-    return `还有${minutes}min`;
-  } else {
-    return '即将开始';
-  }
-}
-
 /**
  * 格式化时间显示文本
- * startTime/endTime 格式: 'YYYY-MM-DD HH:mm:ss'
+ * ✅ 符合 TIME_ARCHITECTURE：优先使用 timeSpec.resolved
  */
 export function formatTimeLabel(event: Event): string | undefined {
   // 提取时间部分（HH:mm）
@@ -246,11 +268,47 @@ export function formatTimeLabel(event: Event): string | undefined {
     return `${hours}:${minutes}`;
   };
 
+  // ✅ 优先检查 timeSpec（TIME_ARCHITECTURE 规范）
+  if (event.timeSpec) {
+    // 检查是否全天事件
+    if (event.timeSpec.allDay) {
+      return '全天';
+    }
+    
+    // 使用 resolved 时间
+    if (event.timeSpec.resolved) {
+      const { start, end } = event.timeSpec.resolved;
+      
+      if (start && end) {
+        const startTimeStr = extractTime(start);
+        const endTimeStr = extractTime(end);
+        return `${startTimeStr}-${endTimeStr}`;
+      } else if (start) {
+        const startTimeStr = extractTime(start);
+        return `${startTimeStr}开始`;
+      } else if (end) {
+        const endTimeStr = extractTime(end);
+        return `${endTimeStr}截止`;
+      }
+    }
+  }
+  
+  // ⚠️ Fallback: 向后兼容旧数据（没有 timeSpec 的事件）
   if (event.startTime && event.endTime) {
     const startTimeStr = extractTime(event.startTime);
     const endTimeStr = extractTime(event.endTime);
     return `${startTimeStr}-${endTimeStr}`;
   } else if (event.startTime) {
+    const startTimeStr = extractTime(event.startTime);
+    return `${startTimeStr}开始`;
+  } else if (event.endTime) {
+    const endTimeStr = extractTime(event.endTime);
+    return `${endTimeStr}截止`;
+  } else if (event.isAllDay) {
+    return '全天';
+  }
+  return undefined;
+} } else if (event.startTime) {
     const startTimeStr = extractTime(event.startTime);
     return `${startTimeStr}开始`;
   } else if (event.endTime) {
