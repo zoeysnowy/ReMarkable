@@ -736,54 +736,23 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       // 🔄 用户未在编辑，直接替换整个 value
       console.log('%c[🔄 同步 enhancedValue] 用户未编辑，全量更新', 'background: #4CAF50; color: white; padding: 2px 6px;', {
         oldLength: value.length,
-        newLength: enhancedValue.length
+        newLength: enhancedValue.length,
+        enhancedValue: enhancedValue.map(n => ({ eventId: n.eventId, type: n.type }))
       });
-      skipNextOnChangeRef.current = true;
-      setValue(enhancedValue);
+      
+      // 🔧 安全检查：确保 enhancedValue 不为空
+      if (enhancedValue.length > 0) {
+        skipNextOnChangeRef.current = true;
+        setValue(enhancedValue);
+      } else {
+        console.warn('%c[⚠️ 同步跳过] enhancedValue 为空，保持当前 value', 'background: #FF9800; color: white;');
+      }
     } else {
-      // 🔧 用户正在编辑，增量更新其他节点的 metadata
-      console.log('%c[🔄 同步 enhancedValue] 用户正在编辑，增量更新', 'background: #FF9800; color: white; padding: 2px 6px;', {
+      // 🔧 用户正在编辑时，不做任何更新，避免干扰编辑
+      // 原因：增量更新逻辑复杂且容易出错，用户保存时会触发 eventsUpdated 事件
+      console.log('%c[🔄 同步跳过] 用户正在编辑，延迟更新', 'background: #FF9800; color: white; padding: 2px 6px;', {
         hasSelection,
-        hasPendingChanges,
-        currentPath: editor.selection?.anchor.path[0]
-      });
-      
-      // 找到当前编辑的 eventId
-      const currentPath = editor.selection?.anchor.path[0];
-      const currentNode = currentPath !== undefined ? value[currentPath] as EventLineNode : null;
-      const currentEventId = currentNode?.eventId;
-      
-      // 增量更新：只更新其他事件的节点
-      Editor.withoutNormalizing(editor, () => {
-        enhancedValue.forEach((newNode, index) => {
-          const oldNode = value[index] as EventLineNode | undefined;
-          
-          // 跳过 placeholder 和当前正在编辑的节点
-          if (newNode.eventId === '__placeholder__' || newNode.eventId === currentEventId) {
-            return;
-          }
-          
-          // 检查是否需要更新
-          if (!oldNode || oldNode.eventId !== newNode.eventId) {
-            // 节点不存在或 eventId 不匹配，需要替换整个节点
-            console.log('%c[🔄 替换节点]', 'background: #2196F3; color: white;', {
-              index,
-              oldEventId: oldNode?.eventId,
-              newEventId: newNode.eventId
-            });
-            skipNextOnChangeRef.current = true;
-            Transforms.removeNodes(editor, { at: [index] });
-            Transforms.insertNodes(editor, newNode as any, { at: [index] });
-          } else {
-            // eventId 匹配，只更新 metadata
-            console.log('%c[🔄 更新 metadata]', 'background: #673AB7; color: white;', {
-              index,
-              eventId: newNode.eventId
-            });
-            skipNextOnChangeRef.current = true;
-            Transforms.setNodes(editor, { metadata: newNode.metadata } as any, { at: [index] });
-          }
-        });
+        hasPendingChanges
       });
     }
   }, [enhancedValue]); // 依赖 enhancedValue，items 变化时重新计算
