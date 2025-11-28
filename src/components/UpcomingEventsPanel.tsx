@@ -4,7 +4,8 @@ import { Event } from '../types';
 import { 
   TimeFilter, 
   filterAndSortEvents, 
-  formatCountdown
+  formatCountdown,
+  getTimeRange
 } from '../utils/upcomingEventsHelper';
 import { shouldShowCheckbox } from '../utils/eventHelpers';
 import { EventService } from '../services/EventService';
@@ -45,57 +46,75 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
 
   // 从 EventService 加载所有事件
   useEffect(() => {
-    const loadEvents = () => {
-      const events = EventService.getAllEvents();
+    // 🚀 [性能优化] 使用 getEventsByRange 按范围加载事件
+    const loadEventsByFilter = (filter: TimeFilter) => {
+      // 计算时间范围（复用 upcomingEventsHelper 的逻辑）
+      const { start, end } = getTimeRange(filter, currentTime);
       
-      // 🔍 [DEBUG] 检查计时事件的 isTimer 字段
-      const timerEvents = events.filter(e => 
-        e.description?.includes('[⏱️ 计时') || e.isTimer === true
-      );
-      console.log('🔍 [UpcomingEventsPanel] 从 EventService 加载的计时事件:', 
-        timerEvents.map(e => ({
-          id: e.id.slice(-8),
-          title: e.title?.colorTitle || e.title?.simpleTitle || '',
-          isTimer: e.isTimer,
-          description: e.description?.substring(0, 50)
-        }))
-      );
+      // 使用性能优化的范围查询
+      const events = EventService.getEventsByRange(start, end);
+      
+      console.log('🔍 [UpcomingEventsPanel] 按范围加载事件:', {
+        filter,
+        range: `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`,
+        count: events.length
+      });
       
       setAllEvents(events);
     };
 
     // 初始加载
-    loadEvents();
+    loadEventsByFilter(activeFilter);
 
-    // 🔧 [FIX] 防抖处理：避免频繁重载导致性能问题
-    let loadEventsTimer: number | null = null;
-    
-    // 监听事件更新 - 300ms 防抖
+    // 🎯 [性能优化] 增量更新：只更新变化的单个事件
     const handleEventsUpdated = (e: any) => {
-      console.log('[UpcomingEventsPanel] 收到 eventsUpdated 事件:', e.detail);
+      const { eventId, isNewEvent } = e.detail || {};
       
-      // 清除之前的定时器
-      if (loadEventsTimer !== null) {
-        window.clearTimeout(loadEventsTimer);
+      if (!eventId) {
+        // 没有 eventId，fallback 到全量重载
+        console.log('[UpcomingEventsPanel] 无 eventId，全量重载');
+        loadEventsByFilter(activeFilter);
+        return;
       }
       
-      // 300ms 后执行重载（与 PlanManager 的 debouncedOnChange 同步）
-      loadEventsTimer = window.setTimeout(() => {
-        loadEvents();
-        loadEventsTimer = null;
-      }, 300);
+      console.log('[UpcomingEventsPanel] 收到 eventsUpdated 事件，增量更新:', {
+        eventId: eventId.slice(-8),
+        isNewEvent
+      });
+      
+      // 增量更新：只更新这一个事件
+      const updatedEvent = EventService.getEventById(eventId);
+      
+      setAllEvents(prev => {
+        if (!updatedEvent) {
+          // 事件被删除
+          return prev.filter(e => e.id !== eventId);
+        }
+        
+        // 检查事件是否已存在
+        const existingIndex = prev.findIndex(e => e.id === eventId);
+        
+        if (existingIndex >= 0) {
+          // 更新现有事件
+          const updated = [...prev];
+          updated[existingIndex] = updatedEvent;
+          return updated;
+        } else if (isNewEvent) {
+          // 新事件，添加到列表
+          return [...prev, updatedEvent];
+        } else {
+          // 事件不在当前列表中，且不是新事件，忽略
+          return prev;
+        }
+      });
     };
 
     window.addEventListener('eventsUpdated', handleEventsUpdated as EventListener);
 
     return () => {
       window.removeEventListener('eventsUpdated', handleEventsUpdated);
-      // 清理定时器
-      if (loadEventsTimer !== null) {
-        window.clearTimeout(loadEventsTimer);
-      }
     };
-  }, []);
+  }, [activeFilter, currentTime]);
 
   // Update current time every minute
   useEffect(() => {

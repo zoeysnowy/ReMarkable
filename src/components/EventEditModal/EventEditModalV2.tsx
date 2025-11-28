@@ -204,6 +204,16 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     isTimer: event?.isTimer
   });
   
+  // 🎬 调试：打印传入的 event 对象的关键字段
+  console.log('🎬 [EventEditModalV2] 传入的 event 对象:', {
+    id: event?.id,
+    remarkableSource: event?.remarkableSource,
+    source: event?.source,
+    syncMode: event?.syncMode,
+    syncStatus: event?.syncStatus,
+    calendarIds: event?.calendarIds
+  });
+  
   /**
    * ==================== formData 初始化 ====================
    * 
@@ -281,7 +291,16 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         // ✅ syncMode 根据事件来源设置默认值
         syncMode: event.syncMode || (() => {
           const isLocalEvent = event.remarkableSource === true || event.source === 'local';
-          return isLocalEvent ? 'bidirectional-private' : 'receive-only';
+          const defaultMode = isLocalEvent ? 'bidirectional-private' : 'receive-only';
+          console.log('🎬 [formData 初始化] 事件来源检测:', {
+            eventId: event.id,
+            remarkableSource: event.remarkableSource,
+            source: event.source,
+            isLocalEvent,
+            eventSyncMode: event.syncMode,
+            计算得到的defaultMode: defaultMode
+          });
+          return defaultMode;
         })(),
         subEventConfig: event.subEventConfig || { 
           calendarIds: [], 
@@ -582,17 +601,22 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   
   // 🔧 同步模式 UI 状态（从 formData 初始化，formData.syncMode 已根据事件来源正确设置）
   const [sourceSyncMode, setSourceSyncMode] = useState(() => {
+    console.log('🎬 [sourceSyncMode 初始化] formData.syncMode =', formData.syncMode);
     return formData.syncMode; // ✅ 直接使用 formData.syncMode，它已经根据事件来源正确设置了默认值
   });
   const [syncSyncMode, setSyncSyncMode] = useState(() => {
     // 实际进展同步模式：子事件模式从 mainEvent 读取，父事件模式从 subEventConfig 读取
+    let mode;
     if (!isParentMode) {
       // ✅ 子事件模式：使用 formData.syncMode（已根据事件来源正确设置）
-      return formData.syncMode;
+      mode = formData.syncMode;
+      console.log('🎬 [syncSyncMode 初始化] 子事件模式，使用 formData.syncMode =', mode);
     } else {
       // ✅ 父模式：使用 formData.subEventConfig.syncMode（默认 bidirectional-private）
-      return formData.subEventConfig?.syncMode || 'bidirectional-private';
+      mode = formData.subEventConfig?.syncMode || 'bidirectional-private';
+      console.log('🎬 [syncSyncMode 初始化] 父事件模式，使用 subEventConfig.syncMode =', mode);
     }
+    return mode;
   });
 
   /**
