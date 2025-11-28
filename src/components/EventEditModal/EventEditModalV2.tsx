@@ -278,8 +278,15 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         description: event.description || '',
         // 🔧 日历同步配置（单一数据结构）
         calendarIds: event.calendarIds || [],
-        syncMode: event.syncMode || 'receive-only',
-        subEventConfig: event.subEventConfig || { calendarIds: [], syncMode: 'send-only' },
+        // ✅ syncMode 根据事件来源设置默认值
+        syncMode: event.syncMode || (() => {
+          const isLocalEvent = event.remarkableSource === true || event.source === 'local';
+          return isLocalEvent ? 'bidirectional-private' : 'receive-only';
+        })(),
+        subEventConfig: event.subEventConfig || { 
+          calendarIds: [], 
+          syncMode: 'bidirectional-private' // ✅ 子事件默认也是 bidirectional-private
+        },
       };
     }
     // 新建事件时的默认值
@@ -299,8 +306,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
       description: '',
       // 🔧 日历同步配置（单一数据结构）
       calendarIds: [],
-      syncMode: 'receive-only',
-      subEventConfig: { calendarIds: [], syncMode: 'send-only' },
+      syncMode: 'bidirectional-private', // ✅ 新建事件默认为本地事件
+      subEventConfig: { calendarIds: [], syncMode: 'bidirectional-private' },
     };
   });
 
@@ -1851,13 +1858,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                             
                             // 规则 1: 本地事件 - Plan 和 Actual 都自动添加映射日历
                             if (isLocalEvent) {
-                              // ✅ syncMode 只在首次设置（保留用户手动修改的值）
-                              if (!prev.syncMode) {
-                                updates.syncMode = 'bidirectional-private';
-                                console.log('🆕 [EventEditModalV2] 本地事件首次设置 syncMode:', updates.syncMode);
-                              } else {
-                                updates.syncMode = prev.syncMode; // 保留用户设置
-                              }
+                              // ✅ 标签变更时不修改 syncMode（保留现有值或默认值）
+                              // syncMode 只在初始化或用户手动修改时设置
                               
                               // 自动添加标签映射的日历（智能合并）
                               if (mappedCalendars.length > 0) {
@@ -1867,7 +1869,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                               // ✅ Actual 配置（subEventConfig）
                               updates.subEventConfig = {
                                 ...prev.subEventConfig,
-                                syncMode: prev.subEventConfig?.syncMode || 'bidirectional-private' // 只在首次设置
+                                // 标签变更时不修改 syncMode
                               };
                               
                               if (mappedCalendars.length > 0) {
@@ -1876,27 +1878,20 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                               
                               console.log('✅ [EventEditModalV2] 本地事件：Plan + Actual 都添加映射日历', {
                                 calendarIds: updates.calendarIds,
-                                syncMode: updates.syncMode,
-                                '是否首次设置': !prev.syncMode,
+                                syncMode: prev.syncMode, // 保持不变
                                 subEventConfig: updates.subEventConfig,
                                 mappedCalendarsCount: mappedCalendars.length
                               });
                             }
-                            // 规则 2: 远程事件 - Plan 保持 receive-only，Actual 自动添加映射日历
+                            // 规则 2: 远程事件 - Plan 保持不变，Actual 自动添加映射日历
                             else {
-                              // ⛔ Plan 保持不变（receive-only）
-                              updates.calendarIds = prev.calendarIds || [];
-                              if (!prev.syncMode) {
-                                updates.syncMode = 'receive-only';
-                                console.log('🆕 [EventEditModalV2] 远程事件首次设置 syncMode:', updates.syncMode);
-                              } else {
-                                updates.syncMode = prev.syncMode; // 保留用户设置
-                              }
+                              // ⛔ Plan 保持不变（不添加映射日历，不修改 syncMode）
+                              // 标签变更时不修改 syncMode
                               
-                              // ✅ Actual 配置（只在首次设置 syncMode）
+                              // ✅ Actual 配置
                               updates.subEventConfig = {
                                 ...prev.subEventConfig,
-                                syncMode: prev.subEventConfig?.syncMode || 'bidirectional-private'
+                                // 标签变更时不修改 syncMode
                               };
                               
                               // ✅ Actual 添加映射日历
@@ -1905,7 +1900,6 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                               }
                               
                               console.log('✅ [EventEditModalV2] 远程事件：Actual 添加映射日历', {
-                                '是否首次设置': !prev.subEventConfig?.syncMode,
                                 subEventConfig: updates.subEventConfig,
                                 mappedCalendarsCount: mappedCalendars.length
                               });
