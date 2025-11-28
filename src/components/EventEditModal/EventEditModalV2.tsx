@@ -2390,7 +2390,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                     </div>
                     
                     {/* 同步模式选择区域 */}
-                    <div style={{ position: 'relative' }}>
+                    <div style={{ position: 'relative', flexShrink: 0 }}>
                       <div 
                         ref={sourceSyncModeRef}
                         style={{ 
@@ -2402,14 +2402,15 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                           cursor: 'pointer',
                           padding: '2px 4px',
                           borderRadius: '4px',
-                          transition: 'background-color 0.15s'
+                          transition: 'background-color 0.15s',
+                          whiteSpace: 'nowrap'
                         }}
                         onClick={() => setShowSourceSyncModePicker(!showSourceSyncModePicker)}
                         onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
                         onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                       >
-                        <span style={{ pointerEvents: 'none' }}>{getSyncModeInfo(sourceSyncMode).emoji}</span>
-                        <span style={{ pointerEvents: 'none' }}>{getSyncModeInfo(sourceSyncMode).name}</span>
+                        <span style={{ pointerEvents: 'none', flexShrink: 0 }}>{getSyncModeInfo(sourceSyncMode).emoji}</span>
+                        <span style={{ pointerEvents: 'none', flexShrink: 0 }}>{getSyncModeInfo(sourceSyncMode).name}</span>
                       </div>
                       
                       {showSourceSyncModePicker && createPortal(
