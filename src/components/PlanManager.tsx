@@ -429,16 +429,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   const [currentIsTask, setCurrentIsTask] = useState<boolean>(false);
   
   // 🆕 ContentSelectionPanel 状态管理
-  const [dateRange, setDateRange] = useState<{start: Date, end: Date}>(() => {
-    const today = new Date();
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - today.getDay()); // 本周开始
-    weekStart.setHours(0, 0, 0, 0); // 设置为 00:00:00
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 6); // 本周结束
-    weekEnd.setHours(23, 59, 59, 999); // 设置为 23:59:59
-    return { start: weekStart, end: weekEnd };
-  });
+  // 默认为 null（普通模式，不显示 snapshot 竖线）
+  const [dateRange, setDateRange] = useState<{start: Date, end: Date} | null>(null);
   const [activeFilter, setActiveFilter] = useState<'tags' | 'tasks' | 'favorites' | 'new'>('tags');
   const [hiddenTags, setHiddenTags] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
@@ -1380,11 +1372,37 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           return;
         }
         
-        // 🎯 步骤 2: 业务类型过滤（空白事件）
-        const hasContent = log.before.title || log.before.content || 
-                          log.before.simpleTitle || log.before.fullTitle;
-        if (!hasContent) {
-          console.log('[PlanManager] ⏭️ 跳过空白 ghost:', log.eventId.slice(-8));
+        // 🎯 步骤 2: 业务类型过滤（空白事件 - 标题和eventlog都为空）
+        // 2.1 检查标题内容
+        const titleObj = log.before.title;
+        const hasTitle = log.before.content || 
+                        (typeof titleObj === 'string' ? titleObj : 
+                         (titleObj && (titleObj.simpleTitle || titleObj.fullTitle)));
+        
+        // 2.2 检查 eventlog 内容
+        const eventlogField = log.before.eventlog;
+        let hasEventlog = false;
+        
+        if (eventlogField) {
+          if (typeof eventlogField === 'string') {
+            // 字符串格式：去除空白后检查是否有内容
+            hasEventlog = eventlogField.trim().length > 0;
+          } else if (typeof eventlogField === 'object' && eventlogField !== null) {
+            // EventLog 对象格式：检查 slateJson, html, plainText
+            const slateContent = eventlogField.slateJson || '';
+            const htmlContent = eventlogField.html || '';
+            const plainContent = eventlogField.plainText || '';
+            
+            // 任一字段有实质内容即算有 eventlog
+            hasEventlog = slateContent.trim().length > 0 || 
+                         htmlContent.trim().length > 0 || 
+                         plainContent.trim().length > 0;
+          }
+        }
+        
+        // 只有标题和eventlog都为空时才跳过
+        if (!hasTitle && !hasEventlog) {
+          console.log('[PlanManager] ⏭️ 跳过完全空白 ghost (无标题且无eventlog):', log.eventId.slice(-8));
           return;
         }
         
@@ -1399,9 +1417,10 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         console.log('[PlanManager] 👻 添加 ghost:', {
           eventId: log.eventId.slice(-8),
           title: log.before.title,
-          content: log.before.content,
-          删除于: new Date(log.timestamp).toLocaleString(),
-          before完整信息: log.before
+          hasTitle,
+          hasEventlog,
+          eventlogType: typeof log.before.eventlog,
+          删除于: new Date(log.timestamp).toLocaleString()
         });
         allItems.push({
           ...log.before,
@@ -2080,6 +2099,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           console.log('[PlanManager] 选择日期:', date);
         }}
         onDateRangeChange={(start, end) => {
+          // 如果传入 null，则退出 snapshot 模式
+          if (start === null || end === null) {
+            setDateRange(null as any);
+            console.log('[PlanManager] 退出 snapshot 模式');
+            return;
+          }
           // 标准化时间：start 设为 00:00:00，end 设为 23:59:59
           const normalizedStart = new Date(start);
           normalizedStart.setHours(0, 0, 0, 0);

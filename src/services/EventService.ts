@@ -1503,6 +1503,10 @@ export class EventService {
         syncType
       });
       
+      // 获取 Microsoft Calendar Service
+      const { MicrosoftCalendarService } = await import('./MicrosoftCalendarService');
+      const microsoftService = MicrosoftCalendarService.getInstance();
+      
       // Step 1: 获取当前已同步的日历列表
       const existingSyncedCalendars = syncType === 'plan' 
         ? (event.syncedPlanCalendars || [])
@@ -1514,13 +1518,11 @@ export class EventService {
       // Step 3: 删除旧的远程事件（修改日历分组后）
       for (const oldCalendar of calendarsToDelete) {
         try {
-          if (syncManagerInstance && oldCalendar.remoteEventId) {
-            await syncManagerInstance.deleteRemoteEvent(oldCalendar.calendarId, oldCalendar.remoteEventId);
-            eventLogger.log(`🗑️ [syncToMultipleCalendars] 删除旧远程事件`, {
-              calendarId: oldCalendar.calendarId,
-              remoteEventId: oldCalendar.remoteEventId
-            });
-          }
+          await microsoftService.deleteEvent(oldCalendar.remoteEventId);
+          eventLogger.log(`🗑️ [syncToMultipleCalendars] 删除旧远程事件`, {
+            calendarId: oldCalendar.calendarId,
+            remoteEventId: oldCalendar.remoteEventId
+          });
         } catch (deleteError) {
           eventLogger.error(`❌ [syncToMultipleCalendars] 删除旧远程事件失败`, deleteError);
           // 继续处理其他日历，不中断整个流程
@@ -1540,10 +1542,10 @@ export class EventService {
           
           let remoteEventId: string | null = null;
           
-          if (existingSync && existingSync.remoteEventId && syncManagerInstance) {
+          if (existingSync && existingSync.remoteEventId) {
             // 更新已有的远程事件
             try {
-              await syncManagerInstance.updateRemoteEvent(calendarId, existingSync.remoteEventId, remoteEventData);
+              await microsoftService.updateEvent(existingSync.remoteEventId, remoteEventData);
               remoteEventId = existingSync.remoteEventId;
               eventLogger.log(`♻️ [syncToMultipleCalendars] 更新远程事件`, {
                 calendarId,
@@ -1552,16 +1554,16 @@ export class EventService {
             } catch (updateError) {
               // 更新失败，尝试删除后重建
               eventLogger.warn(`⚠️ [syncToMultipleCalendars] 更新失败，尝试删除重建`, updateError);
-              await syncManagerInstance.deleteRemoteEvent(calendarId, existingSync.remoteEventId);
-              remoteEventId = await syncManagerInstance.createRemoteEvent(calendarId, remoteEventData);
+              await microsoftService.deleteEvent(existingSync.remoteEventId);
+              remoteEventId = await microsoftService.syncEventToCalendar(remoteEventData, calendarId);
               eventLogger.log(`🆕 [syncToMultipleCalendars] 重建远程事件`, {
                 calendarId,
                 remoteEventId
               });
             }
-          } else if (syncManagerInstance) {
+          } else {
             // 创建新的远程事件
-            remoteEventId = await syncManagerInstance.createRemoteEvent(calendarId, remoteEventData);
+            remoteEventId = await microsoftService.syncEventToCalendar(remoteEventData, calendarId);
             eventLogger.log(`🆕 [syncToMultipleCalendars] 创建远程事件`, {
               calendarId,
               remoteEventId

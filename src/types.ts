@@ -335,15 +335,37 @@ export interface Event {
   actualSyncConfig?: ActualSyncConfig;
   
   /**
-   * 计划安排的远程事件 ID
+   * 🆕 v2.0.5 多日历同步：Plan 日历映射
+   * 本地一个 event，远程可能有多个 Plan 事件（不同日历）
+   * 远程同步回来后，本地不能变成多个 event，应当合并管理
+   */
+  syncedPlanCalendars?: Array<{
+    calendarId: string;      // 日历 ID
+    remoteEventId: string;   // 该日历中的远程事件 ID
+  }>;
+  
+  /**
+   * 🆕 v2.0.5 多日历同步：Actual 日历映射
+   * 本地一个 event，远程可能有多个 Actual 事件（不同日历）
+   * 修改日历分组后，需要删除旧的远程事件，重新创建新的
+   */
+  syncedActualCalendars?: Array<{
+    calendarId: string;      // 日历 ID
+    remoteEventId: string;   // 该日历中的远程事件 ID
+  }>;
+  
+  /**
+   * @deprecated 计划安排的远程事件 ID（单日历版本）
    * Plan 同步创建的远程事件 ID（独立于 Actual）
+   * 使用 syncedPlanCalendars 替代，支持多日历同步
    */
   syncedPlanEventId?: string | null;
   
   /**
-   * 实际进展的远程事件 ID  
+   * @deprecated 实际进展的远程事件 ID（单日历版本）
    * Actual 同步创建的远程事件 ID（独立于 Plan）
    * 对于 Timer 子事件，存储对应的远程子事件 ID
+   * 使用 syncedActualCalendars 替代，支持多日历同步
    */
   syncedActualEventId?: string | null;
   

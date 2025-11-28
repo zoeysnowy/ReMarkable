@@ -51,14 +51,15 @@
   border: none;
   outline: none;
   font-family: 'Inter', 'Noto Sans SC', 'Noto Sans JP', sans-serif;
-  font-size: 14px !important;
+  font-size: 13px !important;
   font-weight: 500 !important;
   color: #9ca3af;
   cursor: pointer;
   padding: 0;
-  white-space: nowrap;
-  line-height: 20px;
+  white-space: normal;
+  line-height: 18px;
   margin-left: auto;
+  text-align: right;
   transition: color 0.2s ease;
   box-shadow: none !important;
 }
@@ -75,6 +76,26 @@
 
 .panel-show-all-btn:active {
   background: none !important;
+}
+
+/* Notice Icon - 替换普通模式下的文字 */
+.panel-notice-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  margin-left: auto;
+  padding: 4px;
+  transition: opacity 0.2s ease;
+}
+
+.panel-notice-icon-wrapper:hover {
+  opacity: 0.8;
+}
+
+.panel-notice-icon {
+  pointer-events: none;
 }
 
 .panel-toggle-btn {

@@ -7,6 +7,7 @@ import HideIconSvg from '../assets/icons/hide.svg';
 import UnhideIconSvg from '../assets/icons/unhide.svg';
 import DownIconSvg from '../assets/icons/down.svg';
 import PiechartIconSvg from '../assets/icons/piechart.svg';
+import NoticeIconSvg from '../assets/icons/Notice.svg';
 
 // 图标组件
 const SearchIcon = ({ className }: { className?: string }) => <img src={SearchIconSvg} alt="" className={className} style={{ width: '23px', height: '23px', opacity: 0.6 }} />;
@@ -29,6 +30,7 @@ const HideSmallIcon = ({ className }: { className?: string }) => <img src={HideI
 const PiechartIcon = ({ color, className }: { color?: string; className?: string }) => (
   <img src={PiechartIconSvg} alt="" className={className} style={{ width: '14px', height: '14px' }} />
 );
+const NoticeIcon = ({ className }: { className?: string }) => <img src={NoticeIconSvg} alt="" className={className} style={{ width: '20px', height: '20px' }} />;
 
 interface TaskNode {
   id: string;
@@ -62,14 +64,14 @@ interface Tag {
 }
 
 interface ContentSelectionPanelProps {
-  dateRange?: { start: Date; end: Date };
+  dateRange?: { start: Date; end: Date } | null;
   snapshot?: EventSnapshot;
   tags?: Tag[];
   hiddenTags?: Set<string>;
   onFilterChange?: (filter: 'tags' | 'tasks' | 'favorites' | 'new') => void;
   onSearchChange?: (query: string) => void;
   onDateSelect?: (date: Date) => void;
-  onDateRangeChange?: (start: Date, end: Date) => void;
+  onDateRangeChange?: (start: Date | null, end: Date | null) => void;
   onTagVisibilityChange?: (tagId: string, visible: boolean) => void;
 }
 
@@ -419,6 +421,19 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
     return compareDate.getTime() === end.getTime();
   };
 
+  const handleExitSnapshot = () => {
+    // 清除日期范围选择，回到普通模式
+    setRangeStart(null);
+    setRangeEnd(null);
+    setIsSelecting(false);
+    setHoverDate(null);
+    // 通知父组件清除日期范围（回到当天此刻的计划清单，不显示 snapshot 竖线）
+    onDateRangeChange?.(null, null);
+  };
+
+  // 判断是否在 snapshot 模式：有 dateRange 或者正在选择日期
+  const isInSnapshotMode = dateRange !== null && dateRange !== undefined;
+
   return (
     <div className="content-selection-panel">
       {/* Section Header - 完全匹配计划清单结构 */}
@@ -428,7 +443,26 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
         <button className="panel-toggle-btn" onClick={toggleCalendar}>
           <HideIcon />
         </button>
-        <button className="panel-show-all-btn">显示全部</button>
+        {isInSnapshotMode ? (
+          <button className="panel-show-all-btn" onClick={handleExitSnapshot}>
+            退出<br />Review模式
+          </button>
+        ) : (
+          <div className="panel-notice-icon-wrapper" title="选择日期进入Review模式">
+            <NoticeIcon className="panel-notice-icon" />
+          </div>
+        )}
+        {false && (<button className="panel-show-all-btn" onClick={handleExitSnapshot}>
+          {isInSnapshotMode ? (
+            <>
+              退出<br />Review模式
+            </>
+          ) : (
+            <>
+              选择日期<br />进入Review模式
+            </>
+          )}
+        </button>)}
       </div>
 
       {/* Search Bar */}

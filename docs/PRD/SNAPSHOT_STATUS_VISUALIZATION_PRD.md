@@ -334,7 +334,7 @@ if (dateRange) {
   );
   
   deleteOpsInRange.forEach(log => {
-    // 🎯 三步过滤公式（v2.3 2025-11-25）
+    // 🎯 三步过滤公式（v2.4 2025-11-28 优化：检查标题+eventlog）
     
     // 步骤 1: checkType 过滤（必须有有效的 checkType 且不为 'none'）
     if (!log.before.checkType || log.before.checkType === 'none') {
@@ -342,11 +342,37 @@ if (dateRange) {
       return;
     }
     
-    // 步骤 2: 业务类型过滤（必须有内容）
-    const hasContent = log.before.title || log.before.content || 
-                      log.before.simpleTitle || log.before.fullTitle;
-    if (!hasContent) {
-      console.log('[PlanManager] ⏭️ 跳过空白 ghost:', log.eventId.slice(-8));
+    // 步骤 2: 业务类型过滤（完全空白事件：标题和eventlog都为空）
+    // 2.1 检查标题内容
+    const titleObj = log.before.title;
+    const hasTitle = log.before.content || 
+                    (typeof titleObj === 'string' ? titleObj : 
+                     (titleObj && (titleObj.simpleTitle || titleObj.fullTitle)));
+    
+    // 2.2 检查 eventlog 内容
+    const eventlogField = log.before.eventlog;
+    let hasEventlog = false;
+    
+    if (eventlogField) {
+      if (typeof eventlogField === 'string') {
+        // 字符串格式：去除空白后检查是否有内容
+        hasEventlog = eventlogField.trim().length > 0;
+      } else if (typeof eventlogField === 'object' && eventlogField !== null) {
+        // EventLog 对象格式：检查 slateJson, html, plainText
+        const slateContent = eventlogField.slateJson || '';
+        const htmlContent = eventlogField.html || '';
+        const plainContent = eventlogField.plainText || '';
+        
+        // 任一字段有实质内容即算有 eventlog
+        hasEventlog = slateContent.trim().length > 0 || 
+                     htmlContent.trim().length > 0 || 
+                     plainContent.trim().length > 0;
+      }
+    }
+    
+    // 只有标题和eventlog都为空时才跳过
+    if (!hasTitle && !hasEventlog) {
+      console.log('[PlanManager] ⏭️ 跳过完全空白 ghost (无标题且无eventlog):', log.eventId.slice(-8));
       return;
     }
     
@@ -361,6 +387,9 @@ if (dateRange) {
     console.log('[PlanManager] 👻 添加 ghost:', {
       eventId: log.eventId.slice(-8),
       title: log.before?.title,
+      hasTitle,
+      hasEventlog,
+      eventlogType: typeof log.before.eventlog,
       删除于: new Date(log.timestamp).toLocaleString()
     });
     
@@ -564,7 +593,21 @@ DOM 测量（getBoundingClientRect）
 - [x] 添加/删除 eventlog → 竖线高度自动调整
 - [x] 折叠/展开 eventlog → ResizeObserver 自动更新
 
-#### 5. 性能测试
+#### 5. EventLog 多行支持
+- [x] 事件有多行 eventlog → 竖线覆盖所有行
+- [x] 添加/删除 eventlog → 竖线高度自动调整
+- [x] 折叠/展开 eventlog → ResizeObserver 自动更新
+
+#### 6. Ghost 事件过滤（v2.4 2025-11-28 新增）
+- [x] 场景1：标题为空 + eventlog 为空 → **不显示** ghost ✅
+- [x] 场景2：标题为空 + eventlog 有内容 → 显示 ghost ✅
+- [x] 场景3：标题有内容 + eventlog 为空 → 显示 ghost ✅
+- [x] 场景4：标题有内容 + eventlog 有内容 → 显示 ghost ✅
+- [x] 场景5：eventlog 为字符串格式（空白） → 正确识别为空 ✅
+- [x] 场景6：eventlog 为 EventLog 对象（所有字段为空） → 正确识别为空 ✅
+- [x] 场景7：eventlog 为 EventLog 对象（任一字段有内容） → 正确识别为非空 ✅
+
+#### 7. 性能测试
 - [x] 100+ 事件 → 竖线渲染流畅（< 100ms）
 - [x] 快速切换日期 → 防抖避免重复计算
 - [x] 滚动列表 → 竖线位置跟随正确
