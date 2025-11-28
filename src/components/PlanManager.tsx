@@ -380,6 +380,39 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         return false;
       }
       
+      // 🆕 步骤 2.5: 过滤空白事件（标题和 eventlog 都为空）
+      // 检查标题内容
+      const titleObj = event.title;
+      const hasTitle = event.content || 
+                      (typeof titleObj === 'string' ? titleObj : 
+                       (titleObj && (titleObj.simpleTitle || titleObj.fullTitle || titleObj.colorTitle)));
+      
+      // 检查 eventlog 内容
+      const eventlogField = (event as any).eventlog;
+      let hasEventlog = false;
+      
+      if (eventlogField) {
+        if (typeof eventlogField === 'string') {
+          // 字符串格式：去除空白后检查是否有内容
+          hasEventlog = eventlogField.trim().length > 0;
+        } else if (typeof eventlogField === 'object' && eventlogField !== null) {
+          // EventLog 对象格式：检查 slateJson, html, plainText
+          const slateContent = eventlogField.slateJson || '';
+          const htmlContent = eventlogField.html || '';
+          const plainContent = eventlogField.plainText || '';
+          
+          // 任一字段有实质内容即算有 eventlog
+          hasEventlog = slateContent.trim().length > 0 || 
+                       htmlContent.trim().length > 0 || 
+                       plainContent.trim().length > 0;
+        }
+      }
+      
+      // 只有标题和eventlog都为空时才过滤掉（与 Snapshot ghost 过滤逻辑一致）
+      if (!hasTitle && !hasEventlog) {
+        return false; // 完全空白的事件，过滤掉
+      }
+      
       // 步骤 3: 过期/完成事件处理
       const isExpired = isEventExpired(event, now);
       
@@ -679,6 +712,33 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           event.isOutsideApp === true || 
           event.isTimeLog === true) {
         // 🚫 系统事件，直接忽略
+        return;
+      }
+      
+      // 🆕 排除条件：空白事件（标题和 eventlog 都为空）
+      const titleObj = event.title;
+      const hasTitle = event.content || 
+                      (typeof titleObj === 'string' ? titleObj : 
+                       (titleObj && (titleObj.simpleTitle || titleObj.fullTitle || titleObj.colorTitle)));
+      
+      const eventlogField = (event as any).eventlog;
+      let hasEventlog = false;
+      
+      if (eventlogField) {
+        if (typeof eventlogField === 'string') {
+          hasEventlog = eventlogField.trim().length > 0;
+        } else if (typeof eventlogField === 'object' && eventlogField !== null) {
+          const slateContent = eventlogField.slateJson || '';
+          const htmlContent = eventlogField.html || '';
+          const plainContent = eventlogField.plainText || '';
+          hasEventlog = slateContent.trim().length > 0 || 
+                       htmlContent.trim().length > 0 || 
+                       plainContent.trim().length > 0;
+        }
+      }
+      
+      if (!hasTitle && !hasEventlog) {
+        // 🚫 完全空白的事件，直接忽略
         return;
       }
       
