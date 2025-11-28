@@ -80,10 +80,17 @@ interface EventLineNode {
 - ✅ 支持 Timestamp 自动插入（⚠️ **需要外部传递 `enableTimestamp` 和 `eventId` props**）
 - ✅ 支持多段落（每个段落独立一个 EventLineNode）
 
-**⚠️ Timestamp 使用限制**:
-- **PlanManager 中不启用**: 未传递 `enableTimestamp` 和 `eventId` props，Timestamp 不会被插入
-- **EventEditModal 中启用**: 传递 `enableTimestamp={true}` 和 `eventId={event.id}`，支持 Timestamp 自动插入
+**⚠️ Timestamp 显示控制**（由外部 props 决定）:
+- **显示 Timestamp 的场景**:
+  - EventEditModal 的 eventlog 编辑区域（传递 `enableTimestamp={true}` 和 `eventId={event.id}`）
+  - TimeLog 页面（待开发，传递相同 props）
+  
+- **不显示 Timestamp 的场景**:
+  - PlanManager 的 eventlog 编辑（未传递 `enableTimestamp` 和 `eventId` props）
+  - 原因：PlanManager 用于快速记录和管理，不需要详细的时间戳分隔
+  
 - **启用条件**: `hasTextInsertion && enableTimestamp && eventId`（三个条件缺一不可）
+- **注意**: PlanManager 可以使用 Shift+Enter 进入 eventlog 模式编辑内容，只是不显示 timestamp
 
 **特有样式**:
 ```css
@@ -687,10 +694,13 @@ const [items, setItems] = useState<PlanItem[]>([]);
 - `onTimeClick`: 时间点击回调（打开时间选择器）
 - `onMoreClick`: More 图标点击回调（打开 EventEditModal）
 
-**⚠️ Timestamp 在 PlanManager 中不启用**:
-- PlanManager 只显示事件的 **title 行**（用于快速浏览和管理）
-- Timestamp 只在 **EventEditModal 的 eventlog 编辑区域**中使用（详细记录实际进展）
-- 原因：PlanManager 中不传递 `enableTimestamp` 和 `eventId` props，三个条件不满足，Timestamp 不会被插入
+**⚠️ Timestamp 在 PlanManager 中不显示**:
+- PlanManager **支持编辑 eventlog**（Shift+Enter 进入 eventlog 模式）
+- 但 PlanManager 中**不显示 Timestamp**（未传递 `enableTimestamp` 和 `eventId` props）
+- 原因：PlanManager 用于快速记录和管理，不需要详细的时间戳分隔
+- Timestamp 主要用于：
+  - **EventEditModal** 的 eventlog 编辑区域（详细记录实际进展）
+  - **TimeLog 页面**（待开发，用于时间日志记录）
 
 ### 8.2 状态查询接口
 
@@ -850,12 +860,13 @@ const snapshotItems = snapshotRange
    - EventLogTimestampService（完全可共享）
    - 5 分钟间隔检测
    - 自动插入/清理逻辑
-   - **使用限制**: 只在 EventEditModal 中启用，PlanManager 中不启用
+   - **显示场景**: EventEditModal、TimeLog 页面（待开发）
+   - **不显示场景**: PlanManager（虽然可以编辑 eventlog，但不显示 timestamp）
 
 ### 10.3 重构优先级
 
 **P0（核心共享层，优先提炼）**:
-1. Timestamp 服务（⚠️ 需要外部 props 控制，PlanManager 不启用）
+1. Timestamp 服务（⚠️ 需要外部 props 控制显示/隐藏）
 2. Inline 元素操作（Tag、Emoji、DateMention）
 3. 格式化工具（Bold、Italic、Color）
 4. Bullet 操作（Tab/Shift+Tab）
@@ -903,7 +914,7 @@ const snapshotItems = snapshotRange
    - 可视化状态
 
 2. **提炼到 SlateCore 的共享功能**:
-   - Timestamp 服务（可共享，但需要外部 props 控制）
+   - Timestamp 服务（完全可共享，通过外部 props 控制显示场景）
    - Inline 元素操作（Tag、Emoji、DateMention）
    - Bullet 操作（Tab/Shift+Tab）
    - 格式化工具（Bold、Italic、Color）
