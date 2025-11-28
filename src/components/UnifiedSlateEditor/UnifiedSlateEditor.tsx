@@ -557,7 +557,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   // 🆕 增强的 value：始终在末尾添加一个 placeholder 提示行
   // 🛡️ PERFORMANCE FIX: 添加深度比较避免不必要的重计算
   const itemsHash = useMemo(() => {
-    return items.map(item => {
+    const hash = items.map(item => {
       // 🔧 修复：正确处理 EventTitle 对象
       const titleStr = typeof item.title === 'string' 
         ? item.title 
@@ -574,6 +574,14 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       
       return `${item.id}-${titleStr}-${tagsStr}-${eventlogStr}-${timeStr}-${item.updatedAt}`;
     }).join('|');
+    
+    console.log('%c[🔍 itemsHash 重新计算]', 'background: #9C27B0; color: white; padding: 2px 6px;', {
+      itemsLength: items.length,
+      hashLength: hash.length,
+      hashPreview: hash.substring(0, 100) + '...'
+    });
+    
+    return hash;
   }, [items]);
   
   const enhancedValue = useMemo(() => {
@@ -726,6 +734,11 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   
   // 🆕 监听 enhancedValue 变化，同步更新 value（绕过 eventsUpdated 去重检查）
   useEffect(() => {
+    console.log('%c[🔍 enhancedValue useEffect 触发]', 'background: #E91E63; color: white; padding: 2px 6px;', {
+      isInitialized: isInitializedRef.current,
+      enhancedValueLength: enhancedValue.length
+    });
+    
     if (!isInitializedRef.current) return;
     
     // 🔍 检查用户是否正在编辑
