@@ -717,11 +717,16 @@ const [items, setItems] = useState<PlanItem[]>([]);
 
 ### 8.3 Snapshot 模式支持
 
-**Snapshot 快照模式**: 查看历史时间范围的事件状态
+**Snapshot 快照模式**: 查看历史时间范围的事件状态（UnifiedSlate 独有核心功能）
+
+#### 8.3.1 Snapshot 模式概念
+
+Snapshot 模式允许用户"穿越"到过去的时间点，查看当时的事件状态：
 
 ```typescript
-// PlanManager.tsx - Snapshot 模式
+// PlanManager.tsx - Snapshot 状态
 const [snapshotRange, setSnapshotRange] = useState<{start: Date, end: Date} | null>(null);
+const [isSnapshotMode, setIsSnapshotMode] = useState(false);
 
 // 查询历史事件（包括已删除）
 const snapshotItems = snapshotRange
@@ -733,10 +738,147 @@ const snapshotItems = snapshotRange
   : [];
 
 <UnifiedSlateEditor
-  items={snapshotItems}
-  getEventStatus={(eventId) => getEventStatus(eventId, snapshotRange)}
+  items={isSnapshotMode ? snapshotItems : currentItems}
+  getEventStatus={(eventId) => getEventStatus(eventId, snapshotRange || currentDateRange)}
+  readOnly={isSnapshotMode}  // ✅ Snapshot 模式下只读
 />
 ```
+
+#### 8.3.2 StatusLineContainer 集成
+
+Snapshot 模式与 `StatusLineContainer` 深度集成，显示历史状态竖线：
+
+```typescript
+// UnifiedSlateEditor.tsx - StatusLineContainer
+{mode === 'title' && (
+  <StatusLineContainer
+    eventId={node.eventId}
+    status={eventStatus}  // ✅ 来自 getEventStatus(eventId, snapshotRange)
+    isDeleted={metadata._isDeleted || false}
+    level={node.level}
+  >
+    {/* EventLinePrefix + 内容 */}
+  </StatusLineContainer>
+)}
+```
+
+**StatusLineContainer 状态映射**:
+```typescript
+// 5种状态 + 删除标记
+type EventStatus = 'new' | 'updated' | 'done' | 'missed' | 'untouched';
+
+// 状态线颜色映射
+const statusColors = {
+  new: '#4CAF50',      // 绿色 - 新建
+  updated: '#2196F3',  // 蓝色 - 更新
+  done: '#9E9E9E',     // 灰色 - 完成
+  missed: '#F44336',   // 红色 - 错过
+  untouched: 'transparent'
+};
+
+// ✅ 删除事件显示红色竖线 + 半透明
+if (isDeleted) {
+  return <div style={{ borderLeft: '4px solid #F44336', opacity: 0.5 }} />;
+}
+```
+
+#### 8.3.3 删除标记 (_isDeleted / _deletedAt)
+
+Snapshot 模式依赖 `_isDeleted` 和 `_deletedAt` 字段标记已删除事件：
+
+```typescript
+// EventService.ts - 软删除
+async deleteEvent(eventId: string) {
+  const event = await this.getEvent(eventId);
+  event._isDeleted = true;
+  event._deletedAt = new Date().toISOString();
+  await this.storage.setItem(`event_${eventId}`, event);
+}
+
+// EventHistoryService.ts - 查询历史
+queryEventsInRange(options: {
+  startTime: string;
+  endTime: string;
+  includeDeleted?: boolean;  // ✅ Snapshot 模式需要 includeDeleted = true
+}) {
+  const events = await this.getAllEvents();
+  return events.filter(event => {
+    const inRange = isInTimeRange(event, startTime, endTime);
+    if (options.includeDeleted) {
+      return inRange;  // ✅ 包括已删除事件
+    }
+    return inRange && !event._isDeleted;
+  });
+}
+```
+
+#### 8.3.4 getEventStatus() 函数
+
+`getEventStatus()` 根据 `snapshotRange` 计算历史状态：
+
+```typescript
+// PlanManager.tsx - 状态计算
+function getEventStatus(eventId: string, dateRange: {start: Date, end: Date}): EventStatus {
+  const event = getEventById(eventId);
+  if (!event) return 'untouched';
+  
+  const createTime = new Date(event.createTime);
+  const updateTime = event.updateTime ? new Date(event.updateTime) : null;
+  
+  // ✅ Snapshot 模式：计算事件在历史时间范围的状态
+  if (isInRange(createTime, dateRange)) {
+    return 'new';  // 在该时间范围内创建
+  }
+  if (updateTime && isInRange(updateTime, dateRange)) {
+    return 'updated';  // 在该时间范围内更新
+  }
+  if (event.checkType && event.checked?.includes(eventId)) {
+    return 'done';  // 已完成
+  }
+  if (event.datetime && isPast(event.datetime, dateRange.end)) {
+    return 'missed';  // 错过（时间已过但未完成）
+  }
+  
+  return 'untouched';  // 未触碰
+}
+```
+
+#### 8.3.5 只读模式保护
+
+Snapshot 模式下编辑器自动进入只读状态，防止修改历史数据：
+
+```typescript
+<UnifiedSlateEditor
+  items={snapshotItems}
+  readOnly={isSnapshotMode}  // ✅ Snapshot 模式下只读
+  getEventStatus={(eventId) => getEventStatus(eventId, snapshotRange)}
+/>
+
+// UnifiedSlateEditor.tsx - 只读渲染
+const renderElement = useCallback((props: RenderElementProps) => {
+  if (readOnly) {
+    // ✅ 禁用所有交互（Checkbox、时间点击、More 按钮）
+    return <EventLineElementReadOnly {...props} />;
+  }
+  return <EventLineElement {...props} />;
+}, [readOnly]);
+```
+
+#### 8.3.6 与 LightSlate 的对比
+
+| 功能 | UnifiedSlate | LightSlate |
+|------|--------------|------------|
+| **Snapshot 模式** | ✅ 支持 | ❌ 无需（单内容编辑） |
+| **历史查询** | ✅ queryEventsInRange | ❌ |
+| **删除标记** | ✅ _isDeleted / _deletedAt | ❌ |
+| **状态计算** | ✅ getEventStatus(eventId, dateRange) | ❌ |
+| **只读保护** | ✅ readOnly prop | ✅ 支持（通用） |
+| **StatusLineContainer** | ✅ 历史状态竖线 | ❌ 无竖线 |
+
+**为什么 LightSlate 不需要 Snapshot?**
+- LightSlate 用于编辑单个内容（eventlog / timelog），不管理多个事件
+- Snapshot 是 PlanManager 的需求（查看历史时间范围的事件状态）
+- LightSlate 的历史记录由外部组件管理（EventEditModal 的历史面板）
 
 ---
 
