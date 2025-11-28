@@ -2172,7 +2172,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     
     const finalStartTime = eventTime.start || '';
     const finalEndTime = eventTime.end || '';
-    const isTask = isTaskByTime(eventTime);
+    // 🔄 优先使用 item.isTask（已经在 onSave 中自动设置），避免重新计算覆盖
+    const isTask = item.isTask !== undefined ? item.isTask : isTaskByTime(eventTime);
 
     // 🆕 v1.8: 根据标签映射到日历分组
     const tagIds = (item.tags || []).map(t => {

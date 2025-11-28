@@ -3761,7 +3761,7 @@ function renderTaskProgress(event: Event): ReactNode {
 
 ---
 
-## 🔧 v1.8 EventLog 保存架构优化 (2025-11-24)
+## 🔧 v1.8 EventLog 保存架构优化 (2025-11-29)
 
 ### 问题背景
 
@@ -3770,57 +3770,287 @@ function renderTaskProgress(event: Event): ReactNode {
 - 代码重复：每个编辑位置都需要重复转换逻辑
 - 维护困难：转换逻辑分散在多处
 - 容易出错：开发者可能忘记转换某些字段
+- **UI 层格式判断**: PlanSlate、EventEditModal 等组件需要判断 eventlog 是字符串还是对象
 
-### 解决方案：统一由 EventService 负责转换
+### 解决方案：EventService 作为唯一标准化层
 
-#### 1. EventService 自动转换逻辑
+#### 核心原则
+
+1. **EventService 是唯一的数据标准化层**
+   - 所有组件传递原始格式（Slate JSON 字符串、HTML、纯文本）
+   - EventService 自动检测格式并转换为标准 EventLog 对象
+   - UI 组件读取时直接使用标准化后的数据
+
+2. **支持 5 种输入格式**
+   - EventLog 对象（已标准化）→ 直接返回
+   - undefined/null → 返回空 EventLog
+   - Slate JSON 字符串 → 自动转换
+   - HTML 字符串 → 反向识别后转换
+   - 纯文本字符串 → 转换为单段落
+
+3. **HTML 反向识别机制**
+   - 从 Outlook 返回的 HTML 中识别 App 元素（Tag、DateMention 等）
+   - 精确匹配（data-* 属性）+ 模糊匹配（正则模式）
+   - 保留富文本格式（bold、italic、color 等）
+
+#### 1. normalizeEventLog() - 核心标准化方法
+
+**位置**: `src/services/EventService.ts` (L1391-1448)
 
 ```typescript
-// EventService.ts - 自动检测并转换 eventlog 格式
-class EventService {
-  async updateEvent(eventId: string, updates: Partial<Event>) {
-    const originalEvent = this.getEvent(eventId);
+/**
+ * 标准化 eventlog 字段
+ * 将各种格式的 eventlog 输入统一转换为 EventLog 对象
+ */
+private static normalizeEventLog(eventlogInput: any): EventLog {
+  // 情况1: 已经是 EventLog 对象
+  if (typeof eventlogInput === 'object' && eventlogInput !== null && 'slateJson' in eventlogInput) {
+    console.log('[EventService] eventlog 已是标准对象');
+    return eventlogInput as EventLog;
+  }
+  
+  // 情况2: undefined 或 null
+  if (eventlogInput === undefined || eventlogInput === null) {
+    console.log('[EventService] eventlog 为空，返回空对象');
+    return this.convertSlateJsonToEventLog('[]');
+  }
+  
+  // 情况3-5: 字符串格式（需要判断类型）
+  if (typeof eventlogInput === 'string') {
+    const trimmed = eventlogInput.trim();
     
-    // ✅ 场景2: eventlog 有变化 → 自动转换为 EventLog 对象
-    if (updates.eventlog !== undefined) {
-      const isSlateJsonString = typeof updates.eventlog === 'string' && 
-                                 updates.eventlog.trim().startsWith('[');
-      
-      if (isSlateJsonString) {
-        // 🔧 前端传递 Slate JSON 字符串 → 自动转换
-        const slateNodes = jsonToSlateNodes(updates.eventlog);
-        const html = slateNodesToHtml(slateNodes);
-        const plainText = html.replace(/<[^>]*>/g, '');
-        
-        // 构建完整的 EventLog 对象
-        updates.eventlog = {
-          slateJson: updates.eventlog,         // Slate JSON
-          html: html,                          // HTML 版本
-          plainText: plainText,                // 纯文本
-          attachments: originalEvent.eventlog?.attachments || [],
-          versions: originalEvent.eventlog?.versions || [],
-          syncState: {
-            status: 'pending',
-            contentHash: this.hashContent(updates.eventlog),
-          },
-          createdAt: originalEvent.eventlog?.createdAt || formatTimeForStorage(new Date()),
-          updatedAt: formatTimeForStorage(new Date()),
-        };
-        
-        // 自动同步到 description（用于 Outlook）
-        if (updates.description === undefined) {
-          updates.description = updates.eventlog.html;
-        }
-      }
+    // 空字符串
+    if (!trimmed) {
+      return this.convertSlateJsonToEventLog('[]');
     }
     
-    // 保存到 localStorage
-    // ...
+    // Slate JSON 字符串（以 [ 开头）
+    if (trimmed.startsWith('[')) {
+      console.log('[EventService] 检测到 Slate JSON 字符串');
+      return this.convertSlateJsonToEventLog(eventlogInput);
+    }
+    
+    // HTML 字符串（包含标签）
+    if (trimmed.startsWith('<') || trimmed.includes('<p>') || trimmed.includes('<div>')) {
+      console.log('[EventService] 检测到 HTML 字符串，进行反向识别');
+      // 使用反向识别将 HTML 转换为 Slate JSON
+      const slateJson = this.htmlToSlateJsonWithRecognition(eventlogInput);
+      return this.convertSlateJsonToEventLog(slateJson);
+    }
+    
+    // 纯文本字符串
+    console.log('[EventService] 检测到纯文本，转换为单段落');
+    const slateJson = JSON.stringify([{
+      type: 'paragraph',
+      children: [{ text: eventlogInput }]
+    }]);
+    return this.convertSlateJsonToEventLog(slateJson);
+  }
+  
+  // 未知格式 - 降级为空
+  console.warn('[EventService] 未知 eventlog 格式:', typeof eventlogInput);
+  return this.convertSlateJsonToEventLog('[]');
+}
+
+/**
+ * 将 Slate JSON 字符串转换为完整的 EventLog 对象
+ */
+private static convertSlateJsonToEventLog(slateJson: string): EventLog {
+  try {
+    const slateNodes = jsonToSlateNodes(slateJson);
+    const htmlDescription = slateNodesToHtml(slateNodes);
+    const plainTextDescription = htmlDescription.replace(/<[^>]*>/g, '');
+    
+    return {
+      slateJson: slateJson,
+      html: htmlDescription,
+      plainText: plainTextDescription,
+      attachments: [],
+      versions: [],
+      syncState: {
+        status: 'pending',
+        contentHash: this.hashContent(slateJson),
+      },
+      createdAt: formatTimeForStorage(new Date()),
+      updatedAt: formatTimeForStorage(new Date()),
+    };
+  } catch (error) {
+    console.error('[EventService] convertSlateJsonToEventLog 失败:', error);
+    // 降级返回空对象
+    return {
+      slateJson: '[]',
+      html: '',
+      plainText: '',
+      attachments: [],
+      versions: [],
+      syncState: { status: 'pending' },
+      createdAt: formatTimeForStorage(new Date()),
+      updatedAt: formatTimeForStorage(new Date()),
+    };
   }
 }
 ```
 
-#### 2. 前端组件简化
+#### 2. htmlToSlateJsonWithRecognition() - HTML 反向识别
+
+**位置**: `src/services/EventService.ts` (L1488-1518)
+
+**功能**: 从 Outlook 返回的 HTML 中识别 App 元素
+
+```typescript
+/**
+ * HTML 转换为 Slate JSON（含反向识别）
+ * 从 Outlook 返回的 HTML 中识别出 App 元素（Tag、DateMention 等）
+ */
+private static htmlToSlateJsonWithRecognition(html: string): string {
+  try {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    
+    const slateNodes: any[] = [];
+    
+    // 遍历 HTML 节点并转换
+    this.parseHtmlNode(tempDiv, slateNodes);
+    
+    // 确保至少有一个段落
+    if (slateNodes.length === 0) {
+      slateNodes.push({
+        type: 'paragraph',
+        children: [{ text: '' }]
+      });
+    }
+    
+    return JSON.stringify(slateNodes);
+  } catch (error) {
+    console.error('[EventService] htmlToSlateJsonWithRecognition 失败:', error);
+    return '[]';
+  }
+}
+```
+
+**识别策略**:
+1. **精确匹配**（优先）
+   - 检查 `data-tag-id`、`data-tag-name` → TagNode
+   - 检查 `data-type="dateMention"`、`data-start-date` → DateMentionNode
+
+2. **模糊匹配**（降级）
+   - 文本模式 `@工作` → TagNode
+   - 文本模式 `11/29 10:00` → DateMentionNode
+   - 文本模式 `今天下午3点` → DateMentionNode
+
+#### 3. 反向识别辅助函数
+
+**recognizeTagNodeByPattern()** - Tag 节点模糊匹配
+```typescript
+/**
+ * 使用正则模式识别 TagNode
+ * 支持: "@工作", "💼 @工作", "📅 @会议"
+ */
+private static recognizeTagNodeByPattern(text: string): Array<{ index: number; length: number; node: any }> {
+  const matches: Array<{ index: number; length: number; node: any }> = [];
+  const tagPattern = /((?:[\p{Emoji}]\s*)?@[\w\u4e00-\u9fa5]+)/gu;
+  
+  let match;
+  while ((match = tagPattern.exec(text)) !== null) {
+    const fullMatch = match[0];
+    const emojiMatch = fullMatch.match(/^([\p{Emoji}])\s*@(.+)$/u);
+    const tagEmoji = emojiMatch ? emojiMatch[1] : undefined;
+    const tagName = emojiMatch ? emojiMatch[2] : fullMatch.replace('@', '');
+    
+    matches.push({
+      index: match.index,
+      length: fullMatch.length,
+      node: {
+        type: 'tag',
+        tagId: `tag_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        tagName: tagName,
+        tagEmoji: tagEmoji,
+        children: [{ text: '' }]
+      }
+    });
+  }
+  
+  return matches;
+}
+```
+
+**recognizeDateMentionByPattern()** - DateMention 节点模糊匹配
+```typescript
+/**
+ * 使用正则模式识别 DateMentionNode
+ * 支持 3 种格式:
+ *   1. "11/29 10:00" or "11/29 10:00 - 12:00"
+ *   2. "2025-11-29 10:00"
+ *   3. "今天下午3点"
+ */
+private static recognizeDateMentionByPattern(text: string): Array<{ index: number; length: number; node: any }> {
+  const matches: Array<{ index: number; length: number; node: any }> = [];
+  
+  const patterns = [
+    /(\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}(?:\s*-\s*\d{1,2}:\d{2})?)/g,
+    /(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}(?:\s*-\s*\d{2}:\d{2})?)/g,
+    /(今天|明天|后天|下周[一二三四五六日])(?:\s*(上午|下午|晚上))?(?:\s*(\d{1,2})点)?/g,
+  ];
+  
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const fullMatch = match[0];
+      const startDate = this.parseSimpleDate(fullMatch);
+      
+      if (startDate) {
+        matches.push({
+          index: match.index,
+          length: fullMatch.length,
+          node: {
+            type: 'dateMention',
+            startDate: startDate,
+            originalText: fullMatch,
+            isOutdated: false,
+            children: [{ text: '' }]
+          }
+        });
+      }
+    }
+  }
+  
+  return matches;
+}
+```
+
+#### 4. getEventById() 调用标准化
+
+**位置**: `src/services/EventService.ts` (L175-194)
+
+```typescript
+/**
+ * 根据ID获取事件
+ * 🔧 性能优化：只规范化目标事件的 title 和 eventlog，避免全量处理
+ */
+static getEventById(eventId: string): Event | null {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
+    if (!saved) return null;
+    
+    const events: Event[] = JSON.parse(saved);
+    const event = events.find(e => e.id === eventId);
+    
+    if (!event) return null;
+    
+    // ✅ 规范化 title 和 eventlog
+    return {
+      ...event,
+      title: this.normalizeTitle(event.title),
+      eventlog: this.normalizeEventLog(event.eventlog)  // ✅ 自动标准化
+    };
+  } catch (error) {
+    eventLogger.error('❌ [EventService] Failed to get event by ID:', error);
+    return null;
+  }
+}
+```
+
+#### 5. 前端组件简化
 
 ```typescript
 // EventEditModalV2.tsx - 只传递 Slate JSON 字符串
@@ -3842,6 +4072,18 @@ const handleSave = async () => {
   // EventHub/EventService 会自动转换为 EventLog 对象
   await EventHub.updateFields(eventId, updatedEvent);
 };
+```
+
+```typescript
+// ActionBasedSyncManager.tsx - 统一传递 Slate JSON 字符串
+const outlookDescription = outlookEvent.body?.content || '';
+
+// ✅ 简化：只传递 Slate JSON 字符串，让 EventService 自动转换
+const slateJson = htmlToSlateJson(outlookDescription);
+
+await EventService.updateEvent(eventId, {
+  eventlog: slateJson,  // EventService 会自动识别并转换
+});
 ```
 
 #### 3. Timer 保存逻辑修复
@@ -3888,13 +4130,17 @@ const timerEvent: Event = {
 ✅ **代码简洁**：前端组件只需传递 Slate JSON  
 ✅ **易于维护**：转换逻辑集中在一处  
 ✅ **向后兼容**：支持多种输入格式（EventLog 对象、Slate JSON、旧格式）  
-✅ **防止数据丢失**：Timer 自动保存不会覆盖用户编辑的 eventlog
+✅ **防止数据丢失**：Timer 自动保存不会覆盖用户编辑的 eventlog  
+✅ **反向识别**：从 Outlook HTML 中识别 App 元素（Tag、DateMention）  
+✅ **格式统一**：UI 层无需判断 eventlog 是字符串还是对象
 
-### 数据流向
+### 完整数据流向
+
+#### 流程1: 内部编辑 → 外部同步
 
 ```
 用户输入 (LightSlateEditor)
-  ↓ onChange (Slate JSON)
+  ↓ onChange (Slate JSON 字符串)
 EventEditModalV2.handleTimelogChange(slateJson: string)
   ↓
 formData.eventlog = slateJson  // ✅ 字符串
@@ -3902,20 +4148,131 @@ formData.eventlog = slateJson  // ✅ 字符串
 handleSave() → EventHub.updateFields()
   ↓
 EventService.updateEvent(eventId, { eventlog: slateJson })
-  ↓ 自动检测格式
-EventService 内部转换
-  ├─ jsonToSlateNodes(slateJson)
-  ├─ slateNodesToHtml(nodes)
-  └─ 构建 EventLog 对象 { slateJson, html, plainText }
+  ↓ 
+EventService.normalizeEventLog(slateJson)
+  ├─ 检测格式: Slate JSON 字符串
+  ├─ convertSlateJsonToEventLog()
+  │   ├─ jsonToSlateNodes(slateJson)
+  │   ├─ slateNodesToHtml(nodes)
+  │   └─ 构建 EventLog 对象 { slateJson, html, plainText, ... }
+  └─ 返回 EventLog 对象
   ↓
 localStorage 持久化 (EventLog 对象格式)
   ↓
-Outlook 同步 (使用 descriptionHtml)
+ActionBasedSyncManager 读取 eventlog.html
+  ↓
+Outlook API (body.content = html)
+```
+
+#### 流程2: 外部同步 → 内部识别
+
+```
+Outlook 事件更新 (body.content = HTML)
+  ↓
+ActionBasedSyncManager.handleIncomingUpdate()
+  ↓
+htmlToSlateJson(outlookHtml)  // 基础转换
+  ↓
+EventService.updateEvent(eventId, { eventlog: slateJson })
+  ↓
+EventService.normalizeEventLog(slateJson)
+  ├─ 检测格式: HTML 字符串（如果包含标签）
+  ├─ htmlToSlateJsonWithRecognition(html)
+  │   ├─ parseHtmlNode() - 递归解析
+  │   ├─ recognizeByDataAttributes() - 精确匹配
+  │   │   ├─ data-tag-id → TagNode
+  │   │   └─ data-type="dateMention" → DateMentionNode
+  │   └─ recognizeInlineElements() - 模糊匹配
+  │       ├─ recognizeTagNodeByPattern() - "@工作"
+  │       └─ recognizeDateMentionByPattern() - "11/29 10:00"
+  ├─ convertSlateJsonToEventLog()
+  └─ 返回 EventLog 对象（含识别的元素）
+  ↓
+localStorage 持久化
+  ↓
+EventHub.emit('eventsUpdated')
+  ↓
+前端组件重新渲染（显示 Tag、DateMention）
+```
+
+#### 流程3: 读取时标准化
+
+```
+PlanManager.loadEvents()
+  ↓
+EventService.getEventById(eventId)
+  ↓
+从 localStorage 读取原始数据
+  ├─ 可能是 EventLog 对象（新数据）
+  ├─ 可能是 Slate JSON 字符串（中间状态）
+  └─ 可能是 HTML 字符串（旧数据）
+  ↓
+EventService.normalizeEventLog(event.eventlog)
+  ├─ 自动检测格式
+  ├─ 统一转换为 EventLog 对象
+  └─ 返回标准化数据
+  ↓
+PlanManager 直接使用 eventlog.slateJson
+  ↓
+LightSlateEditor 渲染（无需格式判断）
 ```
 
 ---
 
-## 🔧 v1.9 EventLog 与 Description 字段转换机制详解 (2025-11-25)
+### 已知限制与改进方向
+
+#### 1. 简化的日期解析
+
+**当前**: 使用简化版 `parseSimpleDate()`  
+**问题**: 只支持 3 种基本格式  
+**解决方案**: 集成 TimeHub 的 `parseNaturalLanguageDate()`
+
+```typescript
+// TODO: 替换为 TimeHub 解析
+const parsedDate = TimeHub.parseNaturalLanguageDate(dateText);
+```
+
+#### 2. Tag 创建逻辑
+
+**当前**: 模糊匹配时创建临时 ID  
+**问题**: 无法关联到现有标签  
+**解决方案**: 注入 TagService 或使用事件总线
+
+```typescript
+// TODO: 查询现有标签
+const existingTag = TagService.findTagByName(tagName);
+if (existingTag) {
+  return existingTag.id;
+}
+```
+
+#### 3. ElementsMetadata 辅助字段（P1 优先级）
+
+**目标**: 提升反向识别速度和准确性
+
+```typescript
+interface EventLog {
+  slateJson: string;
+  html: string;
+  plainText: string;
+  elementsMetadata?: {  // 🆕 辅助字段
+    tags: Array<{ tagId: string; tagName: string; textPattern: string; position: { start: number; end: number } }>;
+    dateMentions: Array<{ startDate: string; textPattern: string; position: { start: number; end: number } }>;
+    totalElements: number;
+    lastUpdated: string;
+  };
+  // ...
+}
+```
+
+**使用场景**:
+- 保存时生成 ElementsMetadata
+- Outlook 回传时使用 textPattern 快速匹配（O(n) vs O(n*m)）
+- 降级到正则匹配（失败时）
+
+---
+
+## 🔧 v1.9 EventLog 与 Description 字段转换机制详解 (2025-11-29)
 
 ### 核心架构概览
 
@@ -3923,12 +4280,14 @@ Outlook 同步 (使用 descriptionHtml)
 - `eventlog` 字段：存储富文本内容（Slate JSON），支持版本历史、附件等复杂功能
 - `description` 字段：传统文本字段，用于 Outlook/Google Calendar 同步
 - 两者需要保持同步，但格式和用途不同
+- **v1.8 新增**: HTML 反向识别机制，自动从 Outlook HTML 中恢复 App 元素
 
 **设计目标**：
 1. ✅ 单一数据源：`eventlog` 为主，`description` 为同步用派生字段
 2. ✅ 自动转换：组件层无需关心格式转换，EventService 统一处理
 3. ✅ 双向同步：内部编辑 → 外部同步，外部更新 → 内部同步
 4. ✅ 数据完整性：保留 eventlog 的元数据（attachments、versions、syncState）
+5. ✅ 反向识别：从 Outlook HTML 中识别并恢复 Tag、DateMention 等元素
 
 ### 1. 数据结构定义
 
@@ -3968,123 +4327,294 @@ interface Event {
 
 ### 2. 转换机制详解
 
-#### 2.1 输入格式自动检测与转换（EventService）
+#### 2.1 输入格式自动检测与转换（normalizeEventLog）
+
+**位置**: `src/services/EventService.ts` (L1391-1448)
 
 ```typescript
-// EventService.ts - updateEvent 方法
-class EventService {
-  async updateEvent(eventId: string, updates: Partial<Event>) {
-    const originalEvent = this.getEvent(eventId);
-    
-    // ========== 场景1: eventlog 字段更新 ==========
-    if (updates.eventlog !== undefined) {
-      const inputType = this.detectEventLogFormat(updates.eventlog);
-      
-      switch (inputType) {
-        case 'slate-json-string':
-          // 🔧 前端传递 Slate JSON 字符串（最常见）
-          updates.eventlog = this.convertSlateJsonToEventLog(
-            updates.eventlog as string,
-            originalEvent.eventlog
-          );
-          // 自动同步到 description（用于 Outlook）
-          if (updates.description === undefined) {
-            updates.description = updates.eventlog.html;
-          }
-          break;
-          
-        case 'eventlog-object':
-          // ✅ 完整的 EventLog 对象（已经转换好）
-          // 直接使用，同步 description
-          if (updates.description === undefined) {
-            updates.description = (updates.eventlog as EventLog).html;
-          }
-          break;
-          
-        case 'plain-html':
-          // 🔧 旧版兼容：纯 HTML 字符串
-          updates.eventlog = {
-            slateJson: htmlToSlateJson(updates.eventlog as string),
-            html: updates.eventlog as string,
-            plainText: stripHtmlTags(updates.eventlog as string),
-            createdAt: originalEvent.eventlog?.createdAt || formatTimeForStorage(new Date()),
-            updatedAt: formatTimeForStorage(new Date()),
-          };
-          break;
-      }
-    }
-    
-    // ========== 场景2: description 字段更新（外部同步回来的数据） ==========
-    if (updates.description !== undefined && updates.eventlog === undefined) {
-      // 🔥 外部同步更新了 description，需要反向同步到 eventlog
-      const existingEventLog = originalEvent.eventlog;
-      
-      if (typeof existingEventLog === 'object') {
-        // 保留 eventlog 的元数据（attachments、versions、syncState）
-        updates.eventlog = {
-          ...existingEventLog,
-          slateJson: htmlToSlateJson(updates.description),
-          html: updates.description,
-          plainText: stripHtmlTags(updates.description),
-          updatedAt: formatTimeForStorage(new Date()),
-        };
-      } else {
-        // 如果原来没有 eventlog，创建新的
-        updates.eventlog = {
-          slateJson: htmlToSlateJson(updates.description),
-          html: updates.description,
-          plainText: stripHtmlTags(updates.description),
-          createdAt: formatTimeForStorage(new Date()),
-          updatedAt: formatTimeForStorage(new Date()),
-        };
-      }
-    }
-    
-    // 保存到 localStorage
-    // ...
+/**
+ * 标准化 eventlog 字段 - 支持 5 种输入格式
+ */
+private static normalizeEventLog(eventlogInput: any): EventLog {
+  // ========== 场景1: 已经是 EventLog 对象 ==========
+  if (typeof eventlogInput === 'object' && eventlogInput !== null && 'slateJson' in eventlogInput) {
+    console.log('[EventService] eventlog 已是标准对象');
+    return eventlogInput as EventLog;
   }
   
-  // 格式检测辅助函数
-  private detectEventLogFormat(input: any): 'slate-json-string' | 'eventlog-object' | 'plain-html' {
-    if (typeof input === 'string') {
-      if (input.trim().startsWith('[')) {
-        return 'slate-json-string';  // Slate JSON 数组
-      } else {
-        return 'plain-html';  // HTML 字符串
-      }
-    } else if (typeof input === 'object' && input.content) {
-      return 'eventlog-object';  // 完整的 EventLog 对象
-    }
-    return 'plain-html';  // 默认
+  // ========== 场景2: undefined 或 null ==========
+  if (eventlogInput === undefined || eventlogInput === null) {
+    console.log('[EventService] eventlog 为空，返回空对象');
+    return this.convertSlateJsonToEventLog('[]');
   }
   
-  // Slate JSON → EventLog 对象转换
-  private convertSlateJsonToEventLog(
-    slateJson: string, 
-    originalEventLog?: EventLog | string
-  ): EventLog {
+  // ========== 场景3-5: 字符串格式（需要判断类型）==========
+  if (typeof eventlogInput === 'string') {
+    const trimmed = eventlogInput.trim();
+    
+    // 空字符串
+    if (!trimmed) {
+      return this.convertSlateJsonToEventLog('[]');
+    }
+    
+    // 场景3: Slate JSON 字符串（以 [ 开头）
+    if (trimmed.startsWith('[')) {
+      console.log('[EventService] 检测到 Slate JSON 字符串');
+      return this.convertSlateJsonToEventLog(eventlogInput);
+    }
+    
+    // 场景4: HTML 字符串（包含标签）→ 反向识别
+    if (trimmed.startsWith('<') || trimmed.includes('<p>') || trimmed.includes('<div>')) {
+      console.log('[EventService] 检测到 HTML 字符串，进行反向识别');
+      // ✅ 使用反向识别将 HTML 转换为 Slate JSON
+      const slateJson = this.htmlToSlateJsonWithRecognition(eventlogInput);
+      return this.convertSlateJsonToEventLog(slateJson);
+    }
+    
+    // 场景5: 纯文本字符串
+    console.log('[EventService] 检测到纯文本，转换为单段落');
+    const slateJson = JSON.stringify([{
+      type: 'paragraph',
+      children: [{ text: eventlogInput }]
+    }]);
+    return this.convertSlateJsonToEventLog(slateJson);
+  }
+  
+  // 未知格式 - 降级为空
+  console.warn('[EventService] 未知 eventlog 格式:', typeof eventlogInput);
+  return this.convertSlateJsonToEventLog('[]');
+}
+```
+
+**convertSlateJsonToEventLog()** - Slate JSON → EventLog 对象
+```typescript
+/**
+ * 将 Slate JSON 字符串转换为完整的 EventLog 对象
+ */
+private static convertSlateJsonToEventLog(slateJson: string): EventLog {
+  try {
     const slateNodes = jsonToSlateNodes(slateJson);
-    const html = slateNodesToHtml(slateNodes);
-    const plainText = stripHtmlTags(html);
-    
-    // 保留原有的元数据
-    const existingMeta = typeof originalEventLog === 'object' ? originalEventLog : {};
+    const htmlDescription = slateNodesToHtml(slateNodes);
+    const plainTextDescription = htmlDescription.replace(/<[^>]*>/g, '');
     
     return {
       slateJson: slateJson,
-      html: html,
-      plainText: plainText,
-      attachments: existingMeta.attachments || [],
-      versions: existingMeta.versions || [],
+      html: htmlDescription,
+      plainText: plainTextDescription,
+      attachments: [],
+      versions: [],
       syncState: {
         status: 'pending',
         contentHash: this.hashContent(slateJson),
-        lastSyncTime: formatTimeForStorage(new Date()),
       },
-      createdAt: existingMeta.createdAt || formatTimeForStorage(new Date()),
+      createdAt: formatTimeForStorage(new Date()),
+      updatedAt: formatTimeForStorage(new Date()),
+    };
+  } catch (error) {
+    console.error('[EventService] convertSlateJsonToEventLog 失败:', error);
+    // 降级返回空对象
+    return {
+      slateJson: '[]',
+      html: '',
+      plainText: '',
+      attachments: [],
+      versions: [],
+      syncState: { status: 'pending' },
+      createdAt: formatTimeForStorage(new Date()),
       updatedAt: formatTimeForStorage(new Date()),
     };
   }
+}
+```
+
+**htmlToSlateJsonWithRecognition()** - HTML → Slate JSON（含反向识别）
+```typescript
+/**
+ * HTML 转换为 Slate JSON（含反向识别）
+ * 从 Outlook 返回的 HTML 中识别出 App 元素（Tag、DateMention 等）
+ */
+private static htmlToSlateJsonWithRecognition(html: string): string {
+  try {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    
+    const slateNodes: any[] = [];
+    
+    // 遍历 HTML 节点并转换
+    this.parseHtmlNode(tempDiv, slateNodes);
+    
+    // 确保至少有一个段落
+    if (slateNodes.length === 0) {
+      slateNodes.push({
+        type: 'paragraph',
+        children: [{ text: '' }]
+      });
+    }
+    
+    return JSON.stringify(slateNodes);
+  } catch (error) {
+    console.error('[EventService] htmlToSlateJsonWithRecognition 失败:', error);
+    return '[]';
+  }
+}
+
+/**
+ * 递归解析 HTML 节点
+ * 处理块级元素、格式化元素、data-* 属性识别、文本模式匹配
+ */
+private static parseHtmlNode(node: Node, slateNodes: any[]): void {
+  if (node.nodeType === Node.TEXT_NODE) {
+    const text = node.textContent || '';
+    if (text.trim()) {
+      // 检查文本中是否包含 Tag 或 DateMention 模式
+      const fragments = this.recognizeInlineElements(text);
+      slateNodes.push(...fragments);
+    }
+  } else if (node.nodeType === Node.ELEMENT_NODE) {
+    const element = node as HTMLElement;
+    
+    // 1. 精确匹配：检查 data-* 属性
+    const recognizedNode = this.recognizeByDataAttributes(element);
+    if (recognizedNode) {
+      slateNodes.push(recognizedNode);
+      return;
+    }
+    
+    // 2. 块级元素：段落、列表等
+    if (element.tagName === 'P' || element.tagName === 'DIV') {
+      const paragraphChildren: any[] = [];
+      element.childNodes.forEach(child => {
+        this.parseHtmlNode(child, paragraphChildren);
+      });
+      
+      if (paragraphChildren.length > 0) {
+        slateNodes.push({
+          type: 'paragraph',
+          children: paragraphChildren
+        });
+      }
+      return;
+    }
+    
+    // 3. 格式化元素：bold, italic, underline 等
+    if (['STRONG', 'B', 'EM', 'I', 'U', 'S', 'SPAN'].includes(element.tagName)) {
+      const marks: any = {};
+      
+      if (element.tagName === 'STRONG' || element.tagName === 'B') marks.bold = true;
+      if (element.tagName === 'EM' || element.tagName === 'I') marks.italic = true;
+      if (element.tagName === 'U') marks.underline = true;
+      if (element.tagName === 'S') marks.strikethrough = true;
+      
+      // 提取颜色
+      const style = element.getAttribute('style');
+      if (style) {
+        const colorMatch = style.match(/color:\s*([^;]+)/);
+        const bgColorMatch = style.match(/background-color:\s*([^;]+)/);
+        if (colorMatch) marks.color = colorMatch[1].trim();
+        if (bgColorMatch) marks.backgroundColor = bgColorMatch[1].trim();
+      }
+      
+      // 递归处理子节点
+      element.childNodes.forEach(child => {
+        if (child.nodeType === Node.TEXT_NODE) {
+          slateNodes.push({ text: child.textContent || '', ...marks });
+        } else {
+          this.parseHtmlNode(child, slateNodes);
+        }
+      });
+      return;
+    }
+    
+    // 4. 其他元素：递归处理子节点
+    element.childNodes.forEach(child => {
+      this.parseHtmlNode(child, slateNodes);
+    });
+  }
+}
+```
+
+**recognizeByDataAttributes()** - 精确匹配（data-* 属性）
+```typescript
+/**
+ * 通过 data-* 属性精确识别元素
+ */
+private static recognizeByDataAttributes(element: HTMLElement): any | null {
+  // TagNode 识别
+  if (element.hasAttribute('data-tag-id')) {
+    return {
+      type: 'tag',
+      tagId: element.getAttribute('data-tag-id') || '',
+      tagName: element.getAttribute('data-tag-name') || '',
+      tagColor: element.getAttribute('data-tag-color') || undefined,
+      tagEmoji: element.getAttribute('data-tag-emoji') || undefined,
+      mentionOnly: element.hasAttribute('data-mention-only'),
+      children: [{ text: '' }]
+    };
+  }
+  
+  // DateMentionNode 识别
+  if (element.getAttribute('data-type') === 'dateMention' || element.hasAttribute('data-start-date')) {
+    const startDate = element.getAttribute('data-start-date');
+    if (startDate) {
+      return {
+        type: 'dateMention',
+        startDate: startDate,
+        endDate: element.getAttribute('data-end-date') || undefined,
+        eventId: element.getAttribute('data-event-id') || undefined,
+        originalText: element.getAttribute('data-original-text') || undefined,
+        isOutdated: element.getAttribute('data-is-outdated') === 'true',
+        children: [{ text: '' }]
+      };
+    }
+  }
+  
+  return null;
+}
+```
+
+**recognizeInlineElements()** - 模糊匹配（正则模式）
+```typescript
+/**
+ * 识别文本中的内联元素（Tag、DateMention）
+ * 使用正则模式进行模糊匹配
+ */
+private static recognizeInlineElements(text: string): any[] {
+  const fragments: any[] = [];
+  let lastIndex = 0;
+  
+  // 1. 尝试识别 TagNode
+  const tagMatches = this.recognizeTagNodeByPattern(text);
+  
+  // 2. 尝试识别 DateMentionNode
+  const dateMatches = this.recognizeDateMentionByPattern(text);
+  
+  // 合并所有匹配结果并排序
+  const allMatches = [...tagMatches, ...dateMatches].sort((a, b) => a.index - b.index);
+  
+  // 构建最终的 fragments
+  for (const match of allMatches) {
+    // 添加匹配前的纯文本
+    if (match.index > lastIndex) {
+      fragments.push({ text: text.slice(lastIndex, match.index) });
+    }
+    
+    // 添加识别的节点
+    fragments.push(match.node);
+    
+    lastIndex = match.index + match.length;
+  }
+  
+  // 添加剩余的文本
+  if (lastIndex < text.length) {
+    fragments.push({ text: text.slice(lastIndex) });
+  }
+  
+  // 如果没有匹配任何元素，返回整个文本
+  if (fragments.length === 0) {
+    fragments.push({ text: text });
+  }
+  
+  return fragments;
 }
 ```
 
