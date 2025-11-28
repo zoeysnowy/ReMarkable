@@ -2410,8 +2410,14 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                         onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
                         onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                       >
-                        <span style={{ pointerEvents: 'none', flexShrink: 0 }}>{getSyncModeInfo(sourceSyncMode).emoji}</span>
-                        <span style={{ pointerEvents: 'none', flexShrink: 0 }}>{getSyncModeInfo(sourceSyncMode).name}</span>
+                        <span style={{ flexShrink: 0, pointerEvents: 'none' }}>{getSyncModeInfo(sourceSyncMode).emoji}</span>
+                        <span style={{ 
+                          flexShrink: 0, 
+                          pointerEvents: 'none',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}>{getSyncModeInfo(sourceSyncMode).name}</span>
                       </div>
                       
                       {showSourceSyncModePicker && createPortal(
@@ -2673,7 +2679,13 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                         >
                           <span style={{ flexShrink: 0, pointerEvents: 'none' }}>{getSyncModeInfo(syncSyncMode).emoji}</span>
-                          <span style={{ flexShrink: 0, pointerEvents: 'none' }}>{getSyncModeInfo(syncSyncMode).name}</span>
+                          <span style={{ 
+                            flexShrink: 0, 
+                            pointerEvents: 'none',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}>{getSyncModeInfo(syncSyncMode).name}</span>
                         </div>
                         
                         {showSyncSyncModePicker && createPortal(

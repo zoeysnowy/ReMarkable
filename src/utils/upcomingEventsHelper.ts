@@ -54,57 +54,40 @@ export function getTimeRange(filter: TimeFilter, now: Date = new Date()): { star
 
 /**
  * 判断事件是否在指定时间范围内
- * ✅ 符合 TIME_ARCHITECTURE：优先使用 timeSpec.resolved
+ * ✅ 符合 TIME_ARCHITECTURE：强制使用 timeSpec.resolved
  */
 export function isEventInRange(event: Event, start: Date, end: Date): boolean {
-  // ✅ 优先检查 timeSpec.resolved（TIME_ARCHITECTURE 规范）
-  if (event.timeSpec?.resolved?.start) {
-    const eventStart = new Date(event.timeSpec.resolved.start);
-    return eventStart >= start && eventStart <= end;
+  // ✅ 强制使用 timeSpec.resolved（TIME_ARCHITECTURE 规范）
+  if (!event.timeSpec?.resolved?.start) {
+    return false; // 没有 timeSpec 的事件不显示
   }
   
-  // ⚠️ Fallback: 向后兼容旧数据（没有 timeSpec 的事件）
-  if (!event.startTime && !event.endTime) {
-    return false; // 没有时间信息的事件不显示
-  }
-
-  const timeString = event.startTime || event.endTime;
-  if (!timeString) return false;
-
-  const eventDate = new Date(timeString);
-  
-  return eventDate >= start && eventDate <= end;
+  const eventStart = new Date(event.timeSpec.resolved.start);
+  return eventStart >= start && eventStart <= end;
 }
 
 /**
  * 判断事件是否已过期
- * ✅ 符合 TIME_ARCHITECTURE：优先使用 timeSpec.resolved
+ * ✅ 符合 TIME_ARCHITECTURE：强制使用 timeSpec.resolved
  */
 export function isEventExpired(event: Event, now: Date = new Date()): boolean {
-  // ✅ 优先检查 timeSpec.resolved（TIME_ARCHITECTURE 规范）
-  if (event.timeSpec?.resolved) {
-    const resolved = event.timeSpec.resolved;
-    
-    // 如果有结束时间，使用结束时间判断
-    if (resolved.end) {
-      const eventEnd = new Date(resolved.end);
-      return eventEnd < now;
-    }
-    
-    // 如果只有开始时间，使用开始时间判断
-    if (resolved.start) {
-      const eventStart = new Date(resolved.start);
-      return eventStart < now;
-    }
+  // ✅ 强制使用 timeSpec.resolved（TIME_ARCHITECTURE 规范）
+  if (!event.timeSpec?.resolved) {
+    return false; // 没有 timeSpec 的事件认为未过期
   }
   
-  // ⚠️ Fallback: 向后兼容旧数据（没有 timeSpec 的事件）
-  if (event.endTime) {
-    const eventDate = new Date(event.endTime);
-    return eventDate < now;
-  } else if (event.startTime) {
-    const eventDate = new Date(event.startTime);
-    return eventDate < now;
+  const resolved = event.timeSpec.resolved;
+  
+  // 如果有结束时间，使用结束时间判断
+  if (resolved.end) {
+    const eventEnd = new Date(resolved.end);
+    return eventEnd < now;
+  }
+  
+  // 如果只有开始时间，使用开始时间判断
+  if (resolved.start) {
+    const eventStart = new Date(resolved.start);
+    return eventStart < now;
   }
   
   // 没有时间信息，认为未过期
@@ -113,26 +96,20 @@ export function isEventExpired(event: Event, now: Date = new Date()): boolean {
 
 /**
  * 计算事件距离现在的时间差（用于排序）
- * ✅ 符合 TIME_ARCHITECTURE：优先使用 timeSpec.resolved
+ * ✅ 符合 TIME_ARCHITECTURE：强制使用 timeSpec.resolved
  */
 export function getEventTimeDiff(event: Event, now: Date = new Date()): number {
-  // ✅ 优先检查 timeSpec.resolved（TIME_ARCHITECTURE 规范）
-  if (event.timeSpec?.resolved) {
-    const timeString = event.timeSpec.resolved.start || event.timeSpec.resolved.end;
-    if (timeString) {
-      const eventDate = new Date(timeString);
-      return eventDate.getTime() - now.getTime();
-    }
+  // ✅ 强制使用 timeSpec.resolved（TIME_ARCHITECTURE 规范）
+  if (!event.timeSpec?.resolved) {
+    return Infinity; // 没有 timeSpec 的排到最后
   }
   
-  // ⚠️ Fallback: 向后兼容旧数据（没有 timeSpec 的事件）
-  if (!event.startTime && !event.endTime) {
+  const timeString = event.timeSpec.resolved.start || event.timeSpec.resolved.end;
+  if (!timeString) {
     return Infinity; // 没有时间信息的排到最后
   }
-
-  const timeString = event.startTime || event.endTime;
-  const eventDate = new Date(timeString!);
-
+  
+  const eventDate = new Date(timeString);
   return eventDate.getTime() - now.getTime();
 }
 
@@ -255,9 +232,19 @@ export function formatCountdown(event: Event, now: Date = new Date()): string | 
   const days = Math.floor(hours / 24);
 
   if (days > 0) {
+    return `还有${days}天`;
+  } else if (hours > 0) {
+    return `还有${hours}h`;
+  } else if (minutes > 0) {
+    return `还有${minutes}min`;
+  } else {
+    return '即将开始';
+  }
+}
+
 /**
  * 格式化时间显示文本
- * ✅ 符合 TIME_ARCHITECTURE：优先使用 timeSpec.resolved
+ * ✅ 符合 TIME_ARCHITECTURE：强制使用 timeSpec
  */
 export function formatTimeLabel(event: Event): string | undefined {
   // 提取时间部分（HH:mm）
@@ -268,54 +255,34 @@ export function formatTimeLabel(event: Event): string | undefined {
     return `${hours}:${minutes}`;
   };
 
-  // ✅ 优先检查 timeSpec（TIME_ARCHITECTURE 规范）
-  if (event.timeSpec) {
-    // 检查是否全天事件
-    if (event.timeSpec.allDay) {
-      return '全天';
-    }
-    
-    // 使用 resolved 时间
-    if (event.timeSpec.resolved) {
-      const { start, end } = event.timeSpec.resolved;
-      
-      if (start && end) {
-        const startTimeStr = extractTime(start);
-        const endTimeStr = extractTime(end);
-        return `${startTimeStr}-${endTimeStr}`;
-      } else if (start) {
-        const startTimeStr = extractTime(start);
-        return `${startTimeStr}开始`;
-      } else if (end) {
-        const endTimeStr = extractTime(end);
-        return `${endTimeStr}截止`;
-      }
-    }
+  // ✅ 强制使用 timeSpec（TIME_ARCHITECTURE 规范）
+  if (!event.timeSpec) {
+    return undefined; // 没有 timeSpec 的事件不显示时间
   }
   
-  // ⚠️ Fallback: 向后兼容旧数据（没有 timeSpec 的事件）
-  if (event.startTime && event.endTime) {
-    const startTimeStr = extractTime(event.startTime);
-    const endTimeStr = extractTime(event.endTime);
+  // 检查是否全天事件
+  if (event.timeSpec.allDay) {
+    return '全天';
+  }
+  
+  // 使用 resolved 时间
+  if (!event.timeSpec.resolved) {
+    return undefined; // 没有 resolved 的不显示时间
+  }
+  
+  const { start, end } = event.timeSpec.resolved;
+  
+  if (start && end) {
+    const startTimeStr = extractTime(start);
+    const endTimeStr = extractTime(end);
     return `${startTimeStr}-${endTimeStr}`;
-  } else if (event.startTime) {
-    const startTimeStr = extractTime(event.startTime);
+  } else if (start) {
+    const startTimeStr = extractTime(start);
     return `${startTimeStr}开始`;
-  } else if (event.endTime) {
-    const endTimeStr = extractTime(event.endTime);
+  } else if (end) {
+    const endTimeStr = extractTime(end);
     return `${endTimeStr}截止`;
-  } else if (event.isAllDay) {
-    return '全天';
   }
-  return undefined;
-} } else if (event.startTime) {
-    const startTimeStr = extractTime(event.startTime);
-    return `${startTimeStr}开始`;
-  } else if (event.endTime) {
-    const endTimeStr = extractTime(event.endTime);
-    return `${endTimeStr}截止`;
-  } else if (event.isAllDay) {
-    return '全天';
-  }
+  
   return undefined;
 }

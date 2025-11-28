@@ -197,12 +197,13 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
   };
 
   const renderEventCard = (event: Event) => {
-    // ✅ 符合 TIME_ARCHITECTURE：优先使用 timeSpec.resolved
-    const resolvedTime = event.timeSpec?.resolved || {
-      start: event.startTime,
-      end: event.endTime
-    };
-    const isAllDay = event.timeSpec?.allDay ?? event.isAllDay;
+    // ✅ 符合 TIME_ARCHITECTURE：强制使用 timeSpec.resolved
+    if (!event.timeSpec?.resolved) {
+      return null; // 没有 timeSpec 的事件不显示
+    }
+    
+    const resolvedTime = event.timeSpec.resolved;
+    const isAllDay = event.timeSpec.allDay ?? false;
     
     // 使用 formatRelativeTimeDisplay 格式化时间显示
     const timeLabel = formatRelativeTimeDisplay(
