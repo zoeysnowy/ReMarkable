@@ -34,24 +34,39 @@ import {
 } from 'slate-react';
 import { withHistory } from 'slate-history';
 
-// 复用 UnifiedSlateEditor 的类型定义和组件
+// ✅ 从 SlateCore 导入共享类型和功能
 import type { 
-  CustomElement, 
-  CustomText,
   ParagraphNode,
-  TimestampDividerElement as TimestampDividerType
-} from '../UnifiedSlateEditor/types';
+  TimestampDividerElement as TimestampDividerType,
+  TextNode,
+  TagNode,
+  DateMentionNode
+} from '../SlateCore/types';
 
-// 复用现有的元素组件
-import { TagElementComponent } from '../UnifiedSlateEditor/elements/TagElement';
-import DateMentionElement from '../UnifiedSlateEditor/elements/DateMentionElement';
-import { TimestampDividerElement } from '../UnifiedSlateEditor/elements/TimestampDividerElement';
+import {
+  // 服务
+  EventLogTimestampService,
+  
+  // 操作工具
+  applyTextFormat as slateApplyTextFormat,
+  handleBulletBackspace,
+  handleBulletEnter,
+  moveParagraphUp as slatMoveParagraphUp,
+  moveParagraphDown as slateMoveParagraphDown,
+  
+  // 序列化
+  jsonToSlateNodes as slateJsonToNodes,
+  slateNodesToJson as slateNodesToJsonCore,
+} from '../SlateCore';
 
-// 暂时移除 FloatingToolbar，避免复杂依赖
-// import { FloatingToolbar } from '../UnifiedSlateEditor/FloatingToolbar/FloatingToolbar';
+// 共享元素组件
+import { TagElementComponent } from '../SlateCore/elements/TagElement';
+import DateMentionElement from '../SlateCore/elements/DateMentionElement';
+import { TimestampDividerElement } from '../SlateCore/elements/TimestampDividerElement';
 
-// 导入 timestamp 服务
-import { EventLogTimestampService } from '../UnifiedSlateEditor/timestampService';
+// 类型兼容
+type CustomElement = ParagraphNode | TagNode | DateMentionNode | TimestampDividerType;
+type CustomText = TextNode;
 
 // 导入 EventHistoryService 获取创建时间
 import { EventHistoryService } from '../../services/EventHistoryService';
