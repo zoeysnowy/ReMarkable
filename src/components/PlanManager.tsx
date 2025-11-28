@@ -2130,6 +2130,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       createdAt: formatTimeForStorage(new Date()),
       updatedAt: formatTimeForStorage(new Date()),
       remarkableSource: true,
+      // 🆕 保留 eventlog 字段（EventEditModalV2 需要）
+      eventlog: item.eventlog,
       // 🆕 保留日历同步配置（Plan vs Actual）
       planSyncConfig: item.planSyncConfig,
       actualSyncConfig: item.actualSyncConfig,
