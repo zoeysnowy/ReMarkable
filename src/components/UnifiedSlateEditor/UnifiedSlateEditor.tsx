@@ -1602,6 +1602,262 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     }
   }, [onFocus, editor]);
   
+  // ==================== 段落移动功能 ====================
+  
+  /**
+   * 移动标题行及其所有关联的 eventlog 段落
+   * @param editor Slate 编辑器实例
+   * @param titleLineIndex 标题行的索引
+   * @param direction 移动方向 ('up' | 'down')
+   */
+  const moveTitleWithEventlogs = (editor: Editor, titleLineIndex: number, direction: 'up' | 'down') => {
+    const nodes = Array.from(Editor.nodes(editor, { at: [] }));
+    const eventLines = nodes
+      .filter(([node]) => (node as any).type === 'event-line')
+      .map(([node, path]) => ({ node: node as unknown as EventLineNode, path: path as number[] }));
+    
+    const titleLine = eventLines[titleLineIndex];
+    if (!titleLine || titleLine.node.mode !== 'title') {
+      console.warn('[moveTitleWithEventlogs] 当前不是标题行');
+      return;
+    }
+    
+    const titleEventId = titleLine.node.eventId;
+    
+    // 找到该标题的所有 eventlog 行（相同 eventId 且 mode='eventlog'）
+    const relatedEventlogs: number[] = [];
+    for (let i = titleLineIndex + 1; i < eventLines.length; i++) {
+      const line = eventLines[i].node;
+      if (line.eventId === titleEventId && line.mode === 'eventlog') {
+        relatedEventlogs.push(i);
+      } else {
+        break; // 遇到其他事件，停止查找
+      }
+    }
+    
+    const eventGroupIndices = [titleLineIndex, ...relatedEventlogs];
+    const eventGroupSize = eventGroupIndices.length;
+    
+    // 边界检查
+    if (direction === 'up') {
+      if (titleLineIndex === 0) {
+        console.log('[moveTitleWithEventlogs] 已在第一行，无法上移');
+        return;
+      }
+      
+      // 找到上一个标题行的起始位置
+      let targetIndex = titleLineIndex - 1;
+      
+      // 跳过上一个事件的 eventlog 行，找到它的标题行
+      while (targetIndex > 0 && eventLines[targetIndex].node.mode === 'eventlog') {
+        targetIndex--;
+      }
+      
+      // 移动整个事件组到目标位置
+      Editor.withoutNormalizing(editor, () => {
+        // 1. 提取所有节点
+        const nodesToMove = eventGroupIndices.map(idx => eventLines[idx].node);
+        
+        // 2. 删除原位置的节点（从后往前删除，避免索引变化）
+        for (let i = eventGroupIndices.length - 1; i >= 0; i--) {
+          Transforms.removeNodes(editor, { at: [eventGroupIndices[i]] });
+        }
+        
+        // 3. 插入到目标位置
+        nodesToMove.forEach((node, offset) => {
+          Transforms.insertNodes(editor, node as unknown as Node, {
+            at: [targetIndex + offset],
+          });
+        });
+        
+        // 4. 恢复光标到移动后的标题行
+        setTimeout(() => {
+          Transforms.select(editor, {
+            anchor: { path: [targetIndex, 0, 0], offset: 0 },
+            focus: { path: [targetIndex, 0, 0], offset: 0 },
+          });
+        }, 10);
+      });
+      
+      console.log(`[moveTitleWithEventlogs] 上移事件组 (${eventGroupSize} 行): ${titleLineIndex} → ${targetIndex}`);
+    } else {
+      // 向下移动
+      const lastEventlogIndex = relatedEventlogs.length > 0 ? relatedEventlogs[relatedEventlogs.length - 1] : titleLineIndex;
+      
+      // 检查是否是最后一个事件
+      if (lastEventlogIndex >= eventLines.length - 1) {
+        console.log('[moveTitleWithEventlogs] 已在最后，无法下移');
+        return;
+      }
+      
+      // 找到下一个事件的所有行（标题 + eventlog）
+      let nextTitleIndex = lastEventlogIndex + 1;
+      
+      // 跳过 placeholder
+      if (eventLines[nextTitleIndex].node.eventId === '__placeholder__') {
+        console.log('[moveTitleWithEventlogs] 无法移动到 placeholder 后');
+        return;
+      }
+      
+      // 找到下一个事件的所有 eventlog 行
+      const nextEventId = eventLines[nextTitleIndex].node.eventId;
+      let nextEventEndIndex = nextTitleIndex;
+      
+      for (let i = nextTitleIndex + 1; i < eventLines.length; i++) {
+        const line = eventLines[i].node;
+        if (line.eventId === nextEventId && line.mode === 'eventlog') {
+          nextEventEndIndex = i;
+        } else {
+          break;
+        }
+      }
+      
+      const nextEventSize = nextEventEndIndex - nextTitleIndex + 1;
+      const targetIndex = titleLineIndex + nextEventSize;
+      
+      // 移动整个事件组到目标位置
+      Editor.withoutNormalizing(editor, () => {
+        // 1. 提取所有节点
+        const nodesToMove = eventGroupIndices.map(idx => eventLines[idx].node);
+        
+        // 2. 删除原位置的节点（从后往前删除）
+        for (let i = eventGroupIndices.length - 1; i >= 0; i--) {
+          Transforms.removeNodes(editor, { at: [eventGroupIndices[i]] });
+        }
+        
+        // 3. 插入到目标位置
+        nodesToMove.forEach((node, offset) => {
+          Transforms.insertNodes(editor, node as unknown as Node, {
+            at: [targetIndex + offset],
+          });
+        });
+        
+        // 4. 恢复光标到移动后的标题行
+        setTimeout(() => {
+          Transforms.select(editor, {
+            anchor: { path: [targetIndex, 0, 0], offset: 0 },
+            focus: { path: [targetIndex, 0, 0], offset: 0 },
+          });
+        }, 10);
+      });
+      
+      console.log(`[moveTitleWithEventlogs] 下移事件组 (${eventGroupSize} 行): ${titleLineIndex} → ${targetIndex}`);
+    }
+  };
+  
+  /**
+   * 移动 eventlog 段落（不移动标题行）
+   * @param editor Slate 编辑器实例
+   * @param eventlogLineIndex eventlog 行的索引
+   * @param direction 移动方向 ('up' | 'down')
+   */
+  const moveEventlogParagraph = (editor: Editor, eventlogLineIndex: number, direction: 'up' | 'down') => {
+    const nodes = Array.from(Editor.nodes(editor, { at: [] }));
+    const eventLines = nodes
+      .filter(([node]) => (node as any).type === 'event-line')
+      .map(([node, path]) => ({ node: node as unknown as EventLineNode, path: path as number[] }));
+    
+    const currentLine = eventLines[eventlogLineIndex];
+    if (!currentLine || currentLine.node.mode !== 'eventlog') {
+      console.warn('[moveEventlogParagraph] 当前不是 eventlog 行');
+      return;
+    }
+    
+    // 边界检查
+    if (direction === 'up') {
+      if (eventlogLineIndex === 0) {
+        console.log('[moveEventlogParagraph] 已在第一行，无法上移');
+        return;
+      }
+      
+      const targetIndex = eventlogLineIndex - 1;
+      const targetLine = eventLines[targetIndex].node;
+      
+      // 不能移动到标题行之前
+      if (targetLine.mode === 'title') {
+        console.log('[moveEventlogParagraph] 无法移动到标题行之前');
+        return;
+      }
+      
+      // 交换节点
+      Editor.withoutNormalizing(editor, () => {
+        const currentNode = currentLine.node;
+        const targetNode = targetLine;
+        
+        // 1. 删除当前节点
+        Transforms.removeNodes(editor, { at: [eventlogLineIndex] });
+        
+        // 2. 删除目标节点
+        Transforms.removeNodes(editor, { at: [targetIndex] });
+        
+        // 3. 插入当前节点到目标位置
+        Transforms.insertNodes(editor, currentNode as unknown as Node, { at: [targetIndex] });
+        
+        // 4. 插入目标节点到原位置
+        Transforms.insertNodes(editor, targetNode as unknown as Node, { at: [eventlogLineIndex] });
+        
+        // 5. 恢复光标
+        setTimeout(() => {
+          Transforms.select(editor, {
+            anchor: { path: [targetIndex, 0, 0], offset: 0 },
+            focus: { path: [targetIndex, 0, 0], offset: 0 },
+          });
+        }, 10);
+      });
+      
+      console.log(`[moveEventlogParagraph] 上移段落: ${eventlogLineIndex} ↔ ${targetIndex}`);
+    } else {
+      // 向下移动
+      if (eventlogLineIndex >= eventLines.length - 1) {
+        console.log('[moveEventlogParagraph] 已在最后一行，无法下移');
+        return;
+      }
+      
+      const targetIndex = eventlogLineIndex + 1;
+      const targetLine = eventLines[targetIndex].node;
+      
+      // 跳过 placeholder
+      if (targetLine.eventId === '__placeholder__') {
+        console.log('[moveEventlogParagraph] 无法移动到 placeholder 后');
+        return;
+      }
+      
+      // 不能移动到其他事件的标题行
+      if (targetLine.mode === 'title') {
+        console.log('[moveEventlogParagraph] 无法移动到其他事件的标题行后');
+        return;
+      }
+      
+      // 交换节点
+      Editor.withoutNormalizing(editor, () => {
+        const currentNode = currentLine.node;
+        const targetNode = targetLine;
+        
+        // 1. 删除目标节点
+        Transforms.removeNodes(editor, { at: [targetIndex] });
+        
+        // 2. 删除当前节点
+        Transforms.removeNodes(editor, { at: [eventlogLineIndex] });
+        
+        // 3. 插入目标节点到原位置
+        Transforms.insertNodes(editor, targetNode as unknown as Node, { at: [eventlogLineIndex] });
+        
+        // 4. 插入当前节点到目标位置
+        Transforms.insertNodes(editor, currentNode as unknown as Node, { at: [targetIndex] });
+        
+        // 5. 恢复光标
+        setTimeout(() => {
+          Transforms.select(editor, {
+            anchor: { path: [targetIndex, 0, 0], offset: 0 },
+            focus: { path: [targetIndex, 0, 0], offset: 0 },
+          });
+        }, 10);
+      });
+      
+      console.log(`[moveEventlogParagraph] 下移段落: ${eventlogLineIndex} ↔ ${targetIndex}`);
+    }
+  };
+  
   // ==================== 键盘事件处理 ====================
   
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
@@ -1651,6 +1907,32 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     // 不 preventDefault，让这些键传递到 document 层的监听器
     if (/^[1-9]$/.test(event.key) || event.key === 'Escape') {
       return; // 不处理，让事件冒泡
+    }
+    
+    // 🆕 Shift+Alt+↑/↓ - 移动标题或 eventlog 段落
+    if (event.shiftKey && event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+      event.preventDefault();
+      
+      const match = Editor.above(editor, {
+        match: n => (n as any).type === 'event-line',
+      });
+      
+      if (!match) return;
+      const [currentNode, currentPath] = match;
+      const eventLine = currentNode as unknown as EventLineNode;
+      
+      const direction = event.key === 'ArrowUp' ? 'up' : 'down';
+      
+      // 根据 mode 决定移动逻辑
+      if (eventLine.mode === 'title') {
+        // 标题行：移动整个事件（标题 + 所有 eventlog）
+        moveTitleWithEventlogs(editor, currentPath[0], direction);
+      } else {
+        // Eventlog 行：只移动当前段落
+        moveEventlogParagraph(editor, currentPath[0], direction);
+      }
+      
+      return;
     }
     
     // 获取当前 event-line 节点和路径
