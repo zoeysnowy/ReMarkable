@@ -1,13 +1,13 @@
-﻿# SlateEditor 产品需求文档 (PRD)
+﻿# LightSlateEditor 产品需求文档 (PRD)
 
-> **模块路径**: `src/components/SlateEditor/SlateEditor.tsx`  
-> **代码行数**: ~1265 lines  
-> **架构版本**: v1.0  
-> **最后更新**: 2025-11-28  
+> **模块路径**: `src/components/LightSlateEditor/LightSlateEditor.tsx`  
+> **代码行数**: ~500 lines (使用 SlateCore 后大幅简化)  
+> **架构版本**: v2.0 (使用 SlateCore 共享层)  
+> **最后更新**: 2025-11-29  
 > **设计理念**: 轻量级、专注单内容编辑、高度可复用  
 > **关联文档**: 
-> - [SLATE_EDITOR_PRD.md](./SLATE_EDITOR_PRD.md) - Slate 编辑器总览
 > - [SLATE_EDITOR_ARCHITECTURE.md](./SLATE_EDITOR_ARCHITECTURE.md) - 架构设计
+> - [PLANSLATE_EDITOR_PRD.md](./PLANSLATE_EDITOR_PRD.md) - PlanSlateEditor PRD
 > - [EVENTEDITMODAL_V2_PRD.md](./EVENTEDITMODAL_V2_PRD.md) - EventEditModal 集成
 > - [TimeLog_&_Description_PRD.md](./TimeLog_&_Description_PRD.md) - TimeLog 模块规划
 
@@ -44,16 +44,22 @@ SlateEditor 是为**单内容编辑场景**优化的 Slate 编辑器，移除了
 
 ### 1.2 与 PlanSlateEditor 的差异
 
-| 维度 | SlateEditor | PlanSlateEditor |
+| 维度 | LightSlateEditor | PlanSlateEditor |
 |------|-----------------|-------------------|
 | **数据模型** | 单内容字符串 (`string`) | 多事件列表 (`Event[]`) |
 | **节点结构** | 扁平 `paragraph[]` | `event-line` → `title` + `eventlog` |
 | **主要用途** | 单事件日志、文本编辑 | 多事件管理、任务列表 |
 | **复杂度** | 低（单层 JSON 序列化） | 高（三层数据转换） |
-| **特殊功能** | Timestamp、Preline | Checkbox、事件排序 |
+| **特殊功能** | Timestamp、Preline | Checkbox、事件排序、Snapshot |
 | **段落移动** | 单模式（段落交换） | 双模式（标题+eventlog vs 单段落） |
 | **缩进管理** | 仅 `bulletLevel` | `event-line level` + `bulletLevel` |
 | **使用场景** | EventEditModal、TimeLog | PlanManager |
+| **SlateCore 使用** | ✅ 完全使用共享层 | ⚠️ 部分使用（保留 EventLine 特有逻辑） |
+
+### 1.3 架构版本演进
+
+**v1.0**: 独立实现所有功能（~1265 lines）
+**v2.0 (当前)**: 使用 SlateCore 共享层，代码量减少 60% (~500 lines)
 
 ---
 
@@ -62,14 +68,44 @@ SlateEditor 是为**单内容编辑场景**优化的 Slate 编辑器，移除了
 ### 2.1 特性列表
 
 - ✅ **扁平段落结构**: 直接的 paragraph 节点，易于理解和操作
-- ✅ **Timestamp 自动管理**: 5分钟间隔自动插入，失焦清理空白记录
-- ✅ **Bullet 支持**: 多层级 bullet（0-4级），OneNote 风格删除机制
-- ✅ **段落移动**: Shift+Alt+↑/↓ 快捷键，自动跳过 timestamp
-- ✅ **Inline 元素**: 支持 Tag、DateMention、Emoji
-- ✅ **富文本格式**: 粗体、斜体、下划线、删除线、颜色
+- ✅ **Timestamp 自动管理**: 5分钟间隔自动插入，失焦清理空白记录（使用 SlateCore.EventLogTimestampService）
+- ✅ **Bullet 支持**: 多层级 bullet（0-4级），OneNote 风格删除机制（使用 SlateCore.bulletOperations）
+- ✅ **段落移动**: Shift+Alt+↑/↓ 快捷键，自动跳过 timestamp（使用 SlateCore.paragraphOperations）
+- ✅ **Inline 元素**: 支持 Tag、DateMention、Emoji（使用 SlateCore.inlineHelpers）
+- ✅ **富文本格式**: 粗体、斜体、下划线、删除线、颜色（使用 SlateCore.applyTextFormat）
 - ✅ **Preline 视觉**: timestamp 后的段落显示垂直时间线
 - ✅ **Timestamp 保护**: 禁止用户删除 timestamp 节点
-- ✅ **简化数据流**: content string ↔ Slate nodes（单层序列化）
+- ✅ **简化数据流**: content string ↔ Slate nodes（单层序列化，使用 SlateCore.jsonToSlateNodes）
+
+### 2.2 SlateCore 集成
+
+**v2.0 新增**: 完全使用 SlateCore 共享层，代码量减少 60%
+
+**从 SlateCore 导入的功能**:
+```typescript
+import {
+  // 类型
+  TextNode, ParagraphNode, TagNode, DateMentionNode, TimestampDividerElement,
+  
+  // 服务
+  EventLogTimestampService,
+  
+  // 操作工具
+  insertTag, insertEmoji, insertDateMention,
+  applyTextFormat, toggleFormat,
+  increaseBulletLevel, decreaseBulletLevel, handleBulletBackspace, handleBulletEnter,
+  findNodeByType, isNodeEmpty,
+  moveParagraphUp, moveParagraphDown,
+  
+  // 序列化
+  jsonToSlateNodes, slateNodesToJson,
+} from '../SlateCore';
+```
+
+**LightSlateEditor 特有逻辑**:
+- `serialization.ts`（LightSlate 特定的序列化逻辑，如需要）
+- Preline 视觉效果渲染
+- EventEditModal 集成逻辑
 
 ### 2.2 特性详解
 

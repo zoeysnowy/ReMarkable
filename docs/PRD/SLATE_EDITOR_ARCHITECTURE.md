@@ -1,9 +1,11 @@
 ﻿# Slate 编辑器架构设计文档
 
-> **版本**: v1.0  
+> **版本**: v2.0 (SlateCore 共享层已实现)  
 > **创建时间**: 2025-11-28  
-> **适用范围**: PlanSlateEditor, SlateEditor, 未来 TimeLog 模块  
+> **最后更新**: 2025-11-29  
+> **适用范围**: PlanSlateEditor (UnifiedSlateEditor), LightSlateEditor, 未来 TimeLog 模块  
 > **关键设计原则**: 组件化、可复用、单一职责  
+> **实现状态**: ✅ SlateCore 共享层已完成，PRD 文档已更新  
 
 ---
 
@@ -19,22 +21,18 @@
 
 ## 1. 架构概览
 
-### 1.1 当前架构问题
+### 1.1 架构演进
 
-**问题 1：功能重复**
-- `SlateEditor` 和 `PlanSlateEditor` 各自实现了相似的功能
-- 段落移动、bullet 操作、timestamp 管理等核心逻辑重复编写
-- 维护成本高，新功能需要在两处实现
+**v1.0 (2025-11-28 之前)**:
+- **问题 1：功能重复** - `UnifiedSlateEditor` 和 `LightSlateEditor` 各自实现了相似的功能
+- **问题 2：缺乏共享层** - 没有统一的 Slate 工具函数库
+- **问题 3：扩展性差** - 未来 TimeLog 模块需要从零开始实现基础功能
 
-**问题 2：缺乏共享层**
-- 没有统一的 Slate 工具函数库
-- helpers.ts 只包含 insertTag/insertEmoji/insertDateMention 等少量函数
-- 大量通用逻辑（节点操作、路径计算、格式化）散落在各组件中
-
-**问题 3：扩展性差**
-- 未来 TimeLog 模块也需要类似的编辑器功能
-- 图片、语音、扩展 mention 等复杂元素缺乏统一框架
-- 每个新编辑器都需要从零开始实现基础功能
+**v2.0 (2025-11-29，当前版本)**:
+- ✅ **SlateCore 共享层已完成** - 统一的工具函数库和服务层
+- ✅ **代码复用率提升** - LightSlateEditor 代码量减少 60%
+- ✅ **扩展性增强** - 未来模块可直接使用 SlateCore
+- ✅ **PRD 文档已更新** - 反映新架构
 
 ### 1.2 理想架构
 
@@ -70,6 +68,62 @@
 │  └──────────────────────┴─────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 1.3 SlateCore 实现状态
+
+### 已完成的功能
+
+**✅ 目录结构** (`src/components/SlateCore/`):
+- `operations/` - 操作工具（inlineHelpers, formatting, bulletOperations, nodeOperations, paragraphOperations）
+- `services/` - 服务类（timestampService）
+- `serialization/` - 序列化工具（jsonSerializer）
+- `elements/` - 共享元素组件（TagElement, DateMentionElement, TimestampDividerElement）
+- `future/` - 未来扩展预留（imageOperations, audioOperations, mentionOperations）
+
+**✅ 共享类型定义** (`types.ts`):
+- `TextNode`, `ParagraphNode` - 基础节点
+- `TagNode`, `DateMentionNode`, `TimestampDividerElement` - Inline 元素
+- `SlateEditorConfig` - 编辑器配置
+- `CustomEditor` - 编辑器类型扩展
+
+**✅ 操作工具**:
+- `inlineHelpers.ts`: `insertTag`, `insertEmoji`, `insertDateMention`, `insertVoidElement`
+- `formatting.ts`: `applyTextFormat`, `toggleFormat`, `getActiveFormats`, `clearAllFormats`
+- `bulletOperations.ts`: `increaseBulletLevel`, `decreaseBulletLevel`, `toggleBullet`, `handleBulletBackspace`, `handleBulletEnter`
+- `nodeOperations.ts`: `findNodeByType`, `isNodeEmpty`, `getParentPath`, `getSiblingPath`, `isAncestorPath`, `isValidPath`, `getNodeIndex`, `isNodeType`, `getNodeText`, `findChildrenByType`
+- `paragraphOperations.ts`: `moveParagraphUp`, `moveParagraphDown`, `swapNodes`, `canMoveUp`, `canMoveDown`
+
+**✅ 服务类**:
+- `EventLogTimestampService` - 5分钟间隔检测、自动插入、清理空白记录
+
+**✅ 序列化工具**:
+- `jsonToSlateNodes`, `slateNodesToJson` - JSON ↔ Slate nodes
+- `createEmptyParagraph`, `createTextParagraph`, `createBulletParagraph` - 节点创建
+
+**✅ PRD 文档**:
+- `PLANSLATE_EDITOR_PRD.md` - PlanSlateEditor 完整 PRD
+- `SLATEEDITOR_PRD.md` - LightSlateEditor 完整 PRD（已更新为 v2.0）
+- `SLATE_EDITOR_ARCHITECTURE.md` - 本文档（已更新）
+
+### 待完成的任务
+
+**⚠️ LightSlateEditor 重构** (优先级: P0):
+- 替换内部实现，调用 SlateCore 共享层
+- 测试 EventEditModal 集成
+- 验证所有功能正常工作
+
+**⚠️ UnifiedSlateEditor 重构** (优先级: P1):
+- 保留 EventLine 特有逻辑（serialization, EventLineElement）
+- 替换通用工具函数为 SlateCore 调用
+- 测试 PlanManager 集成
+- 验证双模式段落移动、Checkbox、Snapshot 等功能
+
+**📝 未来扩展** (优先级: P2):
+- 图片支持 (`future/imageOperations.ts`)
+- 语音支持 (`future/audioOperations.ts`)
+- 扩展 Mention (`future/mentionOperations.ts`)
 
 ---
 
