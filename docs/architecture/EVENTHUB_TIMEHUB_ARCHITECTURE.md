@@ -4319,13 +4319,28 @@ interface EventLog {
 interface Event {
   // ... 其他字段
   
-  eventlog?: EventLog | string;       // ✅ 支持多种格式输入
+  eventlog?: EventLog | string;       // ✅ 支持多种格式输入（自动标准化）
   description?: string;               // ⚠️ 仅用于外部同步，不推荐直接修改
   notes?: string;                     // 📝 旧版字段，向后兼容
 }
 ```
 
-### 2. 转换机制详解
+### 2. 转换机制详解（基于 v1.8 实现）
+
+#### 核心方法概览
+
+| 方法名 | 功能 | 输入 | 输出 |
+|--------|------|------|------|
+| `normalizeEventLog()` | 统一标准化入口 | 5种格式 | EventLog 对象 |
+| `convertSlateJsonToEventLog()` | Slate JSON → EventLog | 字符串 | EventLog 对象 |
+| `htmlToSlateJsonWithRecognition()` | HTML → Slate JSON | HTML 字符串 | Slate JSON 字符串 |
+| `parseHtmlNode()` | 递归解析 HTML | DOM Node | Slate 节点数组 |
+| `recognizeByDataAttributes()` | 精确匹配 | HTMLElement | TagNode/DateMentionNode |
+| `recognizeInlineElements()` | 模糊匹配 | 文本字符串 | 混合节点数组 |
+| `recognizeTagNodeByPattern()` | Tag 模式识别 | 文本字符串 | 匹配结果数组 |
+| `recognizeDateMentionByPattern()` | DateMention 模式识别 | 文本字符串 | 匹配结果数组 |
+
+详细实现请参考 **v1.8 EventLog 保存架构优化** 章节。
 
 #### 2.1 输入格式自动检测与转换（normalizeEventLog）
 
@@ -4620,111 +4635,260 @@ private static recognizeInlineElements(text: string): any[] {
 
 #### 2.2 外部同步转换（ActionBasedSyncManager）
 
+**发送到 Outlook**:
 ```typescript
-// ActionBasedSyncManager.ts - 同步到 Outlook
-class ActionBasedSyncManager {
-  // ========== 发送到外部服务（CREATE/UPDATE） ==========
-  private async executeCreateAction(action: SyncAction) {
-    const event = action.data;
-    
-    // 🔥 从 eventlog 提取 description（优先）
-    let descriptionForSync = '';
-    
-    if (event.eventlog && typeof event.eventlog === 'object') {
-      // EventLog 对象 → 提取 html
-      descriptionForSync = event.eventlog.html || '';
-    } else if (typeof event.eventlog === 'string') {
-      // Slate JSON 字符串 → 先转换为 HTML
-      const slateNodes = jsonToSlateNodes(event.eventlog);
-      descriptionForSync = slateNodesToHtml(slateNodes);
-    } else if (event.description) {
-      // 降级方案：使用 description 字段
-      descriptionForSync = event.description;
-    }
-    
-    // 构建 Outlook 事件数据
-    const outlookEventData = {
-      subject: event.title?.simpleTitle || '(无标题)',
-      body: {
-        contentType: 'HTML',
-        content: descriptionForSync || ' ',  // Outlook 要求至少一个空格
-      },
-      // ... 其他字段
-    };
-    
-    // 发送到 Outlook API
-    await this.microsoftService.createEvent(outlookEventData);
+// ActionBasedSyncManager.ts - 发送到 Outlook
+private async executeCreateAction(action: SyncAction) {
+  const event = action.data;
+  
+  // 🔥 从 eventlog 提取 description（优先）
+  let descriptionForSync = '';
+  
+  if (event.eventlog && typeof event.eventlog === 'object') {
+    // EventLog 对象 → 提取 html（含 data-* 属性）
+    descriptionForSync = event.eventlog.html || '';
+  } else if (typeof event.eventlog === 'string') {
+    // Slate JSON 字符串 → 先转换为 HTML
+    const slateNodes = jsonToSlateNodes(event.eventlog);
+    descriptionForSync = slateNodesToHtml(slateNodes);
+  } else if (event.description) {
+    // 降级方案：使用 description 字段
+    descriptionForSync = event.description;
   }
   
-  // ========== 从外部服务接收更新 ==========
-  private async handleIncomingUpdate(outlookEvent: OutlookEvent) {
-    const localEvent = EventService.getEventById(outlookEvent.localId);
-    
-    // Outlook description 变化 → 同步到本地 eventlog
-    const outlookDescription = outlookEvent.body?.content || '';
-    
-    if (localEvent.eventlog && typeof localEvent.eventlog === 'object') {
-      // 保留本地 eventlog 的元数据，只更新内容
-      const updatedEventLog: EventLog = {
-        ...localEvent.eventlog,
-        slateJson: htmlToSlateJson(outlookDescription),
-        html: outlookDescription,
-        plainText: stripHtmlTags(outlookDescription),
-        updatedAt: formatTimeForStorage(new Date()),
-        syncState: {
-          ...localEvent.eventlog.syncState,
-          status: 'synced',
-          lastSyncTime: formatTimeForStorage(new Date()),
-        },
-      };
-      
-      await EventService.updateEvent(localEvent.id, {
-        eventlog: updatedEventLog,
-        description: outlookDescription,  // 同步更新
-      });
-    }
-  }
+  // 构建 Outlook 事件数据
+  const outlookEventData = {
+    subject: event.title?.simpleTitle || '(无标题)',
+    body: {
+      contentType: 'HTML',
+      content: descriptionForSync || ' ',  // Outlook 要求至少一个空格
+    },
+    // ... 其他字段
+  };
+  
+  // 发送到 Outlook API
+  await this.microsoftService.createEvent(outlookEventData);
 }
 ```
 
-### 3. 数据流向图
-
-#### 3.1 内部编辑 → 外部同步
-```mermaid
-graph LR
-    A[用户编辑 EventLog] --> B[LightSlateEditor onChange]
-    B --> C[Slate JSON 字符串]
-    C --> D[EventEditModalV2 handleSave]
-    D --> E[EventHub.updateFields]
-    E --> F[EventService.updateEvent]
-    F --> G{检测格式}
-    G -->|Slate JSON| H[convertSlateJsonToEventLog]
-    H --> I[EventLog 对象]
-    I --> J[localStorage 持久化]
-    I --> K[同步 description 字段]
-    K --> L[ActionBasedSyncManager]
-    L --> M[提取 eventlog.html]
-    M --> N[Outlook API body.content]
+**从 Outlook 接收更新**:
+```typescript
+// ActionBasedSyncManager.ts - 从 Outlook 接收更新
+private async handleIncomingUpdate(outlookEvent: OutlookEvent) {
+  const localEvent = EventService.getEventById(outlookEvent.localId);
+  
+  // Outlook description 变化 → 同步到本地 eventlog
+  const outlookDescription = outlookEvent.body?.content || '';
+  
+  // ✅ 简化：只传递 Slate JSON 字符串，让 EventService 自动转换
+  const slateJson = htmlToSlateJson(outlookDescription);
+  
+  await EventService.updateEvent(localEvent.id, {
+    eventlog: slateJson,  // EventService 会自动识别并转换
+  });
+  
+  // EventService.normalizeEventLog() 内部流程：
+  // 1. 检测格式：HTML 字符串
+  // 2. 调用 htmlToSlateJsonWithRecognition(outlookDescription)
+  //    - 精确匹配 data-* 属性 → TagNode/DateMentionNode
+  //    - 模糊匹配文本模式 → "@工作", "11/29 10:00"
+  // 3. 转换为 EventLog 对象（含识别的元素）
+  // 4. 保存到 localStorage
+}
 ```
 
-#### 3.2 外部更新 → 内部同步
-```mermaid
-graph LR
-    A[Outlook 事件更新] --> B[Webhook/轮询]
-    B --> C[ActionBasedSyncManager.handleIncomingUpdate]
-    C --> D[读取 Outlook body.content]
-    D --> E{本地 eventlog 类型?}
-    E -->|EventLog 对象| F[保留元数据]
-    E -->|不存在| G[创建新 EventLog]
-    F --> H[更新 slateJson/html/plainText]
-    G --> H
-    H --> I[EventService.updateEvent]
-    I --> J[localStorage 持久化]
-    I --> K[触发 eventsUpdated 事件]
-    K --> L[前端重新渲染]
+### 3. 完整转换机制总览
+
+#### 3.1 输入格式处理矩阵
+
+| 输入格式 | 检测条件 | 处理方法 | 输出 |
+|---------|---------|---------|------|
+| **EventLog 对象** | `typeof === 'object' && 'slateJson' in input` | 直接返回 | EventLog 对象 |
+| **undefined/null** | `input === undefined \|\| input === null` | 返回空对象 | `{ slateJson: '[]', ... }` |
+| **Slate JSON 字符串** | `typeof === 'string' && startsWith('[')` | `convertSlateJsonToEventLog()` | EventLog 对象 |
+| **HTML 字符串** | `typeof === 'string' && (startsWith('<') \|\| includes('<p>'))` | `htmlToSlateJsonWithRecognition()` | EventLog 对象（含识别元素） |
+| **纯文本** | `typeof === 'string' && 其他` | 转换为单段落 Slate JSON | EventLog 对象 |
+
+#### 3.2 识别策略优先级
+
+| 元素类型 | 精确匹配（data-* 属性） | 模糊匹配（正则模式） | 降级处理 |
+|---------|---------------------|------------------|---------|
+| **TagNode** | `data-tag-id`, `data-tag-name` | `/@工作/`, `/💼 @工作/` | 创建临时 Tag |
+| **DateMentionNode** | `data-type="dateMention"`, `data-start-date` | `/11\/29 10:00/`, `/今天下午3点/` | 降级为纯文本 |
+| **TextNode (格式化)** | `style="color: red"` | `<strong>`, `<em>`, `<u>` | 保留格式标记 |
+| **ParagraphNode** | - | `<p>`, `<div>` | 自动包裹 |
+
+#### 3.3 数据流向图
+
+**流向1: 内部编辑 → Outlook 同步**
+```
+用户输入 (LightSlateEditor)
+  ↓ onChange (Slate JSON 字符串)
+EventEditModalV2.handleSave()
+  ↓
+EventHub.updateFields({ eventlog: slateJson })
+  ↓
+EventService.updateEvent()
+  ↓
+normalizeEventLog(slateJson)
+  ├─ 检测格式: Slate JSON 字符串
+  ├─ convertSlateJsonToEventLog()
+  │   ├─ jsonToSlateNodes()
+  │   ├─ slateNodesToHtml() → 生成含 data-* 属性的 HTML
+  │   └─ 构建 EventLog 对象 { slateJson, html, plainText }
+  └─ 返回 EventLog 对象
+  ↓
+localStorage 持久化
+  ↓
+ActionBasedSyncManager.executeCreateAction()
+  ↓
+提取 eventlog.html（含 data-* 属性）
+  ↓
+Outlook API (body.content = html)
 ```
 
-### 4. 关键转换场景
+**流向2: Outlook 更新 → 内部识别**
+```
+Outlook 事件更新 (body.content = HTML)
+  ↓ 用户在 Outlook 编辑（丢失 data-* 属性）
+ActionBasedSyncManager.handleIncomingUpdate()
+  ↓
+htmlToSlateJson(outlookHtml)  // 基础转换
+  ↓
+EventService.updateEvent({ eventlog: slateJson })
+  ↓
+normalizeEventLog(slateJson)
+  ├─ 检测格式: HTML 字符串
+  ├─ htmlToSlateJsonWithRecognition(html)
+  │   ├─ parseHtmlNode() - 递归解析
+  │   ├─ recognizeByDataAttributes() - 精确匹配
+  │   │   ├─ data-tag-id → TagNode
+  │   │   └─ data-type="dateMention" → DateMentionNode
+  │   └─ recognizeInlineElements() - 模糊匹配
+  │       ├─ recognizeTagNodeByPattern() - "@工作" → TagNode
+  │       ├─ recognizeDateMentionByPattern() - "11/29 10:00" → DateMentionNode
+  │       └─ 格式化文本 - <strong> → { text: '...', bold: true }
+  ├─ convertSlateJsonToEventLog()
+  └─ 返回 EventLog 对象（含识别的元素）
+  ↓
+localStorage 持久化
+  ↓
+EventHub.emit('eventsUpdated')
+  ↓
+前端重新渲染（显示恢复的 Tag、DateMention）
+```
+
+**流向3: 读取时标准化**
+```
+PlanManager.loadEvents()
+  ↓
+EventService.getEventById(eventId)
+  ↓
+从 localStorage 读取原始数据
+  ├─ 可能是 EventLog 对象（新数据）
+  ├─ 可能是 Slate JSON 字符串（中间状态）
+  ├─ 可能是 HTML 字符串（旧数据/Outlook 同步）
+  └─ 可能是纯文本（最旧数据）
+  ↓
+normalizeEventLog(event.eventlog)
+  ├─ 自动检测格式
+  ├─ 统一转换为 EventLog 对象
+  └─ 返回标准化数据
+  ↓
+PlanManager 直接使用 eventlog.slateJson
+  ↓
+LightSlateEditor 渲染（无需格式判断）
+```
+
+### 4. 实现状态
+
+#### 已实现功能 ✅
+
+| 功能 | 位置 | 状态 |
+|------|------|------|
+| `normalizeEventLog()` | EventService.ts (L1391-1448) | ✅ 已实现 |
+| `convertSlateJsonToEventLog()` | EventService.ts (L1450-1486) | ✅ 已实现 |
+| `htmlToSlateJsonWithRecognition()` | EventService.ts (L1488-1518) | ✅ 已实现 |
+| `parseHtmlNode()` | EventService.ts (L1520-1593) | ✅ 已实现 |
+| `recognizeByDataAttributes()` | EventService.ts (L1558-1593) | ✅ 已实现 |
+| `recognizeInlineElements()` | EventService.ts (L1595-1633) | ✅ 已实现 |
+| `recognizeTagNodeByPattern()` | EventService.ts (L1635-1668) | ✅ 已实现 |
+| `recognizeDateMentionByPattern()` | EventService.ts (L1670-1721) | ✅ 已实现 |
+| `parseSimpleDate()` | EventService.ts (L1723-1763) | ✅ 已实现 |
+| `getEventById()` 标准化调用 | EventService.ts (L194) | ✅ 已实现 |
+
+#### 待优化项 🔄
+
+| 优先级 | 功能 | 描述 |
+|--------|------|------|
+| **P0** | 集成测试 | 在实际应用中验证所有场景 |
+| **P1** | 集成 TimeHub | 替换 `parseSimpleDate()` 为完整日期解析 |
+| **P1** | 集成 TagService | 查询现有标签而非创建临时 ID |
+| **P1** | ElementsMetadata | 辅助字段提升识别速度（10x） |
+| **P2** | 单元测试 | 完整的测试覆盖 |
+| **P2** | 性能监控 | 识别速度和准确率统计 |
+| **P3** | Bullet List 识别 | 支持多级列表反向识别 |
+| **P3** | Nested Event 识别 | 支持 eventlog 中的嵌套事件 |
+
+### 5. 测试指南
+
+#### 5.1 测试文件
+
+**位置**: `test-eventlog-normalization.html`
+
+**测试用例**:
+1. EventLog 对象输入（已标准化）
+2. undefined 输入
+3. Slate JSON 字符串输入
+4. HTML 字符串输入（无 data-* 属性）
+5. 纯文本输入
+6. HTML 含 Tag（data-* 属性）
+7. HTML 含 DateMention（data-* 属性）
+8. 文本含 Tag 模式（模糊匹配）
+9. 文本含 DateMention 模式（模糊匹配）
+
+#### 5.2 运行测试
+
+```bash
+# 1. 启动应用
+npm run dev
+
+# 2. 在浏览器中打开
+http://localhost:5173/test-eventlog-normalization.html
+
+# 3. 点击"运行所有测试"
+```
+
+#### 5.3 手动测试场景
+
+**场景1: 内部编辑 → Outlook 同步 → 编辑 → 回传**
+```
+1. 在 EventEditModal 中添加 Tag (@工作) 和 DateMention (11/29 10:00)
+2. 保存事件
+3. 检查 localStorage 中 eventlog 是否包含完整 EventLog 对象
+4. 触发同步到 Outlook
+5. 在 Outlook 中编辑内容（丢失 data-* 属性）
+6. 触发同步回 App
+7. 检查 Tag 和 DateMention 是否被正确识别并恢复
+```
+
+**场景2: Outlook 创建 → 同步到 App**
+```
+1. 在 Outlook 中创建事件，内容包含 "@工作" 和 "11/29 10:00"
+2. 触发同步到 App
+3. 检查 eventlog 是否包含 TagNode 和 DateMentionNode
+4. 在 PlanSlate 中查看是否正确显示
+```
+
+**场景3: 旧数据迁移**
+```
+1. 在 localStorage 中手动创建旧格式数据（纯字符串 eventlog）
+2. 使用 getEventById() 读取
+3. 检查是否自动转换为 EventLog 对象
+4. 验证数据完整性
+```
+
+### 6. 关键转换场景示例
 
 #### 场景1：用户在 EventEditModalV2 编辑内容
 ```typescript
