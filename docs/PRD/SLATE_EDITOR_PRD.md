@@ -1,12 +1,14 @@
 # Slate.js 编辑器开发指南
 
 > **状态**: ✅ 生产环境使用中  
-> **最后更新**: 2025-11-25  
+> **最后更新**: 2025-11-28  
 > **框架版本**: Slate.js 0.118+  
-> **适用模块**: PlanManager, TimeCalendar, 未来所有需要富文本编辑的模块  
+> **编辑器家族**: UnifiedSlateEditor (多事件管理) + LightSlateEditor (单内容编辑)  
+> **架构文档**: [SLATE_EDITOR_ARCHITECTURE.md](./SLATE_EDITOR_ARCHITECTURE.md) - 架构设计与重构方案  
 > **重要更新**: 
-> - PlanManager 已成功迁移到 UnifiedSlateEditor
-> - 增量更新机制已优化
+> - ✅ **UnifiedSlateEditor**: PlanManager 多事件管理编辑器
+> - ✅ **LightSlateEditor**: EventEditModal/TimeLog 单内容编辑器
+> - ✅ **段落移动功能**: 两个编辑器都已实现 Shift+Alt+↑/↓ 快捷键 (2025-11-28)
 > - **时间系统完全集成 TimeHub** (v2.2)
 > - **字段重构: simpleTitle/fullTitle双向同步** (v2.8)
 > - **渲染架构重构: 移除renderLinePrefix/renderLineSuffix** (v2.8.3)
@@ -14,7 +16,94 @@
 > - **🎉 循环更新防护机制** (v2.11)
 > - **🛡️ 性能优化: enhancedValue深度比较机制** (v2.12)
 > - **✅ checkType 字段与 checkbox 关联** (v2.13)
-> - **🎯 checkbox 状态实时同步机制** (v2.14) 🆕
+> - **🎯 checkbox 状态实时同步机制** (v2.14)
+
+---
+
+## 🏗️ 编辑器架构概览
+
+ReMarkable 的 Slate 编辑器生态包含两个专用编辑器，各司其职：
+
+### UnifiedSlateEditor - 多事件管理编辑器
+
+**定位**: 支持多个事件同时编辑、批量操作的列表型编辑器  
+**核心特性**:
+- ✅ **EventLine 架构**: 每个事件是一个 event-line 节点（标题 + eventlog）
+- ✅ **多事件管理**: 支持跨事件选择、批量编辑、事件排序
+- ✅ **checkbox 集成**: 与 PlanManager 任务状态实时同步
+- ✅ **双模式段落移动**: 标题移动带动 eventlog，eventlog 可独立移动
+
+**使用场景**: PlanManager 页面（主要）
+
+**文档位置**: 本文档 + [SHIFT_ALT_ARROW_MOVE_IMPLEMENTATION.md](../SHIFT_ALT_ARROW_MOVE_IMPLEMENTATION.md)
+
+### LightSlateEditor - 单内容编辑器
+
+**定位**: 轻量级单内容编辑器，专注纯文本编辑体验  
+**核心特性**:
+- ✅ **扁平段落结构**: 直接的 paragraph 节点，无 event-line 包裹
+- ✅ **Timestamp 自动管理**: 5分钟间隔自动插入，失焦清理空白记录
+- ✅ **Bullet 支持**: 多层级 bullet，OneNote 风格删除机制
+- ✅ **段落移动**: 上下交换，自动跳过 timestamp
+
+**使用场景**: 
+- EventEditModal 实际进展区域（已实现）
+- 未来 TimeLog 页面（待开发）
+- 任何需要富文本日志的单内容编辑场景
+
+**文档位置**: [LIGHTSLATEEDITOR_PRD.md](./LIGHTSLATEEDITOR_PRD.md) (独立文档)
+
+### 架构重构计划
+
+为支持未来的图片、语音、扩展 mention 等复杂功能，我们计划提炼共性功能到 `SlateCore` 共享层。详见 **[SLATE_EDITOR_ARCHITECTURE.md](./SLATE_EDITOR_ARCHITECTURE.md)**。
+
+---
+
+## ✅ v2.15 段落移动功能 (2025-11-28)
+
+### 功能概述
+
+**背景**: 用户需要快速调整段落顺序，提高编辑效率  
+**需求**: 支持 Shift+Alt+↑/↓ 快捷键移动段落，兼容两个编辑器的不同架构  
+**状态**: ✅ 已完成并测试验证
+
+### UnifiedSlateEditor - 双模式段落移动
+
+**特性**: 标题行和 eventlog 段落有不同的移动逻辑
+
+1. **标题行移动** (`moveTitleWithEventlogs`)
+   - 移动整个 EventLine（标题 + 所有 eventlog 段落）
+   - 保持事件完整性，所有相关内容一起移动
+   - 不能移到标题行之前、placeholder 之后、其他事件区域
+
+2. **Eventlog 段落移动** (`moveEventlogParagraph`)
+   - 只移动当前 eventlog 段落，标题不跟随
+   - 可在同一事件的 eventlog 区域内自由移动
+   - 边界保护：不能移出当前事件的 eventlog 区域
+
+**详细文档**: [SHIFT_ALT_ARROW_MOVE_IMPLEMENTATION.md](../SHIFT_ALT_ARROW_MOVE_IMPLEMENTATION.md)
+
+### LightSlateEditor - 单模式段落移动
+
+**特性**: 扁平段落结构，简单的上下交换
+
+1. **段落移动** (`moveParagraphUp/Down`)
+   - 交换当前段落与相邻段落的位置
+   - 自动跳过 timestamp-divider 节点
+   - 边界保护：首行/末行检查
+
+2. **Timestamp 保护**
+   - Backspace/Delete 禁止删除 timestamp
+   - 失焦时自动清理空 timestamp
+   - Timestamp 只能系统自动管理
+
+**实现位置**: `src/components/LightSlateEditor/LightSlateEditor.tsx` (L875-1040)
+
+### 测试验证
+
+**测试清单**: 13 个测试用例，详见 [TEST_PARAGRAPH_MOVE.md](../TEST_PARAGRAPH_MOVE.md)
+- ✅ LightSlate: 7 个测试用例（段落交换、timestamp 跳过、边界检查）
+- ✅ UnifiedSlate: 6 个测试用例（标题移动、eventlog 移动、边界保护）
 
 ---
 
