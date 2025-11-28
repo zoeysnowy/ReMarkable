@@ -2490,35 +2490,27 @@ const PlanManager: React.FC<PlanManagerProps> = ({
               editingItem_id: editingItem.id
             });
             
-            // 更新 Event
-            const updatedPlanItem: Event = {
-              ...editingItem,
-              ...updatedEvent, // 直接合并所有字段
-              content: updatedEvent.description || editingItem.content,
-            };
-            
-            // 🆕 自动设置 isTask 规则：如果时间不完整，自动标记为 Task
-            // 与 EventEditModalV2 保持一致的逻辑
-            const hasCompleteTime = updatedPlanItem.startTime && updatedPlanItem.endTime;
-            if (!hasCompleteTime && updatedPlanItem.isTask !== true) {
-              updatedPlanItem.isTask = true;
-              console.log('[PlanManager] 🔄 自动设置 isTask=true (时间不完整)');
+            // 🔄 从 EventService 读取最新数据（EventEditModal 已经保存过了）
+            // 避免使用旧的 editingItem 覆盖最新数据
+            const latestEvent = EventService.getEventById(editingItem.id);
+            if (!latestEvent) {
+              console.error('[PlanManager] 无法找到事件:', editingItem.id);
+              setSelectedItemId(null);
+              setEditingItem(null);
+              return;
             }
             
-            console.log('🔍 [PlanManager] 合并后的 updatedPlanItem:', {
-              id: updatedPlanItem.id,
-              todoListIds: updatedPlanItem.todoListIds,
-              calendarIds: updatedPlanItem.calendarIds,
-              isTask: updatedPlanItem.isTask
+            console.log('🔍 [PlanManager] 从 EventService 读取最新数据:', {
+              id: latestEvent.id,
+              updatedAt: latestEvent.updatedAt,
+              tags: latestEvent.tags,
+              eventlog: latestEvent.eventlog ? 'exists' : 'empty'
             });
             
-            // ✅ 使用 EventHub 保存
-            try {
-              await EventHub.updateFields(updatedPlanItem.id, updatedPlanItem, { source: 'PlanManager' });
-              syncToUnifiedTimeline(updatedPlanItem);
-            } catch (error) {
-              console.error('[EventEditModal] 保存失败:', error);
-            }
+            // ✅ 只需要触发 syncToUnifiedTimeline（如果需要的话）
+            // EventEditModal 已经通过 EventHub 保存，PlanManager 会通过 eventsUpdated 事件自动更新
+            syncToUnifiedTimeline(latestEvent);
+            
             setSelectedItemId(null);
             setEditingItem(null);
           }}
