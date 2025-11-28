@@ -342,6 +342,19 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     console.log('✅ [EventEditModalV2] formData + UI 状态已同步更新');
   }, [event?.id, event?.calendarIds, event?.syncMode]);
   
+  // 🆕 当 formData.syncMode 变化时，同步到 sourceSyncMode 和 syncSyncMode（UI 显示）
+  React.useEffect(() => {
+    if (formData.syncMode) {
+      setSourceSyncMode(formData.syncMode);
+      console.log('🔄 [EventEditModalV2] formData.syncMode → sourceSyncMode:', formData.syncMode);
+    }
+    
+    if (formData.subEventConfig?.syncMode) {
+      setSyncSyncMode(formData.subEventConfig.syncMode);
+      console.log('🔄 [EventEditModalV2] formData.subEventConfig.syncMode → syncSyncMode:', formData.subEventConfig.syncMode);
+    }
+  }, [formData.syncMode, formData.subEventConfig?.syncMode]);
+  
   // 打印接收到的原始 event 数据
   React.useEffect(() => {
     console.log('==================== EventEditModalV2 Debug ====================');
