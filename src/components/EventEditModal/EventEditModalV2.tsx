@@ -572,9 +572,9 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   const syncModes = [
     { id: 'receive-only', name: '只接收同步', emoji: '📥' },
     { id: 'send-only', name: '只发送同步', emoji: '📤' },
-    { id: 'send-only-private', name: '只发送（仅自己）', emoji: '📤🔒' },
+    { id: 'send-only-private', name: '只发送（仅自己）', emoji: '📤' },
     { id: 'bidirectional', name: '双向同步', emoji: '🔄' },
-    { id: 'bidirectional-private', name: '双向同步（仅自己）', emoji: '🔄🔒' },
+    { id: 'bidirectional-private', name: '双向同步（仅自己）', emoji: '🔄' },
   ];
 
   // TimeLog 相关 refs
@@ -2262,19 +2262,18 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                   <span style={{ flexShrink: 0, color: '#6b7280' }}>同步</span>
                   <div className="eventmodal-v2-plan-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     {/* 日历选择器（可编辑）*/}
-                    <div style={{ position: 'relative', flex: 1 }}>
+                    <div style={{ position: 'relative', maxWidth: '200px', minWidth: '140px' }}>
                       <div 
                         ref={sourceCalendarRef}
                         style={{ 
                           display: 'flex', 
                           alignItems: 'center', 
-                          gap: '6px', 
-                          maxWidth: '180px', 
-                          minWidth: '120px',
+                          gap: '6px',
                           cursor: 'pointer',
                           padding: '2px 4px',
                           borderRadius: '4px',
-                          transition: 'background-color 0.15s'
+                          transition: 'background-color 0.15s',
+                          maxWidth: '100%'
                         }}
                         onClick={() => setShowSourceCalendarPicker(!showSourceCalendarPicker)}
                         onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
@@ -2294,32 +2293,41 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                             'availableCalendars数量': availableCalendars.length
                           });
                           
-                          if (selectedIds.length === 0) {
+                          const isEmpty = selectedIds.length === 0;
+                          
+                          if (isEmpty) {
                             console.warn('⚠️ [计划日历选择器] selectedIds.length === 0，显示占位符');
-                            return <span style={{ color: '#9ca3af', fontSize: '14px' }}>选择日历...</span>;
                           }
                           
                           const firstCal = availableCalendars.find(c => c.id === selectedIds[0]);
-                          console.log('🎯 [计划日历选择器] 找到日历:', {
-                            firstCalId: selectedIds[0],
-                            firstCal,
-                            availableCalendars: availableCalendars.map(c => ({ id: c.id, name: c.name }))
-                          });
+                          if (!isEmpty) {
+                            console.log('🎯 [计划日历选择器] 找到日历:', {
+                              firstCalId: selectedIds[0],
+                              firstCal,
+                              availableCalendars: availableCalendars.map(c => ({ id: c.id, name: c.name }))
+                            });
+                          }
                           
                           return (
                             <>
-                              <span style={{ color: firstCal?.color || '#6b7280', fontSize: '14px' }}>●</span>
+                              {!isEmpty && (
+                                <span style={{ 
+                                  color: firstCal?.color || '#6b7280', 
+                                  fontSize: '14px',
+                                  flexShrink: 0
+                                }}>●</span>
+                              )}
                               <span style={{ 
-                                fontSize: 'clamp(10px, 2vw, 14px)', 
-                                color: '#374151', 
-                                fontWeight: 500,
+                                fontSize: 'clamp(10px, 2vw, 14px)',
+                                color: isEmpty ? '#9ca3af' : '#374151',
+                                fontWeight: isEmpty ? 'normal' : 500,
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap',
                                 flex: 1,
                                 minWidth: 0
                               }}>
-                                {firstCal?.name || '未知日历'}
+                                {isEmpty ? '选择日历...' : (firstCal?.name || '未知日历')}
                                 {selectedIds.length > 1 && <span style={{ color: '#9ca3af' }}> 等</span>}
                               </span>
                             </>
