@@ -175,7 +175,7 @@ export class EventService {
 
   /**
    * 根据ID获取事件
-   * 🔧 性能优化：只规范化目标事件的 title，避免全量处理
+   * 🔧 性能优化：只规范化目标事件的 title 和 eventlog，避免全量处理
    */
   static getEventById(eventId: string): Event | null {
     try {
@@ -187,10 +187,11 @@ export class EventService {
       
       if (!event) return null;
       
-      // 只规范化这一个事件的 title
+      // 规范化 title 和 eventlog
       return {
         ...event,
-        title: this.normalizeTitle(event.title)
+        title: this.normalizeTitle(event.title),
+        eventlog: this.normalizeEventLog(event.eventlog)
       };
     } catch (error) {
       eventLogger.error('❌ [EventService] Failed to get event by ID:', error);
@@ -1383,6 +1384,429 @@ export class EventService {
     }
     
     return result;
+  }
+
+  /**
+   * 标准化 eventlog 字段
+   * 将各种格式的 eventlog 输入统一转换为 EventLog 对象
+   * 
+   * @param eventlogInput - 支持 5 种输入格式:
+   *   1. EventLog 对象（已标准化）→ 直接返回
+   *   2. Slate JSON 字符串 → 自动转换
+   *   3. HTML 字符串 → 反向识别后转换
+   *   4. 纯文本字符串 → 转换为单段落
+   *   5. undefined/null → 返回空 EventLog
+   * @returns 标准化的 EventLog 对象
+   */
+  private static normalizeEventLog(eventlogInput: any): EventLog {
+    // 情况1: 已经是 EventLog 对象
+    if (typeof eventlogInput === 'object' && eventlogInput !== null && 'slateJson' in eventlogInput) {
+      console.log('[EventService] eventlog 已是标准对象');
+      return eventlogInput as EventLog;
+    }
+    
+    // 情况2: undefined 或 null
+    if (eventlogInput === undefined || eventlogInput === null) {
+      console.log('[EventService] eventlog 为空，返回空对象');
+      return this.convertSlateJsonToEventLog('[]');
+    }
+    
+    // 情况3-5: 字符串格式（需要判断类型）
+    if (typeof eventlogInput === 'string') {
+      const trimmed = eventlogInput.trim();
+      
+      // 空字符串
+      if (!trimmed) {
+        return this.convertSlateJsonToEventLog('[]');
+      }
+      
+      // Slate JSON 字符串（以 [ 开头）
+      if (trimmed.startsWith('[')) {
+        console.log('[EventService] 检测到 Slate JSON 字符串');
+        return this.convertSlateJsonToEventLog(eventlogInput);
+      }
+      
+      // HTML 字符串（包含标签）
+      if (trimmed.startsWith('<') || trimmed.includes('<p>') || trimmed.includes('<div>')) {
+        console.log('[EventService] 检测到 HTML 字符串，进行反向识别');
+        // 使用反向识别将 HTML 转换为 Slate JSON
+        const slateJson = this.htmlToSlateJsonWithRecognition(eventlogInput);
+        return this.convertSlateJsonToEventLog(slateJson);
+      }
+      
+      // 纯文本字符串
+      console.log('[EventService] 检测到纯文本，转换为单段落');
+      const slateJson = JSON.stringify([{
+        type: 'paragraph',
+        children: [{ text: eventlogInput }]
+      }]);
+      return this.convertSlateJsonToEventLog(slateJson);
+    }
+    
+    // 未知格式 - 降级为空
+    console.warn('[EventService] 未知 eventlog 格式:', typeof eventlogInput);
+    return this.convertSlateJsonToEventLog('[]');
+  }
+  
+  /**
+   * 将 Slate JSON 字符串转换为完整的 EventLog 对象
+   * （由 normalizeEventLog 调用）
+   */
+  private static convertSlateJsonToEventLog(slateJson: string): EventLog {
+    try {
+      const slateNodes = jsonToSlateNodes(slateJson);
+      const htmlDescription = slateNodesToHtml(slateNodes);
+      const plainTextDescription = htmlDescription.replace(/<[^>]*>/g, '');
+      
+      return {
+        slateJson: slateJson,
+        html: htmlDescription,
+        plainText: plainTextDescription,
+        attachments: [],
+        versions: [],
+        syncState: {
+          status: 'pending',
+          contentHash: this.hashContent(slateJson),
+        },
+        createdAt: formatTimeForStorage(new Date()),
+        updatedAt: formatTimeForStorage(new Date()),
+      };
+    } catch (error) {
+      console.error('[EventService] convertSlateJsonToEventLog 失败:', error);
+      // 降级返回空对象
+      return {
+        slateJson: '[]',
+        html: '',
+        plainText: '',
+        attachments: [],
+        versions: [],
+        syncState: { status: 'pending' },
+        createdAt: formatTimeForStorage(new Date()),
+        updatedAt: formatTimeForStorage(new Date()),
+      };
+    }
+  }
+  
+  /**
+   * HTML 转换为 Slate JSON（含反向识别）
+   * 从 Outlook 返回的 HTML 中识别出 App 元素（Tag、DateMention 等）
+   */
+  private static htmlToSlateJsonWithRecognition(html: string): string {
+    try {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = html;
+      
+      const slateNodes: any[] = [];
+      
+      // 遍历 HTML 节点并转换
+      this.parseHtmlNode(tempDiv, slateNodes);
+      
+      // 确保至少有一个段落
+      if (slateNodes.length === 0) {
+        slateNodes.push({
+          type: 'paragraph',
+          children: [{ text: '' }]
+        });
+      }
+      
+      return JSON.stringify(slateNodes);
+    } catch (error) {
+      console.error('[EventService] htmlToSlateJsonWithRecognition 失败:', error);
+      // 降级返回空数组
+      return '[]';
+    }
+  }
+  
+  /**
+   * 递归解析 HTML 节点
+   */
+  private static parseHtmlNode(node: Node, slateNodes: any[]): void {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent || '';
+      if (text.trim()) {
+        // 检查文本中是否包含 Tag 或 DateMention 模式
+        const fragments = this.recognizeInlineElements(text);
+        slateNodes.push(...fragments);
+      }
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const element = node as HTMLElement;
+      
+      // 1. 精确匹配：检查 data-* 属性
+      const recognizedNode = this.recognizeByDataAttributes(element);
+      if (recognizedNode) {
+        slateNodes.push(recognizedNode);
+        return;
+      }
+      
+      // 2. 块级元素：段落、列表等
+      if (element.tagName === 'P' || element.tagName === 'DIV') {
+        const paragraphChildren: any[] = [];
+        element.childNodes.forEach(child => {
+          this.parseHtmlNode(child, paragraphChildren);
+        });
+        
+        if (paragraphChildren.length > 0) {
+          slateNodes.push({
+            type: 'paragraph',
+            children: paragraphChildren
+          });
+        }
+        return;
+      }
+      
+      // 3. 格式化元素：bold, italic, underline 等
+      if (['STRONG', 'B', 'EM', 'I', 'U', 'S', 'SPAN'].includes(element.tagName)) {
+        const marks: any = {};
+        
+        if (element.tagName === 'STRONG' || element.tagName === 'B') marks.bold = true;
+        if (element.tagName === 'EM' || element.tagName === 'I') marks.italic = true;
+        if (element.tagName === 'U') marks.underline = true;
+        if (element.tagName === 'S') marks.strikethrough = true;
+        
+        // 提取颜色
+        const style = element.getAttribute('style');
+        if (style) {
+          const colorMatch = style.match(/color:\s*([^;]+)/);
+          const bgColorMatch = style.match(/background-color:\s*([^;]+)/);
+          if (colorMatch) marks.color = colorMatch[1].trim();
+          if (bgColorMatch) marks.backgroundColor = bgColorMatch[1].trim();
+        }
+        
+        // 递归处理子节点
+        element.childNodes.forEach(child => {
+          if (child.nodeType === Node.TEXT_NODE) {
+            slateNodes.push({ text: child.textContent || '', ...marks });
+          } else {
+            this.parseHtmlNode(child, slateNodes);
+          }
+        });
+        return;
+      }
+      
+      // 4. 其他元素：递归处理子节点
+      element.childNodes.forEach(child => {
+        this.parseHtmlNode(child, slateNodes);
+      });
+    }
+  }
+  
+  /**
+   * 通过 data-* 属性精确识别元素
+   */
+  private static recognizeByDataAttributes(element: HTMLElement): any | null {
+    // TagNode 识别
+    if (element.hasAttribute('data-tag-id')) {
+      return {
+        type: 'tag',
+        tagId: element.getAttribute('data-tag-id') || '',
+        tagName: element.getAttribute('data-tag-name') || '',
+        tagColor: element.getAttribute('data-tag-color') || undefined,
+        tagEmoji: element.getAttribute('data-tag-emoji') || undefined,
+        mentionOnly: element.hasAttribute('data-mention-only'),
+        children: [{ text: '' }]
+      };
+    }
+    
+    // DateMentionNode 识别
+    if (element.getAttribute('data-type') === 'dateMention' || element.hasAttribute('data-start-date')) {
+      const startDate = element.getAttribute('data-start-date');
+      if (startDate) {
+        return {
+          type: 'dateMention',
+          startDate: startDate,
+          endDate: element.getAttribute('data-end-date') || undefined,
+          eventId: element.getAttribute('data-event-id') || undefined,
+          originalText: element.getAttribute('data-original-text') || undefined,
+          isOutdated: element.getAttribute('data-is-outdated') === 'true',
+          children: [{ text: '' }]
+        };
+      }
+    }
+    
+    return null;
+  }
+  
+  /**
+   * 识别文本中的内联元素（Tag、DateMention）
+   * 使用正则模式进行模糊匹配
+   */
+  private static recognizeInlineElements(text: string): any[] {
+    const fragments: any[] = [];
+    let lastIndex = 0;
+    
+    // 1. 尝试识别 TagNode
+    const tagMatches = this.recognizeTagNodeByPattern(text);
+    
+    // 2. 尝试识别 DateMentionNode
+    const dateMatches = this.recognizeDateMentionByPattern(text);
+    
+    // 合并所有匹配结果并排序
+    const allMatches = [...tagMatches, ...dateMatches].sort((a, b) => a.index - b.index);
+    
+    // 构建最终的 fragments
+    for (const match of allMatches) {
+      // 添加匹配前的纯文本
+      if (match.index > lastIndex) {
+        fragments.push({ text: text.slice(lastIndex, match.index) });
+      }
+      
+      // 添加识别的节点
+      fragments.push(match.node);
+      
+      lastIndex = match.index + match.length;
+    }
+    
+    // 添加剩余的文本
+    if (lastIndex < text.length) {
+      fragments.push({ text: text.slice(lastIndex) });
+    }
+    
+    // 如果没有匹配任何元素，返回整个文本
+    if (fragments.length === 0) {
+      fragments.push({ text: text });
+    }
+    
+    return fragments;
+  }
+  
+  /**
+   * 使用正则模式识别 TagNode
+   * 返回匹配位置和节点信息
+   */
+  private static recognizeTagNodeByPattern(text: string): Array<{ index: number; length: number; node: any }> {
+    const matches: Array<{ index: number; length: number; node: any }> = [];
+    
+    // Tag 模式: (emoji)? @tagName
+    // 支持: "@工作", "💼 @工作", "📅 @会议"
+    const tagPattern = /((?:[\p{Emoji}]\s*)?@[\w\u4e00-\u9fa5]+)/gu;
+    
+    let match;
+    while ((match = tagPattern.exec(text)) !== null) {
+      const fullMatch = match[0];
+      const index = match.index;
+      
+      // 提取 emoji 和标签名
+      const emojiMatch = fullMatch.match(/^([\p{Emoji}])\s*@(.+)$/u);
+      const tagEmoji = emojiMatch ? emojiMatch[1] : undefined;
+      const tagName = emojiMatch ? emojiMatch[2] : fullMatch.replace('@', '');
+      
+      // TODO: 这里应该查询 TagService，但为了避免循环依赖，暂时创建新标签
+      // 实际使用时需要注入 TagService 或使用事件总线
+      const tagId = `tag_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      matches.push({
+        index,
+        length: fullMatch.length,
+        node: {
+          type: 'tag',
+          tagId: tagId,
+          tagName: tagName,
+          tagEmoji: tagEmoji,
+          children: [{ text: '' }]
+        }
+      });
+    }
+    
+    return matches;
+  }
+  
+  /**
+   * 使用正则模式识别 DateMentionNode
+   * 返回匹配位置和节点信息
+   */
+  private static recognizeDateMentionByPattern(text: string): Array<{ index: number; length: number; node: any }> {
+    const matches: Array<{ index: number; length: number; node: any }> = [];
+    
+    // DateMention 模式1: "11/29 10:00" or "11/29 10:00 - 12:00"
+    const pattern1 = /(\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}(?:\s*-\s*\d{1,2}:\d{2})?)/g;
+    
+    // DateMention 模式2: "2025-11-29 10:00" or "2025-11-29 10:00 - 12:00"
+    const pattern2 = /(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}(?:\s*-\s*\d{2}:\d{2})?)/g;
+    
+    // DateMention 模式3: "今天下午3点" or "明天上午9点"
+    const pattern3 = /(今天|明天|后天|下周[一二三四五六日])(?:\s*(上午|下午|晚上))?(?:\s*(\d{1,2})点)?/g;
+    
+    const patterns = [pattern1, pattern2, pattern3];
+    
+    for (const pattern of patterns) {
+      let match;
+      while ((match = pattern.exec(text)) !== null) {
+        const fullMatch = match[0];
+        const index = match.index;
+        
+        // 尝试解析日期（这里简化处理，实际应该使用 TimeHub 的解析功能）
+        try {
+          // TODO: 集成 TimeHub 的日期解析
+          // 暂时使用简化版本
+          const startDate = this.parseSimpleDate(fullMatch);
+          
+          if (startDate) {
+            matches.push({
+              index,
+              length: fullMatch.length,
+              node: {
+                type: 'dateMention',
+                startDate: startDate,
+                originalText: fullMatch,
+                isOutdated: false,
+                children: [{ text: '' }]
+              }
+            });
+          }
+        } catch (error) {
+          console.warn('[EventService] 日期解析失败:', fullMatch, error);
+        }
+      }
+    }
+    
+    return matches;
+  }
+  
+  /**
+   * 简化的日期解析（用于 recognizeDateMentionByPattern）
+   * TODO: 应该使用 TimeHub 的完整解析功能
+   */
+  private static parseSimpleDate(dateText: string): string | null {
+    const now = new Date();
+    
+    // 模式1: "11/29 10:00"
+    const pattern1Match = dateText.match(/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/);
+    if (pattern1Match) {
+      const month = parseInt(pattern1Match[1], 10) - 1; // JS 月份从 0 开始
+      const day = parseInt(pattern1Match[2], 10);
+      const hour = parseInt(pattern1Match[3], 10);
+      const minute = parseInt(pattern1Match[4], 10);
+      
+      const date = new Date(now.getFullYear(), month, day, hour, minute);
+      return formatTimeForStorage(date);
+    }
+    
+    // 模式2: "2025-11-29 10:00"
+    const pattern2Match = dateText.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/);
+    if (pattern2Match) {
+      const year = parseInt(pattern2Match[1], 10);
+      const month = parseInt(pattern2Match[2], 10) - 1;
+      const day = parseInt(pattern2Match[3], 10);
+      const hour = parseInt(pattern2Match[4], 10);
+      const minute = parseInt(pattern2Match[5], 10);
+      
+      const date = new Date(year, month, day, hour, minute);
+      return formatTimeForStorage(date);
+    }
+    
+    // 模式3: "今天下午3点"（简化处理）
+    if (dateText.includes('今天')) {
+      const hourMatch = dateText.match(/(\d{1,2})点/);
+      if (hourMatch) {
+        let hour = parseInt(hourMatch[1], 10);
+        if (dateText.includes('下午') && hour < 12) hour += 12;
+        
+        const date = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, 0);
+        return formatTimeForStorage(date);
+      }
+    }
+    
+    return null;
   }
 
   /**

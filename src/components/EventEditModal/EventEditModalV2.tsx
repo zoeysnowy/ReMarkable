@@ -898,10 +898,24 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         // 3. 合并当前快照，确保数据完整性
         // 
         // 🔧 Timer 运行中：保持 syncStatus='local-only'
+        
+        // 🆕 自动设置 isTask 规则：如果时间不完整，自动标记为 Task
+        // 根据 EventHub Architecture:
+        // - isTask = true: Task 类型，startTime/endTime 可选（同步到 Microsoft To Do）
+        // - isTask = false/undefined: Calendar 事件，startTime/endTime 必需（同步到 Outlook Calendar）
+        let finalIsTask = updatedEvent.isTask;
+        const hasCompleteTime = updatedEvent.startTime && updatedEvent.endTime;
+        
+        if (!hasCompleteTime && finalIsTask !== true) {
+          // 时间缺失且未明确标记为 Task → 自动设置为 Task
+          finalIsTask = true;
+          console.log('[EventEditModalV2] 🔄 自动设置 isTask=true (时间不完整)');
+        }
+        
         result = await EventHub.updateFields(eventId, {
           title: updatedEvent.title,
           tags: updatedEvent.tags,
-          isTask: updatedEvent.isTask,
+          isTask: finalIsTask, // 🔄 使用计算后的值
           isTimer: updatedEvent.isTimer,
           parentEventId: updatedEvent.parentEventId,
           startTime: updatedEvent.startTime,

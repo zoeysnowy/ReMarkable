@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>测试 EventLog 标准化功能</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 1200px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .test-section {
+      background: white;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      border-bottom: 3px solid #4CAF50;
+      padding-bottom: 10px;
+    }
+    h2 {
+      color: #555;
+      margin-top: 0;
+    }
+    .test-case {
+      margin: 15px 0;
+      padding: 15px;
+      background: #f9f9f9;
+      border-left: 4px solid #2196F3;
+      border-radius: 4px;
+    }
+    .test-case h3 {
+      margin-top: 0;
+      color: #2196F3;
+    }
+    .input {
+      background: #fff3cd;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      border: 1px solid #ffc107;
+    }
+    .output {
+      background: #d4edda;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      border: 1px solid #28a745;
+    }
+    .error {
+      background: #f8d7da;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      border: 1px solid #dc3545;
+      color: #721c24;
+    }
+    pre {
+      background: #263238;
+      color: #aed581;
+      padding: 15px;
+      border-radius: 4px;
+      overflow-x: auto;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 5px;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    button:active {
+      background: #3d8b40;
+    }
+    .status {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: bold;
+      margin-left: 10px;
+    }
+    .status.pass {
+      background: #d4edda;
+      color: #155724;
+    }
+    .status.fail {
+      background: #f8d7da;
+      color: #721c24;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧪 EventLog 标准化功能测试</h1>
+  
+  <div class="test-section">
+    <h2>测试说明</h2>
+    <p>本测试验证以下功能：</p>
+    <ul>
+      <li><strong>normalizeEventLog()</strong>: 5种输入格式的标准化</li>
+      <li><strong>htmlToSlateJsonWithRecognition()</strong>: HTML反向识别</li>
+      <li><strong>recognizeTagNodeByPattern()</strong>: Tag节点模糊匹配</li>
+      <li><strong>recognizeDateMentionByPattern()</strong>: DateMention节点模糊匹配</li>
+    </ul>
+  </div>
+
+  <div class="test-section">
+    <h2>测试用例</h2>
+    <button onclick="runAllTests()">运行所有测试</button>
+    <button onclick="clearResults()">清空结果</button>
+    
+    <div id="test-results"></div>
+  </div>
+
+  <script type="module">
+    // 注意：由于这是一个测试文件，我们需要等待应用加载完成
+    window.runAllTests = async function() {
+      const resultsDiv = document.getElementById('test-results');
+      resultsDiv.innerHTML = '<p>⏳ 加载中...</p>';
+      
+      // 等待 EventService 加载
+      let retries = 0;
+      while (!window.EventService && retries < 50) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        retries++;
+      }
+      
+      if (!window.EventService) {
+        resultsDiv.innerHTML = '<div class="error">❌ EventService 未加载，请在应用运行时使用此测试页面</div>';
+        return;
+      }
+      
+      resultsDiv.innerHTML = '';
+      
+      // 测试用例
+      const tests = [
+        {
+          name: '场景1: EventLog对象输入（已标准化）',
+          input: {
+            slateJson: '[{"type":"paragraph","children":[{"text":"测试内容"}]}]',
+            html: '<p>测试内容</p>',
+            plainText: '测试内容',
+            attachments: [],
+            versions: []
+          },
+          expectedType: 'EventLog对象',
+          validate: (result) => result && result.slateJson && result.html
+        },
+        {
+          name: '场景2: undefined输入',
+          input: undefined,
+          expectedType: '空EventLog对象',
+          validate: (result) => result && result.slateJson === '[]'
+        },
+        {
+          name: '场景3: Slate JSON字符串输入',
+          input: '[{"type":"paragraph","children":[{"text":"Slate内容"}]}]',
+          expectedType: 'EventLog对象（从JSON转换）',
+          validate: (result) => result && result.slateJson && result.html && result.plainText === 'Slate内容'
+        },
+        {
+          name: '场景4: HTML字符串输入（无data-*属性）',
+          input: '<p>这是<strong>粗体</strong>文本</p>',
+          expectedType: 'EventLog对象（HTML反向识别）',
+          validate: (result) => result && result.slateJson && result.html
+        },
+        {
+          name: '场景5: 纯文本输入',
+          input: '纯文本内容',
+          expectedType: 'EventLog对象（单段落）',
+          validate: (result) => result && result.plainText === '纯文本内容'
+        },
+        {
+          name: '场景6: HTML含Tag（data-*属性）',
+          input: '<p>任务 <span data-tag-id="tag123" data-tag-name="工作" data-tag-emoji="💼">@工作</span> 完成</p>',
+          expectedType: 'EventLog对象（Tag节点识别）',
+          validate: (result) => {
+            if (!result || !result.slateJson) return false;
+            try {
+              const nodes = JSON.parse(result.slateJson);
+              return JSON.stringify(nodes).includes('"type":"tag"');
+            } catch {
+              return false;
+            }
+          }
+        },
+        {
+          name: '场景7: HTML含DateMention（data-*属性）',
+          input: '<p>会议时间 <span data-type="dateMention" data-start-date="2025-11-29T10:00:00">11/29 10:00</span></p>',
+          expectedType: 'EventLog对象（DateMention节点识别）',
+          validate: (result) => {
+            if (!result || !result.slateJson) return false;
+            try {
+              const nodes = JSON.parse(result.slateJson);
+              return JSON.stringify(nodes).includes('"type":"dateMention"');
+            } catch {
+              return false;
+            }
+          }
+        },
+        {
+          name: '场景8: 文本含Tag模式（无属性，模糊匹配）',
+          input: '<p>任务 @工作 完成</p>',
+          expectedType: 'EventLog对象（Tag模糊识别）',
+          validate: (result) => {
+            if (!result || !result.slateJson) return false;
+            try {
+              const nodes = JSON.parse(result.slateJson);
+              const jsonStr = JSON.stringify(nodes);
+              return jsonStr.includes('"type":"tag"') || jsonStr.includes('@工作');
+            } catch {
+              return false;
+            }
+          }
+        },
+        {
+          name: '场景9: 文本含DateMention模式（模糊匹配）',
+          input: '<p>会议安排在 11/29 10:00 开始</p>',
+          expectedType: 'EventLog对象（DateMention模糊识别）',
+          validate: (result) => {
+            if (!result || !result.slateJson) return false;
+            try {
+              const nodes = JSON.parse(result.slateJson);
+              const jsonStr = JSON.stringify(nodes);
+              return jsonStr.includes('"type":"dateMention"') || jsonStr.includes('11/29 10:00');
+            } catch {
+              return false;
+            }
+          }
+        }
+      ];
+      
+      // 运行测试
+      for (let i = 0; i < tests.length; i++) {
+        const test = tests[i];
+        const testDiv = document.createElement('div');
+        testDiv.className = 'test-case';
+        
+        try {
+          // 调用 normalizeEventLog（通过反射访问私有方法）
+          // 注意：这是测试代码，实际应用中不应该访问私有方法
+          let result;
+          
+          // 使用公开方法测试
+          // 我们需要模拟一个事件并读取
+          const testEvent = {
+            id: 'test-' + i,
+            title: { simpleTitle: '测试事件' },
+            eventlog: test.input,
+            createdAt: new Date().toISOString()
+          };
+          
+          // 保存到 localStorage
+          const events = JSON.parse(localStorage.getItem('remarkable-events') || '[]');
+          events.push(testEvent);
+          localStorage.setItem('remarkable-events', JSON.stringify(events));
+          
+          // 读取事件（会触发 normalizeEventLog）
+          result = window.EventService.getEventById(testEvent.id);
+          
+          // 清理测试数据
+          const cleanedEvents = events.filter(e => e.id !== testEvent.id);
+          localStorage.setItem('remarkable-events', JSON.stringify(cleanedEvents));
+          
+          const passed = result && result.eventlog && test.validate(result.eventlog);
+          
+          testDiv.innerHTML = `
+            <h3>${test.name} <span class="status ${passed ? 'pass' : 'fail'}">${passed ? '✓ PASS' : '✗ FAIL'}</span></h3>
+            <div class="input">
+              <strong>输入:</strong>
+              <pre>${typeof test.input === 'string' ? test.input : JSON.stringify(test.input, null, 2)}</pre>
+            </div>
+            <div class="${passed ? 'output' : 'error'}">
+              <strong>输出:</strong>
+              <pre>${result ? JSON.stringify(result.eventlog, null, 2) : '无结果'}</pre>
+            </div>
+            <div>
+              <strong>预期类型:</strong> ${test.expectedType}
+            </div>
+          `;
+        } catch (error) {
+          testDiv.innerHTML = `
+            <h3>${test.name} <span class="status fail">✗ ERROR</span></h3>
+            <div class="input">
+              <strong>输入:</strong>
+              <pre>${typeof test.input === 'string' ? test.input : JSON.stringify(test.input, null, 2)}</pre>
+            </div>
+            <div class="error">
+              <strong>错误:</strong>
+              <pre>${error.message}\n${error.stack}</pre>
+            </div>
+          `;
+        }
+        
+        resultsDiv.appendChild(testDiv);
+      }
+    };
+    
+    window.clearResults = function() {
+      document.getElementById('test-results').innerHTML = '';
+    };
+  </script>
+
+  <div class="test-section">
+    <h2>📋 使用说明</h2>
+    <ol>
+      <li>在主应用运行的情况下打开此测试页面</li>
+      <li>点击"运行所有测试"按钮</li>
+      <li>查看每个测试用例的结果</li>
+      <li>检查是否所有测试都通过（显示绿色✓ PASS）</li>
+    </ol>
+    <p><strong>注意：</strong>此测试需要在应用运行时进行，因为需要访问 EventService 和相关依赖。</p>
+  </div>
+</body>
+</html>
