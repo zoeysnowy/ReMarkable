@@ -911,6 +911,95 @@ const STATUS_LABELS = {
 
 - **相关文件**:
   - `serialization.ts` - L107-109 (添加 checked/unchecked 到 metadata)
+
+---
+
+### 2025-11-28
+
+#### Enhancement 1: 完全空白事件过滤优化 ✨ **Feature Enhancement**
+
+- **问题描述**:
+  - Snapshot 模式下显示已删除的 ghost 事件（带删除线）
+  - 原有过滤逻辑只检查 `title` 字段是否为空
+  - 用户可能创建了有 eventlog 但无标题的事件，删除后仍显示在 snapshot 中
+  - 或者创建了完全空白的事件（标题和 eventlog 都为空），删除后不应该显示
+
+- **用户需求**: "完全空白的event（标题和eventlog都空白），不应该出现在snapshot里"
+
+- **优化方案**: 增强 Ghost 事件过滤逻辑（步骤 2）
+  ```typescript
+  // PlanManager.tsx - L1375-1409
+  
+  // 步骤 2.1: 检查标题内容
+  const titleObj = log.before.title;
+  const hasTitle = log.before.content || 
+                  (typeof titleObj === 'string' ? titleObj : 
+                   (titleObj && (titleObj.simpleTitle || titleObj.fullTitle)));
+  
+  // 步骤 2.2: 检查 eventlog 内容
+  const eventlogField = log.before.eventlog;
+  let hasEventlog = false;
+  
+  if (eventlogField) {
+    if (typeof eventlogField === 'string') {
+      // 字符串格式：去除空白后检查是否有内容
+      hasEventlog = eventlogField.trim().length > 0;
+    } else if (typeof eventlogField === 'object' && eventlogField !== null) {
+      // EventLog 对象格式：检查 slateJson, html, plainText
+      const slateContent = eventlogField.slateJson || '';
+      const htmlContent = eventlogField.html || '';
+      const plainContent = eventlogField.plainText || '';
+      
+      // 任一字段有实质内容即算有 eventlog
+      hasEventlog = slateContent.trim().length > 0 || 
+                   htmlContent.trim().length > 0 || 
+                   plainContent.trim().length > 0;
+    }
+  }
+  
+  // 只有标题和eventlog都为空时才跳过
+  if (!hasTitle && !hasEventlog) {
+    console.log('[PlanManager] ⏭️ 跳过完全空白 ghost (无标题且无eventlog):', log.eventId.slice(-8));
+    return;
+  }
+  ```
+
+- **过滤规则更新** (v2.4 三步过滤公式):
+  1. **checkType 过滤**: 必须有有效的 checkType 且不为 'none'
+  2. **完全空白过滤**: 标题 **AND** eventlog 都为空才跳过（从 **OR** 改为 **AND**）
+  3. **系统事件过滤**: isTimer/isTimeLog/isOutsideApp === true
+
+- **过滤场景覆盖**:
+  | 标题 | EventLog | 结果 | 说明 |
+  |------|----------|------|------|
+  | ❌ 空 | ❌ 空 | **不显示** ghost | 完全空白事件 ✅ |
+  | ❌ 空 | ✅ 有内容 | 显示 ghost | 有实质内容 |
+  | ✅ 有内容 | ❌ 空 | 显示 ghost | 有实质内容 |
+  | ✅ 有内容 | ✅ 有内容 | 显示 ghost | 有实质内容 |
+
+- **EventLog 格式支持**:
+  - ✅ 字符串格式: `eventlog: "content"` → 检查 `trim().length > 0`
+  - ✅ 对象格式: `eventlog: { slateJson, html, plainText }` → 检查所有字段
+  - ✅ 空字符串: `eventlog: ""` → 正确识别为空
+  - ✅ 空白字符: `eventlog: "   "` → 正确识别为空（trim 后）
+
+- **改进效果**:
+  - 🎯 **精准过滤**: 只过滤真正没有任何内容的事件
+  - 📊 **完整展示**: 有 eventlog 记录的事件保留在 snapshot 中
+  - 🧹 **清理噪音**: 删除测试事件/空白占位符不再污染 snapshot 视图
+  - 💡 **符合直觉**: 用户删除空白事件后不会在历史中看到它
+
+- **测试验证**:
+  - ✅ 创建空白事件（标题和eventlog都为空）→ 删除 → snapshot 不显示 ✅
+  - ✅ 创建标题为空但有eventlog的事件 → 删除 → snapshot 显示 ✅
+  - ✅ 创建有标题但eventlog为空的事件 → 删除 → snapshot 显示 ✅
+  - ✅ 创建有标题且有eventlog的事件 → 删除 → snapshot 显示 ✅
+  - ✅ EventLog 字符串格式空白 → 正确识别为空 ✅
+  - ✅ EventLog 对象格式所有字段空白 → 正确识别为空 ✅
+
+- **相关文件**:
+  - `PlanManager.tsx` - L1375-1409 (Ghost 事件过滤逻辑)
+  - `SNAPSHOT_STATUS_VISUALIZATION_PRD.md` - L330-378 (PRD 文档更新)
   - `EventLinePrefix.tsx` - L27-35 (从 metadata 计算 isCompleted)
   - `PlanManager.tsx` - L1485-1575 (getEventStatuses 使用 EventService)
 
