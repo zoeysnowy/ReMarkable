@@ -380,9 +380,40 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         return false;
       }
       
-      // 步骤 3: 排除过期的 TimeCalendar 事件（使用 TIME_ARCHITECTURE 规范的工具函数）
-      if (event.isTimeCalendar && isEventExpired(event, now)) {
-        return false; // TimeCalendar 已过期
+      // 步骤 3: 过期/完成事件处理
+      const isExpired = isEventExpired(event, now);
+      
+      // 3.1 纯日历事件：过期后自动清理
+      if (event.isTimeCalendar && isExpired) {
+        // 检查是否是任务类事件（有 checkbox）
+        const isTaskLike = event.isPlan === true || 
+                           (event.checkType && event.checkType !== 'none');
+        
+        if (!isTaskLike) {
+          return false; // 纯日历事件，过期后移除
+        }
+        // 任务类日历事件：继续执行后续检查
+      }
+      
+      // 3.2 已完成任务：过0点后自动隐藏（除非在 Snapshot 模式）
+      if (event.checkType && event.checkType !== 'none') {
+        // 检查任务是否已完成
+        const lastChecked = event.checked?.[event.checked.length - 1];
+        const lastUnchecked = event.unchecked?.[event.unchecked.length - 1];
+        const isCompleted = lastChecked && (!lastUnchecked || lastChecked > lastUnchecked);
+        
+        if (isCompleted && lastChecked) {
+          // 获取完成时间（checked 数组最后一个时间戳）
+          const completedTime = new Date(lastChecked);
+          const today = new Date(now);
+          today.setHours(0, 0, 0, 0); // 今天0点
+          
+          // 如果完成时间是今天之前（已过0点），则隐藏
+          if (completedTime < today) {
+            return false; // 昨天及更早完成的任务自动隐藏
+          }
+          // 今天完成的任务继续显示
+        }
       }
       
       return true;
@@ -651,9 +682,30 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         return;
       }
       
-      // 排除条件：过期的 TimeCalendar（使用 TIME_ARCHITECTURE 规范的工具函数）
+      // 排除条件：过期/完成事件（符合 TIME_ARCHITECTURE）
       if (event.isTimeCalendar && isEventExpired(event)) {
-        return;
+        // ✅ 任务类事件：即使过期也显示（允许补做）
+        const isTaskLike = event.isPlan === true || 
+                           (event.checkType && event.checkType !== 'none');
+        
+        if (!isTaskLike) {
+          return; // 纯日历事件过期后忽略
+        }
+        
+        // ✅ 已完成任务：过0点后自动隐藏
+        const lastChecked = event.checked?.[event.checked?.length - 1];
+        const lastUnchecked = event.unchecked?.[event.unchecked?.length - 1];
+        const isCompleted = lastChecked && (!lastUnchecked || lastChecked > lastUnchecked);
+        
+        if (isCompleted) {
+          const completedTime = new Date(lastChecked);
+          const todayStart = new Date();
+          todayStart.setHours(0, 0, 0, 0);
+          
+          if (completedTime < todayStart) {
+            return; // 过0点后已完成任务忽略
+          }
+        }
       }
       
       // ✅ 确认为 Plan 事件的外部更新，执行同步
