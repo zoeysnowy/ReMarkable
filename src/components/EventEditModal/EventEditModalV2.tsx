@@ -2403,7 +2403,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                           padding: '2px 4px',
                           borderRadius: '4px',
                           transition: 'background-color 0.15s',
-                          whiteSpace: 'nowrap'
+                          whiteSpace: 'nowrap',
+                          minWidth: '148px'
                         }}
                         onClick={() => setShowSourceSyncModePicker(!showSourceSyncModePicker)}
                         onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
@@ -2664,7 +2665,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                             padding: '2px 4px',
                             borderRadius: '4px',
                             transition: 'background-color 0.15s',
-                            whiteSpace: 'nowrap'
+                            whiteSpace: 'nowrap',
+                            minWidth: '148px'
                           }}
                           onClick={() => setShowSyncSyncModePicker(!showSyncSyncModePicker)}
                           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
