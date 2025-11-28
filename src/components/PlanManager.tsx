@@ -2496,10 +2496,19 @@ const PlanManager: React.FC<PlanManagerProps> = ({
               content: updatedEvent.description || editingItem.content,
             };
             
+            // 🆕 自动设置 isTask 规则：如果时间不完整，自动标记为 Task
+            // 与 EventEditModalV2 保持一致的逻辑
+            const hasCompleteTime = updatedPlanItem.startTime && updatedPlanItem.endTime;
+            if (!hasCompleteTime && updatedPlanItem.isTask !== true) {
+              updatedPlanItem.isTask = true;
+              console.log('[PlanManager] 🔄 自动设置 isTask=true (时间不完整)');
+            }
+            
             console.log('🔍 [PlanManager] 合并后的 updatedPlanItem:', {
               id: updatedPlanItem.id,
               todoListIds: updatedPlanItem.todoListIds,
-              calendarIds: updatedPlanItem.calendarIds
+              calendarIds: updatedPlanItem.calendarIds,
+              isTask: updatedPlanItem.isTask
             });
             
             // ✅ 使用 EventHub 保存
