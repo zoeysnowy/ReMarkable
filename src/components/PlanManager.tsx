@@ -2513,6 +2513,14 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             // EventEditModal 已经通过 EventHub 保存，PlanManager 会通过 eventsUpdated 事件自动更新
             syncToUnifiedTimeline(latestEvent);
             
+            // 🔄 手动更新 items 数组（绕过 eventsUpdated 去重检查）
+            // 原因：EventEditModal 保存触发的 eventsUpdated 事件被 isLocalUpdate 拦截
+            // 必须手动刷新 UI 以显示最新的 tags、eventlog 等字段
+            setItems(prev => {
+              return prev.map((e: Event) => e.id === latestEvent.id ? latestEvent : e);
+            });
+            console.log('🔄 [PlanManager] 手动更新 items 数组，避免去重拦截');
+            
             setSelectedItemId(null);
             setEditingItem(null);
           }}

@@ -708,6 +708,70 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   
   // 🔥 智能增量更新：逐个比较 items，只更新变化的 Events
   
+  // 🆕 监听 enhancedValue 变化，同步更新 value（绕过 eventsUpdated 去重检查）
+  useEffect(() => {
+    if (!isInitializedRef.current) return;
+    
+    // 🔍 检查用户是否正在编辑
+    const hasSelection = !!editor.selection;
+    const hasPendingChanges = !!pendingChangesRef.current;
+    
+    if (!hasSelection && !hasPendingChanges) {
+      // 🔄 用户未在编辑，直接替换整个 value
+      console.log('%c[🔄 同步 enhancedValue] 用户未编辑，全量更新', 'background: #4CAF50; color: white; padding: 2px 6px;', {
+        oldLength: value.length,
+        newLength: enhancedValue.length
+      });
+      skipNextOnChangeRef.current = true;
+      setValue(enhancedValue);
+    } else {
+      // 🔧 用户正在编辑，增量更新其他节点的 metadata
+      console.log('%c[🔄 同步 enhancedValue] 用户正在编辑，增量更新', 'background: #FF9800; color: white; padding: 2px 6px;', {
+        hasSelection,
+        hasPendingChanges,
+        currentPath: editor.selection?.anchor.path[0]
+      });
+      
+      // 找到当前编辑的 eventId
+      const currentPath = editor.selection?.anchor.path[0];
+      const currentNode = currentPath !== undefined ? value[currentPath] as EventLineNode : null;
+      const currentEventId = currentNode?.eventId;
+      
+      // 增量更新：只更新其他事件的节点
+      Editor.withoutNormalizing(editor, () => {
+        enhancedValue.forEach((newNode, index) => {
+          const oldNode = value[index] as EventLineNode | undefined;
+          
+          // 跳过 placeholder 和当前正在编辑的节点
+          if (newNode.eventId === '__placeholder__' || newNode.eventId === currentEventId) {
+            return;
+          }
+          
+          // 检查是否需要更新
+          if (!oldNode || oldNode.eventId !== newNode.eventId) {
+            // 节点不存在或 eventId 不匹配，需要替换整个节点
+            console.log('%c[🔄 替换节点]', 'background: #2196F3; color: white;', {
+              index,
+              oldEventId: oldNode?.eventId,
+              newEventId: newNode.eventId
+            });
+            skipNextOnChangeRef.current = true;
+            Transforms.removeNodes(editor, { at: [index] });
+            Transforms.insertNodes(editor, newNode as any, { at: [index] });
+          } else {
+            // eventId 匹配，只更新 metadata
+            console.log('%c[🔄 更新 metadata]', 'background: #673AB7; color: white;', {
+              index,
+              eventId: newNode.eventId
+            });
+            skipNextOnChangeRef.current = true;
+            Transforms.setNodes(editor, { metadata: newNode.metadata } as any, { at: [index] });
+          }
+        });
+      });
+    }
+  }, [enhancedValue]); // 依赖 enhancedValue，items 变化时重新计算
+  
   // 🔥 订阅 window.eventsUpdated 事件，接收增量更新通知
   useEffect(() => {
     if (!isInitializedRef.current) return;
