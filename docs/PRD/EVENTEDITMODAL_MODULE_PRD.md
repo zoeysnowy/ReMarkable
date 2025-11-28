@@ -1,4 +1,4 @@
-# ReMarkable EventEditModal 模块产品需求文档 (PRD)
+﻿# ReMarkable EventEditModal 模块产品需求文档 (PRD)
 
 > **AI 生成时间**: 2025-11-05  
 > **最后更新**: 2025-11-13 (v1.8 - SyncTargetPicker 升级)  

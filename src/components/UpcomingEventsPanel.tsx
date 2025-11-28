@@ -42,69 +42,56 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isVisible, setIsVisible] = useState(true);
   const [showExpired, setShowExpired] = useState(false); // 是否展开过期事件
-  const [allEvents, setAllEvents] = useState<Event[]>([]); // 从 EventService 加载的所有事件
+  // ✅ 性能优化：使用缓存，避免每次都全量加载
+  const [allEventsCache, setAllEventsCache] = useState<Event[]>([]); // 事件缓存
 
-  // 从 EventService 加载所有事件
+  // ✅ 从 EventService 加载所有事件（只在组件挂载时执行一次）
   useEffect(() => {
-    // 🚀 [性能优化] 使用 getEventsByRange 按范围加载事件
-    const loadEventsByFilter = (filter: TimeFilter) => {
-      // 计算时间范围（复用 upcomingEventsHelper 的逻辑）
-      const { start, end } = getTimeRange(filter, currentTime);
-      
-      // 使用性能优化的范围查询
-      const events = EventService.getEventsByRange(start, end);
-      
-      console.log('🔍 [UpcomingEventsPanel] 按范围加载事件:', {
-        filter,
-        range: `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`,
-        count: events.length
-      });
-      
-      setAllEvents(events);
-    };
+    // 初始加载：只执行一次
+    const initialEvents = EventService.getAllEvents();
+    console.log('🔍 [UpcomingEventsPanel] 初始加载事件缓存:', {
+      count: initialEvents.length
+    });
+    setAllEventsCache(initialEvents);
 
-    // 初始加载
-    loadEventsByFilter(activeFilter);
-
-    // 🎯 [性能优化] 增量更新：只更新变化的单个事件
+    // ✅ 监听 eventsUpdated 增量更新缓存
     const handleEventsUpdated = (e: any) => {
-      const { eventId, isNewEvent } = e.detail || {};
+      const { eventId, isNewEvent, isDeleted } = e.detail || {};
       
       if (!eventId) {
         // 没有 eventId，fallback 到全量重载
-        console.log('[UpcomingEventsPanel] 无 eventId，全量重载');
-        loadEventsByFilter(activeFilter);
+        console.log('[UpcomingEventsPanel] 无 eventId，全量重载缓存');
+        setAllEventsCache(EventService.getAllEvents());
         return;
       }
       
-      console.log('[UpcomingEventsPanel] 收到 eventsUpdated 事件，增量更新:', {
+      console.log('[UpcomingEventsPanel] 收到 eventsUpdated 事件，增量更新缓存:', {
         eventId: eventId.slice(-8),
-        isNewEvent
+        isNewEvent,
+        isDeleted
       });
       
-      // 增量更新：只更新这一个事件
-      const updatedEvent = EventService.getEventById(eventId);
-      
-      setAllEvents(prev => {
-        if (!updatedEvent) {
+      // ✅ 增量更新缓存
+      setAllEventsCache(prev => {
+        const updatedEvent = EventService.getEventById(eventId);
+        
+        if (isDeleted || !updatedEvent) {
           // 事件被删除
           return prev.filter(e => e.id !== eventId);
-        }
-        
-        // 检查事件是否已存在
-        const existingIndex = prev.findIndex(e => e.id === eventId);
-        
-        if (existingIndex >= 0) {
-          // 更新现有事件
-          const updated = [...prev];
-          updated[existingIndex] = updatedEvent;
-          return updated;
         } else if (isNewEvent) {
           // 新事件，添加到列表
           return [...prev, updatedEvent];
         } else {
-          // 事件不在当前列表中，且不是新事件，忽略
-          return prev;
+          // 更新现有事件
+          const existingIndex = prev.findIndex(e => e.id === eventId);
+          if (existingIndex >= 0) {
+            const updated = [...prev];
+            updated[existingIndex] = updatedEvent;
+            return updated;
+          } else {
+            // 事件不在缓存中，添加
+            return [...prev, updatedEvent];
+          }
         }
       });
     };
@@ -114,9 +101,9 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
     return () => {
       window.removeEventListener('eventsUpdated', handleEventsUpdated);
     };
-  }, [activeFilter, currentTime]);
+  }, []); // ✅ 空依赖，只初始化一次
 
-  // Update current time every minute
+  // ✅ 智能更新 currentTime：只在必要时更新
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
@@ -125,10 +112,56 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // 筛选和排序事件
+  // ✅ 筛选和排序事件（从缓存中过滤，而不是重新加载）
   const { upcoming, expired } = useMemo(() => {
-    return filterAndSortEvents(allEvents, activeFilter, currentTime);
-  }, [allEvents, activeFilter, currentTime]);
+    const { start, end } = getTimeRange(activeFilter, currentTime);
+    
+    // ✅ 从缓存中过滤，而不是重新加载
+    const filtered = allEventsCache.filter(event => {
+      // 三步过滤公式
+      // 1. 并集条件
+      const matchesInclusionCriteria = 
+        event.isPlan === true || 
+        (event.checkType && event.checkType !== 'none') ||
+        event.isTimeCalendar === true;
+      
+      if (!matchesInclusionCriteria) return false;
+      
+      // 2. 排除系统事件
+      if (event.isTimer === true || event.isOutsideApp === true || event.isTimeLog === true) {
+        return false;
+      }
+      
+      // 3. 时间范围过滤
+      if (!event.timeSpec?.resolved) return false;
+      
+      const eventStart = new Date(event.timeSpec.resolved.start);
+      return eventStart >= start && eventStart <= end;
+    });
+    
+    // 分离过期和未过期
+    const now = currentTime.getTime();
+    const upcomingEvents = filtered.filter(e => {
+      const eventStart = new Date(e.timeSpec!.resolved!.start);
+      return eventStart.getTime() >= now;
+    });
+    const expiredEvents = filtered.filter(e => {
+      const eventStart = new Date(e.timeSpec!.resolved!.start);
+      return eventStart.getTime() < now;
+    });
+    
+    // 排序
+    upcomingEvents.sort((a, b) => 
+      new Date(a.timeSpec!.resolved!.start).getTime() - 
+      new Date(b.timeSpec!.resolved!.start).getTime()
+    );
+    expiredEvents.sort((a, b) => 
+      new Date(b.timeSpec!.resolved!.start).getTime() - 
+      new Date(a.timeSpec!.resolved!.start).getTime()
+    );
+    
+    return { upcoming: upcomingEvents, expired: expiredEvents };
+  }, [allEventsCache, activeFilter, currentTime]);
 
   const handleFilterChange = (filter: TimeFilter) => {
     setActiveFilter(filter);

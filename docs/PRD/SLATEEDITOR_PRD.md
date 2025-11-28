@@ -1,6 +1,6 @@
-# LightSlateEditor 产品需求文档 (PRD)
+﻿# SlateEditor 产品需求文档 (PRD)
 
-> **模块路径**: `src/components/LightSlateEditor/LightSlateEditor.tsx`  
+> **模块路径**: `src/components/SlateEditor/SlateEditor.tsx`  
 > **代码行数**: ~1265 lines  
 > **架构版本**: v1.0  
 > **最后更新**: 2025-11-28  
@@ -33,7 +33,7 @@
 
 **核心理念**: "轻量级、专注单内容编辑、高度可复用"
 
-LightSlateEditor 是为**单内容编辑场景**优化的 Slate 编辑器，移除了 PlanManager 特定的复杂功能（event-line、多事件管理），保留核心编辑能力，专注于提供流畅的文本编辑体验。
+SlateEditor 是为**单内容编辑场景**优化的 Slate 编辑器，移除了 PlanManager 特定的复杂功能（event-line、多事件管理），保留核心编辑能力，专注于提供流畅的文本编辑体验。
 
 **设计原则**:
 - ✅ **简化数据流**: content string (JSON) ↔ Slate nodes（单层转换）
@@ -42,9 +42,9 @@ LightSlateEditor 是为**单内容编辑场景**优化的 Slate 编辑器，移�
 - ✅ **直觉操作**: OneNote 风格的 bullet 删除，符合用户习惯
 - ✅ **高度复用**: 支持多种使用场景（EventEditModal、TimeLog 等）
 
-### 1.2 与 UnifiedSlateEditor 的差异
+### 1.2 与 PlanSlateEditor 的差异
 
-| 维度 | LightSlateEditor | UnifiedSlateEditor |
+| 维度 | SlateEditor | PlanSlateEditor |
 |------|-----------------|-------------------|
 | **数据模型** | 单内容字符串 (`string`) | 多事件列表 (`Event[]`) |
 | **节点结构** | 扁平 `paragraph[]` | `event-line` → `title` + `eventlog` |
@@ -119,7 +119,7 @@ LightSlateEditor 是为**单内容编辑场景**优化的 Slate 编辑器，移�
 - 使用创建时间作为首个 timestamp
 - 如果获取失败，使用当前时间
 
-**实现位置**: `EventLogTimestampService` (复用自 UnifiedSlateEditor)
+**实现位置**: `EventLogTimestampService` (复用自 PlanSlateEditor)
 
 #### 2.2.3 Bullet 操作系统
 
@@ -137,7 +137,7 @@ LightSlateEditor 是为**单内容编辑场景**优化的 Slate 编辑器，移�
 - 自动继承当前 bullet 和 bulletLevel
 - 空 bullet 行按 Enter → 删除 bullet
 
-**实现位置**: `LightSlateEditor.tsx` (L700-850)
+**实现位置**: `SlateEditor.tsx` (L700-850)
 
 #### 2.2.4 Preline 视觉
 
@@ -181,7 +181,7 @@ LightSlateEditor 是为**单内容编辑场景**优化的 Slate 编辑器，移�
                        ↓ jsonToSlateNodes
                        ↓
 ┌─────────────────────────────────────────────────────────────┐
-│ LightSlateEditor State                                       │
+│ SlateEditor State                                       │
 │ value: Descendant[]                                          │
 │  ├─ TimestampDividerNode                                    │
 │  ├─ ParagraphNode (bullet, bulletLevel)                     │
@@ -255,7 +255,7 @@ export function slateNodesToJson(nodes: Descendant[]): string {
 ### 3.3 props 接口
 
 ```typescript
-export interface LightSlateEditorProps {
+export interface SlateEditorProps {
   /** Slate JSON 内容 (来自 event.eventlog) */
   content: string;
   
@@ -790,7 +790,7 @@ const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
 
 **使用示例**:
 ```typescript
-<LightSlateEditor
+<SlateEditor
   content={event.eventlog || ''}
   parentEventId={event.id}
   onChange={(slateJson) => {
@@ -817,7 +817,7 @@ const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
 
 **使用场景**:
 - 左侧：智能搜索 + 日历选择器 + 标签/事件/收藏选择器
-- 右侧：时间轴展示所有 Events，每个 Event 卡片使用 LightSlateEditor
+- 右侧：时间轴展示所有 Events，每个 Event 卡片使用 SlateEditor
 
 **使用示例**:
 ```typescript
@@ -834,8 +834,8 @@ const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
           <span>{formatTime(event.startTime, event.endTime)}</span>
         </header>
         
-        {/* 使用 LightSlateEditor 显示 eventlog */}
-        <LightSlateEditor
+        {/* 使用 SlateEditor 显示 eventlog */}
+        <SlateEditor
           content={event.eventlog || ''}
           parentEventId={event.id}
           onChange={(slateJson) => {
@@ -851,7 +851,7 @@ const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
 ```
 
 **特性**:
-- ✅ 复用 LightSlateEditor，无需重新开发编辑器
+- ✅ 复用 SlateEditor，无需重新开发编辑器
 - ✅ 所有核心功能开箱即用（timestamp、bullet、段落移动）
 - ✅ 未来扩展功能（图片、语音）可从 SlateCore 共享层获取
 
@@ -899,7 +899,7 @@ const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
 export { jsonToSlateNodes, slateNodesToJson } from './serialization';
 
 // 编辑器组件
-export { LightSlateEditor, type LightSlateEditorProps } from './LightSlateEditor';
+export { SlateEditor, type SlateEditorProps } from './SlateEditor';
 ```
 
 ---

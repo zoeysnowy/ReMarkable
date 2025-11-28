@@ -1473,13 +1473,18 @@ export class EventService {
   // ========== 日历同步相关方法 ==========
 
   /**
-   * 🆕 v2.0.5 同步事件到多个远程日历（智能合并管理）
+   * 🆕 v2.0.6 统一多日历同步管理器
    * 
-   * 核心原则：
-   * - 本地：一个 event
-   * - 远程：多个日历可能有多个远程事件
-   * - 远程同步回来后，本地不能变成多个 event，应当合并管理
-   * - 修改日历分组后，需要删除旧的远程事件，重新创建新的
+   * 核心功能：
+   * 1. 管理 calendarIds、syncMode 和 externalIds 的联动
+   * 2. 根据 syncMode 决定发送/接收逻辑
+   * 3. 本地一个 event，远程多个日历可能有多个事件
+   * 4. 远程多事件智能合并到本地单事件
+   * 
+   * SyncMode 逻辑：
+   * - receive-only: 只接收远程更新，不发送到远程
+   * - send-only / send-only-private: 只发送到远程，不接收远程更新
+   * - bidirectional / bidirectional-private: 双向同步
    * 
    * @param event 要同步的事件
    * @param calendarIds 目标日历 IDs
@@ -1503,19 +1508,34 @@ export class EventService {
         syncType
       });
       
+      // ========== 第一步：SyncMode 发送逻辑检查 ==========
+      const canSendToRemote = this.canSendToRemote(syncMode);
+      
+      if (!canSendToRemote) {
+        eventLogger.log(`⏭️ [syncToMultipleCalendars] SyncMode 不允许发送到远程: ${syncMode}`);
+        // receive-only 模式，不发送到远程，但保留现有的 syncedCalendars
+        return new Map();
+      }
+      
       // 获取 Microsoft Calendar Service
       const { MicrosoftCalendarService } = await import('./MicrosoftCalendarService');
       const microsoftService = MicrosoftCalendarService.getInstance();
       
-      // Step 1: 获取当前已同步的日历列表
+      // ========== 第二步：获取现有同步状态 ==========
       const existingSyncedCalendars = syncType === 'plan' 
         ? (event.syncedPlanCalendars || [])
         : (event.syncedActualCalendars || []);
       
-      // Step 2: 找出需要删除的旧日历（不在新列表中的）
-      const calendarsToDelete = existingSyncedCalendars.filter(cal => !calendarIds.includes(cal.calendarId));
+      eventLogger.log(`📋 [syncToMultipleCalendars] 现有同步状态`, {
+        existingSyncedCount: existingSyncedCalendars.length,
+        newCalendarCount: calendarIds.length
+      });
       
-      // Step 3: 删除旧的远程事件（修改日历分组后）
+      // ========== 第三步：删除旧的远程事件（日历分组变更） ==========
+      const calendarsToDelete = existingSyncedCalendars.filter(
+        cal => !calendarIds.includes(cal.calendarId)
+      );
+      
       for (const oldCalendar of calendarsToDelete) {
         try {
           await microsoftService.deleteEvent(oldCalendar.remoteEventId);
@@ -1524,12 +1544,11 @@ export class EventService {
             remoteEventId: oldCalendar.remoteEventId
           });
         } catch (deleteError) {
-          eventLogger.error(`❌ [syncToMultipleCalendars] 删除旧远程事件失败`, deleteError);
-          // 继续处理其他日历，不中断整个流程
+          eventLogger.error(`❌ [syncToMultipleCalendars] 删除失败，继续处理`, deleteError);
         }
       }
       
-      // Step 4: 同步到新的日历列表（创建或更新）
+      // ========== 第四步：同步到新的日历列表 ==========
       const { prepareRemoteEventData } = await import('../utils/calendarSyncUtils');
       
       for (const calendarId of calendarIds) {
@@ -1538,11 +1557,13 @@ export class EventService {
           const remoteEventData = prepareRemoteEventData(event, syncMode);
           
           // 检查是否已经同步过这个日历
-          const existingSync = existingSyncedCalendars.find(cal => cal.calendarId === calendarId);
+          const existingSync = existingSyncedCalendars.find(
+            cal => cal.calendarId === calendarId
+          );
           
           let remoteEventId: string | null = null;
           
-          if (existingSync && existingSync.remoteEventId) {
+          if (existingSync?.remoteEventId) {
             // 更新已有的远程事件
             try {
               await microsoftService.updateEvent(existingSync.remoteEventId, remoteEventData);
@@ -1552,9 +1573,13 @@ export class EventService {
                 remoteEventId
               });
             } catch (updateError) {
-              // 更新失败，尝试删除后重建
-              eventLogger.warn(`⚠️ [syncToMultipleCalendars] 更新失败，尝试删除重建`, updateError);
-              await microsoftService.deleteEvent(existingSync.remoteEventId);
+              // 更新失败，删除后重建
+              eventLogger.warn(`⚠️ [syncToMultipleCalendars] 更新失败，删除重建`, updateError);
+              try {
+                await microsoftService.deleteEvent(existingSync.remoteEventId);
+              } catch (delErr) {
+                // 删除失败也继续，尝试创建新的
+              }
               remoteEventId = await microsoftService.syncEventToCalendar(remoteEventData, calendarId);
               eventLogger.log(`🆕 [syncToMultipleCalendars] 重建远程事件`, {
                 calendarId,
@@ -1579,11 +1604,13 @@ export class EventService {
         }
       }
       
-      // Step 5: 更新本地事件的同步记录（合并管理）
-      const syncedCalendars = Array.from(remoteEventIds.entries()).map(([calendarId, remoteEventId]) => ({
-        calendarId,
-        remoteEventId
-      }));
+      // ========== 第五步：更新本地事件的同步记录（合并管理） ==========
+      const syncedCalendars = Array.from(remoteEventIds.entries()).map(
+        ([calendarId, remoteEventId]) => ({
+          calendarId,
+          remoteEventId
+        })
+      );
       
       const updates: Partial<Event> = {};
       if (syncType === 'plan') {
@@ -1597,7 +1624,8 @@ export class EventService {
       eventLogger.log(`✅ [syncToMultipleCalendars] 成功同步到 ${remoteEventIds.size} 个日历`, {
         eventId: event.id,
         syncedCalendars: remoteEventIds.size,
-        syncType
+        syncType,
+        syncMode
       });
       
       return remoteEventIds;
@@ -1607,6 +1635,77 @@ export class EventService {
       handleSyncError('syncToMultipleCalendars', event, error);
       throw error;
     }
+  }
+  
+  /**
+   * 🆕 v2.0.6 检查 syncMode 是否允许发送到远程
+   * 
+   * @param syncMode 同步模式
+   * @returns true 允许发送，false 不允许
+   */
+  private static canSendToRemote(syncMode: string): boolean {
+    // receive-only: 只接收，不发送
+    if (syncMode === 'receive-only') {
+      return false;
+    }
+    
+    // send-only, send-only-private, bidirectional, bidirectional-private: 允许发送
+    return ['send-only', 'send-only-private', 'bidirectional', 'bidirectional-private'].includes(syncMode);
+  }
+  
+  /**
+   * 🆕 v2.0.6 检查 syncMode 是否允许接收远程更新
+   * 
+   * @param syncMode 同步模式
+   * @returns true 允许接收，false 不允许
+   */
+  static canReceiveFromRemote(syncMode: string): boolean {
+    // send-only, send-only-private: 只发送，不接收
+    if (syncMode === 'send-only' || syncMode === 'send-only-private') {
+      return false;
+    }
+    
+    // receive-only, bidirectional, bidirectional-private: 允许接收
+    return ['receive-only', 'bidirectional', 'bidirectional-private'].includes(syncMode);
+  }
+  
+  /**
+   * 🆕 v2.0.6 从远程事件合并到本地事件（多日历智能合并）
+   * 
+   * 核心逻辑：
+   * 1. 检查远程事件的 externalId 是否在 syncedPlanCalendars/syncedActualCalendars 中
+   * 2. 如果存在，说明是同一个本地事件的多个远程副本，合并而不是创建新事件
+   * 3. 如果不存在，可能是新的远程事件，需要创建
+   * 
+   * @param remoteEvent 远程事件
+   * @param localEvents 本地事件列表
+   * @param syncType 同步类型
+   * @returns 匹配的本地事件或 null
+   */
+  static findLocalEventByRemoteId(
+    remoteEventId: string,
+    localEvents: Event[],
+    syncType: 'plan' | 'actual'
+  ): Event | null {
+    // 清理 outlook- 前缀
+    const cleanRemoteId = remoteEventId.startsWith('outlook-') 
+      ? remoteEventId.replace('outlook-', '') 
+      : remoteEventId;
+    
+    // 在本地事件中查找匹配的 syncedCalendars
+    const matchedEvent = localEvents.find((event: Event) => {
+      const syncedCalendars = syncType === 'plan' 
+        ? event.syncedPlanCalendars 
+        : event.syncedActualCalendars;
+      
+      return syncedCalendars?.some(cal => 
+        cal.remoteEventId === cleanRemoteId ||
+        cal.remoteEventId === `outlook-${cleanRemoteId}` ||
+        `outlook-${cal.remoteEventId}` === cleanRemoteId
+      );
+    });
+    
+    return matchedEvent || null;
   }
 
   /**

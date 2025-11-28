@@ -1,8 +1,8 @@
-# UnifiedSlateEditor 独有功能全量分析
+﻿# PlanSlateEditor 独有功能全量分析
 
 **文档版本**: v1.0  
 **最后更新**: 2025-11-28  
-**编写目的**: 梳理 UnifiedSlateEditor 独有且需要保留的功能，为 SlateCore 共享层重构提供依据
+**编写目的**: 梳理 PlanSlateEditor 独有且需要保留的功能，为 SlateCore 共享层重构提供依据
 
 ---
 
@@ -24,7 +24,7 @@
 
 ### 1.1 EventLine 节点架构
 
-**独有特性**: UnifiedSlate 使用 `event-line` 作为顶层节点，支持双模式（title/eventlog）
+**独有特性**: PlanSlate 使用 `event-line` 作为顶层节点，支持双模式（title/eventlog）
 
 ```typescript
 interface EventLineNode {
@@ -38,9 +38,9 @@ interface EventLineNode {
 }
 ```
 
-**与 LightSlate 对比**:
-- **UnifiedSlate**: `event-line` → `paragraph[]`（两层结构，支持模式切换）
-- **LightSlate**: `paragraph[]`（扁平结构，无模式概念）
+**与 Slate 对比**:
+- **PlanSlate**: `event-line` → `paragraph[]`（两层结构，支持模式切换）
+- **Slate**: `paragraph[]`（扁平结构，无模式概念）
 
 **用途**: 
 - `title` 模式：事件标题行，显示 checkbox、emoji、时间、标签等
@@ -107,7 +107,7 @@ interface EventLineNode {
 **Shift+Tab**: 在 eventlog 行按下 → 转换为 title 行
 
 ```typescript
-// UnifiedSlateEditor.tsx - handleKeyDown
+// PlanSlateEditor.tsx - handleKeyDown
 if (event.key === 'Enter' && event.shiftKey) {
   event.preventDefault();
   
@@ -132,11 +132,11 @@ if (event.key === 'Enter' && event.shiftKey) {
 
 ### 3.1 一个编辑器管理多个 Event
 
-**独有特性**: UnifiedSlate 在同一个编辑器实例中管理多个独立事件
+**独有特性**: PlanSlate 在同一个编辑器实例中管理多个独立事件
 
 ```typescript
 // PlanManager 传递多个事件给编辑器
-<UnifiedSlateEditor
+<PlanSlateEditor
   items={[
     { id: 'event-1', title: '会议', ... },
     { id: 'event-2', title: '写代码', ... },
@@ -146,9 +146,9 @@ if (event.key === 'Enter' && event.shiftKey) {
 />
 ```
 
-**与 LightSlate 对比**:
-- **UnifiedSlate**: 多事件管理（PlanManager 页面显示事件列表）
-- **LightSlate**: 单内容编辑（EventEditModal 只编辑一个事件的 eventlog）
+**与 Slate 对比**:
+- **PlanSlate**: 多事件管理（PlanManager 页面显示事件列表）
+- **Slate**: 单内容编辑（EventEditModal 只编辑一个事件的 eventlog）
 
 ### 3.2 事件分组与层级管理
 
@@ -181,7 +181,7 @@ padding-left: calc((level + 1) * 24px);  /* eventlog 行额外缩进 */
 **独有能力**: 跨事件选择、复制、粘贴、格式化
 
 ```typescript
-// UnifiedSlateEditor 支持跨行选择
+// PlanSlateEditor 支持跨行选择
 editor.selection = {
   anchor: { path: [0, 0, 0], offset: 5 },  // 第一个事件
   focus: { path: [3, 0, 0], offset: 10 },  // 第四个事件
@@ -263,7 +263,7 @@ EventService.checkIn/uncheck(eventId)
   ↓
 触发 window.eventsUpdated 事件
   ↓
-UnifiedSlateEditor 监听事件
+PlanSlateEditor 监听事件
   ↓
 更新 Slate metadata (checked/unchecked 数组)
   ↓
@@ -271,8 +271,8 @@ EventLinePrefix 重新渲染 ✅
 ```
 
 **与 EventService 的强耦合**:
-- UnifiedSlate 必须调用 `EventService.checkIn()` 来持久化状态
-- LightSlate 不需要 checkbox 功能（EventEditModal 无签到需求）
+- PlanSlate 必须调用 `EventService.checkIn()` 来持久化状态
+- Slate 不需要 checkbox 功能（EventEditModal 无签到需求）
 
 ---
 
@@ -280,7 +280,7 @@ EventLinePrefix 重新渲染 ✅
 
 ### 5.1 完整的 EventMetadata
 
-**独有特性**: UnifiedSlate 在节点中保留完整的事件元数据，避免字段丢失
+**独有特性**: PlanSlate 在节点中保留完整的事件元数据，避免字段丢失
 
 ```typescript
 interface EventMetadata {
@@ -362,9 +362,9 @@ const titleNode: EventLineNode = {
 **StatusLineContainer** 使用元数据:
 - `_isDeleted`, `createdAt`, `updatedAt` → 状态竖线计算
 
-**与 LightSlate 对比**:
-- **UnifiedSlate**: 保留完整元数据，供多个组件使用
-- **LightSlate**: 无需元数据（只编辑纯文本内容）
+**与 Slate 对比**:
+- **PlanSlate**: 保留完整元数据，供多个组件使用
+- **Slate**: 无需元数据（只编辑纯文本内容）
 
 ---
 
@@ -372,7 +372,7 @@ const titleNode: EventLineNode = {
 
 ### 6.1 PlanItem ↔ EventLine 双向转换
 
-**独有特性**: UnifiedSlate 负责 PlanItem（EventService 数据格式）与 EventLine（Slate 节点）的转换
+**独有特性**: PlanSlate 负责 PlanItem（EventService 数据格式）与 EventLine（Slate 节点）的转换
 
 #### 6.1.1 planItemsToSlateNodes
 
@@ -489,7 +489,7 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
 
 ### 6.2 HTML 序列化（支持 Bullet 层级）
 
-**独有特性**: UnifiedSlate 的 HTML 序列化保留 bullet 层级信息
+**独有特性**: PlanSlate 的 HTML 序列化保留 bullet 层级信息
 
 ```typescript
 export function slateNodesToRichHtml(nodes: EventLineNode[]): string {
@@ -548,9 +548,9 @@ function parseHtmlToParagraphsWithLevel(html: string): Array<{ paragraph: Paragr
 }
 ```
 
-### 6.3 与 LightSlate 序列化对比
+### 6.3 与 Slate 序列化对比
 
-| 特性 | UnifiedSlate | LightSlate |
+| 特性 | PlanSlate | Slate |
 |------|--------------|------------|
 | **序列化格式** | HTML（带 data-* 属性） | JSON（纯 Slate 结构） |
 | **层级信息** | 保留 level + bulletLevel | 只保留 bulletLevel |
@@ -564,7 +564,7 @@ function parseHtmlToParagraphsWithLevel(html: string): Array<{ paragraph: Paragr
 
 ### 7.1 StatusLineContainer 集成
 
-**独有特性**: UnifiedSlate 配合 StatusLineContainer 显示事件状态竖线
+**独有特性**: PlanSlate 配合 StatusLineContainer 显示事件状态竖线
 
 ```typescript
 // PlanManager.tsx - getEventStatus
@@ -667,12 +667,12 @@ const isDeleted = (element.metadata as any)?._isDeleted || eventStatus === 'dele
 
 ### 8.1 数据双向绑定
 
-**PlanManager → UnifiedSlate**:
+**PlanManager → PlanSlate**:
 ```typescript
 // PlanManager.tsx
 const [items, setItems] = useState<PlanItem[]>([]);
 
-<UnifiedSlateEditor
+<PlanSlateEditor
   items={items}  // ✅ 传递多个事件
   onChange={(updatedItems) => {
     // ✅ 接收批量更新
@@ -687,7 +687,7 @@ const [items, setItems] = useState<PlanItem[]>([]);
 />
 ```
 
-**UnifiedSlate → PlanManager**:
+**PlanSlate → PlanManager**:
 - `onFocus`: 焦点变化回调（用于显示 FloatingToolbar）
 - `onDeleteRequest`: 删除请求回调（通知外部删除事件）
 - `onSave`: 保存回调（Checkbox 点击触发）
@@ -707,7 +707,7 @@ const [items, setItems] = useState<PlanItem[]>([]);
 **getEventStatus**: PlanManager 提供状态查询函数
 
 ```typescript
-<UnifiedSlateEditor
+<PlanSlateEditor
   getEventStatus={(eventId) => {
     // ✅ 查询事件在当前时间范围的状态
     return getEventStatus(eventId, currentDateRange);
@@ -717,7 +717,7 @@ const [items, setItems] = useState<PlanItem[]>([]);
 
 ### 8.3 Snapshot 模式支持
 
-**Snapshot 快照模式**: 查看历史时间范围的事件状态（UnifiedSlate 独有核心功能）
+**Snapshot 快照模式**: 查看历史时间范围的事件状态（PlanSlate 独有核心功能）
 
 #### 8.3.1 Snapshot 模式概念
 
@@ -737,7 +737,7 @@ const snapshotItems = snapshotRange
     })
   : [];
 
-<UnifiedSlateEditor
+<PlanSlateEditor
   items={isSnapshotMode ? snapshotItems : currentItems}
   getEventStatus={(eventId) => getEventStatus(eventId, snapshotRange || currentDateRange)}
   readOnly={isSnapshotMode}  // ✅ Snapshot 模式下只读
@@ -749,7 +749,7 @@ const snapshotItems = snapshotRange
 Snapshot 模式与 `StatusLineContainer` 深度集成，显示历史状态竖线：
 
 ```typescript
-// UnifiedSlateEditor.tsx - StatusLineContainer
+// PlanSlateEditor.tsx - StatusLineContainer
 {mode === 'title' && (
   <StatusLineContainer
     eventId={node.eventId}
@@ -848,13 +848,13 @@ function getEventStatus(eventId: string, dateRange: {start: Date, end: Date}): E
 Snapshot 模式下编辑器自动进入只读状态，防止修改历史数据：
 
 ```typescript
-<UnifiedSlateEditor
+<PlanSlateEditor
   items={snapshotItems}
   readOnly={isSnapshotMode}  // ✅ Snapshot 模式下只读
   getEventStatus={(eventId) => getEventStatus(eventId, snapshotRange)}
 />
 
-// UnifiedSlateEditor.tsx - 只读渲染
+// PlanSlateEditor.tsx - 只读渲染
 const renderElement = useCallback((props: RenderElementProps) => {
   if (readOnly) {
     // ✅ 禁用所有交互（Checkbox、时间点击、More 按钮）
@@ -864,9 +864,9 @@ const renderElement = useCallback((props: RenderElementProps) => {
 }, [readOnly]);
 ```
 
-#### 8.3.6 与 LightSlate 的对比
+#### 8.3.6 与 Slate 的对比
 
-| 功能 | UnifiedSlate | LightSlate |
+| 功能 | PlanSlate | Slate |
 |------|--------------|------------|
 | **Snapshot 模式** | ✅ 支持 | ❌ 无需（单内容编辑） |
 | **历史查询** | ✅ queryEventsInRange | ❌ |
@@ -875,10 +875,10 @@ const renderElement = useCallback((props: RenderElementProps) => {
 | **只读保护** | ✅ readOnly prop | ✅ 支持（通用） |
 | **StatusLineContainer** | ✅ 历史状态竖线 | ❌ 无竖线 |
 
-**为什么 LightSlate 不需要 Snapshot?**
-- LightSlate 用于编辑单个内容（eventlog / timelog），不管理多个事件
+**为什么 Slate 不需要 Snapshot?**
+- Slate 用于编辑单个内容（eventlog / timelog），不管理多个事件
 - Snapshot 是 PlanManager 的需求（查看历史时间范围的事件状态）
-- LightSlate 的历史记录由外部组件管理（EventEditModal 的历史面板）
+- Slate 的历史记录由外部组件管理（EventEditModal 的历史面板）
 
 ---
 
@@ -886,7 +886,7 @@ const renderElement = useCallback((props: RenderElementProps) => {
 
 ### 9.1 架构层面
 
-| 功能 | UnifiedSlate | LightSlate | 是否共享 |
+| 功能 | PlanSlate | Slate | 是否共享 |
 |------|--------------|------------|----------|
 | **节点结构** | `event-line` → `paragraph[]` | `paragraph[]` | ❌ |
 | **双模式** | title / eventlog | 无（单一内容） | ❌ |
@@ -896,7 +896,7 @@ const renderElement = useCallback((props: RenderElementProps) => {
 
 ### 9.2 UI 元素
 
-| 功能 | UnifiedSlate | LightSlate | 是否共享 |
+| 功能 | PlanSlate | Slate | 是否共享 |
 |------|--------------|------------|----------|
 | **Checkbox** | ✅ EventLinePrefix | ❌ | ❌ |
 | **Emoji** | ✅ EventLinePrefix | ❌ | ❌ |
@@ -908,7 +908,7 @@ const renderElement = useCallback((props: RenderElementProps) => {
 
 ### 9.3 序列化
 
-| 功能 | UnifiedSlate | LightSlate | 是否共享 |
+| 功能 | PlanSlate | Slate | 是否共享 |
 |------|--------------|------------|----------|
 | **序列化格式** | HTML（带 data-*） | JSON（Slate 结构） | ❌ |
 | **反序列化** | parseHtmlToParagraphs | jsonToSlateNodes | ❌ |
@@ -917,7 +917,7 @@ const renderElement = useCallback((props: RenderElementProps) => {
 
 ### 9.4 键盘操作
 
-| 功能 | UnifiedSlate | LightSlate | 是否共享 |
+| 功能 | PlanSlate | Slate | 是否共享 |
 |------|--------------|------------|----------|
 | **Enter** | 新建事件/段落 | 新建段落 | ⚠️ 逻辑不同 |
 | **Shift+Enter** | 切换到 eventlog 模式 | 无特殊功能 | ❌ |
@@ -927,7 +927,7 @@ const renderElement = useCallback((props: RenderElementProps) => {
 
 ### 9.5 外部集成
 
-| 功能 | UnifiedSlate | LightSlate | 是否共享 |
+| 功能 | PlanSlate | Slate | 是否共享 |
 |------|--------------|------------|----------|
 | **与 PlanManager 集成** | ✅ 深度集成 | ❌ | ❌ |
 | **与 EventEditModal 集成** | ❌ | ✅ | ❌ |
@@ -977,7 +977,7 @@ const renderElement = useCallback((props: RenderElementProps) => {
 2. **段落操作**（需要适配双模式）
    - `moveParagraphUp/Down()` - 段落上下移动
    - `swapNodes()` - 交换两个节点
-   - 注意：UnifiedSlate 的段落移动需要考虑 event-line 边界
+   - 注意：PlanSlate 的段落移动需要考虑 event-line 边界
 
 3. **Bullet 操作**
    - `increaseBulletLevel()` - 增加层级
@@ -991,8 +991,8 @@ const renderElement = useCallback((props: RenderElementProps) => {
 
 5. **序列化工具**（需要适配）
    - HTML ↔ Slate 转换
-   - 保留 data-* 属性（UnifiedSlate 需要）
-   - JSON ↔ Slate 转换（LightSlate 需要）
+   - 保留 data-* 属性（PlanSlate 需要）
+   - JSON ↔ Slate 转换（Slate 需要）
 
 6. **格式化**
    - `applyTextFormat()` - 应用文本格式
@@ -1019,17 +1019,17 @@ const renderElement = useCallback((props: RenderElementProps) => {
 3. 节点操作（通用工具函数）
 
 **P2（保留在各自编辑器中）**:
-1. EventLine 架构（UnifiedSlate 独有）
-2. Checkbox 系统（UnifiedSlate 独有）
-3. 元数据透传（UnifiedSlate 独有）
-4. 可视化状态系统（UnifiedSlate 独有）
+1. EventLine 架构（PlanSlate 独有）
+2. Checkbox 系统（PlanSlate 独有）
+3. 元数据透传（PlanSlate 独有）
+4. 可视化状态系统（PlanSlate 独有）
 5. 与 PlanManager 的集成逻辑
 
 ---
 
 ## 11. 总结
 
-### 11.1 UnifiedSlate 核心价值
+### 11.1 PlanSlate 核心价值
 
 1. **多事件管理能力**: 一个编辑器管理多个独立事件（PlanManager 页面）
 2. **双模式架构**: title/eventlog 分离，支持复杂的事件信息展示
@@ -1037,9 +1037,9 @@ const renderElement = useCallback((props: RenderElementProps) => {
 4. **可视化状态**: Snapshot 模式、状态竖线、删除线等历史追溯功能
 5. **完整元数据**: 透传 20+ 业务字段，保证数据一致性
 
-### 11.2 与 LightSlate 的本质区别
+### 11.2 与 Slate 的本质区别
 
-| 维度 | UnifiedSlate | LightSlate |
+| 维度 | PlanSlate | Slate |
 |------|--------------|------------|
 | **定位** | 多事件管理编辑器 | 单内容编辑器 |
 | **使用场景** | PlanManager 页面 | EventEditModal、TimeLog 页面 |
@@ -1049,7 +1049,7 @@ const renderElement = useCallback((props: RenderElementProps) => {
 
 ### 11.3 重构建议
 
-1. **保留 UnifiedSlate 的独有功能**:
+1. **保留 PlanSlate 的独有功能**:
    - EventLine 架构
    - Checkbox 系统
    - 多事件管理
@@ -1068,8 +1068,8 @@ const renderElement = useCallback((props: RenderElementProps) => {
 
 4. **不建议提炼的功能**:
    - EventLinePrefix/Suffix 组件（业务逻辑强）
-   - PlanItem 序列化（UnifiedSlate 专用）
-   - 元数据透传机制（UnifiedSlate 专用）
+   - PlanItem 序列化（PlanSlate 专用）
+   - 元数据透传机制（PlanSlate 专用）
 
 ---
 
@@ -1077,5 +1077,5 @@ const renderElement = useCallback((props: RenderElementProps) => {
 
 详细架构设计请参考：
 - [SlateCore 共享层架构设计](./SLATE_EDITOR_ARCHITECTURE.md)
-- [LightSlateEditor PRD](./LIGHTSLATEEDITOR_PRD.md)
-- [UnifiedSlateEditor 段落移动功能](./SLATE_EDITOR_PRD.md#v215-段落移动功能)
+- [SlateEditor PRD](./SlateEditor_PRD.md)
+- [PlanSlateEditor 段落移动功能](./SLATE_EDITOR_PRD.md#v215-段落移动功能)

@@ -4,7 +4,7 @@
 > **创建时间**: 2024-01-XX  
 > **最后更新**: 2025-11-13  
 > **Figma 设计稿**: [TimeLog 页面设计](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=333-1178&m=dev)  
-> **依赖模块**: EventService, UnifiedSlateEditor, TimeHub, EventHub  
+> **依赖模块**: EventService, PlanSlateEditor, TimeHub, EventHub  
 > **关联文档**:
 > - [EventEditModal v2 PRD](./EVENTEDITMODAL_V2_PRD.md)
 > - [TIME_ARCHITECTURE.md](../TIME_ARCHITECTURE.md)
@@ -866,7 +866,7 @@ class EventLogTimestampService {
 
 **在 onChange 中检测：**
 ```typescript
-const UnifiedSlateEditor: React.FC<Props> = ({ eventId, initialValue, onChange }) => {
+const PlanSlateEditor: React.FC<Props> = ({ eventId, initialValue, onChange }) => {
   const [editor] = useState(() => withReact(createEditor()));
   const timestampService = useRef(new EventLogTimestampService());
   
@@ -1278,7 +1278,7 @@ type EventLogVersion = {
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ UnifiedSlateEditor（纯编辑器组件）                       │
+│ PlanSlateEditor（纯编辑器组件）                       │
 │ - 只负责编辑 Slate JSON                                  │
 │ - onChange 回调通知父组件内容变化                        │
 │ - 不关心保存到哪里、保存什么字段                         │
@@ -1816,7 +1816,7 @@ const AttachmentCleanupDialog: React.FC = () => {
 - **Slate.js**: 富文本编辑器核心
 - **React**: UI 框架
 - **TypeScript**: 类型安全
-- **UnifiedSlateEditor**: 统一编辑器组件（已有）
+- **PlanSlateEditor**: 统一编辑器组件（已有）
 - **EventService**: 事件数据服务（已有）
 - **TimeHub**: 时间管理中枢（已有）
 - **SyncManager**: Outlook 同步引擎（已有）
@@ -2624,7 +2624,7 @@ const success = insertTag(
 
 #### 3.6.2 提取标签时过滤 mentionOnly
 
-**位置**: `src/components/UnifiedSlateEditor/serialization.ts` L358
+**位置**: `src/components/PlanSlateEditor/serialization.ts` L358
 
 ```typescript
 function extractTags(fragment: (TextNode | TagNode | DateMentionNode)[]): string[] {
@@ -2845,7 +2845,7 @@ Microsoft Outlook:
 
 **✅ 架构决策：统一由 Slate 序列化层处理，避免在业务代码中解析 HTML**
 
-所有标签提取、格式转换由 `UnifiedSlateEditor/serialization.ts` 统一处理，业务组件（PlanManager、EventEditModal 等）调用统一接口。
+所有标签提取、格式转换由 `PlanSlateEditor/serialization.ts` 统一处理，业务组件（PlanManager、EventEditModal 等）调用统一接口。
 
 #### 3.11.2 提取规则
 
@@ -2863,10 +2863,10 @@ Microsoft Outlook:
 
 #### 3.11.3 Slate 序列化层实现
 
-**标准实现：`UnifiedSlateEditor/serialization.ts`**
+**标准实现：`PlanSlateEditor/serialization.ts`**
 
 ```typescript
-// src/components/UnifiedSlateEditor/serialization.ts L405-415
+// src/components/PlanSlateEditor/serialization.ts L405-415
 
 /**
  * 从 Slate fragment 提取标签 ID
@@ -2930,7 +2930,7 @@ type TagNode = {
 ```typescript
 // services/EventService.ts
 
-import { serializeSlateToHtmlWithTags } from '@/components/UnifiedSlateEditor/serialization';
+import { serializeSlateToHtmlWithTags } from '@/components/PlanSlateEditor/serialization';
 import type { Descendant } from 'slate';
 
 class EventService {
@@ -2991,7 +2991,7 @@ class EventService {
 ```typescript
 // src/components/PlanManager.tsx
 
-import { serializeSlateToHtmlWithTags } from '@/components/UnifiedSlateEditor/serialization';
+import { serializeSlateToHtmlWithTags } from '@/components/PlanSlateEditor/serialization';
 
 // ❌ 旧方法（已弃用）：在业务代码中解析 HTML
 // const tempDiv = document.createElement('div');
@@ -3118,7 +3118,7 @@ const handleTitleChange = (slateNodes: Descendant[]) => {
 ✅ **已实现机制**：TagElement 组件渲染时动态读取 TagService
 
 ```tsx
-// src/components/UnifiedSlateEditor/elements/TagElement.tsx L13-25
+// src/components/PlanSlateEditor/elements/TagElement.tsx L13-25
 
 const TagElementComponent: React.FC<RenderElementProps> = ({ 
   attributes, 
@@ -3306,7 +3306,7 @@ tagElements.forEach(tagEl => {
 如果现有代码使用了 DOM 解析方式，请按以下步骤迁移：
 
 1. **确认 Slate 序列化层已实现**：
-   - 验证 `src/components/UnifiedSlateEditor/serialization.ts` 中存在 `extractTags()` 和 `serializeSlateToHtmlWithTags()` 函数
+   - 验证 `src/components/PlanSlateEditor/serialization.ts` 中存在 `extractTags()` 和 `serializeSlateToHtmlWithTags()` 函数
 
 2. **更新 EventService**：
    - 添加 `extractTagsFromTitle()` 方法
@@ -6163,7 +6163,7 @@ class SnapshotService {
 ```typescript
 // components/DailySnapshotViewer.tsx (需要修改)
 
-import { SlatePreview } from './UnifiedSlateEditor/SlatePreview';
+import { SlatePreview } from './PlanSlateEditor/SlatePreview';
 
 const TaskCard: React.FC<TaskCardProps> = ({ item, highlight }) => {
   // 🆕 渲染 TimeLog 富文本内容
@@ -7922,7 +7922,7 @@ interface Event {
 
 ### 12.2 序列化层实现
 
-**✅ 已实现** - `src/components/UnifiedSlateEditor/serialization.ts`
+**✅ 已实现** - `src/components/PlanSlateEditor/serialization.ts`
 
 **功能**：
 - `planItemsToSlateNodes()` - 将 Event 数组转换为 Slate 编辑器节点

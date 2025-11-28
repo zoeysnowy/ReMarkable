@@ -1,4 +1,4 @@
-# FloatingBar 键盘导航增强 - 实施总结
+﻿# FloatingBar 键盘导航增强 - 实施总结
 
 **完成时间**: 2025-11-18  
 **需求来源**: 用户需求 - 数字键打开菜单后的完整键盘导航体验
@@ -27,7 +27,7 @@ useEffect(() => {
 
 ### 2. 插入元素后光标自动定位
 
-**实现位置**: `src/components/UnifiedSlateEditor/helpers.ts`
+**实现位置**: `src/components/PlanSlateEditor/helpers.ts`
 
 #### insertTag 函数增强
 
@@ -415,7 +415,7 @@ Transforms.insertText(editor, ' '); // 光标自动在空格后
 - [FLOATING_KEYBOARD_NAVIGATION_ENHANCEMENT.md](./FLOATING_KEYBOARD_NAVIGATION_ENHANCEMENT.md) - 详细设计方案
 - [useKeyboardNavigation.ts](../../src/components/FloatingToolbar/pickers/useKeyboardNavigation.ts) - 键盘导航 Hook
 - [HierarchicalTagPicker.tsx](../../src/components/shared/HierarchicalTagPicker.tsx) - TagPicker 组件
-- [helpers.ts](../../src/components/UnifiedSlateEditor/helpers.ts) - 插入辅助函数
+- [helpers.ts](../../src/components/PlanSlateEditor/helpers.ts) - 插入辅助函数
 
 ---
 

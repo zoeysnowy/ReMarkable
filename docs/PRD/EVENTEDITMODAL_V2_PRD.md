@@ -5,7 +5,7 @@
 > **最后更新**: 2025-11-28  
 > **Figma 设计稿**: [EventEditModal v2 设计稿](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=201-630&m=dev)  
 > **基于**: EventEditModal v1 + Figma 设计稿  
-> **依赖模块**: EventHub, TimeHub, LightSlateEditor, HeadlessFloatingToolbar, Timer Module  
+> **依赖模块**: EventHub, TimeHub, SlateEditor, HeadlessFloatingToolbar, Timer Module  
 > **关联文档**: 
 > - [EventEditModal v1 PRD](./EVENTEDITMODAL_MODULE_PRD.md)
 > - [Timer 模块 PRD](./TIMER_MODULE_PRD.md)
@@ -41,7 +41,7 @@
 > - ✅ **计划 vs 实际区分**: 计划显示"来源"+标签映射，实际不显示"来源"（本地生成）
 > 
 > **🔥 v2.0.2 历史更新** (2025-11-24):
-> - ✅ **LightSlateEditor 集成**: 轻量级 Slate 编辑器替代 UnifiedSlateEditor，专为 EventLog 优化
+> - ✅ **SlateEditor 集成**: 轻量级 Slate 编辑器替代 PlanSlateEditor，专为 EventLog 优化
 > - ✅ **FloatingBar 完整支持**: HeadlessFloatingToolbar 集成完成，支持 tag/emoji/dateMention 插入
 > - ✅ **文本格式功能**: 支持粗体 (Ctrl+B)、斜体 (Ctrl+I)、下划线 (Ctrl+U)、文字颜色、背景颜色
 > - ✅ **颜色选择器优化**: 修复数字键选择颜色功能，通过 isSubPickerOpen 状态避免键盘事件冲突
@@ -123,7 +123,7 @@
 | **标签区域静态显示** | 右侧 - Event Log | 静态 UI | 2025-11-15 |
 | **Plan 提示区域** | 右侧 - Event Log | 静态 UI | 2025-11-15 |
 | **时间戳分隔线自动生成** | 右侧 - Event Log | EventLogTimestampService | 2025-11-24 |
-| **LightSlateEditor 集成** | 右侧 - Event Log | LightSlateEditor + 自定义 editor config | 2025-11-24 |
+| **SlateEditor 集成** | 右侧 - Event Log | SlateEditor + 自定义 editor config | 2025-11-24 |
 | **FloatingBar 插入功能** | 右侧 - Event Log | HeadlessFloatingToolbar + insertTag/Emoji/DateMention | 2025-11-24 |
 | **文本格式与颜色** | 右侧 - Event Log | TextColorPicker + BackgroundColorPicker + 快捷键 | 2025-11-24 |
 | **实际进展数据集成** | 左侧 - 下 Section | 动态渲染 Timer 子事件 + 总时长汇总 + 空状态提示 | 2025-11-27 |
@@ -172,7 +172,7 @@
    - ⏳ 计划 vs 实际时间对比（待实现）
    - ⏳ DDL 完成状态显示（待实现）
 
-2. ✅ **LightSlateEditor 集成** - 已完成 (2025-11-27)
+2. ✅ **SlateEditor 集成** - 已完成 (2025-11-27)
    - ✅ 主日志富文本编辑器
    - ✅ 时间戳分隔线自动生成（5分钟间隔）
    - ✅ FloatingBar 完整集成（tag/emoji/dateMention）
@@ -263,7 +263,7 @@
 | 功能模块 | v1 实现 | v2 升级 |
 |---------|--------|--------|
 | **布局结构** | 单栏表单布局 | 左右分栏（左侧固定宽度 + 右侧可 resize，最小宽度 >= 左侧）+ **收缩视图** |
-| **描述字段** | 纯文本 `<textarea>` | **UnifiedSlateEditor** 富文本编辑器 |
+| **描述字段** | 纯文本 `<textarea>` | **PlanSlateEditor** 富文本编辑器 |
 | **时间显示** | 单一时间字段 | **计划时间 vs 实际时间对比**（Timer 集成） |
 | **日志记录** | 简单文本输入 | **时间戳分隔线 + 富文本日志** |
 | **标签显示** | 单行 chips | **层级路径 + Event Log 区域展示** |
@@ -5208,7 +5208,7 @@ updates.syncMode = prev.syncMode || 'bidirectional-private'; // 这会导致无�
 
 ## 右侧：Event Log ⚠️ **部分实现**
 
-**实现状态**: ⚠️ 部分实现（静态 UI 已完成，UnifiedSlateEditor 集成待开发）
+**实现状态**: ⚠️ 部分实现（静态 UI 已完成，PlanSlateEditor 集成待开发）
 
 **已实现部分**:
 - ✅ 标签区域静态显示（`#🔗工作/#📝文档编辑`）
@@ -5219,7 +5219,7 @@ updates.syncMode = prev.syncMode || 'bidirectional-private'; // 这会导致无�
 
 **待实现功能**:
 - ❌ **标签区域 Slate 编辑**: 允许用户删除/插入标签（像编辑文本一样）
-- ❌ **主日志 UnifiedSlateEditor 集成**: 富文本编辑器，支持 FloatingBar
+- ❌ **主日志 PlanSlateEditor 集成**: 富文本编辑器，支持 FloatingBar
 - ❌ **时间戳分隔线动态生成**: 根据 Timer 子事件自动插入
 - ❌ **父事件 + Timer 子事件日志合并**: 按时间排序显示所有日志
 - ❌ **点击 Timer 色块自动滚动**: 滚动到对应时间戳位置
@@ -8127,7 +8127,7 @@ function refreshSlateEditorWithVisibleTimeLogs(visibilityState: EventLogVisibili
 
 ### 【Slate 编辑区】- EventLog 集成
 
-EventEditModal 的右侧编辑区直接集成 **EventLog 模块**的 `UnifiedSlateEditor` 组件。
+EventEditModal 的右侧编辑区直接集成 **EventLog 模块**的 `PlanSlateEditor` 组件。
 
 > **详细实现参见**: [TimeLog & Description PRD](./TimeLog_&_Description_PRD.md)
 
@@ -8136,8 +8136,8 @@ EventEditModal 的右侧编辑区直接集成 **EventLog 模块**的 `UnifiedSla
 #### 1. EventLog 数据初始化
 
 ```typescript
-import { UnifiedSlateEditor } from '@/components/UnifiedSlateEditor/UnifiedSlateEditor';
-import { parseExternalHtml, slateNodesToRichHtml } from '@/components/UnifiedSlateEditor/serialization';
+import { PlanSlateEditor } from '@/components/PlanSlateEditor/PlanSlateEditor';
+import { parseExternalHtml, slateNodesToRichHtml } from '@/components/PlanSlateEditor/serialization';
 
 // 从 event.description 解析 EventLog 数据
 const [slateItems, setSlateItems] = useState<PlanItem[]>(() => {
@@ -8186,7 +8186,7 @@ const floatingBarIcons = [
 return (
   <div ref={rightPanelRef} className="modal-right-panel">
     {/* Slate 编辑器 */}
-    <UnifiedSlateEditor
+    <PlanSlateEditor
       items={slateItems}
       onChange={handleSlateChange}
       placeholder="输入'/'召唤表情、格式等，点击右下方问号浮窗查看更多高效快捷键哦"
@@ -8299,7 +8299,7 @@ const [slateItems, setSlateItems] = useState<PlanItem[]>(() => {
 - ✅ 支持在任意 Timer 日志段中编辑，保存时自动分配到对应的 Timer 子事件
 
 **关联文档**:
-- [TimeLog & Description PRD](./TimeLog_&_Description_PRD.md) - UnifiedSlateEditor 详细实现
+- [TimeLog & Description PRD](./TimeLog_&_Description_PRD.md) - PlanSlateEditor 详细实现
 - [Timer 模块 PRD](./TIMER_MODULE_PRD.md) - Timer 子事件管理
 - [SLATE_DEVELOPMENT_GUIDE.md](../SLATE_DEVELOPMENT_GUIDE.md) - Slate 开发指南
 
@@ -8308,9 +8308,9 @@ const [slateItems, setSlateItems] = useState<PlanItem[]>(() => {
 ## 数据字段扩展
 
 ```typescript
-import { UnifiedSlateEditor } from '@/components/UnifiedSlateEditor/UnifiedSlateEditor';
-import { parseExternalHtml } from '@/components/UnifiedSlateEditor/serialization';
-import { slateNodesToRichHtml } from '@/components/UnifiedSlateEditor/serialization';
+import { PlanSlateEditor } from '@/components/PlanSlateEditor/PlanSlateEditor';
+import { parseExternalHtml } from '@/components/PlanSlateEditor/serialization';
+import { slateNodesToRichHtml } from '@/components/PlanSlateEditor/serialization';
 
 // 🆕 合并父事件 + 所有 Timer 子事件的日志
 const [slateItems, setSlateItems] = useState<PlanItem[]>(() => {
@@ -8414,7 +8414,7 @@ const handleSlateChange = useCallback((updatedItems: PlanItem[]) => {
 }, [formData, currentTimerEventId]);
 
 return (
-  <UnifiedSlateEditor
+  <PlanSlateEditor
     items={slateItems}
     onChange={handleSlateChange}
     placeholder="输入'/'召唤表情、格式等，点击右下方问号浮窗查看更多高效快捷键哦"
@@ -8491,7 +8491,7 @@ return (
 
 **实现逻辑**:
 ```typescript
-// 1. 在 UnifiedSlateEditor 的 onChange 中检测输入时间
+// 1. 在 PlanSlateEditor 的 onChange 中检测输入时间
 let lastInputTime = 0;
 
 const handleSlateChange = (updatedItems: PlanItem[]) => {
@@ -8526,7 +8526,7 @@ const handleSlateChange = (updatedItems: PlanItem[]) => {
 
 **时间戳节点类型定义**:
 ```typescript
-// src/components/UnifiedSlateEditor/types.ts
+// src/components/PlanSlateEditor/types.ts
 interface TimestampDividerNode {
   type: 'timestamp-divider';
   timestamp: string;        // ISO 8601 格式（本地时间）
@@ -8537,7 +8537,7 @@ interface TimestampDividerNode {
 
 **渲染组件**:
 ```typescript
-// src/components/UnifiedSlateEditor/TimestampDivider.tsx
+// src/components/PlanSlateEditor/TimestampDivider.tsx
 const TimestampDivider: React.FC<RenderElementProps> = ({ element, attributes, children }) => {
   const { timestamp, elapsed } = element as TimestampDividerNode;
   
@@ -8593,7 +8593,7 @@ function formatTimestamp(timestamp: string): string {
 ```typescript
 import { useFloatingToolbar } from '@/components/FloatingToolbar/useFloatingToolbar';
 import { HeadlessFloatingToolbar } from '@/components/FloatingToolbar/HeadlessFloatingToolbar';
-import { insertTag, insertEmoji, insertDateMention } from '@/components/UnifiedSlateEditor/helpers';
+import { insertTag, insertEmoji, insertDateMention } from '@/components/PlanSlateEditor/helpers';
 import { 
   EmojiIcon, 
   TagSharpIcon, 
@@ -8626,7 +8626,7 @@ const floatingBarIcons = [
 return (
   <div ref={rightPanelRef} className="modal-right-panel">
     {/* Slate 编辑器 */}
-    <UnifiedSlateEditor
+    <PlanSlateEditor
       items={slateItems}
       onChange={handleSlateChange}
       onEditorReady={(editor) => { slateEditorRef.current = editor; }}
@@ -8946,7 +8946,7 @@ import { TimerStartIcon, DatetimeIcon, AttendeeIcon } from '@/assets/icons';
 ### 2. 时间戳分隔线实现
 
 ```typescript
-// src/components/UnifiedSlateEditor/helpers.ts
+// src/components/PlanSlateEditor/helpers.ts
 
 /**
  * 插入时间戳分隔线
@@ -9530,7 +9530,7 @@ sequenceDiagram
 - [ ] 实现条件显示逻辑（isTimeCalendar、isPlan、globalTimer）
 
 ### Phase 3: 右侧 Slate 编辑器
-- [ ] 集成 UnifiedSlateEditor
+- [ ] 集成 PlanSlateEditor
 - [ ] 实现 HTML ↔ Slate 序列化
 - [ ] 创建 TimestampDividerNode 类型
 - [ ] 实现 TimestampDivider 渲染组件

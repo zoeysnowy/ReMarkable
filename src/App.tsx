@@ -1777,11 +1777,7 @@ function App() {
         content = (
           <PageContainer title="计划" subtitle="我的任务与日程管理" className="plan-management">
             <PlanManager
-              onSave={handleSavePlanItem}
-              onDelete={handleDeletePlanItem}
               availableTags={availableTagsForEdit.map(t => t.name)}
-              onCreateEvent={handleCreateEvent}
-              onUpdateEvent={handleUpdateEvent}
               microsoftService={microsoftService} // 🆕 传递 Microsoft 服务，支持 To Do Lists
             />
           </PageContainer>

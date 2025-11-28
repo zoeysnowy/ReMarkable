@@ -1,4 +1,4 @@
-# FloatingBar 键盘导航增强功能设计方案
+﻿# FloatingBar 键盘导航增强功能设计方案
 
 **创建时间**: 2025-11-18  
 **需求来源**: 用户需求 - 数字键打开菜单后的完整键盘导航体验
@@ -140,7 +140,7 @@ useEffect(() => {
 2. 光标停留在插入元素的**后面**（inline 元素右侧）
 3. 用户可以立即继续输入
 
-**实现位置**：`UnifiedSlateEditor/helpers.ts`
+**实现位置**：`PlanSlateEditor/helpers.ts`
 
 #### 2.1 Tag 插入增强
 
@@ -359,7 +359,7 @@ export const TagPicker: React.FC<TagPickerProps> = ({...}) => {
 
 ### Step 2: 增强 helpers.ts 插入函数
 
-**文件**: `src/components/UnifiedSlateEditor/helpers.ts`
+**文件**: `src/components/PlanSlateEditor/helpers.ts`
 
 **修改函数**：
 - `insertTag()` - 添加焦点恢复和光标定位

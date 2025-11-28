@@ -1,4 +1,4 @@
-# ContactService 产品需求文档 (PRD)
+﻿# ContactService 产品需求文档 (PRD)
 
 ## 文档信息
 - **创建日期**: 2025-11-18

@@ -4421,7 +4421,124 @@ try {
 }
 ```
 
-### 7. 测试验证
+### 7. ActionBasedSyncManager 集成规范 (v1.10)
+
+#### 7.1 架构原则
+
+**核心规则**: **所有事件更新必须通过 EventService 执行，禁止直接操作 localStorage**
+
+**架构违规示例** ❌:
+```typescript
+// ❌ 错误：绕过 EventService 直接操作 localStorage
+const events = this.getLocalEvents();
+events[index] = updatedEvent;
+this.saveLocalEvents(events, false);
+
+// ❌ 错误：手动触发 eventsUpdated
+window.dispatchEvent(new CustomEvent('eventsUpdated', { detail: { eventId } }));
+```
+
+**正确架构实现** ✅:
+```typescript
+// ✅ 正确：通过 EventService 更新事件
+await EventService.updateEvent(eventId, updates, skipSync, { 
+  source: 'external-sync',
+  originComponent: 'ActionBasedSyncManager'
+});
+
+// ✅ EventService 自动完成:
+//    1. localStorage 持久化
+//    2. 触发 eventsUpdated (每个更新 1 次)
+//    3. 通知所有订阅组件
+```
+
+#### 7.2 变化检测机制
+
+**问题**: 无变化检测导致 1016 个 eventsUpdated/20秒，造成性能问题
+
+**解决方案**: 在更新前比较远程与本地数据
+
+```typescript
+// ✅ 实现示例 (ActionBasedSyncManager.syncPendingRemoteActions)
+for (const action of updateActions) {
+  const eventId = action.entityId;
+  const existingEvent = EventService.getEventById(eventId);
+  
+  // 🔧 比较关键字段
+  const remoteTitle = action.data.subject || '';
+  const localTitle = existingEvent.title?.simpleTitle || existingEvent.title || '';
+  const titleChanged = remoteTitle !== localTitle;
+  
+  const remoteStart = this.safeFormatDateTime(action.data.start?.dateTime);
+  const remoteEnd = this.safeFormatDateTime(action.data.end?.dateTime);
+  const timeChanged = remoteStart !== existingEvent.startTime || remoteEnd !== existingEvent.endTime;
+  
+  const cleanDescription = this.processEventDescription(htmlContent, 'outlook', 'sync', action.data);
+  const descriptionChanged = cleanDescription !== existingEvent.description;
+  
+  // ⏭️ 跳过无变化的更新
+  if (!titleChanged && !timeChanged && !descriptionChanged) {
+    console.log(`⏭️ [Sync] 跳过无变化: ${eventId.slice(-8)}`);
+    skippedCount++;
+    continue;
+  }
+  
+  // 🔄 有变化才执行更新
+  console.log(`🔄 [Sync] 变化 ${eventId.slice(-8)}:`, {
+    title: titleChanged ? `"${localTitle}" → "${remoteTitle}"` : '-',
+    time: timeChanged ? `${existingEvent.startTime} → ${remoteStart}` : '-',
+    desc: descriptionChanged ? `${existingEvent.description?.length || 0} → ${cleanDescription?.length || 0} chars` : '-'
+  });
+  
+  await EventService.updateEvent(eventId, updates, true, { source: 'external-sync' });
+  successCount++;
+}
+
+console.log(`✅ [SyncRemote] Completed: ${successCount} updated, ${skippedCount} skipped, ${failCount} failed`);
+```
+
+#### 7.3 性能指标
+
+**优化前**:
+- 1016 个 eventsUpdated / 20秒
+- 1016 次 localStorage 写入
+- 所有组件接收 1016 次无效通知
+
+**优化后**:
+- 0-2 个 eventsUpdated / 20秒 (99.8% ↓)
+- 0-2 次 localStorage 写入
+- 首次同步后几乎无 CPU 占用
+
+**测试结果**:
+```
+首次同步: ✅ [SyncRemote] Completed: 1015 updated, 0 skipped, 0 failed
+后续同步: ✅ [SyncRemote] Completed: 0 updated, 186 skipped, 0 failed
+```
+
+#### 7.4 影响范围
+
+所有订阅 `eventsUpdated` 的组件自动受益:
+- ✅ TimeCalendar: 减少日历重渲染
+- ✅ PlanManager: 减少缓存清理和过滤计算
+- ✅ UnifiedSlateEditor: 减少 Slate 节点操作
+- ✅ UpcomingEventsPanel: 减少无效状态更新
+
+#### 7.5 关键要点
+
+1. **EventService 是唯一入口**: 所有 CRUD 操作必须通过 EventService
+2. **变化检测优先**: 比较后再决定是否更新
+3. **skipSync=true**: 外部同步调用 EventService 时必须设置 skipSync，避免循环同步
+4. **统计日志**: 记录 `updated/skipped/failed` 便于性能分析
+5. **create/delete 例外**: 批量创建/删除可保留原有逻辑（不需要变化检测）
+
+#### 7.6 相关文档
+
+- **ACTIONBASEDSYNCMANAGER_PRD.md v1.5**: 架构合规性修复详细说明
+- **SYNC_ARCHITECTURE_FIX_TEST.md**: 测试指南和验证步骤
+
+---
+
+### 8. 测试验证
 
 #### 测试场景清单
 - [ ] 用户在 EventEditModalV2 编辑 eventlog → 自动同步到 Outlook
@@ -4431,11 +4548,14 @@ try {
 - [ ] 外部创建事件（无 eventlog） → 自动创建 EventLog 对象
 - [ ] Slate JSON 解析失败 → 降级为纯文本（不崩溃）
 - [ ] 添加附件/版本 → 元数据正确保留
+- [ ] ActionBasedSyncManager 同步 → 通过 EventService 更新（无架构违规）
+- [ ] 无变化同步 → 跳过更新（0 updated, N skipped）
+- [ ] 有变化同步 → 正确更新（M updated, N skipped）
 
 ---
 
-**文档版本**: v1.9  
-**最后更新**: 2025-11-25  
+**文档版本**: v1.10  
+**最后更新**: 2025-11-28  
 **维护者**: GitHub Copilot  
 **变更记录**:
 - v1.0 (2025-11-06): 初始版本
@@ -4446,3 +4566,4 @@ try {
 - v1.7 (2025-11-20): **新增事件签到功能**，完整的时间戳记录、EventHistoryService集成和状态线显示
 - v1.8 (2025-11-24): **EventLog 保存架构优化**，统一由 EventService 负责 Slate JSON → EventLog 对象转换，修复 Timer eventlog 保存问题
 - v1.9 (2025-11-25): **EventLog 与 Description 字段转换机制详解**，包含完整的双向同步逻辑、数据流向图、最佳实践和测试清单
+- v1.10 (2025-11-28): **ActionBasedSyncManager 架构合规性修复**，所有事件更新必须通过 EventService 执行，禁止直接操作 localStorage

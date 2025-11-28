@@ -1,4 +1,4 @@
-# Time Picker and Display 时间选择与显示模块 PRD
+﻿# Time Picker and Display 时间选择与显示模块 PRD
 
 > **文档版本**: v2.10.2  
 > **创建日期**: 2025-01-15  
@@ -262,7 +262,7 @@ graph TB
 | **MentionPreview** | `MentionPreview.tsx` | @ 输入时实时预览解析结果 | `parseNaturalLanguage()` |
 | **slateNodesToPlanItems** | `serialization.ts` | Slate → Event 序列化,读取时间 | `TimeHub.getSnapshot()` |
 | **planItemsToSlateNodes** | `serialization.ts` | Event → Slate 反序列化 | `item.startTime/endTime` (metadata) |
-| **UnifiedSlateEditor** | `UnifiedSlateEditor.tsx` | 编辑器主组件,处理 @ 输入 | 触发 TimeHub 更新 |
+| **PlanSlateEditor** | `PlanSlateEditor.tsx` | 编辑器主组件,处理 @ 输入 | 触发 TimeHub 更新 |
 | **helpers.insertDateMention** | `helpers.ts` | 插入 DateMention 节点 | 无(仅插入节点) |
 
 **重要**: 所有显示时间的模块必须通过 `useEventTime(eventId)` 订阅 TimeHub,不应直接读取 Slate node 中的时间字段!
@@ -1756,7 +1756,7 @@ docs/
 
 ### 0.1.5 @ 提及模式 (v2.10 🆕)
 
-**使用场景**: 在 UnifiedSlateEditor 中输入 `@明天下午3点` 时弹出的 Picker
+**使用场景**: 在 PlanSlateEditor 中输入 `@明天下午3点` 时弹出的 Picker
 
 **核心特点**:
 1. **累积式输入**: 用户先输入 `@明天`，Picker 弹出后继续输入 "下午3点"
@@ -1768,7 +1768,7 @@ docs/
 ```
 用户输入 @明天
   ↓
-UnifiedSlateEditor 检测 @ → parseNaturalLanguage("明天")
+PlanSlateEditor 检测 @ → parseNaturalLanguage("明天")
   ↓
 弹出 UnifiedDateTimePicker
   - useTimeHub=true
@@ -1784,7 +1784,7 @@ onChange → parseNaturalLanguage("明天下午3点")
   ↓
 onSearchChange(text, { start: Date(明天 15:00), end: undefined })
   ↓
-UnifiedSlateEditor 更新 mentionText 和 mentionInitialStart
+PlanSlateEditor 更新 mentionText 和 mentionInitialStart
   ↓
 第一次 Enter → blur → 显示预览
   ↓
@@ -1799,7 +1799,7 @@ handleMentionSelect(startStr, endStr, allDay, userInputText)
 
 **关键代码**:
 ```tsx
-// UnifiedSlateEditor.tsx - 使用配置
+// PlanSlateEditor.tsx - 使用配置
 <UnifiedDateTimePicker
   useTimeHub={true}  // 🔧 必须为 true
   initialText={mentionText}  // 🆕 传递初始文本
@@ -1810,7 +1810,7 @@ handleMentionSelect(startStr, endStr, allDay, userInputText)
   onClose={handleMentionClose}
 />
 
-// UnifiedSlateEditor.tsx - 实时更新回调
+// PlanSlateEditor.tsx - 实时更新回调
 const handleMentionSearchChange = useCallback((text: string, parsed: { start?: Date; end?: Date } | null) => {
   setMentionText(text);
   if (parsed && parsed.start) {
@@ -1819,7 +1819,7 @@ const handleMentionSearchChange = useCallback((text: string, parsed: { start?: D
   }
 }, []);
 
-// UnifiedSlateEditor.tsx - 确认回调
+// PlanSlateEditor.tsx - 确认回调
 const handleMentionSelect = useCallback(async (startStr: string, endStr?: string, allDay?: boolean, userInputText?: string) => {
   const finalUserText = userInputText || mentionText || '';
   // ... 删除 @xxx 文本
@@ -8412,7 +8412,7 @@ DateMention 写入 TimeHub 后，Slate 保存时从 **DateMention 节点本身**
 ```
 用户输入 @明天下午1点
     ↓
-[1] UnifiedSlateEditor.tsx 解析
+[1] PlanSlateEditor.tsx 解析
     parseDaterDict() → {dateRange, timePeriod}
     ↓
 [2] DateMention 节点插入
@@ -8456,7 +8456,7 @@ DateMention 写入 TimeHub 后，Slate 保存时从 **DateMention 节点本身**
 
 **[1] 解析时间**:
 ```typescript
-// UnifiedSlateEditor.tsx:970
+// PlanSlateEditor.tsx:970
 const parsed = parseDaterDict(inputText);
 // → {dateRange: {...}, timePeriod: {hour: 13, minute: 0}}
 
@@ -8481,7 +8481,7 @@ const dateMentionNode: DateMentionNode = {
 
 **[3] 写入 TimeHub**:
 ```typescript
-// UnifiedSlateEditor.tsx:1237
+// PlanSlateEditor.tsx:1237
 await TimeHub.setEventTime(
   parentEventId,
   startStr,  // '2025-11-16 13:00:00'

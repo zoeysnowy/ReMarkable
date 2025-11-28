@@ -1,4 +1,4 @@
-# Snapshot 状态可视化系统 PRD
+﻿# Snapshot 状态可视化系统 PRD
 
 **模块路径**: `src/components/StatusLineContainer.tsx` & `PlanManager.tsx`  
 **功能版本**: v1.0  
@@ -418,7 +418,7 @@ const realItems = updatedItems.filter(item => !(item as any)._isDeleted);
 EventService.batchUpdate(realItems);
 
 // 3. 编辑器隔离：强制重置避免跨时间范围污染
-<UnifiedSlateEditor
+<PlanSlateEditor
   key={dateRange ? `snapshot-${dateRange.start.getTime()}-${dateRange.end.getTime()}` : 'normal'}
   items={editorItems}
 />
@@ -628,7 +628,7 @@ DOM 测量（getBoundingClientRect）
   - 日期范围规范化 (L379-385, L1153-1164)
   - StatusLineContainer 集成 (L2020-2028)
 
-- `src/components/UnifiedSlateEditor/EventLinePrefix.tsx`:
+- `src/components/PlanSlateEditor/EventLinePrefix.tsx`:
   - 从 `isCompleted` 迁移到 `getCheckInStatus()` (L23-25)
   - 更新 onChange 逻辑 (L70-81)
   - 更新 React.memo 比较逻辑 (L107-117)
@@ -696,7 +696,7 @@ const STATUS_LABELS = {
 
 - [PlanManager 模块 PRD](./PLANMANAGER_MODULE_PRD.md)
 - [EventHistoryService 架构](../architecture/EVENT_HISTORY_SERVICE.md)
-- [UnifiedSlateEditor PRD](./SLATE_EDITOR_PRD.md)
+- [PlanSlateEditor PRD](./SLATE_EDITOR_PRD.md)
 - [时间架构文档](../TIME_ARCHITECTURE.md)
 
 ---
@@ -758,14 +758,14 @@ const STATUS_LABELS = {
   - 导致在错误的时间范围内显示 ghost 事件（例如：23 号删除的事件出现在 28-29 号的快照中）
 
 - **根本原因**: React 组件缓存机制
-  - UnifiedSlateEditor 没有 `key` 属性
+  - PlanSlateEditor 没有 `key` 属性
   - 当 `dateRange` 变化时，React 认为是同一个组件，只更新 props
   - Slate 编辑器的内部状态（已渲染的节点）不会被重置
   - Ghost 事件标记（`_isDeleted: true`）被保留在编辑器中
 
 - **修复方案**: 强制编辑器重置
   ```typescript
-  <UnifiedSlateEditor
+  <PlanSlateEditor
     key={dateRange ? `snapshot-${dateRange.start.getTime()}-${dateRange.end.getTime()}` : 'normal'}
     items={editorItems}
     onChange={debouncedOnChange}
@@ -841,7 +841,7 @@ const STATUS_LABELS = {
   - ✅ 编辑器内容完全重置，无残留状态
 
 - **相关文件**:
-  - `PlanManager.tsx` - L2043 (UnifiedSlateEditor key 属性)
+  - `PlanManager.tsx` - L2043 (PlanSlateEditor key 属性)
   - `PlanManager.tsx` - L1283-1350 (Ghost 事件生成逻辑)
   - `PlanManager.tsx` - L298-303 (初始化过滤)
   - `PlanManager.tsx` - L876 (保存时过滤)
@@ -881,7 +881,7 @@ const STATUS_LABELS = {
 
 - **修复方案**:
   ```typescript
-  // src/components/UnifiedSlateEditor/serialization.ts
+  // src/components/PlanSlateEditor/serialization.ts
   const metadata: EventMetadata = {
     // ... 其他字段 ...
     

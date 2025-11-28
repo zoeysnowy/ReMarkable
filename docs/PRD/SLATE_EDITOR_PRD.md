@@ -1,13 +1,13 @@
-# Slate.js 编辑器开发指南
+﻿# Slate.js 编辑器开发指南
 
 > **状态**: ✅ 生产环境使用中  
 > **最后更新**: 2025-11-28  
 > **框架版本**: Slate.js 0.118+  
-> **编辑器家族**: UnifiedSlateEditor (多事件管理) + LightSlateEditor (单内容编辑)  
+> **编辑器家族**: PlanSlateEditor (多事件管理) + SlateEditor (单内容编辑)  
 > **架构文档**: [SLATE_EDITOR_ARCHITECTURE.md](./SLATE_EDITOR_ARCHITECTURE.md) - 架构设计与重构方案  
 > **重要更新**: 
-> - ✅ **UnifiedSlateEditor**: PlanManager 多事件管理编辑器
-> - ✅ **LightSlateEditor**: EventEditModal/TimeLog 单内容编辑器
+> - ✅ **PlanSlateEditor**: PlanManager 多事件管理编辑器
+> - ✅ **SlateEditor**: EventEditModal/TimeLog 单内容编辑器
 > - ✅ **段落移动功能**: 两个编辑器都已实现 Shift+Alt+↑/↓ 快捷键 (2025-11-28)
 > - **时间系统完全集成 TimeHub** (v2.2)
 > - **字段重构: simpleTitle/fullTitle双向同步** (v2.8)
@@ -24,7 +24,7 @@
 
 ReMarkable 的 Slate 编辑器生态包含两个专用编辑器，各司其职：
 
-### UnifiedSlateEditor - 多事件管理编辑器
+### PlanSlateEditor - 多事件管理编辑器
 
 **定位**: 支持多个事件同时编辑、批量操作的列表型编辑器  
 **核心特性**:
@@ -37,7 +37,7 @@ ReMarkable 的 Slate 编辑器生态包含两个专用编辑器，各司其职�
 
 **文档位置**: 本文档 + [SHIFT_ALT_ARROW_MOVE_IMPLEMENTATION.md](../SHIFT_ALT_ARROW_MOVE_IMPLEMENTATION.md)
 
-### LightSlateEditor - 单内容编辑器
+### SlateEditor - 单内容编辑器
 
 **定位**: 轻量级单内容编辑器，专注纯文本编辑体验  
 **核心特性**:
@@ -51,7 +51,7 @@ ReMarkable 的 Slate 编辑器生态包含两个专用编辑器，各司其职�
 - 未来 TimeLog 页面（待开发）
 - 任何需要富文本日志的单内容编辑场景
 
-**文档位置**: [LIGHTSLATEEDITOR_PRD.md](./LIGHTSLATEEDITOR_PRD.md) (独立文档)
+**文档位置**: [SlateEditor_PRD.md](./SlateEditor_PRD.md) (独立文档)
 
 ### 架构重构计划
 
@@ -67,7 +67,7 @@ ReMarkable 的 Slate 编辑器生态包含两个专用编辑器，各司其职�
 **需求**: 支持 Shift+Alt+↑/↓ 快捷键移动段落，兼容两个编辑器的不同架构  
 **状态**: ✅ 已完成并测试验证
 
-### UnifiedSlateEditor - 双模式段落移动
+### PlanSlateEditor - 双模式段落移动
 
 **特性**: 标题行和 eventlog 段落有不同的移动逻辑
 
@@ -83,7 +83,7 @@ ReMarkable 的 Slate 编辑器生态包含两个专用编辑器，各司其职�
 
 **详细文档**: [SHIFT_ALT_ARROW_MOVE_IMPLEMENTATION.md](../SHIFT_ALT_ARROW_MOVE_IMPLEMENTATION.md)
 
-### LightSlateEditor - 单模式段落移动
+### SlateEditor - 单模式段落移动
 
 **特性**: 扁平段落结构，简单的上下交换
 
@@ -97,13 +97,13 @@ ReMarkable 的 Slate 编辑器生态包含两个专用编辑器，各司其职�
    - 失焦时自动清理空 timestamp
    - Timestamp 只能系统自动管理
 
-**实现位置**: `src/components/LightSlateEditor/LightSlateEditor.tsx` (L875-1040)
+**实现位置**: `src/components/SlateEditor/SlateEditor.tsx` (L875-1040)
 
 ### 测试验证
 
 **测试清单**: 13 个测试用例，详见 [TEST_PARAGRAPH_MOVE.md](../TEST_PARAGRAPH_MOVE.md)
-- ✅ LightSlate: 7 个测试用例（段落交换、timestamp 跳过、边界检查）
-- ✅ UnifiedSlate: 6 个测试用例（标题移动、eventlog 移动、边界保护）
+- ✅ Slate: 7 个测试用例（段落交换、timestamp 跳过、边界检查）
+- ✅ PlanSlate: 6 个测试用例（标题移动、eventlog 移动、边界保护）
 
 ---
 
@@ -122,7 +122,7 @@ ReMarkable 的 Slate 编辑器生态包含两个专用编辑器，各司其职�
 
 #### 1. eventsUpdated 监听器同步 checked/unchecked 数组
 
-**位置**: `src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx` L850-867
+**位置**: `src/components/PlanSlateEditor/PlanSlateEditor.tsx` L850-867
 
 ```typescript
 const handleEventUpdated = (e: any) => {
@@ -164,7 +164,7 @@ const handleEventUpdated = (e: any) => {
 
 #### 2. EventLinePrefix 计算 isCompleted 状态
 
-**位置**: `src/components/UnifiedSlateEditor/EventLinePrefix.tsx` L26-35
+**位置**: `src/components/PlanSlateEditor/EventLinePrefix.tsx` L26-35
 
 ```typescript
 const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onSave, eventStatus }) => {
@@ -197,7 +197,7 @@ const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onS
         }
         
         // EventService 会触发 eventsUpdated 事件
-        // → UnifiedSlateEditor 监听器更新 Slate metadata
+        // → PlanSlateEditor 监听器更新 Slate metadata
         // → React.memo 检测到变化
         // → EventLinePrefix 重新渲染
       }}
@@ -213,7 +213,7 @@ const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onS
 
 #### 3. React.memo 比较函数修复
 
-**位置**: `src/components/UnifiedSlateEditor/EventLinePrefix.tsx` L158-170
+**位置**: `src/components/PlanSlateEditor/EventLinePrefix.tsx` L158-170
 
 **修复前（❌ 错误）**:
 ```typescript
@@ -258,7 +258,7 @@ sequenceDiagram
     participant EventService
     participant Storage as localStorage
     participant EventHub as eventsUpdated Event
-    participant SlateEditor as UnifiedSlateEditor
+    participant SlateEditor as PlanSlateEditor
     participant Slate as Slate Metadata
     participant ReactMemo as React.memo
 
@@ -315,7 +315,7 @@ EventHistoryService.log.before
 
 **修复方案**:
 ```typescript
-// src/components/UnifiedSlateEditor/serialization.ts
+// src/components/PlanSlateEditor/serialization.ts
 const metadata: EventMetadata = {
   // ...其他字段
   
@@ -355,7 +355,7 @@ const metadata: EventMetadata = {
 #### 1. EventMetadata 扩展
 
 ```typescript
-// src/components/UnifiedSlateEditor/types.ts
+// src/components/PlanSlateEditor/types.ts
 export interface EventMetadata {
   // ...其他字段
   checkType?: 'none' | 'once' | 'recurring'; // 控制 checkbox 显示
@@ -371,7 +371,7 @@ export interface EventMetadata {
 
 **提取元数据**（Event → Slate Node）:
 ```typescript
-// src/components/UnifiedSlateEditor/serialization.ts - planItemToSlateNode
+// src/components/PlanSlateEditor/serialization.ts - planItemToSlateNode
 metadata: {
   // ...其他字段
   checkType: item.checkType || 'once', // 默认有checkbox
@@ -393,7 +393,7 @@ metadata: {
 根据 `checkType` 决定是否显示 checkbox：
 
 ```typescript
-// src/components/UnifiedSlateEditor/EventLinePrefix.tsx
+// src/components/PlanSlateEditor/EventLinePrefix.tsx
 const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onSave }) => {
   const metadata = element.metadata || {};
   const checkType = metadata.checkType;
@@ -520,7 +520,7 @@ const [items, setItems] = useState<Event[]>(() => {
 
 ### 重大修复
 
-**问题**: UnifiedSlateEditor 和 PlanManager 双向数据绑定导致无限循环更新
+**问题**: PlanSlateEditor 和 PlanManager 双向数据绑定导致无限循环更新
 **症状**: 编辑器内容清空、性能下降、控制台大量重复渲染日志
 **状态**: ✅ 已修复并通过测试验证
 
@@ -528,7 +528,7 @@ const [items, setItems] = useState<Event[]>(() => {
 
 #### 1. 多层循环检测机制
 ```typescript
-// UnifiedSlateEditor.tsx - eventsUpdated 处理器
+// PlanSlateEditor.tsx - eventsUpdated 处理器
 const handleEventUpdated = (eventId: string, isDeleted?: boolean, isNewEvent?: boolean) => {
   // 🛡️ 检测1: 更新ID验证（防止接收自己发出的更新）
   if (EventService.isLocalUpdate(eventId, lastUpdateId.current)) {
@@ -545,7 +545,7 @@ const handleEventUpdated = (eventId: string, isDeleted?: boolean, isNewEvent?: b
   }
   
   // 🛡️ 检测3: 来源组件验证
-  if (originComponent === 'UnifiedSlateEditor') {
+  if (originComponent === 'PlanSlateEditor') {
     console.log('[🛡️ 自源更新跳过]', { eventId: eventId.slice(-10) });
     return;
   }
@@ -577,7 +577,7 @@ if (isNewEvent) {
 // 在onChange中标记更新来源
 const onChange = useCallback((newValue: any[]) => {
   // 标记本次更新的来源
-  setLastUpdateSource('UnifiedSlateEditor');
+  setLastUpdateSource('PlanSlateEditor');
   lastUpdateId.current = EventService.generateUpdateId();
   
   // 执行保存逻辑
@@ -585,7 +585,7 @@ const onChange = useCallback((newValue: any[]) => {
   
   if (result.hasChanges && onSave) {
     onSave(result.updatedItems, {
-      originComponent: 'UnifiedSlateEditor',
+      originComponent: 'PlanSlateEditor',
       updateId: lastUpdateId.current
     });
   }
@@ -717,7 +717,7 @@ Slate编辑器内部使用`mode`字段区分节点类型：
 输入阶段:
   用户输入 @明天下午3点
     ↓
-  UnifiedSlateEditor 实时检测 @ 符号
+  PlanSlateEditor 实时检测 @ 符号
     ↓
   parseNaturalLanguage() 实时解析 "明天"
     ↓
@@ -781,7 +781,7 @@ Slate编辑器内部使用`mode`字段区分节点类型：
 | **slateNodesToPlanItems** | `serialization.ts` L398-427 | Slate → Event | `TimeHub.getSnapshot()` | ✅ 已集成 |
 | **planItemsToSlateNodes** | `serialization.ts` L25-150 | Event → Slate | `item.startTime/endTime` | ⚠️ metadata 仅备份 |
 | **insertDateMention** | `helpers.ts` | 插入节点 | - | ✅ 无需时间 |
-| **UnifiedSlateEditor** | `UnifiedSlateEditor.tsx` | 主编辑器 | 触发 TimeHub | ✅ 已集成 |
+| **PlanSlateEditor** | `PlanSlateEditor.tsx` | 主编辑器 | 触发 TimeHub | ✅ 已集成 |
 
 ### UnifiedDateTimePicker 使用说明 (v2.10)
 
@@ -828,7 +828,7 @@ Picker 弹出，用户查看选项（停顿 3 秒）
 **实现机制**:
 
 ```typescript
-// UnifiedSlateEditor.tsx onChange 中
+// PlanSlateEditor.tsx onChange 中
 if (showMentionPicker) {
   // 🆕 当 Picker 显示时，暂停自动保存
   console.log('⏸️ @ 提及输入中，暂停自动保存');
@@ -858,8 +858,8 @@ autoSaveTimerRef.current = setTimeout(() => {
    - `showMentionPicker` 变为 `false` 后，下一次 `onChange` 会恢复正常的 2秒自动保存机制
 
 **关键代码位置**:
-- 暂停逻辑: `UnifiedSlateEditor.tsx` L1079-1086
-- 清理逻辑: `UnifiedSlateEditor.tsx` L1309-1338
+- 暂停逻辑: `PlanSlateEditor.tsx` L1079-1086
+- 清理逻辑: `PlanSlateEditor.tsx` L1309-1338
 - 手动保存: `handleMentionSelect` L1294
 
 ### 关键设计
@@ -1049,7 +1049,7 @@ const diff = calculateTimeDiff(mentionTime, hubTime);
 - direction = 'later' → 显示"延后了2天" ✅
 
 **受影响文件**:
-- `src/components/UnifiedSlateEditor/elements/DateMentionElement.tsx` (L191)
+- `src/components/PlanSlateEditor/elements/DateMentionElement.tsx` (L191)
 
 **相关工具函数** (`src/utils/timeDiffCalculator.ts`):
 ```typescript
@@ -1088,7 +1088,7 @@ export function calculateTimeDiff(
 #### v1.0 - 外部渲染（已废弃）
 ```typescript
 // PlanManager 负责渲染
-<UnifiedSlateEditor
+<PlanSlateEditor
   renderLinePrefix={(element) => (
     <div>
       <Checkbox />
@@ -1111,7 +1111,7 @@ export function calculateTimeDiff(
 #### v2.8.3 - 内部渲染（当前架构）✅
 ```typescript
 // PlanManager 只管数据流
-<UnifiedSlateEditor
+<PlanSlateEditor
   items={planItems}
   onChange={setPlanItems}
   onSave={handleSave}
@@ -1132,7 +1132,7 @@ export function calculateTimeDiff(
 | 组件 | 职责 | 数据来源 | 用户交互 |
 |------|------|---------|---------|
 | **PlanManager** | 数据管理 | EventService | 提供回调函数 |
-| **UnifiedSlateEditor** | 编辑器核心 | props.items | 调用回调 |
+| **PlanSlateEditor** | 编辑器核心 | props.items | 调用回调 |
 | **EventLineElement** | 行布局 | element.metadata | 分发到子组件 |
 | **EventLinePrefix** | Checkbox + Emoji | element.metadata | onSave(eventId, {isCompleted}) |
 | **EventLineSuffix** | Time + More | useEventTime(eventId) | onTimeClick, onMoreClick |
@@ -1149,7 +1149,7 @@ export function calculateTimeDiff(
     ↓
   PlanManager items state
     ↓
-  UnifiedSlateEditor items prop
+  PlanSlateEditor items prop
     ↓
   planItemsToSlateNodes()
     ↓
@@ -1162,7 +1162,7 @@ export function calculateTimeDiff(
     ↓
   EventLinePrefix: onSave(eventId, { isCompleted: true })
     ↓
-  UnifiedSlateEditor: props.onSave callback
+  PlanSlateEditor: props.onSave callback
     ↓
   PlanManager: EventService.updateEvent()
     ↓
@@ -1197,7 +1197,7 @@ export function calculateTimeDiff(
 
 3. **完全分离关注点**
    - PlanManager: 纯数据管理，不涉及DOM
-   - UnifiedSlateEditor: 编辑器逻辑 + UI组织
+   - PlanSlateEditor: 编辑器逻辑 + UI组织
    - EventLinePrefix/Suffix: 专注渲染单个UI块
 
 ---
@@ -1222,7 +1222,7 @@ export function calculateTimeDiff(
 
 #### v1.0 - 初始实现（存在循环问题）
 ```
-PlanManager items → UnifiedSlateEditor 
+PlanManager items → PlanSlateEditor 
 → useEffect 监听 items 变化 → setValue
 → 用户编辑 → onChange → PlanManager items 更新
 → 🔥 循环开始！导致光标丢失
@@ -1233,7 +1233,7 @@ PlanManager items → UnifiedSlateEditor
 **1. 初始化（只执行一次）**
 ```typescript
 PlanManager items 
-  → UnifiedSlateEditor 
+  → PlanSlateEditor 
   → setValue(enhancedValue) 
   → isInitializedRef.current = true
 ```
@@ -1260,7 +1260,7 @@ EventService.updateEvent(eventId, updates)
   ↓
   PlanManager items 更新（引用变化，但只有 1 个 Event 内容变了）
   ↓
-  UnifiedSlateEditor 监听 'eventsUpdated' 事件
+  PlanSlateEditor 监听 'eventsUpdated' 事件
   ↓
   检测：用户正在编辑这个 Event？
     → 是：跳过更新
@@ -1291,7 +1291,7 @@ if (cloudEvent.updatedAt > localEvent.updatedAt) {
   skipUpdate(); // 本地更新更晚
 }
 
-// UnifiedSlateEditor 基于用户编辑状态
+// PlanSlateEditor 基于用户编辑状态
 if (pendingChangesRef.current && isEditingThisEvent) {
   skipUpdate(); // 用户正在编辑，跳过外部更新
 }
@@ -1409,13 +1409,13 @@ UI 自动更新
 - 只有授权组件可以**写入** TimeHub
 - 所有组件都可以**读取** TimeHub（通过 `useEventTime` hook）
 - EventService 更新后触发 `eventsUpdated` 事件，所有订阅者自动更新
-- UnifiedSlateEditor 监听 `eventsUpdated`，增量更新 DateMentionElement
+- PlanSlateEditor 监听 `eventsUpdated`，增量更新 DateMentionElement
 
 ---
 
 ## PlanManager 交互机制
 
-> 📖 **完整文档**: [PlanManager PRD - 第 16 章：交互机制详解](./PRD/PLANMANAGER_MODULE_PRD.md#16-planmanager--unifiedslateeditor-交互机制)
+> 📖 **完整文档**: [PlanManager PRD - 第 16 章：交互机制详解](./PRD/PLANMANAGER_MODULE_PRD.md#16-planmanager--PlanSlateEditor-交互机制)
 
 ### ⚠️ 最新架构修复 (2025-11-08)
 
@@ -1423,7 +1423,7 @@ UI 自动更新
 **详细文档**: `PLANMANAGER_SLATE_DIAGNOSIS.md` + `PLANMANAGER_SLATE_FIX_SUMMARY.md`
 
 **核心修复**：
-1. **循环更新修复**：移除 UnifiedSlateEditor 的自动同步 useEffect，添加 `isInternalUpdateRef` 防止无限循环
+1. **循环更新修复**：移除 PlanSlateEditor 的自动同步 useEffect，添加 `isInternalUpdateRef` 防止无限循环
 2. **EventHub 架构规范**：所有事件操作必须通过 EventHub（见 `EVENT_ARCHITECTURE.md`）
 3. **统一时间管理**：创建 `timeManager.ts` 统一读写接口，解决 TimeHub/EventService/metadata 冲突
 4. **完整元数据透传**：EventMetadata 扩展到 20+ 字段，保留 emoji/color/priority 等
@@ -1437,7 +1437,7 @@ UI 自动更新
 
 ### 快速导航
 
-**PlanManager ↔ UnifiedSlateEditor 的数据流**：
+**PlanManager ↔ PlanSlateEditor 的数据流**：
 - **数据输入**：PlanManager 将 `Event[]` 转换为 `PlanItem[]` 传递给 Slate
 - **数据输出**：Slate 通过 `onChange(updatedItems)` 回调返回编辑后的 PlanItem
 - **字段透传**：Slate 通过 `metadata` 完整保留所有业务字段（时间/颜色/优先级等）
@@ -1448,7 +1448,7 @@ UI 自动更新
 - ✅ **元数据丢失**：完整透传 20+ 字段
 - ✅ **EventHub 绕过**：所有操作统一走 EventHub
 
-**详细内容请查看**: [PlanManager PRD - 第 16 章](./PRD/PLANMANAGER_MODULE_PRD.md#16-planmanager--unifiedslateeditor-交互机制)
+**详细内容请查看**: [PlanManager PRD - 第 16 章](./PRD/PLANMANAGER_MODULE_PRD.md#16-planmanager--PlanSlateEditor-交互机制)
 
 ---
 
@@ -1496,7 +1496,7 @@ UI 自动更新
 
 #### 1. 数据层：自动添加 Placeholder 节点
 
-**文件**: `UnifiedSlateEditor.tsx` (L145-175)
+**文件**: `PlanSlateEditor.tsx` (L145-175)
 
 ```typescript
 const enhancedValue = useMemo(() => {
@@ -1547,7 +1547,7 @@ const renderLinePrefix = useCallback((line: EventLineNode) => {
 }, []);
 ```
 
-**CSS 样式**: `UnifiedSlateEditor.css` (L41-52)
+**CSS 样式**: `PlanSlateEditor.css` (L41-52)
 
 ```css
 .placeholder-line {
@@ -1590,7 +1590,7 @@ return (
 );
 ```
 
-**文件**: `UnifiedSlateEditor.tsx` (L400-420)
+**文件**: `PlanSlateEditor.tsx` (L400-420)
 
 ```typescript
 const handlePlaceholderClick = useCallback(() => {
@@ -1618,7 +1618,7 @@ const handlePlaceholderClick = useCallback(() => {
 
 **3.2 键盘输入拦截**
 
-**文件**: `UnifiedSlateEditor.tsx` (L477-510)
+**文件**: `PlanSlateEditor.tsx` (L477-510)
 
 ```typescript
 const handleKeyDown = (event: React.KeyboardEvent) => {
@@ -1662,7 +1662,7 @@ const handleKeyDown = (event: React.KeyboardEvent) => {
 
 **4.1 删除保护**
 
-**文件**: `UnifiedSlateEditor.tsx` (L648-720)
+**文件**: `PlanSlateEditor.tsx` (L648-720)
 
 ```typescript
 const handleKeyDown = (event: React.KeyboardEvent) => {
@@ -1711,7 +1711,7 @@ const handleKeyDown = (event: React.KeyboardEvent) => {
 
 **4.2 导航保护**
 
-**文件**: `UnifiedSlateEditor.tsx` (L754-765)
+**文件**: `PlanSlateEditor.tsx` (L754-765)
 
 ```typescript
 if (event.key === 'ArrowDown') {
@@ -1733,7 +1733,7 @@ if (event.key === 'ArrowDown') {
 
 #### 5. 数据过滤：向外部输出时移除 Placeholder
 
-**文件**: `UnifiedSlateEditor.tsx` (L308-312)
+**文件**: `PlanSlateEditor.tsx` (L308-312)
 
 ```typescript
 const handleEditorChange = useCallback((newValue: Descendant[]) => {
@@ -1749,11 +1749,11 @@ const handleEditorChange = useCallback((newValue: Descendant[]) => {
 | 操作 | 行为 | 实现位置 |
 |------|------|----------|
 | **点击 Placeholder** | 在其前创建新行，Placeholder 下移 | `EventLineElement.tsx` L31-37 |
-| **在 Placeholder 上输入** | 创建新行并插入字符，Placeholder 下移 | `UnifiedSlateEditor.tsx` L477-510 |
-| **删除到只剩 Placeholder** | 禁止删除，保留 Placeholder | `UnifiedSlateEditor.tsx` L648-670 |
-| **删除后光标掉入 Placeholder** | 自动移回上一行末尾 | `UnifiedSlateEditor.tsx` L680-720 |
-| **ArrowDown 到 Placeholder** | 阻止进入，停在倒数第二行 | `UnifiedSlateEditor.tsx` L754-765 |
-| **数据输出** | 自动过滤 Placeholder，不传递给外部 | `UnifiedSlateEditor.tsx` L308-312 |
+| **在 Placeholder 上输入** | 创建新行并插入字符，Placeholder 下移 | `PlanSlateEditor.tsx` L477-510 |
+| **删除到只剩 Placeholder** | 禁止删除，保留 Placeholder | `PlanSlateEditor.tsx` L648-670 |
+| **删除后光标掉入 Placeholder** | 自动移回上一行末尾 | `PlanSlateEditor.tsx` L680-720 |
+| **ArrowDown 到 Placeholder** | 阻止进入，停在倒数第二行 | `PlanSlateEditor.tsx` L754-765 |
+| **数据输出** | 自动过滤 Placeholder，不传递给外部 | `PlanSlateEditor.tsx` L308-312 |
 
 ### 边缘案例处理
 
@@ -1808,11 +1808,11 @@ const EventLineElement = React.memo(({ ... }) => {
 
 ```
 src/components/
-├── UnifiedSlateEditor/          # 单实例编辑器（主推荐）
-│   ├── UnifiedSlateEditor.tsx
+├── PlanSlateEditor/          # 单实例编辑器（主推荐）
+│   ├── PlanSlateEditor.tsx
 │   ├── types.ts
 │   ├── helpers.ts
-│   └── UnifiedSlateEditor.css
+│   └── PlanSlateEditor.css
 ├── MultiLineEditor/             # 多实例编辑器（备选）
 │   ├── SlateFreeFormEditor.tsx
 │   ├── SlateLine.tsx
@@ -1824,7 +1824,7 @@ src/components/
 
 ### 两种架构对比
 
-| 特性 | UnifiedSlateEditor | SlateFreeFormEditor |
+| 特性 | PlanSlateEditor | SlateFreeFormEditor |
 |------|-------------------|---------------------|
 | **实例数** | 单实例 | 每行一个实例 |
 | **跨行选择** | ✅ 完全支持 | ❌ 不支持 |
@@ -1834,22 +1834,22 @@ src/components/
 | **开发状态** | ✅ **已在 PlanManager 中使用** | ⚠️ 已弃用 |
 | **推荐度** | ⭐⭐⭐⭐⭐ | ⭐ |
 
-**✅ 2025-11-06 更新**: PlanManager 已完成迁移，UnifiedSlateEditor 成为生产环境默认编辑器。
+**✅ 2025-11-06 更新**: PlanManager 已完成迁移，PlanSlateEditor 成为生产环境默认编辑器。
 
 ---
 
 ## 核心组件
 
-### 1. UnifiedSlateEditor（推荐使用）
+### 1. PlanSlateEditor（推荐使用）
 
-**文件**: `src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx`
+**文件**: `src/components/PlanSlateEditor/PlanSlateEditor.tsx`
 
 #### 架构演进 (2025-11-14)
 
 **模块化重构**：为了提高可复用性和降低组件间耦合，编辑器操作已全部封装到 `helpers.ts`：
 
 ```typescript
-// src/components/UnifiedSlateEditor/helpers.ts
+// src/components/PlanSlateEditor/helpers.ts
 
 // 📌 插入元素
 export function insertTag(editor, tagId, tagName, tagColor?, tagEmoji?, mentionOnly?): boolean
@@ -1885,7 +1885,7 @@ const handleTextFormat = (command) => {
 };
 
 // ✅ 现在（通过 helpers）
-import { applyTextFormat, extractTagsFromLine } from './UnifiedSlateEditor/helpers';
+import { applyTextFormat, extractTagsFromLine } from './PlanSlateEditor/helpers';
 
 const handleTextFormat = (command) => {
   applyTextFormat(editor, command);  // 封装的函数
@@ -1897,13 +1897,13 @@ const tagIds = extractTagsFromLine(editor, lineId);  // 提取标签
 #### 基础用法
 
 ```typescript
-import { UnifiedSlateEditor } from '@/components/UnifiedSlateEditor';
+import { PlanSlateEditor } from '@/components/PlanSlateEditor';
 
 function PlanManager() {
   const [items, setItems] = useState<PlanItem[]>([]);
   
   return (
-    <UnifiedSlateEditor
+    <PlanSlateEditor
       items={items}
       onChange={(updatedItems) => setItems(updatedItems)}
       placeholder="🖱️点击创建新事件 | ⌨️Shift+Enter 添加描述 | Tab/Shift+Tab 层级缩进 | Shift+Alt+↑↓移动所选事件"
@@ -1915,7 +1915,7 @@ function PlanManager() {
 #### Props 接口
 
 ```typescript
-interface UnifiedSlateEditorProps {
+interface PlanSlateEditorProps {
   items: PlanItem[];                                    // 数据源
   onChange: (items: PlanItem[]) => void;                // 变更回调
   placeholder?: string;                                 // 占位符
@@ -2046,7 +2046,7 @@ const nodes = deserializeFromHtml(htmlString);
 #### 插入自定义元素
 
 ```typescript
-import { insertTag, insertEmoji, insertDateMention } from '@/components/UnifiedSlateEditor/helpers';
+import { insertTag, insertEmoji, insertDateMention } from '@/components/PlanSlateEditor/helpers';
 
 // 插入标签
 insertTag(editor, { id: 'tag-1', name: '工作' });
@@ -2065,8 +2065,8 @@ insertDateMention(editor, { date: '2025-11-06', text: '今天' });
 ### 集成到 PlanManager
 
 ```typescript
-import { UnifiedSlateEditor } from '@/components/UnifiedSlateEditor';
-import { insertTag } from '@/components/UnifiedSlateEditor/helpers';
+import { PlanSlateEditor } from '@/components/PlanSlateEditor';
+import { insertTag } from '@/components/PlanSlateEditor/helpers';
 
 function PlanManager() {
   const [planItems, setPlanItems] = useState<PlanItem[]>([]);
@@ -2081,7 +2081,7 @@ function PlanManager() {
   
   return (
     <div className="plan-manager">
-      <UnifiedSlateEditor
+      <PlanSlateEditor
         ref={editorRef}
         items={planItems}
         onChange={setPlanItems}
@@ -2270,7 +2270,7 @@ const serializedContent = useMemo(() => {
 
 **核心思想**: 使用 Slate 的 `normalizeNode` API 自动检测并修复缺失的空格
 
-**实现位置**: `UnifiedSlateEditor.tsx` - `withCustom` 函数
+**实现位置**: `PlanSlateEditor.tsx` - `withCustom` 函数
 
 ```typescript
 const withCustom = (editor: CustomEditor) => {
@@ -2600,9 +2600,9 @@ const [visible, setVisible] = useState(false);
 
 ```typescript
 // 单元测试示例
-describe('UnifiedSlateEditor', () => {
+describe('PlanSlateEditor', () => {
   it('should create new line on Enter', () => {
-    const { getByRole } = render(<UnifiedSlateEditor items={[]} onChange={jest.fn()} />);
+    const { getByRole } = render(<PlanSlateEditor items={[]} onChange={jest.fn()} />);
     const editor = getByRole('textbox');
     
     fireEvent.keyDown(editor, { key: 'Enter' });
@@ -2626,7 +2626,7 @@ describe('UnifiedSlateEditor', () => {
 
 ### 功能概述
 
-**Bullet Point** 是 UnifiedSlateEditor 的核心富文本功能之一，支持最多 **5 级**缩进的层级列表，适用于结构化笔记、待办清单、会议记录等场景。
+**Bullet Point** 是 PlanSlateEditor 的核心富文本功能之一，支持最多 **5 级**缩进的层级列表，适用于结构化笔记、待办清单、会议记录等场景。
 
 **设计目标**:
 - ✅ 支持 5 种不同的符号样式 (●○–□▸)
@@ -2651,7 +2651,7 @@ describe('UnifiedSlateEditor', () => {
 #### ParagraphNode 扩展
 
 ```typescript
-// src/components/UnifiedSlateEditor/types.ts
+// src/components/PlanSlateEditor/types.ts
 export interface ParagraphNode extends BaseElement {
   type: 'paragraph';
   bullet?: boolean;        // 是否启用 bullet
@@ -2687,7 +2687,7 @@ export interface EventLineNode extends BaseElement {
 
 **修复 (v1.8.3)**:
 ```typescript
-// UnifiedSlateEditor.tsx L1230-1260
+// PlanSlateEditor.tsx L1230-1260
 // Title 行：查找所有属于同一个 eventId 的 eventlog 行，在最后一个之后插入
 const baseEventId = eventLine.eventId;
 
@@ -2744,7 +2744,7 @@ newLine = {
 1. **FloatingToolbar 按钮**: 选中文本后点击工具栏的 Bullet 按钮
 2. **快捷键**: 暂未实现（未来可添加 `Ctrl+Shift+8`）
 
-**实现逻辑** (UnifiedSlateEditor.tsx L1295-1380):
+**实现逻辑** (PlanSlateEditor.tsx L1295-1380):
 ```typescript
 const toggleBulletPoint = useCallback(() => {
   if (!editorRef.current) return;
@@ -2777,7 +2777,7 @@ const toggleBulletPoint = useCallback(() => {
 - `Tab`: 增加层级 (bulletLevel + 1, 最大 4)
 - `Shift+Tab`: 减少层级 (bulletLevel - 1, 最小 0 或移除 bullet)
 
-**实现逻辑** (UnifiedSlateEditor.tsx L1295-1380):
+**实现逻辑** (PlanSlateEditor.tsx L1295-1380):
 ```typescript
 const handleKeyDown = (event: React.KeyboardEvent) => {
   if (event.key === 'Tab') {
@@ -2855,7 +2855,7 @@ const handleKeyDown = (event: React.KeyboardEvent) => {
 
 #### renderElement 回调
 
-**文件**: `UnifiedSlateEditor.tsx` (L1050-1070)
+**文件**: `PlanSlateEditor.tsx` (L1050-1070)
 
 ```typescript
 const renderElement = useCallback((props: RenderElementProps) => {
@@ -2891,7 +2891,7 @@ const renderElement = useCallback((props: RenderElementProps) => {
 
 #### CSS 样式
 
-**文件**: `UnifiedSlateEditor.css` (L58-114)
+**文件**: `PlanSlateEditor.css` (L58-114)
 
 ```css
 /* Bullet paragraph 基础样式 */
@@ -3101,7 +3101,7 @@ export function planItemsToSlateNodes(items: PlanItem[]): EventLineNode[] {
 ### 多行 EventLog 支持
 
 **问题背景**: 
-- UnifiedSlateEditor 的 Enter 键会创建新的 `EventLineNode` (新行)
+- PlanSlateEditor 的 Enter 键会创建新的 `EventLineNode` (新行)
 - 多个 `EventLineNode` 可能共享同一个 `eventId` (通过 lineId 后缀区分)
 - 例如: `eventId="abc"` → `"abc-desc"` (描述行), `"abc-desc-1234"` (下一行)
 - **🆕 v1.8.3 修复 (2025-11-14)**: 每行独立保存和恢复 `level` (缩进层级)
@@ -3180,7 +3180,7 @@ const descNode: EventLineNode = {
 
 #### 控制台日志
 
-**文件**: `UnifiedSlateEditor.tsx` (L1056)
+**文件**: `PlanSlateEditor.tsx` (L1056)
 
 ```typescript
 console.log('[renderElement] Bullet paragraph:', {
@@ -3382,7 +3382,7 @@ describe('Bullet Point', () => {
 
 ### 高优先级 🔴
 
-- [ ] **UnifiedSlateEditor 完整实现**
+- [ ] **PlanSlateEditor 完整实现**
   - [x] 基础编辑功能
   - [x] 跨行选择
   - [ ] Description 模式切换
@@ -3446,9 +3446,9 @@ describe('Bullet Point', () => {
 
 ## 常见问题
 
-### Q: 为什么选择 UnifiedSlateEditor 而不是 SlateFreeFormEditor？
+### Q: 为什么选择 PlanSlateEditor 而不是 SlateFreeFormEditor？
 
-**A**: UnifiedSlateEditor 使用单实例架构，支持跨行选择、富文本复制粘贴，性能更好。SlateFreeFormEditor 的多实例架构限制了这些功能。
+**A**: PlanSlateEditor 使用单实例架构，支持跨行选择、富文本复制粘贴，性能更好。SlateFreeFormEditor 的多实例架构限制了这些功能。
 
 ### Q: 如何处理中文输入法？
 
@@ -3489,7 +3489,7 @@ console.log('Editor state:', JSON.stringify(editor.children, null, 2));
 
 ### 2025-11-08 - v1.6 架构升级：修复数据流和时间管理
 
-**重大修复**: 解决 PlanManager ↔ UnifiedSlateEditor 融合的 5 个关键问题
+**重大修复**: 解决 PlanManager ↔ PlanSlateEditor 融合的 5 个关键问题
 
 ✅ **严重问题修复**:
 1. **数据流循环更新** - 移除自动同步逻辑，改为单向数据流
@@ -3517,7 +3517,7 @@ console.log('Editor state:', JSON.stringify(editor.children, null, 2));
 
 ### 2025-11-06 - PlanManager 迁移完成 + Bug 修复
 
-**重大更新**: PlanManager 从 SlateFreeFormEditor 迁移到 UnifiedSlateEditor
+**重大更新**: PlanManager 从 SlateFreeFormEditor 迁移到 PlanSlateEditor
 
 ✅ **完成的工作**:
 - 切换到单实例 Slate 编辑器
@@ -3541,7 +3541,7 @@ console.log('Editor state:', JSON.stringify(editor.children, null, 2));
 2. **Enter 键行为修复**（2025-11-06）
    - **问题**：在有 description 的 event 标题行按 Enter，新行插入位置错误
    - **修复**：检测当前行是否有 description，如果有则在 description 行后创建新行
-   - **位置**：`UnifiedSlateEditor.tsx` Enter 键处理逻辑
+   - **位置**：`PlanSlateEditor.tsx` Enter 键处理逻辑
 
 3. **删除事件恢复问题**（2025-11-06）
    - **问题**：删除的 event 过一段时间又出现（同步队列恢复）
@@ -3552,7 +3552,7 @@ console.log('Editor state:', JSON.stringify(editor.children, null, 2));
 
 4. **跨行删除失效**（2025-11-06 v1.3）
    - **问题**：用户跨行选择多个 items 并删除，但只删除了1个
-   - **根本原因**：`UnifiedSlateEditor` 的 `onChange` 回调没有检测缺失的 items
+   - **根本原因**：`PlanSlateEditor` 的 `onChange` 回调没有检测缺失的 items
    - **修复方案**：引入批处理器架构
    - **位置**：`PlanManager.tsx` L1030-1155
    - **架构升级**（v1.3 → v1.4）：
@@ -3641,7 +3641,7 @@ const slateEditorRef = useRef<Editor>(null);
 
 ### 功能概述
 
-UnifiedSlateEditor 支持通过 Text FloatingBar 为选中文本设置颜色和背景色，提供实时预览和键盘快捷操作。
+PlanSlateEditor 支持通过 Text FloatingBar 为选中文本设置颜色和背景色，提供实时预览和键盘快捷操作。
 
 ### 核心特性
 
@@ -3694,7 +3694,7 @@ onPreview={(color) => {
 
 **CSS 选中样式优化**:
 ```css
-/* UnifiedSlateEditor.css */
+/* PlanSlateEditor.css */
 .unified-slate-editor ::selection,
 .unified-slate-editor *::selection,
 .unified-editable ::selection,
@@ -3772,8 +3772,8 @@ if (bgMatch) child.backgroundColor = bgMatch[1].trim();
 - `HeadlessFloatingToolbar.tsx` - 集成颜色选择器，处理预览逻辑
 - `TextColorPicker.tsx` - 文本颜色选择器组件
 - `BackgroundColorPicker.tsx` - 背景颜色选择器组件
-- `UnifiedSlateEditor.tsx` - renderLeaf 渲染逻辑
-- `UnifiedSlateEditor.css` - 选中样式覆盖
+- `PlanSlateEditor.tsx` - renderLeaf 渲染逻辑
+- `PlanSlateEditor.css` - 选中样式覆盖
 
 ---
 
@@ -3839,11 +3839,11 @@ useEffect(() => {
 ### 使用示例
 
 ```typescript
-import { UnifiedSlateEditor } from '@/components/UnifiedSlateEditor';
+import { PlanSlateEditor } from '@/components/PlanSlateEditor';
 
 function MyComponent() {
   return (
-    <UnifiedSlateEditor
+    <PlanSlateEditor
       items={items}
       onChange={handleChange}
       // Text FloatingBar 会自动显示颜色选择器
@@ -3859,7 +3859,7 @@ function MyComponent() {
 
 ### 概述
 
-**状态**: ✅ 已实现并集成到 LightSlateEditor (EventEditModal v2)  
+**状态**: ✅ 已实现并集成到 SlateEditor (EventEditModal v2)  
 **用途**: 为事件日志记录提供结构化的列表编辑能力  
 **层级**: 支持 5 级嵌套（Level 0-4）  
 **符号**: ●（实心圆）→ ○（空心圆）→ –（短横线）→ □（方块）→ ▸（三角）
@@ -3947,7 +3947,7 @@ interface ParagraphElement {
 
 #### 4. 核心实现
 
-**位置**: `src/components/LightSlateEditor/LightSlateEditor.tsx`
+**位置**: `src/components/SlateEditor/SlateEditor.tsx`
 
 **applyTextFormat 方法** (L234-337):
 ```typescript
@@ -3972,7 +3972,7 @@ const applyTextFormat = useCallback((command: string): boolean => {
             
             // 🔥 清除 pendingTimestamp 标记，bullet 算作有效内容
             setPendingTimestamp(false);
-            console.log('[LightSlateEditor] 插入 bullet，清除 pendingTimestamp');
+            console.log('[SlateEditor] 插入 bullet，清除 pendingTimestamp');
           }
         }
         break;
@@ -4020,7 +4020,7 @@ const applyTextFormat = useCallback((command: string): boolean => {
     }
     return true;
   } catch (err) {
-    console.error('[LightSlateEditor.applyTextFormat] Failed:', err);
+    console.error('[SlateEditor.applyTextFormat] Failed:', err);
     return false;
   }
 }, [editor]);
@@ -4199,7 +4199,7 @@ if (feature === 'bullet') {
 ```typescript
 const onTextFormat = useCallback((command: string) => {
   if (['toggleBulletList', 'increaseBulletLevel', 'decreaseBulletLevel'].includes(command)) {
-    // Bullet 命令路由到 LightSlateEditor
+    // Bullet 命令路由到 SlateEditor
     slateEditorRef.current?.applyTextFormat?.(command);
   } else {
     // 其他格式命令使用 helpers
@@ -4271,7 +4271,7 @@ const hasTimestamp = editor.children.some((node: any) => node.type === 'timestam
 
 ```typescript
 // EventEditModalV2.tsx
-<LightSlateEditor
+<SlateEditor
   ref={slateEditorRef}
   eventId={currentEvent.id}
   content={currentEvent.eventLog || ''}
@@ -4311,7 +4311,7 @@ const hasTimestamp = editor.children.some((node: any) => node.type === 'timestam
 ```
 
 **序列化** (保存到 localStorage):
-- `LightSlateEditor` 将 Slate value 转为 JSON 字符串
+- `SlateEditor` 将 Slate value 转为 JSON 字符串
 - 存储在 `event.eventLog` 字段
 - 加载时 `jsonToSlateNodes` 反序列化
 
@@ -4333,7 +4333,7 @@ const hasTimestamp = editor.children.some((node: any) => node.type === 'timestam
 - ✅ 修复点击 FloatingBar 失焦问题
 - ✅ 修复空 bullet 段落导致 timestamp 删除
 - ✅ 修复 placeholder 与 bullet 重叠
-- ✅ 完整集成到 LightSlateEditor
+- ✅ 完整集成到 SlateEditor
 
 ### v2.14 (2025-11-25)
 - ✅ Checkbox 状态实时同步机制
@@ -4351,8 +4351,8 @@ const unifiedEditorRef = useRef<Editor>(null);
 
 **关键文件**:
 - `src/components/PlanManager.tsx`: 主组件更新
-- `src/components/UnifiedSlateEditor/helpers.ts`: FloatingBar helper 函数
-- `src/components/UnifiedSlateEditor/serialization.ts`: 数据转换
+- `src/components/PlanSlateEditor/helpers.ts`: FloatingBar helper 函数
+- `src/components/PlanSlateEditor/serialization.ts`: 数据转换
 
 **性能提升**:
 - 编辑 1 个 item，只触发 1 次保存（之前会触发 10+ 次）

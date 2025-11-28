@@ -1,4 +1,4 @@
-# PlanManager 模块 PRD
+﻿# PlanManager 模块 PRD
 
 **模块路径**: `src/components/PlanManager.tsx`  
 **代码行数**: ~2400 lines  
@@ -129,7 +129,7 @@ export function filterEventsByTimeRange(
 
 ### 核心改进
 
-#### 1. 即时ID分配机制（与UnifiedSlateEditor协同）
+#### 1. 即时ID分配机制（与PlanSlateEditor协同）
 ```typescript
 // PlanManager.tsx - onFocus 处理优化
 onFocus={(lineId) => {
@@ -860,7 +860,7 @@ graph LR
 
 ### 重大修复
 
-**问题**: PlanManager 和 UnifiedSlateEditor 双向数据绑定导致无限循环更新
+**问题**: PlanManager 和 PlanSlateEditor 双向数据绑定导致无限循环更新
 **影响**: Plan页面内容清空、编辑器卡顿、性能严重下降
 **状态**: ✅ 已修复并通过测试验证
 
@@ -958,7 +958,7 @@ const handleTextFormat = (command: string) => {
 **现在**：封装到 `helpers.ts`
 ```typescript
 // ✅ PlanManager.tsx (~10 lines)
-import { applyTextFormat } from './UnifiedSlateEditor/helpers';
+import { applyTextFormat } from './PlanSlateEditor/helpers';
 
 const handleTextFormat = (command: string) => {
   const editor = unifiedEditorRef.current;
@@ -1008,7 +1008,7 @@ const extractTags = () => {
 **现在**：封装到 `helpers.ts`
 ```typescript
 // ✅ PlanManager.tsx (~3 lines)
-import { extractTagsFromLine } from './UnifiedSlateEditor/helpers';
+import { extractTagsFromLine } from './PlanSlateEditor/helpers';
 
 const tagIds = extractTagsFromLine(editor, currentFocusedLineId);
 
@@ -1144,7 +1144,7 @@ React 渲染（第1次） → useMemo 重新计算 → useEffect 副作用
 PlanItemTimeDisplay TimeHub 订阅更新（第2次） → IndexMap 异步重建 → 再次触发更新（第3次）
 
 【勾选框延迟问题】⭐ 新增
-1. UnifiedSlateEditor items prop 只包含 items，不包含 pendingEmptyItems
+1. PlanSlateEditor items prop 只包含 items，不包含 pendingEmptyItems
 2. onChange 回调使用 300ms 防抖，新行要等防抖结束才被添加到 pendingEmptyItems
 3. 勾选框渲染依赖 editorLines，而 editorLines 要等 pendingEmptyItems 更新后才包含新行
 ```
@@ -1247,19 +1247,19 @@ const debouncedOnChange = useCallback((updatedItems: any[]) => {
 - ✅ UI 状态立即更新（<50ms），勾选框立即显示
 - ✅ 保存操作延迟 300ms（防抖优化，减少 localStorage 写入）
 
-#### 优化 4: UnifiedSlateEditor 使用 editorLines ⭐ 新增
+#### 优化 4: PlanSlateEditor 使用 editorLines ⭐ 新增
 
 **位置**: L1211-1243  
-**问题**: UnifiedSlateEditor 的 `items` prop 只包含 `items`，不包含 `pendingEmptyItems`  
+**问题**: PlanSlateEditor 的 `items` prop 只包含 `items`，不包含 `pendingEmptyItems`  
 **方案**: 传入 `editorLines`（包含 items + pendingEmptyItems）
 
 **改动**:
 ```typescript
 // 修改前：只传 items
-<UnifiedSlateEditor items={items.map(item => ({...}))} />
+<PlanSlateEditor items={items.map(item => ({...}))} />
 
 // 修改后：传 editorLines（包含 items + pendingEmptyItems）
-<UnifiedSlateEditor
+<PlanSlateEditor
   items={editorLines.map(line => {
     const item = line.data;
     if (!item) return { id: line.id, ... }; // 安全回退
@@ -1303,7 +1303,7 @@ renderLinePrefix={(line) => {
 
 #### 优化 6: Placeholder 水平对齐 ⭐ 新增
 
-**位置**: UnifiedSlateEditor.tsx L773-776  
+**位置**: PlanSlateEditor.tsx L773-776  
 **问题**: Placeholder 位置 `left: 16px` 未考虑勾选框宽度，与内容不对齐  
 **改动**:
 ```typescript
@@ -1336,14 +1336,14 @@ style={{ left: '52px', ... }} // 勾选框(~16px) + gap(8px) + 边距(28px) = 52
 ```
 用户操作（Enter/输入）
   ↓
-UnifiedSlateEditor onChange 触发
+PlanSlateEditor onChange 触发
   ↓
 debouncedOnChange 调用
   ├─→ immediateStateSync (0ms)  ⚡ 立即更新 pendingEmptyItems
   │     ↓
   │   editorLines useMemo 重新计算
   │     ↓
-  │   UnifiedSlateEditor 重新渲染（包含新行）
+  │   PlanSlateEditor 重新渲染（包含新行）
   │     ↓
   │   勾选框立即显示 ✅
   │
@@ -1473,7 +1473,7 @@ const allEvents = await EventService.getAllEvents();
 
 ### 重大变更
 
-1. **循环更新修复**：UnifiedSlateEditor 移除自动同步 useEffect，防止无限循环渲染
+1. **循环更新修复**：PlanSlateEditor 移除自动同步 useEffect，防止无限循环渲染
 2. **EventHub 架构规范**：PlanManager 所有事件操作统一通过 EventHub，不再直接调用 EventService
 3. **统一时间管理**：创建 timeManager.ts 统一时间字段读写，解决 TimeHub/EventService/metadata 冲突
 4. **完整元数据透传**：EventMetadata 扩展到 20+ 字段，完整保留 emoji/color/priority 等业务数据
@@ -1517,7 +1517,7 @@ const allEvents = await EventService.getAllEvents();
 
 ### 代码变更
 
-**UnifiedSlateEditor/types.ts**:
+**PlanSlateEditor/types.ts**:
 ```typescript
 export interface EventLineNode {
   // ... 原有字段
@@ -1531,7 +1531,7 @@ export interface EventLineNode {
 }
 ```
 
-**UnifiedSlateEditor/serialization.ts**:
+**PlanSlateEditor/serialization.ts**:
 ```typescript
 // planItemsToSlateNodes: 提取 metadata
 const metadata = {
@@ -1594,7 +1594,7 @@ onChange={debouncedOnChange}
 PlanManager 是 ReMarkable 应用的 **计划项管理中心**，负责：
 
 1. **展示与编辑计划列表**：以层级结构展示所有计划项（Plan Items）
-2. **Slate.js 富文本编辑**：使用 UnifiedSlateEditor 提供现代化的编辑体验
+2. **Slate.js 富文本编辑**：使用 PlanSlateEditor 提供现代化的编辑体验
 3. **Plan ↔ Event 转换**：将计划项转换为日历事件，实现计划的时间化
 4. **TimeHub 集成**：实时显示事件的起止时间和截止日期
 5. **浮动工具栏**：提供快速操作（标签、Emoji、日期、优先级、颜色）
@@ -1607,7 +1607,7 @@ graph TB
     App[App.tsx] --> PlanPage[Plan Page]
     PlanPage --> PlanManager
     
-    PlanManager --> UnifiedSlateEditor[UnifiedSlateEditor<br/>Slate.js 编辑器]
+    PlanManager --> PlanSlateEditor[PlanSlateEditor<br/>Slate.js 编辑器]
     PlanManager --> FloatingToolbar[HeadlessFloatingToolbar<br/>快速操作工具栏]
     PlanManager --> TimeDisplay[PlanItemTimeDisplay<br/>时间显示组件]
     PlanManager --> EventEditModal[EventEditModal<br/>事件编辑弹窗]
@@ -1617,7 +1617,7 @@ graph TB
     PlanManager --> TagService[TagService<br/>标签服务]
     
     style PlanManager fill:#3b82f6,color:#fff
-    style UnifiedSlateEditor fill:#22d3ee,color:#000
+    style PlanSlateEditor fill:#22d3ee,color:#000
     style FloatingToolbar fill:#22d3ee,color:#000
     style TimeHub fill:#f59e0b,color:#000
 ```
@@ -1626,7 +1626,7 @@ graph TB
 
 | 模块 | 关系 | 交互方式 |
 |------|------|---------|
-| **UnifiedSlateEditor** | 依赖 | PlanManager 使用 UnifiedSlateEditor 作为编辑器组件 |
+| **PlanSlateEditor** | 依赖 | PlanManager 使用 PlanSlateEditor 作为编辑器组件 |
 | **TimeHub** | 订阅 | 通过 `useEventTime(itemId)` 订阅时间快照更新 |
 | **EventEditModal** | 集成 | 双击计划项打开 EventEditModal 进行高级编辑 |
 | **FloatingToolbar** | 依赖 | 使用 `useFloatingToolbar` hook 提供快速操作 |
@@ -1775,22 +1775,29 @@ const newItem: Event = {
 
 ### 2.4.1 数据来源和过滤规则
 
-**数据加载**: PlanManager 从 EventService.getAllEvents() 获取所有事件，然后应用以下过滤规则（v2.3 更新）:
+**数据加载**: PlanManager 从 EventService.getAllEvents() 获取所有事件，然后应用以下过滤规则（v2.4 更新）:
 
 ```typescript
-// 🎯 三步过滤公式：isPlan + checkType - 系统事件
+// 🎯 并集过滤公式：(isPlan OR checkType OR isTimeCalendar) - 排除条件
 const filtered = allEvents.filter((event: Event) => {
-  // 步骤 1: 必须是 Plan 事件
-  if (!event.isPlan) {
+  // 步骤 1: 并集条件 - 满足任意一个即纳入
+  const matchesInclusionCriteria = 
+    event.isPlan === true || 
+    (event.checkType && event.checkType !== 'none') ||
+    event.isTimeCalendar === true;
+  
+  if (!matchesInclusionCriteria) {
+    return false; // 不满足任何显示条件
+  }
+  
+  // 步骤 2: 排除系统事件（使用严格比较 === true）
+  if (event.isTimer === true || 
+      event.isOutsideApp === true || 
+      event.isTimeLog === true) {
     return false;
   }
   
-  // 步骤 2: checkType 过滤（必须有有效的 checkType 且不为 'none'）
-  if (!event.checkType || event.checkType === 'none') {
-    return false;
-  }
-  
-  // 步骤 3: TimeCalendar 时间范围检查
+  // 步骤 3: 排除过期的 TimeCalendar 事件
   if (event.isTimeCalendar) {
     if (event.endTime) {
       const endTime = new Date(event.endTime);
@@ -1802,21 +1809,16 @@ const filtered = allEvents.filter((event: Event) => {
     }
   }
   
-  // 步骤 4: 排除系统事件（使用严格比较 === true）
-  if (event.isTimer === true || 
-      event.isOutsideApp === true || 
-      event.isTimeLog === true) {
-    return false;
-  }
-  
   return true;
 });
 ```
 
-**关键改进（v2.3 2025-11-25）**:
-- 添加 `checkType` 过滤：只显示有 checkbox 的事件（'once' 或 'recurring'）
-- 系统事件过滤不再依赖 `parentEventId`：独立的系统事件也能被正确过滤
-- 统一过滤顺序：isPlan → checkType → TimeCalendar → 系统事件
+**关键改进（v2.4 2025-11-28）**:
+- ✅ **并集逻辑**：显示所有满足 `isPlan` OR `checkType !== 'none'` OR `isTimeCalendar` 的事件
+- ✅ **灵活显示**：Outlook 同步的事件如果有 `checkType`，也会显示在 Plan 页面
+- ✅ **TimeCalendar 集成**：所有未过期的 TimeCalendar 事件都显示（无论是否有 `isPlan`）
+- ✅ **系统事件排除**：Timer/TimeLog/OutsideApp 始终不显示
+- ✅ **过期清理**：过期的 TimeCalendar 事件自动隐藏
 - 使用严格比较 `=== true`：避免 `undefined` 被误判
 
 ### 2.4.2 事件类型分类表
@@ -1825,9 +1827,11 @@ const filtered = allEvents.filter((event: Event) => {
 |---------|----------|----------|------|
 | **用户计划** | `isPlan: true` | ✅ 显示 | 用户在Plan页面创建的正常计划事件 |
 | **计划分项** | `isPlan: true, parentEventId: 存在` | ✅ 显示 | 用户创建的子任务/分项 |
-| **计时器子事件** | `isTimer: true, parentEventId: 存在` | ❌ 隐藏 | 系统自动生成的计时记录 |
-| **时间日志** | `isTimeLog: true, parentEventId: 存在` | ❌ 隐藏 | 系统自动记录的活动轨迹或纯粹的用户日志笔记 |
-| **外部应用数据** | `isOutsideApp: true, parentEventId: 存在` | ❌ 隐藏 | 外部应用同步的数据（音乐、录屏等） |
+| **有 checkbox 的事件** | `checkType: 'once'/'recurring'` | ✅ 显示 | 任何有 checkbox 的事件（包括 Outlook 同步的） |
+| **TimeCalendar 事件** | `isTimeCalendar: true, endTime > now` | ✅ 显示 | 未过期的 TimeCalendar 事件 |
+| **计时器子事件** | `isTimer: true` | ❌ 隐藏 | 系统自动生成的计时记录 |
+| **时间日志** | `isTimeLog: true` | ❌ 隐藏 | 系统自动记录的活动轨迹或纯粹的用户日志笔记 |
+| **外部应用数据** | `isOutsideApp: true` | ❌ 隐藏 | 外部应用同步的数据（音乐、录屏等） |
 | **过期TimeCalendar** | `isTimeCalendar: true, endTime < now` | ❌ 隐藏 | 已过期的TimeCalendar事件 |
 
 ### 2.4.3 新增事件类型字段定义
@@ -1848,26 +1852,49 @@ isOutsideApp?: boolean; // 标记为外部应用数据（如听歌记录、录�
 - **用途**: 标识从外部应用同步的数据
 - **示例**: Spotify听歌记录、录屏软件活动记录、其他应用使用数据
 - **在Plan页面**: 自动隐藏，避免干扰用户主动计划
-- **数据特征**: 通常具有外部应用的特定格式和元数据
-
 ### 2.4.4 过滤逻辑的关键优化
 
-#### 修改前（v2.0及之前）
+#### v2.0 及之前（已废弃）
 ```typescript
 // 🚨 问题：简单粗暴排除所有子事件
 if (event.parentEventId) return false;
 ```
 **问题**: 用户创建的计划分项（子任务）也被误删，导致层级结构丢失
 
-#### 修改后（v2.1优化）
+#### v2.1-v2.3（已废弃 - 交集逻辑错误）
 ```typescript
-// ✅ 精确识别：只排除系统类型的子事件
-if (event.parentEventId) {
-  if (event.isTimer || event.isTimeLog || event.isOutsideApp) {
-    return false; // 只排除系统生成的子事件或纯粹的用户日志笔记
-  }
-  // 用户创建的计划分项继续显示
+// 🚨 问题：要求必须同时满足 isPlan AND checkType，导致很多事件被误排除
+if (!event.isPlan) return false;
+if (!event.checkType || event.checkType === 'none') return false;
+```
+**问题**: 
+- Outlook 同步的事件即使有 `checkType`，也因为没有 `isPlan` 被排除
+- TimeCalendar 创建的事件如果没有 `isPlan`，也被排除
+- 逻辑过于严格，不符合实际使用场景
+
+#### v2.4（当前 - 并集逻辑）
+```typescript
+// ✅ 并集逻辑：满足任意条件即显示
+const matchesInclusionCriteria = 
+  event.isPlan === true || 
+  (event.checkType && event.checkType !== 'none') ||
+  event.isTimeCalendar === true;
+
+if (!matchesInclusionCriteria) return false;
+
+// 然后排除系统事件和过期事件
+if (event.isTimer === true || event.isOutsideApp === true || event.isTimeLog === true) {
+  return false;
 }
+if (event.isTimeCalendar && (!event.endTime || new Date(event.endTime) <= now)) {
+  return false;
+}
+```
+**优势**: 
+- ✅ 灵活包容：任何有意义的事件都能显示
+- ✅ Outlook 集成：同步的事件如果有 checkbox，自动纳入 Plan 管理
+- ✅ TimeCalendar 融合：时光日历的事件无缝显示在 Plan 页面
+- ✅ 精准排除：只排除真正的系统事件和过期事件
 ```
 **优势**: 保留用户手动创建的子任务，提升计划管理的层级结构完整性
 
@@ -2116,7 +2143,7 @@ const effectiveFeatures = mode === 'text_floatingbar'
    }
    ```
 5. **Slate 渲染**: `renderElement` 检测到 `type: 'tag'`，渲染 `<TagElementComponent />`
-6. **自动保存**: UnifiedSlateEditor 的 `onChange` 触发，序列化内容并保存
+6. **自动保存**: PlanSlateEditor 的 `onChange` 触发，序列化内容并保存
 
 **关键问题修复** (v1.9.1):
 
@@ -2448,7 +2475,7 @@ if (e.ctrlKey && (e.key === ';')) {
 4. description 行的 `mode` 为 `'description'`
 5. 自动聚焦到新创建的 description 行
 
-**代码位置**: `UnifiedSlateEditor.tsx` L559-578
+**代码位置**: `PlanSlateEditor.tsx` L559-578
 
 ```typescript
 if (event.key === 'Enter' && event.shiftKey) {
@@ -2491,7 +2518,7 @@ if (event.key === 'Enter' && event.shiftKey) {
 3. 更新 `mode` 为 `'title'`
 4. 保留原有内容
 
-**代码位置**: `UnifiedSlateEditor.tsx` L619-637
+**代码位置**: `PlanSlateEditor.tsx` L619-637
 
 ```typescript
 if (event.key === 'Tab' && event.shiftKey) {
@@ -2534,7 +2561,7 @@ if (event.key === 'Tab' && event.shiftKey) {
 3. 新 description 行的 `mode` 为 `'description'`
 4. 允许同一个 event 有多行 description
 
-**代码位置**: `UnifiedSlateEditor.tsx` L479-503
+**代码位置**: `PlanSlateEditor.tsx` L479-503
 
 ```typescript
 if (event.key === 'Enter' && !event.shiftKey) {
@@ -2578,7 +2605,7 @@ if (event.key === 'Enter' && !event.shiftKey) {
 3. `handleEditorChange` 检测到 description 节点缺失
 4. 显式清空 `item.description` 字段
 
-**代码位置**: `UnifiedSlateEditor.tsx` L348-365
+**代码位置**: `PlanSlateEditor.tsx` L348-365
 
 ```typescript
 const handleEditorChange = useCallback((newValue: Descendant[]) => {
@@ -4357,7 +4384,7 @@ function formatDuration(seconds: number): string {
 | **❌ 新行勾选框延迟显示** | 🔴 高 | 全局 | ✅ 已修复 | 2025-11-08 (v1.8) |
 | **❌ 多次重复渲染（3次<100ms）** | 🔴 高 | 全局 | ✅ 已优化 | 2025-11-08 (v1.8) |
 | **❌ 复选框闪烁（时有时无）** | 🔴 高 | L1075-1120 | ✅ 已修复 | 2025-11-08 (v1.8) |
-| **❌ Placeholder 与勾选框不对齐** | 🔴 高 | UnifiedSlateEditor | ✅ 已修复 | 2025-11-08 (v1.8) |
+| **❌ Placeholder 与勾选框不对齐** | 🔴 高 | PlanSlateEditor | ✅ 已修复 | 2025-11-08 (v1.8) |
 | **❌ 标签名 vs 标签ID 混用** | 🔴 高 | L320-330 | ⏳ 待修复 | - |
 | **❌ syncToUnifiedTimeline ID判断错误** | 🔴 高 | L847-858 | ✅ 已修复 | 2025-11-06 |
 | **❌ syncToUnifiedTimeline 时间判断复杂** | 🔴 高 | L747-820 | ✅ 已优化 | 2025-11-06 |
@@ -4373,7 +4400,7 @@ function formatDuration(seconds: number): string {
 
 #### ✅ 新行勾选框延迟显示（2025-11-08 v1.8）⭐ 新增
 - **问题**：按 Enter 创建新行后，勾选框延迟 2-3 秒才出现，需要输入几个字后才显示
-  - 根本原因 1：UnifiedSlateEditor 的 `items` prop 只包含 `items`，不包含 `pendingEmptyItems`
+  - 根本原因 1：PlanSlateEditor 的 `items` prop 只包含 `items`，不包含 `pendingEmptyItems`
   - 根本原因 2：onChange 回调使用 300ms 防抖，新行要等防抖结束才被添加到 `pendingEmptyItems`
   - 根本原因 3：勾选框渲染依赖 `editorLines`，而 `editorLines` 要等 `pendingEmptyItems` 更新后才包含新行
   - 用户体验：按 Enter → 光标移动到新行 → 等待 2-3 秒 → 勾选框才出现（体验很差）
@@ -4383,9 +4410,9 @@ function formatDuration(seconds: number): string {
      - 新增 `immediateStateSync` 函数，立即更新 `pendingEmptyItems`（不等 300ms）
      - `debouncedOnChange` 先调用 `immediateStateSync`，再延迟 300ms 执行保存
      - 分离"UI 状态更新"（立即）和"数据持久化"（延迟）
-  2. **UnifiedSlateEditor 使用 editorLines**（L1211-1243）
-     - 修改前：`<UnifiedSlateEditor items={items.map(...)} />`
-     - 修改后：`<UnifiedSlateEditor items={editorLines.map(...)} />`
+  2. **PlanSlateEditor 使用 editorLines**（L1211-1243）
+     - 修改前：`<PlanSlateEditor items={items.map(...)} />`
+     - 修改后：`<PlanSlateEditor items={editorLines.map(...)} />`
      - 确保新行（在 pendingEmptyItems 中）立即传给编辑器
   3. **renderLinePrefix 使用 editorLines**（L1311-1330）
      - 从 `editorLines` 查找 item（包含 pending），而非从 `items` 查找
@@ -4420,7 +4447,7 @@ function formatDuration(seconds: number): string {
   - 当 i>0 时，placeholder 显示在最后一行
   - 作为真实的 Slate 节点，天然对齐，无需手动计算位置
 
-  **代码实现**：UnifiedSlateEditor.tsx
+  **代码实现**：PlanSlateEditor.tsx
   ```typescript
   // 1. 自动添加 placeholder 行到末尾（L145-175）
   const enhancedValue = useMemo(() => {
@@ -4549,7 +4576,7 @@ function formatDuration(seconds: number): string {
   - 视觉效果：placeholder 与输入内容水平位置不一致
   - 用户体验：视觉不连贯，placeholder 位置与实际输入位置不匹配
 
-- **修复**：UnifiedSlateEditor.tsx L773-779
+- **修复**：PlanSlateEditor.tsx L773-779
   ```typescript
   // 第一次尝试（错误）
   style={{ left: '52px', ... }}
@@ -4867,7 +4894,7 @@ import { FixedSizeList } from 'react-window';
 
 #### 🏗️ 批处理器架构
 
-**位置**：`PlanManager.tsx` L1030-1155 (`UnifiedSlateEditor` 的 `onChange` 回调)
+**位置**：`PlanManager.tsx` L1030-1155 (`PlanSlateEditor` 的 `onChange` 回调)
 
 ```typescript
 onChange={(updatedItems) => {
@@ -5041,7 +5068,7 @@ Object.entries(actions).forEach(([actionType, actionList]) => {
 - 这导致计划列表中出现大量无用的空白行
 
 **根本原因**：
-- `UnifiedSlateEditor` 的 `slateNodesToPlanItems` 转换函数只返回基本字段（title、content、description、tags），不包含时间字段
+- `PlanSlateEditor` 的 `slateNodesToPlanItems` 转换函数只返回基本字段（title、content、description、tags），不包含时间字段
 - 导致 `updatedItem.startTime/endTime/dueDate` 总是 `undefined`
 - 原空检测逻辑错误地使用了 `existingItem` 的时间字段，而不是 `updatedItem` 的
 
@@ -5101,7 +5128,7 @@ Object.entries(actions).forEach(([actionType, actionList]) => {
 - 实际：直接在标题行下方创建新 event，导致原 description 被放到新 event 下面
 
 **修复方案**：
-- **文件**：`src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx`
+- **文件**：`src/components/PlanSlateEditor/PlanSlateEditor.tsx`
 - **位置**：Enter 键处理逻辑（`onKeyDown` 回调）
 - **实现**：检测当前行是否有关联的 description 行
   ```typescript
@@ -5281,7 +5308,7 @@ Object.entries(actions).forEach(([actionType, actionList]) => {
 
 ---
 
-## 16. PlanManager ↔ UnifiedSlateEditor 交互机制
+## 16. PlanManager ↔ PlanSlateEditor 交互机制
 
 > 📖 **相关文档**: [Slate 开发指南](../SLATE_DEVELOPMENT_GUIDE.md#planmanager-交互机制)  
 > 🆕 **架构版本**: v1.5 (透传架构 + 防抖优化)  
@@ -5299,7 +5326,7 @@ Object.entries(actions).forEach(([actionType, actionList]) => {
              │ items.map() 无过滤                │ onChange(updatedItems)
              ▼                                   ▲
 ┌────────────────────────────────────────────────┴────────────┐
-│                UnifiedSlateEditor (v1.5)                     │
+│                PlanSlateEditor (v1.5)                     │
 │                                                              │
 │  props.items: PlanItem[] (✅ 包含完整字段)                   │
 │  ↓                                                           │
@@ -5332,7 +5359,7 @@ Object.entries(actions).forEach(([actionType, actionList]) => {
              │ items.map() 转换                  │ onChange(updatedItems)
              ▼                                   ▲
 ┌────────────────────────────────────────────────┴────────────┐
-│                UnifiedSlateEditor                            │
+│                PlanSlateEditor                            │
 │                                                              │
 │  props.items: PlanItem[]  (只有基本字段: id, title, tags)    │
 │  ↓                                                           │
@@ -5353,7 +5380,7 @@ Object.entries(actions).forEach(([actionType, actionList]) => {
 **代码位置**: `PlanManager.tsx` L1180-1195
 
 ```typescript
-<UnifiedSlateEditor
+<PlanSlateEditor
   items={items.map(item => ({
     id: item.id,
     eventId: item.id,
@@ -5383,7 +5410,7 @@ Object.entries(actions).forEach(([actionType, actionList]) => {
 
 #### **阶段 2: Slate 内部转换 (🆕 v1.5 元数据透传)**
 
-**代码位置**: `UnifiedSlateEditor/serialization.ts` L23-69
+**代码位置**: `PlanSlateEditor/serialization.ts` L23-69
 
 ```typescript
 // 数据转换链 (v1.5)
@@ -5431,7 +5458,7 @@ const metadata = {
 
 #### **阶段 4: Slate → PlanManager 转换 (🆕 v1.5 无损还原)**
 
-**代码位置**: `UnifiedSlateEditor.tsx` L104-112
+**代码位置**: `PlanSlateEditor.tsx` L104-112
 
 ```typescript
 const handleChange = useCallback((newValue: Descendant[]) => {
@@ -5628,7 +5655,7 @@ const executeBatchUpdate = useCallback((updatedItems: any[]) => {
 ```
 PlanManager (完整 Event) 
   ↓ (透传完整字段)
-UnifiedSlateEditor (PlanItem + metadata)
+PlanSlateEditor (PlanItem + metadata)
   ↓ (编辑内容)
 onChange(updatedItems)  ← ✅ 包含时间字段
   ↓ (无需合并)
@@ -5831,7 +5858,7 @@ PlanManager: { id, title, startTime, endTime }
 **实现代码**：
 
 ```typescript
-// UnifiedSlateEditor/serialization.ts
+// PlanSlateEditor/serialization.ts
 function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
   const items = new Map();
   
@@ -5885,7 +5912,7 @@ function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
 **✅ v1.5 EventLineNode 类型扩展**：
 
 ```typescript
-// UnifiedSlateEditor/types.ts (L18-38)
+// PlanSlateEditor/types.ts (L18-38)
 export interface EventLineNode {
   type: 'event-line';
   eventId: string;
@@ -5928,7 +5955,7 @@ const debouncedOnChange = useCallback((updatedItems: any[]) => {
   }, 300);  // 300ms 防抖
 }, [executeBatchUpdate]);
 
-<UnifiedSlateEditor
+<PlanSlateEditor
   items={...}
   onChange={debouncedOnChange}  // ✅ 使用防抖版本
 />
@@ -5960,7 +5987,7 @@ const usePlanStore = create((set) => ({
   })),
 }));
 
-// UnifiedSlateEditor.tsx
+// PlanSlateEditor.tsx
 const { items, updateItem } = usePlanStore();
 
 const handleChange = useCallback((newValue: Descendant[]) => {
@@ -6057,7 +6084,7 @@ const handleChange = useCallback((newValue: Descendant[]) => {
 - [x] `types.ts`: EventLineNode 添加 metadata 字段
 - [x] `serialization.ts`: planItemsToSlateNodes 提取 metadata
 - [x] `serialization.ts`: slateNodesToPlanItems 还原 metadata
-- [x] `PlanManager.tsx`: 透传完整字段到 UnifiedSlateEditor
+- [x] `PlanManager.tsx`: 透传完整字段到 PlanSlateEditor
 - [x] `PlanManager.tsx`: 添加防抖优化（300ms）
 - [x] `PlanManager.tsx`: 简化字段合并逻辑
 
@@ -6078,8 +6105,8 @@ const handleChange = useCallback((newValue: Descendant[]) => {
 **相关代码文件**：
 - `src/components/PlanManager.tsx` (L628-767): executeBatchUpdate + debouncedOnChange
 - `src/components/PlanManager.tsx` (L1180-1197): 透传完整字段
-- `src/components/UnifiedSlateEditor/types.ts` (L18-38): EventLineNode.metadata
-- `src/components/UnifiedSlateEditor/serialization.ts` (L23-69, L169-200): 元数据透传
+- `src/components/PlanSlateEditor/types.ts` (L18-38): EventLineNode.metadata
+- `src/components/PlanSlateEditor/serialization.ts` (L23-69, L169-200): 元数据透传
 - `src/utils/timeUtils.ts`: 时间格式化工具
 - `docs/TIMEHUB_EMPTY_FIELDS_AND_REDUX_CRDT_ANALYSIS.md`: Redux + CRDT 长期方案
 

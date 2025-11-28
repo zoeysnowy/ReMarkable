@@ -1895,81 +1895,158 @@ private getUserSettings(): any {
     
     let successCount = 0;
     let failCount = 0;
+    let skippedCount = 0;
     
-    // 🚀 批量模式：一次性获取localEvents，在内存中修改，最后统一保存
-    let localEvents = this.getLocalEvents();
+    // 🔧 [ARCHITECTURE FIX] 分离 update 操作（通过 EventService）和 create/delete（保留旧逻辑）
+    const updateActions = pendingRemoteActions.filter(a => a.type === 'update');
+    const otherActions = pendingRemoteActions.filter(a => a.type !== 'update');
     
-    // ⚡ 收集批量操作的详细信息，用于触发增量UI更新
-    const uiUpdates: Array<{ type: string; eventId: string; event?: any }> = [];
-    
-    for (let i = 0; i < pendingRemoteActions.length; i++) {
-      const action = pendingRemoteActions[i];
+    // ========== 处理 UPDATE 操作（通过 EventService，带变化检测） ==========
+    for (let i = 0; i < updateActions.length; i++) {
+      const action = updateActions[i];
       try {
-        if (i < 5) {
-        }
-        // 🚀 批量模式：传入localEvents，不触发UI更新，不立即保存
-        const beforeCount = localEvents.length;
-        localEvents = await this.applyRemoteActionToLocal(action, false, localEvents);
-        const afterCount = localEvents.length;
+        const localEvent = EventService.getEventById(action.entityId);
         
-        // ⚡ 记录操作类型和事件ID，用于增量UI更新
-        if (action.type === 'create' && afterCount > beforeCount) {
-          uiUpdates.push({ 
-            type: 'create', 
-            eventId: action.entityId,
-            event: localEvents[localEvents.length - 1] 
-          });
-        } else if (action.type === 'update') {
-          const updatedEvent = localEvents.find((e: any) => e.id === action.entityId || e.externalId === action.entityId);
-          if (updatedEvent) {
-            uiUpdates.push({ 
-              type: 'update', 
-              eventId: updatedEvent.id,
-              event: updatedEvent
-            });
+        if (!localEvent) {
+          console.warn(`⚠️ [SyncRemote] Event not found: ${action.entityId}`);
+          action.synchronized = true;
+          action.synchronizedAt = new Date();
+          failCount++;
+          continue;
+        }
+        
+        // 🔧 检测变化
+        const remoteTitle = action.data.subject || '';
+        const localTitle = localEvent.title?.simpleTitle || localEvent.title || '';
+        const titleChanged = remoteTitle !== localTitle;
+        
+        const remoteStart = this.safeFormatDateTime(action.data.start?.dateTime || action.data.start);
+        const remoteEnd = this.safeFormatDateTime(action.data.end?.dateTime || action.data.end);
+        const timeChanged = remoteStart !== localEvent.startTime || remoteEnd !== localEvent.endTime;
+        
+        const htmlContent = action.data.body?.content || action.data.description || action.data.bodyPreview || '';
+        const cleanDescription = this.processEventDescription(htmlContent, 'outlook', 'sync', action.data);
+        const descriptionChanged = cleanDescription !== localEvent.description;
+        
+        // 🔧 无变化则跳过
+        if (!titleChanged && !timeChanged && !descriptionChanged) {
+          if (skippedCount < 5) {
+            console.log(`⏭️ [Sync] 跳过无变化: ${localEvent.id.slice(-8)}`);
           }
-        } else if (action.type === 'delete') {
-          uiUpdates.push({ 
-            type: 'delete', 
-            eventId: action.entityId 
+          action.synchronized = true;
+          action.synchronizedAt = new Date();
+          skippedCount++;
+          continue;
+        }
+        
+        // 🔧 打印前3个变化详情
+        if (successCount < 3) {
+          console.log(`🔄 [Sync] 变化 ${localEvent.id.slice(-8)}:`, {
+            title: titleChanged ? `"${localTitle}" → "${remoteTitle}"` : '-',
+            time: timeChanged ? `${localEvent.startTime || '?'} → ${remoteStart}` : '-',
+            desc: descriptionChanged ? `${localEvent.description?.length || 0} → ${cleanDescription?.length || 0} chars` : '-'
           });
         }
+        
+        // 🔧 构建更新
+        const updates: any = {
+          title: {
+            simpleTitle: remoteTitle,
+            colorTitle: remoteTitle,
+            fullTitle: JSON.stringify([{ type: 'paragraph', children: [{ text: remoteTitle }] }])
+          },
+          description: cleanDescription,
+          startTime: remoteStart,
+          endTime: remoteEnd,
+          location: action.data.location?.displayName || '',
+          isAllDay: action.data.isAllDay || false,
+          lastSyncTime: new Date(),
+          syncStatus: 'synced'
+        };
+        
+        // 🔧 同步 eventlog
+        if (descriptionChanged && typeof localEvent.eventlog === 'object' && localEvent.eventlog !== null) {
+          updates.eventlog = {
+            ...localEvent.eventlog,
+            content: JSON.stringify([{ type: 'paragraph', children: [{ text: cleanDescription }] }]),
+            descriptionHtml: cleanDescription,
+            descriptionPlainText: cleanDescription.replace(/<[^>]*>/g, ''),
+            updatedAt: formatTimeForStorage(new Date()),
+          };
+        } else if (descriptionChanged) {
+          updates.eventlog = cleanDescription;
+        }
+        
+        // ✅ 通过 EventService 更新（自动触发 eventsUpdated）
+        await EventService.updateEvent(localEvent.id, updates, true);
         
         action.synchronized = true;
         action.synchronizedAt = new Date();
         successCount++;
         
       } catch (error) {
-        console.error(`❌ [SyncRemote] Failed to apply remote action [${i+1}]:`, error);
+        console.error(`❌ [SyncRemote] Update failed:`, error);
         action.retryCount = (action.retryCount || 0) + 1;
         failCount++;
       }
     }
     
-    // 🚀 批量保存：所有操作完成后统一保存一次
-    if (successCount > 0) {
-      // 🔧 [IndexMap 优化] 批量同步时已经在循环中增量更新了 IndexMap
-      // 不需要重建！只保存到 localStorage
-      this.saveLocalEvents(localEvents, false); // rebuildIndex=false，使用增量更新
+    // ========== 处理 CREATE/DELETE 操作（保留旧逻辑） ==========
+    if (otherActions.length > 0) {
+      console.log(`⚠️ [SyncRemote] ${otherActions.length} create/delete actions use legacy logic`);
+      let localEvents = this.getLocalEvents();
+      const uiUpdates: Array<{ type: string; eventId: string; event?: any }> = [];
       
-      // ⚡ 批量触发详细的 eventsUpdated 事件，支持 TimeCalendar 增量更新
-      console.log(`📡 [SyncRemote] Dispatching ${uiUpdates.length} eventsUpdated events for incremental UI update`);
-      uiUpdates.forEach(update => {
-        const detail: any = { eventId: update.eventId };
-        
-        if (update.type === 'create') {
-          detail.isNewEvent = true;
-          detail.tags = update.event?.tags || [];
-        } else if (update.type === 'update') {
-          detail.isUpdate = true;
-          detail.tags = update.event?.tags || [];
-        } else if (update.type === 'delete') {
-          detail.deleted = true;
+      for (const action of otherActions) {
+        try {
+          const beforeCount = localEvents.length;
+          const result = await this.applyRemoteActionToLocal(action, false, localEvents);
+          
+          if (result === null) {
+            action.synchronized = true;
+            action.synchronizedAt = new Date();
+            skippedCount++;
+            continue;
+          }
+          
+          localEvents = result;
+          const afterCount = localEvents.length;
+          
+          if (action.type === 'create' && afterCount > beforeCount) {
+            uiUpdates.push({ type: 'create', eventId: action.entityId, event: localEvents[afterCount - 1] });
+          } else if (action.type === 'delete') {
+            uiUpdates.push({ type: 'delete', eventId: action.entityId });
+          }
+          
+          action.synchronized = true;
+          action.synchronizedAt = new Date();
+          successCount++;
+          
+        } catch (error) {
+          console.error(`❌ [SyncRemote] ${action.type} failed:`, error);
+          action.retryCount = (action.retryCount || 0) + 1;
+          failCount++;
         }
-        
-        window.dispatchEvent(new CustomEvent('eventsUpdated', { detail }));
-      });
+      }
+      
+      // 保存并触发 UI 更新
+      if (uiUpdates.length > 0) {
+        this.saveLocalEvents(localEvents, false);
+        uiUpdates.forEach(update => {
+          const detail: any = { eventId: update.eventId };
+          if (update.type === 'create') {
+            detail.isNewEvent = true;
+            detail.tags = update.event?.tags || [];
+          } else if (update.type === 'delete') {
+            detail.deleted = true;
+          }
+          window.dispatchEvent(new CustomEvent('eventsUpdated', { detail }));
+        });
+      }
     }
+    
+    // 📊 打印统计
+    console.log(`✅ [SyncRemote] Completed: ${successCount} updated, ${skippedCount} skipped (no changes), ${failCount} failed`);
     this.saveActionQueue();
   }
 
@@ -2813,33 +2890,57 @@ private getUserSettings(): any {
     action: SyncAction, 
     triggerUI: boolean = true, 
     localEvents?: any[]
-  ): Promise<any[]> {
+  ): Promise<any[] | null> {
     if (action.entityType !== 'event') return localEvents || this.getLocalEvents();
 
     // 🚀 批量模式：如果传入了localEvents，说明是批量处理，不立即保存
     const isBatchMode = !!localEvents;
     const events = localEvents || this.getLocalEvents();
     
-    // 🆕 [v2.15] syncMode 检查：send-only 模式不接收远端更新
+    // 🆕 v2.0.6 SyncMode 接收逻辑检查
     if (action.type === 'create' || action.type === 'update') {
-      // 对于 create，检查远程事件的 data
-      // 对于 update，需要找到本地事件检查其 syncMode
       let eventSyncMode: string | undefined;
+      let localEvent: any = null;
       
       if (action.type === 'update') {
         // 查找本地事件的 syncMode
-        const localEvent = events.find((e: any) => 
+        localEvent = events.find((e: any) => 
           e.id === action.entityId || 
           e.externalId === action.entityId ||
           e.externalId === action.entityId?.replace('outlook-', '')
         );
         eventSyncMode = localEvent?.syncMode;
+      } else if (action.type === 'create') {
+        // 对于 create，需要检查是否是多日历同步的远程副本
+        // 通过 remoteEventId 查找对应的本地事件
+        const { EventService } = await import('./EventService');
+        localEvent = EventService.findLocalEventByRemoteId(
+          action.data.id || action.entityId,
+          events,
+          'plan' // 暂时检查 plan，实际应根据事件类型判断
+        );
+        
+        if (localEvent) {
+          eventSyncMode = localEvent.syncMode;
+          console.log(`🔍 [Sync] Found existing local event for remote create`, {
+            localEventId: localEvent.id,
+            syncMode: eventSyncMode
+          });
+        }
       }
-      // create 时暂时不检查（新事件从远端来，应该创建）
       
-      if (eventSyncMode === 'send-only' || eventSyncMode === 'send-only-private') {
-        console.log(`⏭️ [Sync] Skipping remote ${action.type} for send-only event:`, action.entityId);
-        return events; // 跳过远端更新
+      // 检查 syncMode 是否允许接收远程更新
+      if (eventSyncMode) {
+        const { EventService } = await import('./EventService');
+        const canReceive = EventService.canReceiveFromRemote(eventSyncMode);
+        
+        if (!canReceive) {
+          console.log(`⏭️ [Sync] SyncMode 不允许接收远程 ${action.type}:`, {
+            eventId: action.entityId,
+            syncMode: eventSyncMode
+          });
+          return events; // 跳过远端更新
+        }
       }
     }
 
@@ -2874,6 +2975,33 @@ private getUserSettings(): any {
             console.warn(`⚠️ [IndexMap Mismatch] Found duplicate via array search but not in IndexMap: ${newEvent.externalId.substring(0, 20)}...`);
             // 修复 IndexMap
             this.updateEventInIndex(existingEvent);
+          }
+        }
+        
+        // 🆕 v2.0.5 [MULTI-CALENDAR SYNC] 检查多日历同步的 externalId
+        // 核心：本地一个 event，远程多个日历可能有多个 externalId
+        // 防止创建重复事件
+        if (!existingEvent && newEvent.externalId) {
+          existingEvent = events.find((e: any) => {
+            // 检查 Plan 日历映射
+            const inPlanCalendars = e.syncedPlanCalendars?.some((cal: any) => 
+              cal.remoteEventId === newEvent.externalId ||
+              cal.remoteEventId === `outlook-${newEvent.externalId}` ||
+              `outlook-${cal.remoteEventId}` === newEvent.externalId
+            );
+            
+            // 检查 Actual 日历映射
+            const inActualCalendars = e.syncedActualCalendars?.some((cal: any) => 
+              cal.remoteEventId === newEvent.externalId ||
+              cal.remoteEventId === `outlook-${newEvent.externalId}` ||
+              `outlook-${cal.remoteEventId}` === newEvent.externalId
+            );
+            
+            return inPlanCalendars || inActualCalendars;
+          });
+          
+          if (existingEvent) {
+            console.log(`✅ [Multi-Calendar Dedupe] Found existing event via syncedCalendars: ${existingEvent.id}`);
           }
         }
         
@@ -2969,6 +3097,15 @@ private getUserSettings(): any {
         if (eventIndex !== -1) {
           const oldEvent = { ...events[eventIndex] };
           
+          // 🔧 [PERFORMANCE] 检测是否有实际变化，避免无意义的更新和 UI 触发
+          const remoteTitle = action.data.subject || '';
+          const localTitle = oldEvent.title?.simpleTitle || oldEvent.title || '';
+          const titleChanged = remoteTitle !== localTitle;
+          
+          const remoteStart = this.safeFormatDateTime(action.data.start?.dateTime || action.data.start);
+          const remoteEnd = this.safeFormatDateTime(action.data.end?.dateTime || action.data.end);
+          const timeChanged = remoteStart !== oldEvent.startTime || remoteEnd !== oldEvent.endTime;
+          
           // 尝试多个可能的描述字段
           const htmlContent = action.data.body?.content || 
                              action.data.description || 
@@ -2981,9 +3118,50 @@ private getUserSettings(): any {
           
           // Description processing completed
           
+          const descriptionChanged = cleanDescription !== oldEvent.description;
+          
+          // 🔧 [PERFORMANCE DEBUG] 诊断：为什么 1016 个事件都检测到变化？
+          if (Math.random() < 0.01) { // 只打印 1% 的样本，避免刷屏
+            console.log(`🔍 [Sync Debug Sample] Event ${oldEvent.id.slice(-8)}:`, {
+              remoteTitle: `"${remoteTitle}"`,
+              localTitle: `"${localTitle}"`,
+              titleEqual: remoteTitle === localTitle,
+              remoteStart,
+              remoteEnd,
+              oldStart: oldEvent.startTime,
+              oldEnd: oldEvent.endTime,
+              timeEqual: remoteStart === oldEvent.startTime && remoteEnd === oldEvent.endTime,
+              descLen: {
+                remote: cleanDescription?.length || 0,
+                local: oldEvent.description?.length || 0,
+                equal: cleanDescription === oldEvent.description
+              }
+            });
+          }
+          
+          // 🔧 [PERFORMANCE] 如果没有任何变化，跳过更新和 UI 触发
+          if (!titleChanged && !timeChanged && !descriptionChanged) {
+            console.log(`⏭️ [Sync] 跳过无变化的更新: ${oldEvent.id.slice(-8)}`);
+            // 🔧 返回 null 表示"无变化"，通知批量同步不要触发 eventsUpdated
+            return isBatchMode ? null : events;
+          }
+          
+          // 🔧 [DEBUG] 打印变化详情（仅打印前 5 个，避免刷屏）
+          if ((action as any).__debugCount === undefined) {
+            (action as any).__debugCount = 0;
+          }
+          if ((action as any).__debugCount < 5) {
+            (action as any).__debugCount++;
+            console.log(`🔄 [Sync] 检测到变化 ${oldEvent.id.slice(-8)}:`, {
+              titleChanged: titleChanged ? `"${localTitle}" → "${remoteTitle}"` : false,
+              timeChanged: timeChanged ? `${oldEvent.startTime}-${oldEvent.endTime} → ${remoteStart}-${remoteEnd}` : false,
+              descriptionChanged: descriptionChanged ? `${oldEvent.description?.length || 0} → ${cleanDescription?.length || 0} chars` : false
+            });
+          }
+          
           // 🆕 v2.14.1: 同步 description 到 eventlog 对象
           let updatedEventlog = events[eventIndex].eventlog;
-          if (cleanDescription !== events[eventIndex].description) {
+          if (descriptionChanged) {
             // description 有变化，需要同步到 eventlog
             if (typeof updatedEventlog === 'object' && updatedEventlog !== null) {
               // 保留 EventLog 对象的元数据（attachments、versions 等）

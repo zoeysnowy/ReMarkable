@@ -33,6 +33,7 @@ import TimeHoverCard from './TimeHoverCard';
 import { calculateFixedPopupPosition } from '../utils/popupPositionUtils';
 import ContentSelectionPanel from './ContentSelectionPanel';
 import UpcomingEventsPanel from './UpcomingEventsPanel';
+import { isEventExpired } from '../utils/upcomingEventsHelper'; // ✅ TIME_ARCHITECTURE 规范的工具函数
 
 // � 初始化调试标志 - 在模块加载时立即从 localStorage 读取
 if (typeof window !== 'undefined') {
@@ -226,8 +227,7 @@ const PlanItemTimeDisplay = React.memo<{
 
 export interface PlanManagerProps {
   // ❌ [REMOVED] items: Event[] - PlanManager 自己管理
-  onSave: (item: Event) => void;
-  onDelete: (id: string) => void;
+  // ✅ 移除 onSave/onDelete，改用 EventHub 直接操作
   availableTags?: string[];
   onCreateEvent?: (event: Event) => void;
   onUpdateEvent?: (eventId: string, updates: Partial<Event>) => void;
@@ -271,8 +271,6 @@ const PlanItemCheckbox = React.memo<{
 });
 
 const PlanManager: React.FC<PlanManagerProps> = ({
-  onSave,
-  onDelete,
   availableTags = [],
   onCreateEvent,
   onUpdateEvent,
@@ -363,35 +361,28 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       }
     }
     
-    // 🎯 三步过滤公式：isPlan + checkType - 系统事件
+    // 🎯 并集过滤公式：(isPlan OR checkType OR isTimeCalendar) - 排除条件
     const filtered = allEvents.filter((event: Event) => {
-      // 步骤 1: 必须是 Plan 事件
-      if (!event.isPlan) {
-        return false;
+      // 步骤 1: 并集条件 - 满足任意一个即纳入
+      const matchesInclusionCriteria = 
+        event.isPlan === true || 
+        (event.checkType && event.checkType !== 'none') ||
+        event.isTimeCalendar === true;
+      
+      if (!matchesInclusionCriteria) {
+        return false; // 不满足任何显示条件
       }
       
-      // 步骤 2: checkType 过滤（必须有有效的 checkType 且不为 'none'）
-      if (!event.checkType || event.checkType === 'none') {
-        return false;
-      }
-      
-      // 步骤 3: TimeCalendar 时间范围检查
-      if (event.isTimeCalendar) {
-        if (event.endTime) {
-          const endTime = new Date(event.endTime);
-          if (now >= endTime) {
-            return false; // TimeCalendar 已过期
-          }
-        } else {
-          return false; // 没有endTime的TimeCalendar事件视为已过期
-        }
-      }
-      
-      // 步骤 4: 排除系统事件（使用严格比较 === true）
+      // 步骤 2: 排除系统事件（使用严格比较 === true）
       if (event.isTimer === true || 
           event.isOutsideApp === true || 
           event.isTimeLog === true) {
         return false;
+      }
+      
+      // 步骤 3: 排除过期的 TimeCalendar 事件（使用 TIME_ARCHITECTURE 规范的工具函数）
+      if (event.isTimeCalendar && isEventExpired(event, now)) {
+        return false; // TimeCalendar 已过期
       }
       
       return true;
@@ -660,19 +651,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         return;
       }
       
-      // 排除条件：过期的 TimeCalendar
-      if (event.isTimeCalendar) {
-        if (event.endTime) {
-          const endTime = new Date(event.endTime);
-          const now = new Date();
-          if (now >= endTime) {
-            // 🚫 TimeCalendar 已过期，直接忽略
-            return;
-          }
-        } else {
-          // 🚫 没有 endTime 的 TimeCalendar，视为过期
-          return;
-        }
+      // 排除条件：过期的 TimeCalendar（使用 TIME_ARCHITECTURE 规范的工具函数）
+      if (event.isTimeCalendar && isEventExpired(event)) {
+        return;
       }
       
       // ✅ 确认为 Plan 事件的外部更新，执行同步
@@ -741,7 +722,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   dayjs.locale('zh-cn');
   
   // 🆕 v1.6: 统一删除接口（单一删除入口）
-  const deleteItems = useCallback((itemIds: string[], reason: string) => {
+  const deleteItems = useCallback(async (itemIds: string[], reason: string) => {
     if (itemIds.length === 0) return;
     
     dbg('delete', `🗑️ 统一删除 ${itemIds.length} 个 items`, { reason, ids: itemIds });
@@ -753,17 +734,17 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       return next;
     });
     
-    // 2. 调用外部删除（EventService + PlanManager 父组件）
-    itemIds.forEach(id => {
+    // 2. ✅ 使用 EventHub 删除
+    for (const id of itemIds) {
       try {
-        onDelete(id);
+        await EventHub.deleteEvent(id, false);
       } catch (err) {
         error('delete', `删除 ${id} 失败`, { error: err });
       }
-    });
+    }
     
     dbg('delete', `✅ 删除完成`, { count: itemIds.length });
-  }, [onDelete]);
+  }, []);
   
   // 标签替换
   const [replacingTagElement, setReplacingTagElement] = useState<HTMLElement | null>(null);
@@ -974,7 +955,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   }, [items]);
 
   // 🆕 v1.5: 批处理执行函数（从 onChange 中提取）
-  const executeBatchUpdate = useCallback((updatedItems: any[]) => {
+  const executeBatchUpdate = useCallback(async (updatedItems: any[]) => {
     console.log('[executeBatchUpdate] 开始处理:', {
       总数: updatedItems.length,
       items: updatedItems.map(item => ({
@@ -1145,13 +1126,13 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       deleteItems(actions.delete, 'batch-update-empty-items');
     }
     
-    // 3.2 批量保存
+    // 3.2 批量保存（使用 EventHub）
     if (actions.save.length > 0) {
       dbg('plan', `💾 执行批量保存: ${actions.save.length} 个`, { 
         titles: actions.save.map(e => e.title) 
       });
       // 🔍 v1.8: 调试 eventlog 字段
-      actions.save.forEach(item => {
+      for (const item of actions.save) {
         console.log('[PlanManager] 准备保存到 EventService:', {
           id: item.id,
           title: item.title?.simpleTitle?.substring(0, 20) || '',
@@ -1164,8 +1145,19 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           startTime: item.startTime, // 🔍 显示时间字段(来自 serialization.ts → TimeHub)
           endTime: item.endTime,
         });
-        onSave(item);
-      });
+        
+        // ✅ 使用 EventHub 保存
+        try {
+          const existingItem = itemsMap[item.id];
+          if (!existingItem) {
+            await EventHub.createEvent(item);
+          } else {
+            await EventHub.updateFields(item.id, item, { source: 'PlanManager' });
+          }
+        } catch (error) {
+          console.error('[executeBatchUpdate] 保存失败:', item.id, error);
+        }
+      }
     }
     
     // 🆕 v1.8: 移除批量同步到 Calendar（因为 onSave 已经触发同步）
@@ -1179,7 +1171,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         saved: actions.save.length,
       });
     }
-  }, [items, itemsMap, onSave, onDelete]);
+  }, [items, itemsMap]);
 
   // 🆕 定期清理空的 pendingEmptyItems（超过5分钟未填充内容的空行）
   useEffect(() => {
@@ -1776,7 +1768,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   }, [editorItems, getEventStatuses, getStatusConfig, dateRange]);
 
   // 处理编辑器内容变化
-  const handleLinesChange = (newLines: FreeFormLine<Event>[]) => {
+  const handleLinesChange = async (newLines: FreeFormLine<Event>[]) => {
     // 🔧 性能优化：只更新真正变化的 item
     const changedItems: Event[] = [];
     const unchangedItemIds = new Set<string>();
@@ -1814,18 +1806,18 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     const newItemIds = Array.from(itemGroups.keys());
     const deletedIds = allCurrentIds.filter(id => !newItemIds.includes(id));
     
-    deletedIds.forEach(id => {
+    for (const id of deletedIds) {
       // 从 pendingEmptyItems 中移除
       setPendingEmptyItems(prev => {
         const next = new Map(prev);
         next.delete(id);
         return next;
       });
-      // 如果在 items 中，也调用 onDelete
+      // 如果在 items 中，也调用 deleteItems
       if (currentItemIds.includes(id)) {
-        onDelete(id);
+        await deleteItems([id], 'delete-menu-action');
       }
-    });
+    }
 
     // 保存/更新每个 item（带 position）
     itemGroups.forEach((group, itemId) => {
@@ -1966,10 +1958,19 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         dbg('plan', '🆕 立即添加新事件到本地状态', { newItemIds: newItems.map(i => i.id) });
       }
       
-      // 批量保存
-      changedItems.forEach(item => {
-        onSave(item);
-      });
+      // 批量保存（使用 EventHub）
+      for (const item of changedItems) {
+        try {
+          const existingItem = itemsMap[item.id];
+          if (!existingItem) {
+            await EventHub.createEvent(item);
+          } else {
+            await EventHub.updateFields(item.id, item, { source: 'PlanManager' });
+          }
+        } catch (error) {
+          console.error('[handleBatchUpdateWithNewIds] 保存失败:', item.id, error);
+        }
+      }
       
       // 批量同步到日历
       changedItems.forEach(item => {
@@ -2367,7 +2368,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             setSelectedItemId(null);
             setEditingItem(null);
           }}
-          onSave={(updatedEvent) => {
+          onSave={async (updatedEvent) => {
             // 🔍 调试：检查 todoListIds 是否被正确传递
             console.log('🔍 [PlanManager] EventEditModalV2 onSave:', {
               updatedEvent_todoListIds: updatedEvent.todoListIds,
@@ -2389,8 +2390,13 @@ const PlanManager: React.FC<PlanManagerProps> = ({
               calendarIds: updatedPlanItem.calendarIds
             });
             
-            onSave(updatedPlanItem);
-            syncToUnifiedTimeline(updatedPlanItem);
+            // ✅ 使用 EventHub 保存
+            try {
+              await EventHub.updateFields(updatedPlanItem.id, updatedPlanItem, { source: 'PlanManager' });
+              syncToUnifiedTimeline(updatedPlanItem);
+            } catch (error) {
+              console.error('[EventEditModal] 保存失败:', error);
+            }
             setSelectedItemId(null);
             setEditingItem(null);
           }}
@@ -2589,7 +2595,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         availableTags={existingTags}
         currentTags={currentSelectedTags}
         currentIsTask={currentIsTask}
-        onTaskToggle={(isTask: boolean) => {
+        onTaskToggle={async (isTask: boolean) => {
           // 🆕 切换任务状态
           if (currentFocusedLineId && currentFocusedMode === 'title') {
             const actualItemId = currentFocusedLineId.replace('-desc', '');
@@ -2599,8 +2605,13 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                 ...item,
                 isTask,
               };
-              onSave(updatedItem);
-              setCurrentIsTask(isTask); // 更新本地状态
+              // ✅ 使用 EventHub 保存
+              try {
+                await EventHub.updateFields(updatedItem.id, updatedItem, { source: 'PlanManager' });
+                setCurrentIsTask(isTask); // 更新本地状态
+              } catch (error) {
+                console.error('[add_task] 保存失败:', error);
+              }
             }
           }
         }}
@@ -2695,8 +2706,13 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                       最终保存的时间: { start: updatedItem.startTime, end: updatedItem.endTime },
                     });
                     
-                    onSave(updatedItem);
-                    syncToUnifiedTimeline(updatedItem);
+                    // ✅ 使用 EventHub 保存
+                    try {
+                      await EventHub.updateFields(updatedItem.id, updatedItem, { source: 'PlanManager' });
+                      syncToUnifiedTimeline(updatedItem);
+                    } catch (error) {
+                      console.error('[UnifiedDateTimePicker] 保存失败:', error);
+                    }
                   }
                 }}
                 onClose={() => {
@@ -2757,7 +2773,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                 return (
                   <div
                     key={tag.id}
-                    onClick={() => {
+                    onClick={async () => {
                       // 替换标签
                       const item = items.find(i => i.id === currentFocusedLineId);
                       const editableElement = document.querySelector(
@@ -2794,7 +2810,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
                             content: updatedContent,
                             tags: extractedTags,
                           };
-                          onSave(updatedItem);
+                          // ✅ 使用 EventHub 保存
+                          try {
+                            await EventHub.updateFields(updatedItem.id, updatedItem, { source: 'PlanManager' });
+                          } catch (error) {
+                            console.error('[标签替换] 保存失败:', error);
+                          }
                         }
                       }
                       

@@ -1,8 +1,8 @@
-# Slate 编辑器架构设计文档
+﻿# Slate 编辑器架构设计文档
 
 > **版本**: v1.0  
 > **创建时间**: 2025-11-28  
-> **适用范围**: UnifiedSlateEditor, LightSlateEditor, 未来 TimeLog 模块  
+> **适用范围**: PlanSlateEditor, SlateEditor, 未来 TimeLog 模块  
 > **关键设计原则**: 组件化、可复用、单一职责  
 
 ---
@@ -22,7 +22,7 @@
 ### 1.1 当前架构问题
 
 **问题 1：功能重复**
-- `LightSlateEditor` 和 `UnifiedSlateEditor` 各自实现了相似的功能
+- `SlateEditor` 和 `PlanSlateEditor` 各自实现了相似的功能
 - 段落移动、bullet 操作、timestamp 管理等核心逻辑重复编写
 - 维护成本高，新功能需要在两处实现
 
@@ -63,7 +63,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │              Slate 编辑器层 (专用编辑器)                      │
 │  ┌──────────────────────┬─────────────────────────────────┐ │
-│  │ LightSlateEditor     │ UnifiedSlateEditor              │ │
+│  │ SlateEditor     │ PlanSlateEditor              │ │
 │  │ (单内容编辑)          │ (多事件管理)                     │ │
 │  │ - EventEditModal     │ - PlanManager                   │ │
 │  │ - TimeLog (未来)     │ - 复杂事件列表                   │ │
@@ -75,7 +75,7 @@
 
 ## 2. 两个编辑器的定位与差异
 
-### 2.1 UnifiedSlateEditor
+### 2.1 PlanSlateEditor
 
 **定位**: 多事件管理编辑器，支持事件列表批量操作
 
@@ -109,7 +109,7 @@ EventLineNode {
 }
 ```
 
-### 2.2 LightSlateEditor
+### 2.2 SlateEditor
 
 **定位**: 轻量级单内容编辑器，专注于纯文本编辑体验
 
@@ -144,7 +144,7 @@ EventLineNode {
 
 ### 2.3 核心差异对比
 
-| 维度 | UnifiedSlateEditor | LightSlateEditor |
+| 维度 | PlanSlateEditor | SlateEditor |
 |------|-------------------|------------------|
 | **数据模型** | 多事件列表 (Event[]) | 单内容字符串 (string) |
 | **节点结构** | event-line → title + eventlog | 扁平 paragraph[] |
@@ -219,7 +219,7 @@ export function swapNodes(
 
 #### C. Bullet 操作 (Bullet Operations)
 
-**当前状况**: UnifiedSlateEditor 支持 bullet，LightSlateEditor 也需要
+**当前状况**: PlanSlateEditor 支持 bullet，SlateEditor 也需要
 **共性需求**:
 - Bullet 层级增加/减少
 - Tab/Shift+Tab 缩进管理
@@ -250,7 +250,7 @@ export function handleBulletBackspace(
 
 #### D. Timestamp 管理 (Timestamp Management)
 
-**当前状况**: LightSlateEditor 已实现，UnifiedSlateEditor 的 eventlog 也需要
+**当前状况**: SlateEditor 已实现，PlanSlateEditor 的 eventlog 也需要
 **共性需求**:
 - 5分钟间隔检测
 - 自动插入 timestamp
@@ -465,16 +465,16 @@ src/components/
 │       ├── audioOperations.ts
 │       └── mentionOperations.ts
 │
-├── UnifiedSlateEditor/  # 专用编辑器
-│   ├── UnifiedSlateEditor.tsx
-│   ├── types.ts  # UnifiedSlate 特有类型（EventLineNode 等）
+├── PlanSlateEditor/  # 专用编辑器
+│   ├── PlanSlateEditor.tsx
+│   ├── types.ts  # PlanSlate 特有类型（EventLineNode 等）
 │   ├── serialization.ts  # 特有序列化（PlanItem ↔ EventLine）
 │   ├── EventLineElement.tsx  # 特有元素
 │   └── EventLinePrefix.tsx
 │
-└── LightSlateEditor/  # 专用编辑器
-    ├── LightSlateEditor.tsx
-    ├── types.ts  # 如果有 LightSlate 特有类型
+└── SlateEditor/  # 专用编辑器
+    ├── SlateEditor.tsx
+    ├── types.ts  # 如果有 Slate 特有类型
     └── serialization.ts  # 特有序列化（如果需要）
 ```
 
@@ -488,8 +488,8 @@ src/components/
    ```
 
 2. **提取共享类型**
-   - 从 UnifiedSlateEditor/types.ts 提取通用类型到 SlateCore/types.ts
-   - 保留 EventLineNode 等特有类型在 UnifiedSlateEditor/types.ts
+   - 从 PlanSlateEditor/types.ts 提取通用类型到 SlateCore/types.ts
+   - 保留 EventLineNode 等特有类型在 PlanSlateEditor/types.ts
 
 3. **创建共享工具函数**（新文件，不修改现有代码）
    - `SlateCore/operations/nodeOperations.ts`
@@ -498,21 +498,21 @@ src/components/
    - `SlateCore/serialization/jsonSerializer.ts`
 
 4. **重构 TimestampService**
-   - 将 `UnifiedSlateEditor/timestampService.ts` 移动到 `SlateCore/services/timestampService.ts`
+   - 将 `PlanSlateEditor/timestampService.ts` 移动到 `SlateCore/services/timestampService.ts`
    - 两个编辑器共享同一个 TimestampService
 
 5. **重构 Inline Helpers**
-   - 将 `UnifiedSlateEditor/helpers.ts` 重构为 `SlateCore/operations/inlineHelpers.ts`
-   - 保留 UnifiedSlateEditor/helpers.ts 作为兼容导出
+   - 将 `PlanSlateEditor/helpers.ts` 重构为 `SlateCore/operations/inlineHelpers.ts`
+   - 保留 PlanSlateEditor/helpers.ts 作为兼容导出
 
 6. **移动共享元素组件**
-   - `UnifiedSlateEditor/elements/TagElement.tsx` → `SlateCore/elements/TagElement.tsx`
-   - `UnifiedSlateEditor/elements/DateMentionElement.tsx` → `SlateCore/elements/DateMentionElement.tsx`
-   - `UnifiedSlateEditor/elements/TimestampDividerElement.tsx` → `SlateCore/elements/TimestampDividerElement.tsx`
+   - `PlanSlateEditor/elements/TagElement.tsx` → `SlateCore/elements/TagElement.tsx`
+   - `PlanSlateEditor/elements/DateMentionElement.tsx` → `SlateCore/elements/DateMentionElement.tsx`
+   - `PlanSlateEditor/elements/TimestampDividerElement.tsx` → `SlateCore/elements/TimestampDividerElement.tsx`
 
-#### 阶段 2: 重构 LightSlateEditor（使用 SlateCore）
+#### 阶段 2: 重构 SlateEditor（使用 SlateCore）
 
-7. **替换 LightSlateEditor 内部实现**
+7. **替换 SlateEditor 内部实现**
    - 段落移动函数使用 `SlateCore/operations/paragraphOperations.ts`
    - Bullet 操作使用 `SlateCore/operations/bulletOperations.ts`
    - Timestamp 使用 `SlateCore/services/timestampService.ts`
@@ -522,9 +522,9 @@ src/components/
    - EventEditModal 实际进展区域功能验证
    - 段落移动、bullet 删除、timestamp 插入等功能测试
 
-#### 阶段 3: 重构 UnifiedSlateEditor（渐进式）
+#### 阶段 3: 重构 PlanSlateEditor（渐进式）
 
-9. **逐步替换 UnifiedSlateEditor 内部实现**
+9. **逐步替换 PlanSlateEditor 内部实现**
    - 先替换通用工具函数（nodeOperations、paragraphOperations）
    - 再替换 Inline 元素插入（使用重构后的 inlineHelpers）
    - 保留 EventLine 特有逻辑（serialization、EventLineElement）
@@ -546,14 +546,14 @@ src/components/
 
 ### 4.3 代码示例
 
-#### 示例 1: LightSlateEditor 使用 SlateCore
+#### 示例 1: SlateEditor 使用 SlateCore
 
 ```typescript
-// LightSlateEditor.tsx (重构后)
+// SlateEditor.tsx (重构后)
 import { moveParagraphUp, moveParagraphDown } from '../SlateCore/operations/paragraphOperations';
 import { TimestampService } from '../SlateCore/services/timestampService';
 
-export const LightSlateEditor = ({ content, onChange, parentEventId }: Props) => {
+export const SlateEditor = ({ content, onChange, parentEventId }: Props) => {
   const editor = useMemo(() => withReact(withHistory(createEditor())), []);
   
   // 🆕 使用共享的 TimestampService
@@ -607,15 +607,15 @@ export const LightSlateEditor = ({ content, onChange, parentEventId }: Props) =>
 };
 ```
 
-#### 示例 2: UnifiedSlateEditor 使用 SlateCore
+#### 示例 2: PlanSlateEditor 使用 SlateCore
 
 ```typescript
-// UnifiedSlateEditor.tsx (重构后)
+// PlanSlateEditor.tsx (重构后)
 import { moveParagraphUp, moveParagraphDown } from '../SlateCore/operations/paragraphOperations';
 import { findNodeByType, isNodeEmpty } from '../SlateCore/operations/nodeOperations';
 import { insertTag, insertEmoji, insertDateMention } from '../SlateCore/operations/inlineHelpers';
 
-export const UnifiedSlateEditor = ({ items, onSave }: Props) => {
+export const PlanSlateEditor = ({ items, onSave }: Props) => {
   const editor = useMemo(() => withReact(withHistory(createEditor())), []);
   
   // 双模式段落移动（复用 SlateCore 基础函数）
@@ -658,15 +658,15 @@ export const UnifiedSlateEditor = ({ items, onSave }: Props) => {
 
 ```typescript
 // TimeLogEditor.tsx (未来实现)
-import { LightSlateEditor } from '../LightSlateEditor/LightSlateEditor';
+import { SlateEditor } from '../SlateEditor/SlateEditor';
 import { TimestampService } from '../SlateCore/services/timestampService';
 import { insertImage, insertAudio } from '../SlateCore/future/imageOperations';
 
 export const TimeLogEditor = ({ event }: { event: Event }) => {
-  // 🎉 直接复用 LightSlateEditor，因为它已经使用了 SlateCore
+  // 🎉 直接复用 SlateEditor，因为它已经使用了 SlateCore
   return (
     <div className="timelog-editor">
-      <LightSlateEditor
+      <SlateEditor
         content={event.eventlog || ''}
         parentEventId={event.id}
         onChange={(json) => {
@@ -699,8 +699,8 @@ export const TimeLogEditor = ({ event }: { event: Event }) => {
 | 阶段 | 时间估算 | 目标 | 关键任务 |
 |------|---------|------|---------|
 | **阶段 1** | 2-3 天 | 创建 SlateCore 基础架构 | 目录结构、类型定义、基础工具函数 |
-| **阶段 2** | 2-3 天 | 重构 LightSlateEditor | 替换内部实现、测试验证 |
-| **阶段 3** | 3-4 天 | 重构 UnifiedSlateEditor | 渐进式替换、保留特有逻辑 |
+| **阶段 2** | 2-3 天 | 重构 SlateEditor | 替换内部实现、测试验证 |
+| **阶段 3** | 3-4 天 | 重构 PlanSlateEditor | 渐进式替换、保留特有逻辑 |
 | **阶段 4** | 1-2 天 | 文档与优化 | API 文档、性能优化、代码审查 |
 
 **总计**: 8-12 天（约 2 周）
@@ -726,8 +726,8 @@ export const TimeLogEditor = ({ event }: { event: Event }) => {
   - [ ] decreaseBulletLevel
   - [ ] toggleBullet
   - [ ] handleBulletBackspace
-- [ ] 重构 `SlateCore/services/timestampService.ts`（从 UnifiedSlateEditor 移动）
-- [ ] 重构 `SlateCore/operations/inlineHelpers.ts`（从 UnifiedSlateEditor/helpers.ts）
+- [ ] 重构 `SlateCore/services/timestampService.ts`（从 PlanSlateEditor 移动）
+- [ ] 重构 `SlateCore/operations/inlineHelpers.ts`（从 PlanSlateEditor/helpers.ts）
 - [ ] 移动共享元素到 `SlateCore/elements/`
   - [ ] TagElement.tsx
   - [ ] DateMentionElement.tsx
@@ -737,7 +737,7 @@ export const TimeLogEditor = ({ event }: { event: Event }) => {
   - [ ] slateNodesToJson
 - [ ] 创建 `SlateCore/index.ts` 统一导出
 
-#### 阶段 2: 重构 LightSlateEditor
+#### 阶段 2: 重构 SlateEditor
 
 - [ ] 替换段落移动函数（使用 SlateCore/paragraphOperations）
 - [ ] 替换 Bullet 操作（使用 SlateCore/bulletOperations）
@@ -746,9 +746,9 @@ export const TimeLogEditor = ({ event }: { event: Event }) => {
 - [ ] 更新元素导入路径（从 SlateCore/elements 导入）
 - [ ] 测试 EventEditModal 实际进展区域功能
 - [ ] 测试段落移动、bullet 删除、timestamp 插入
-- [ ] Git 提交：`feat(SlateCore): 重构 LightSlateEditor 使用共享层`
+- [ ] Git 提交：`feat(SlateCore): 重构 SlateEditor 使用共享层`
 
-#### 阶段 3: 重构 UnifiedSlateEditor
+#### 阶段 3: 重构 PlanSlateEditor
 
 - [ ] 替换通用节点操作（使用 SlateCore/nodeOperations）
 - [ ] 替换段落移动基础逻辑（保留双模式特有逻辑）
@@ -757,14 +757,14 @@ export const TimeLogEditor = ({ event }: { event: Event }) => {
 - [ ] 保留 EventLine 特有逻辑（serialization、EventLineElement）
 - [ ] 测试 PlanManager 功能
 - [ ] 测试双模式段落移动、checkbox 同步
-- [ ] Git 提交：`refactor(SlateCore): 重构 UnifiedSlateEditor 使用共享层`
+- [ ] Git 提交：`refactor(SlateCore): 重构 PlanSlateEditor 使用共享层`
 
 #### 阶段 4: 文档与优化
 
 - [ ] 更新 SLATE_EDITOR_PRD.md
   - [ ] 添加 SlateCore 架构章节
-  - [ ] 更新 LightSlateEditor 章节
-  - [ ] 更新 UnifiedSlateEditor 章节
+  - [ ] 更新 SlateEditor 章节
+  - [ ] 更新 PlanSlateEditor 章节
 - [ ] 创建 SLATE_CORE_API.md
   - [ ] API 文档
   - [ ] 使用示例
@@ -802,14 +802,14 @@ export const TimeLogEditor = ({ event }: { event: Event }) => {
 
 ### 6.1 TimeLog 模块集成
 
-- 直接使用 LightSlateEditor 作为基础编辑器
+- 直接使用 SlateEditor 作为基础编辑器
 - 添加 TimeLog 特有功能（时间轴展示、事件卡片、过滤器）
 - 使用 SlateCore 扩展功能（图片、语音、扩展 mention）
 
 ### 6.2 更多编辑器场景
 
-- **NotesEditor**: 笔记编辑器（基于 LightSlateEditor）
-- **CommentEditor**: 评论编辑器（简化版 LightSlateEditor）
+- **NotesEditor**: 笔记编辑器（基于 SlateEditor）
+- **CommentEditor**: 评论编辑器（简化版 SlateEditor）
 - **RichTextModal**: 通用富文本弹窗（复用 SlateCore 所有功能）
 
 ### 6.3 插件系统
@@ -857,9 +857,9 @@ export function withPlugins(editor: Editor, plugins: SlatePlugin[]): Editor {
 
 ### 7.3 下一步行动
 
-1. **立即**: 更新 SLATE_EDITOR_PRD.md，区分 UnifiedSlate 和 LightSlate 章节
+1. **立即**: 更新 SLATE_EDITOR_PRD.md，区分 PlanSlate 和 Slate 章节
 2. **本周**: 开始阶段 1，创建 SlateCore 基础架构
-3. **下周**: 完成阶段 2，重构 LightSlateEditor
+3. **下周**: 完成阶段 2，重构 SlateEditor
 4. **两周内**: 完成所有重构，发布 v1.0 文档
 
 ---

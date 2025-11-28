@@ -1,4 +1,4 @@
-# TagManager 模块产品需求文档 (PRD)
+﻿# TagManager 模块产品需求文档 (PRD)
 
 **文档版本**: v1.2  
 **最后更新**: 2025-11-19  
@@ -2659,14 +2659,14 @@ src/components/SlateEditor/          // 共享 Slate 基础设施
 ├── SlateLine.tsx                     // 单行 Slate 编辑器
 └── SlateFloatingToolbar.tsx          // 浮动工具栏
 
-src/components/UnifiedSlateEditor/    // PlanManager 使用的编辑器
-└── UnifiedSlateEditor.tsx            // 多行 Slate 编辑器（支持层级、跨行选择）
+src/components/PlanSlateEditor/    // PlanManager 使用的编辑器
+└── PlanSlateEditor.tsx            // 多行 Slate 编辑器（支持层级、跨行选择）
 ```
 
 **PlanManager 已经使用 Slate.js**（位置: `PlanManager.tsx` L7-8）：
 ```tsx
 import { SlateFreeFormEditor } from './MultiLineEditor/SlateFreeFormEditor';
-import { UnifiedSlateEditor } from './UnifiedSlateEditor/UnifiedSlateEditor';
+import { PlanSlateEditor } from './PlanSlateEditor/PlanSlateEditor';
 ```
 
 ---

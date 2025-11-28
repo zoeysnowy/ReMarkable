@@ -1,4 +1,4 @@
-# TimeCalendar 模块 PRD
+﻿# TimeCalendar 模块 PRD
 
 > **文档版本**: v0.2  
 > **创建日期**: 2025-11-05  

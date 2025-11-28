@@ -1,4 +1,4 @@
-# ReMarkable 浮动组件产品需求文档 (PRD)
+﻿# ReMarkable 浮动组件产品需求文档 (PRD)
 
 **最后更新**: 2025-11-18
 
@@ -200,7 +200,7 @@ function PlanManager() {
 
   return (
     <>
-      <UnifiedSlateEditor
+      <PlanSlateEditor
         onEditorReady={(editor) => {
           unifiedEditorRef.current = editor;
         }}
@@ -954,7 +954,7 @@ paragraphsWithLevel.forEach((pwl, index) => {
 
 #### CSS 渲染
 
-**符号样式** (UnifiedSlateEditor.css):
+**符号样式** (PlanSlateEditor.css):
 ```css
 /* Level 1: ● */
 .slate-bullet-paragraph[data-level="0"]::before {
@@ -1019,7 +1019,7 @@ const toggleBulletPoint = () => {
 
 #### Tab 键处理
 
-**文件**: `UnifiedSlateEditor.tsx` (L1295-1380)
+**文件**: `PlanSlateEditor.tsx` (L1295-1380)
 
 ```typescript
 const handleKeyDown = (event: React.KeyboardEvent) => {
@@ -1454,7 +1454,7 @@ ReMarkable 的浮动组件体系提供了两套互补的 UI 方案：
 **最后更新**: 2025-11-14  
 **维护者**: ReMarkable Team
 
-## 🆕 UnifiedSlateEditor 集成 (2025-11-06)
+## 🆕 PlanSlateEditor 集成 (2025-11-06)
 
 ### 架构变更
 
@@ -1472,11 +1472,11 @@ onTagSelect={(tagId) => {
 **现在**: 使用单个 Slate editor 实例 + helper 函数
 ```typescript
 // ✅ 新架构
-import { insertTag, insertEmoji, insertDateMention } from '@/components/UnifiedSlateEditor/helpers';
+import { insertTag, insertEmoji, insertDateMention } from '@/components/PlanSlateEditor/helpers';
 
 const unifiedEditorRef = useRef<Editor>(null);
 
-<UnifiedSlateEditor
+<PlanSlateEditor
   onEditorReady={(editor) => {
     unifiedEditorRef.current = editor;
   }}
@@ -1486,14 +1486,14 @@ onTagSelect={(tagIds) => {
   const editor = unifiedEditorRef.current;
   const tag = TagService.getTagById(tagIds[0]);
   insertTag(editor, tag.id, tag.name, tag.color, tag.emoji);
-  // ✅ UnifiedSlateEditor 的 onChange 会自动保存
+  // ✅ PlanSlateEditor 的 onChange 会自动保存
 }}
 ```
 
 ### 新增 Helper 函数
 
 ```typescript
-// src/components/UnifiedSlateEditor/helpers.ts
+// src/components/PlanSlateEditor/helpers.ts
 
 /**
  * 插入 Tag 元素
@@ -1573,12 +1573,12 @@ const updatedItem = { ...item, content: updatedHTML };
 onSave(updatedItem);
 ```
 
-**现在**: UnifiedSlateEditor 自动保存，只需同步 EventService
+**现在**: PlanSlateEditor 自动保存，只需同步 EventService
 ```typescript
 // ✅ 新代码
 onTimeApplied={(startIso, endIso) => {
   // TimeHub 已更新时间
-  // UnifiedSlateEditor 的 onChange 会自动保存内容
+  // PlanSlateEditor 的 onChange 会自动保存内容
   
   // 只需同步 EventService
   if (item.id) {
