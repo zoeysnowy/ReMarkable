@@ -379,6 +379,14 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     }
   });
 
+  // 🆕 同步 formData.actualSyncConfig 到 syncCalendarIds
+  React.useEffect(() => {
+    if (formData.actualSyncConfig?.targetCalendars) {
+      console.log('🔄 [EventEditModalV2] 同步 actualSyncConfig 到 syncCalendarIds:', formData.actualSyncConfig.targetCalendars);
+      setSyncCalendarIds(formData.actualSyncConfig.targetCalendars);
+    }
+  }, [formData.actualSyncConfig?.targetCalendars]);
+
   // 🆕 刷新计数器：用于强制刷新 parentEvent 和 childEvents
   const [refreshCounter, setRefreshCounter] = React.useState(0);
 
