@@ -575,17 +575,18 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     },
   });
   
-  // 🔧 同步模式 UI 状态（从 event 或 formData 初始化）
+  // 🔧 同步模式 UI 状态（从 formData 初始化，formData.syncMode 已根据事件来源正确设置）
   const [sourceSyncMode, setSourceSyncMode] = useState(() => {
-    return event?.syncMode || formData.syncMode || 'receive-only';
+    return formData.syncMode; // ✅ 直接使用 formData.syncMode，它已经根据事件来源正确设置了默认值
   });
   const [syncSyncMode, setSyncSyncMode] = useState(() => {
     // 实际进展同步模式：子事件模式从 mainEvent 读取，父事件模式从 subEventConfig 读取
     if (!isParentMode) {
-      return event?.syncMode || 'send-only';
+      // ✅ 子事件模式：使用 formData.syncMode（已根据事件来源正确设置）
+      return formData.syncMode;
     } else {
-      // 父模式：从 subEventConfig 读取模板配置
-      return event?.subEventConfig?.syncMode || 'send-only';
+      // ✅ 父模式：使用 formData.subEventConfig.syncMode（默认 bidirectional-private）
+      return formData.subEventConfig?.syncMode || 'bidirectional-private';
     }
   });
 
