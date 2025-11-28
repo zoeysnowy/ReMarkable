@@ -331,20 +331,25 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     console.log('🔄 [EventEditModalV2] event prop 变化，同步更新 formData + UI 状态');
     console.log('📥 新 event.calendarIds:', event.calendarIds);
     console.log('📥 新 event.syncMode:', event.syncMode);
+    console.log('📥 新 event.remarkableSource:', event.remarkableSource);
+    console.log('📥 新 event.source:', event.source);
+    
+    // ✅ 根据事件来源设置正确的 syncMode 默认值
+    const defaultSyncMode = (() => {
+      if (event.syncMode) return event.syncMode; // 如果已有 syncMode，使用现有值
+      const isLocalEvent = event.remarkableSource === true || event.source === 'local';
+      return isLocalEvent ? 'bidirectional-private' : 'receive-only';
+    })();
+    
+    console.log('🔍 [EventEditModalV2] 计算得到的 defaultSyncMode:', defaultSyncMode);
     
     // 更新 formData
     setFormData(prev => ({
       ...prev,
       calendarIds: event.calendarIds || [],
-      syncMode: event.syncMode || 'receive-only',
-      subEventConfig: event.subEventConfig || { calendarIds: [], syncMode: 'send-only' }
+      syncMode: defaultSyncMode,
+      subEventConfig: event.subEventConfig || { calendarIds: [], syncMode: 'bidirectional-private' }
     }));
-    
-    // 🔧 同步更新 UI 状态
-    if (event.syncMode) {
-      setSourceSyncMode(event.syncMode);
-      console.log('🔄 [EventEditModalV2] 同步 sourceSyncMode:', event.syncMode);
-    }
     
     console.log('✅ [EventEditModalV2] formData + UI 状态已同步更新');
   }, [event?.id, event?.calendarIds, event?.syncMode]);

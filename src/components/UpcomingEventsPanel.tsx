@@ -67,16 +67,33 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
     // 初始加载
     loadEvents();
 
-    // 监听事件更新
+    // 🔧 [FIX] 防抖处理：避免频繁重载导致性能问题
+    let loadEventsTimer: number | null = null;
+    
+    // 监听事件更新 - 300ms 防抖
     const handleEventsUpdated = (e: any) => {
       console.log('[UpcomingEventsPanel] 收到 eventsUpdated 事件:', e.detail);
-      loadEvents();
+      
+      // 清除之前的定时器
+      if (loadEventsTimer !== null) {
+        window.clearTimeout(loadEventsTimer);
+      }
+      
+      // 300ms 后执行重载（与 PlanManager 的 debouncedOnChange 同步）
+      loadEventsTimer = window.setTimeout(() => {
+        loadEvents();
+        loadEventsTimer = null;
+      }, 300);
     };
 
     window.addEventListener('eventsUpdated', handleEventsUpdated as EventListener);
 
     return () => {
       window.removeEventListener('eventsUpdated', handleEventsUpdated);
+      // 清理定时器
+      if (loadEventsTimer !== null) {
+        window.clearTimeout(loadEventsTimer);
+      }
     };
   }, []);
 
