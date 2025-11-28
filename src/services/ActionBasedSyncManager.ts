@@ -1964,17 +1964,11 @@ private getUserSettings(): any {
           syncStatus: 'synced'
         };
         
-        // 🔧 同步 eventlog
-        if (descriptionChanged && typeof localEvent.eventlog === 'object' && localEvent.eventlog !== null) {
-          updates.eventlog = {
-            ...localEvent.eventlog,
-            content: JSON.stringify([{ type: 'paragraph', children: [{ text: cleanDescription }] }]),
-            descriptionHtml: cleanDescription,
-            descriptionPlainText: cleanDescription.replace(/<[^>]*>/g, ''),
-            updatedAt: formatTimeForStorage(new Date()),
-          };
-        } else if (descriptionChanged) {
-          updates.eventlog = cleanDescription;
+        // 🔧 同步 eventlog（使用 Slate JSON 格式，让 EventService 自动转换）
+        // EventService 会自动检测 Slate JSON 字符串并转换为 EventLog 对象
+        if (descriptionChanged) {
+          const slateJson = JSON.stringify([{ type: 'paragraph', children: [{ text: cleanDescription }] }]);
+          updates.eventlog = slateJson;  // ✅ 传递 Slate JSON 字符串，EventService 自动转换
         }
         
         // ✅ 通过 EventService 更新（自动触发 eventsUpdated）

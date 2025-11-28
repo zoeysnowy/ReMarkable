@@ -525,28 +525,30 @@ if (node.mode === 'title') {
 3. ✅ **回读精确**: JSON.parse() 直接还原 Slate 节点，无需解析 HTML
 4. ✅ **统一格式**: title.fullTitle 和 eventlog 都用 JSON，架构一致
 
-**回读支持**:
+**EventService 自动标准化**:
 ```typescript
-// ✅ 从 JSON 字符串恢复 Slate 节点（无损还原）
-function parseEventLogToSlateNodes(eventlogJson: string): EventLineNode[] {
-  // eventlog 格式: 多个 JSON 对象用换行符分隔
-  const jsonLines = eventlogJson.split('\n').filter(line => line.trim());
-  
-  return jsonLines.map((jsonStr, index) => {
-    const fragment = JSON.parse(jsonStr);  // ✅ 直接 parse JSON
-    
-    return {
-      type: 'event-line',
-      mode: 'eventlog',
-      lineId: `eventlog-${index}`,
-      level: 0,  // 从 paragraph.bullet/bulletLevel 计算
-      children: [{
-        type: 'paragraph',
-        children: fragment  // ✅ Slate JSON 直接还原
-      }]
-    };
-  });
-}
+// ✅ EventService 自动检测并转换 eventlog 格式（Line 597-659）
+// 输入: Slate JSON 字符串（从 LightSlateEditor、PlanSlate 或 Outlook 同步）
+// 输出: EventLog 对象 { slateJson, html, plainText, ... }
+
+// 场景1: LightSlateEditor 保存（传递 Slate JSON 字符串）
+await EventService.updateEvent(eventId, {
+  eventlog: JSON.stringify(slateNodes)  // ✅ 字符串
+});
+// → EventService 自动转换为 EventLog 对象
+
+// 场景2: ActionBasedSyncManager 同步 Outlook 数据
+await EventService.updateEvent(eventId, {
+  eventlog: JSON.stringify([{ type: 'paragraph', children: [{ text: description }] }])
+});
+// → EventService 自动转换为 EventLog 对象
+
+// 场景3: EventEditModalV2 读取数据（兼容多种格式）
+// EventService.getEventById() 返回的 eventlog 可能是：
+// - EventLog 对象（标准格式）
+// - 字符串（旧数据，向后兼容）
+// - 数组（极少数情况）
+// EventEditModalV2 统一处理，提取 slateJson 或 parse 字符串
 ```
 
 **JSON vs HTML 对比**:
