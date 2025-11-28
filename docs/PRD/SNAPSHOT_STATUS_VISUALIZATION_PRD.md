@@ -402,16 +402,67 @@ if (dateRange) {
 }
 ```
 
+**空白事件防护机制**（v2.5 2025-11-29 完善）:
+
+Ghost 过滤（上述步骤 2）是**第一层防护**，确保 Snapshot 模式下不显示空白的已删除事件。
+
+完整的**三层防护链**:
+
+1. **初始化过滤** (PlanManager.tsx L383-415)
+   - 从 EventService.getAllEvents() 加载时过滤空白事件
+   - 步骤 2.5: 检查标题和 eventlog → 都为空则过滤掉
+   
+2. **eventsUpdated 监听器过滤** (PlanManager.tsx L718-744)
+   - EventService 触发事件更新时早期过滤
+   - 空白事件 → 直接忽略，不触发状态更新
+   
+3. **Snapshot Ghost 过滤** (PlanManager.tsx L1548-1578)
+   - 已删除事件恢复为 ghost 时检测空白
+   - 步骤 2: 标题和 eventlog 都为空 → 跳过不添加 ghost
+
 **关键检查**: `existingAtStart.has(op.eventId)`
 - ✅ **通过**: 事件在 28 号创建，29 号删除 → 查询 28-29 号显示 ghost
 - ❌ **不通过**: 事件在 23 号删除 → 查询 28-29 号**不显示** ghost（因为 28 号起点时已不存在）
 
-**防护机制**:
+**防护机制**（v2.5 2025-11-29 完善）:
 
 ```typescript
-// 1. 初始化过滤：从 localStorage 加载时移除 ghost
+// 1. 初始化过滤：从 localStorage 加载时移除 ghost + 过滤空白事件
 const rawEvents = EventService.getAllEvents();
 const allEvents = rawEvents.filter(e => !(e as any)._isDeleted);
+
+// 1.5 空白事件过滤（新增 L383-415）
+const filtered = allEvents.filter(event => {
+  // ... 包含条件、系统事件排除 ...
+  
+  // 🆕 步骤 2.5: 空白事件过滤
+  const titleObj = event.title;
+  const hasTitle = event.content || 
+                  (typeof titleObj === 'string' ? titleObj : 
+                   (titleObj && (titleObj.simpleTitle || titleObj.fullTitle || titleObj.colorTitle)));
+  
+  const eventlogField = (event as any).eventlog;
+  let hasEventlog = false;
+  
+  if (eventlogField) {
+    if (typeof eventlogField === 'string') {
+      hasEventlog = eventlogField.trim().length > 0;
+    } else if (typeof eventlogField === 'object' && eventlogField !== null) {
+      const slateContent = eventlogField.slateJson || '';
+      const htmlContent = eventlogField.html || '';
+      const plainContent = eventlogField.plainText || '';
+      hasEventlog = slateContent.trim().length > 0 || 
+                   htmlContent.trim().length > 0 || 
+                   plainContent.trim().length > 0;
+    }
+  }
+  
+  if (!hasTitle && !hasEventlog) {
+    return false; // 完全空白的事件，过滤掉
+  }
+  
+  return true;
+});
 
 // 2. 保存时过滤：确保 ghost 不会被保存
 const realItems = updatedItems.filter(item => !(item as any)._isDeleted);
@@ -422,6 +473,43 @@ EventService.batchUpdate(realItems);
   key={dateRange ? `snapshot-${dateRange.start.getTime()}-${dateRange.end.getTime()}` : 'normal'}
   items={editorItems}
 />
+
+// 4. eventsUpdated 监听器过滤（新增 L718-744）
+EventHub.on('eventsUpdated', (changes) => {
+  changes.forEach(change => {
+    const event = change.event;
+    
+    // ... 包含条件、系统事件排除 ...
+    
+    // 🆕 空白事件检查
+    const titleObj = event.title;
+    const hasTitle = event.content || 
+                    (typeof titleObj === 'string' ? titleObj : 
+                     (titleObj && (titleObj.simpleTitle || titleObj.fullTitle || titleObj.colorTitle)));
+    
+    const eventlogField = (event as any).eventlog;
+    let hasEventlog = false;
+    
+    if (eventlogField) {
+      if (typeof eventlogField === 'string') {
+        hasEventlog = eventlogField.trim().length > 0;
+      } else if (typeof eventlogField === 'object' && eventlogField !== null) {
+        const slateContent = eventlogField.slateJson || '';
+        const htmlContent = eventlogField.html || '';
+        const plainContent = eventlogField.plainText || '';
+        hasEventlog = slateContent.trim().length > 0 || 
+                     htmlContent.trim().length > 0 || 
+                     plainContent.trim().length > 0;
+      }
+    }
+    
+    if (!hasTitle && !hasEventlog) {
+      return; // 完全空白的事件，直接忽略
+    }
+    
+    // 处理事件更新...
+  });
+});
 ```
 
 **视觉样式**:
@@ -598,14 +686,56 @@ DOM 测量（getBoundingClientRect）
 - [x] 添加/删除 eventlog → 竖线高度自动调整
 - [x] 折叠/展开 eventlog → ResizeObserver 自动更新
 
-#### 6. Ghost 事件过滤（v2.4 2025-11-28 新增）
-- [x] 场景1：标题为空 + eventlog 为空 → **不显示** ghost ✅
-- [x] 场景2：标题为空 + eventlog 有内容 → 显示 ghost ✅
-- [x] 场景3：标题有内容 + eventlog 为空 → 显示 ghost ✅
-- [x] 场景4：标题有内容 + eventlog 有内容 → 显示 ghost ✅
-- [x] 场景5：eventlog 为字符串格式（空白） → 正确识别为空 ✅
-- [x] 场景6：eventlog 为 EventLog 对象（所有字段为空） → 正确识别为空 ✅
-- [x] 场景7：eventlog 为 EventLog 对象（任一字段有内容） → 正确识别为非空 ✅
+#### 6. Ghost 事件过滤（v2.5 2025-11-29 更新）
+
+**空白事件过滤逻辑**（三层防护）:
+
+1. **Snapshot Ghost 过滤** (PlanManager.tsx L1548-1578) ✅
+   - [x] 场景1：标题为空 + eventlog 为空 → **不显示** ghost ✅
+   - [x] 场景2：标题为空 + eventlog 有内容 → 显示 ghost ✅
+   - [x] 场景3：标题有内容 + eventlog 为空 → 显示 ghost ✅
+   - [x] 场景4：标题有内容 + eventlog 有内容 → 显示 ghost ✅
+   - [x] 场景5：eventlog 为字符串格式（空白） → 正确识别为空 ✅
+   - [x] 场景6：eventlog 为 EventLog 对象（所有字段为空） → 正确识别为空 ✅
+   - [x] 场景7：eventlog 为 EventLog 对象（任一字段有内容） → 正确识别为非空 ✅
+
+2. **初始化过滤** (PlanManager.tsx L383-415) ✅ 新增
+   - [x] 从 EventService 加载时过滤空白事件 → 不加载到内存
+   - [x] 与 Ghost 过滤逻辑一致 → 标题和 eventlog 都为空则过滤
+
+3. **eventsUpdated 监听器过滤** (PlanManager.tsx L718-744) ✅ 新增
+   - [x] 外部事件更新时检测空白 → 直接忽略，不触发状态更新
+   - [x] 与 Ghost 过滤逻辑一致 → 标题和 eventlog 都为空则忽略
+
+**统一的空白检测标准**:
+```typescript
+// 标题检查（支持多种格式）
+const hasTitle = event.content || 
+                (titleObj?.simpleTitle || titleObj?.fullTitle || titleObj?.colorTitle);
+
+// eventlog 检查（支持字符串和对象格式）
+if (typeof eventlogField === 'string') {
+  hasEventlog = eventlogField.trim().length > 0;
+} else if (typeof eventlogField === 'object' && eventlogField !== null) {
+  const slateContent = eventlogField.slateJson || '';
+  const htmlContent = eventlogField.html || '';
+  const plainContent = eventlogField.plainText || '';
+  hasEventlog = slateContent.trim().length > 0 || 
+               htmlContent.trim().length > 0 || 
+               plainContent.trim().length > 0;
+}
+
+// 过滤规则：标题和 eventlog 都为空 → 完全空白事件
+if (!hasTitle && !hasEventlog) {
+  return false; // 过滤掉
+}
+```
+
+**修复效果**:
+- ✅ **正常模式**: 不显示空白事件
+- ✅ **Snapshot 模式**: 不显示空白事件（包括 ghost）
+- ✅ **外部更新**: 忽略空白事件更新
+- ✅ **性能优化**: filter-not-load 策略，不加载到内存
 
 #### 7. 性能测试
 - [x] 100+ 事件 → 竖线渲染流畅（< 100ms）

@@ -903,6 +903,103 @@ const renderElement = useCallback((props: RenderElementProps) => {
 - Snapshot 是 PlanManager 的需求（查看历史时间范围的事件状态）
 - Slate 的历史记录由外部组件管理（EventEditModal 的历史面板）
 
+### 8.4 空白事件过滤机制（v2.5 2025-11-29 新增）
+
+**背景**: Snapshot 模式下曾出现完全空白的事件记录（标题和 eventlog 都为空），影响用户体验。
+
+**解决方案**: 在 PlanManager 的三个关键位置添加空白事件过滤，确保空白事件不会显示在任何模式下。
+
+#### 8.4.1 三层防护机制
+
+**1. 初始化过滤** (PlanManager.tsx L383-415)
+
+从 EventService 加载事件时，在三步过滤公式中新增**步骤 2.5**：
+
+```typescript
+// PlanManager.tsx - 初始化过滤
+const filtered = allEvents.filter((event: Event) => {
+  // 步骤 1: 包含条件（并集）
+  // 步骤 2: 排除系统事件
+  
+  // 🆕 步骤 2.5: 过滤空白事件（标题和 eventlog 都为空）
+  const titleObj = event.title;
+  const hasTitle = event.content || 
+                  (typeof titleObj === 'string' ? titleObj : 
+                   (titleObj && (titleObj.simpleTitle || titleObj.fullTitle || titleObj.colorTitle)));
+  
+  const eventlogField = (event as any).eventlog;
+  let hasEventlog = false;
+  
+  if (eventlogField) {
+    if (typeof eventlogField === 'string') {
+      hasEventlog = eventlogField.trim().length > 0;
+    } else if (typeof eventlogField === 'object' && eventlogField !== null) {
+      const slateContent = eventlogField.slateJson || '';
+      const htmlContent = eventlogField.html || '';
+      const plainContent = eventlogField.plainText || '';
+      hasEventlog = slateContent.trim().length > 0 || 
+                   htmlContent.trim().length > 0 || 
+                   plainContent.trim().length > 0;
+    }
+  }
+  
+  if (!hasTitle && !hasEventlog) {
+    return false; // 完全空白的事件，过滤掉
+  }
+  
+  // 步骤 3: 过期/完成处理
+});
+```
+
+**2. eventsUpdated 监听器过滤** (PlanManager.tsx L718-744)
+
+EventService 触发事件更新时，在早期过滤中新增**空白事件检查**。
+
+**3. Snapshot Ghost 过滤** (PlanManager.tsx L1548-1578)
+
+Snapshot 模式下添加已删除事件为 ghost 时，过滤空白事件。
+
+#### 8.4.2 统一的空白检测标准
+
+所有三处使用**完全一致**的空白检测逻辑：
+
+**标题检查**:
+- 支持多种格式：`content`, `simpleTitle`, `fullTitle`, `colorTitle`
+- 任一字段有内容即算有标题
+
+**eventlog 检查**:
+- 字符串格式：`trim()` 后长度 > 0
+- EventLog 对象格式：检查 `slateJson`, `html`, `plainText` 任一字段有内容
+
+**过滤规则**:
+```typescript
+if (!hasTitle && !hasEventlog) {
+  // 标题和 eventlog 都为空 → 完全空白事件 → 过滤掉
+  return false;
+}
+```
+
+#### 8.4.3 修复效果
+
+- ✅ **正常模式**: 不显示空白事件
+- ✅ **Snapshot 模式**: 不显示空白事件（包括 ghost）
+- ✅ **外部更新**: 忽略空白事件更新，不触发状态更新
+- ✅ **性能优化**: filter-not-load 策略，空白事件不加载到内存
+- ✅ **一致性**: 与 handleEditorChange (L1064-1084) 空白删除逻辑一致
+
+#### 8.4.4 与 Slate 的对比
+
+| 功能 | PlanSlate | Slate |
+|------|-----------|-------|
+| **空白事件过滤** | ✅ 三层防护（初始化+监听器+ghost） | ❌ 无需（单内容编辑） |
+| **多格式检测** | ✅ 标题多格式 + eventlog 字符串/对象 | ❌ |
+| **Snapshot 防护** | ✅ Ghost 过滤避免空白历史 | ❌ |
+
+**为什么 Slate 不需要空白事件过滤?**
+- Slate 用于编辑单个内容，不管理事件列表
+- 空白内容由外部组件（EventEditModal）判断是否保存
+- PlanManager 需要过滤空白事件，保持列表清爽
+
 ---
 
 ## 9. 功能对比总结
