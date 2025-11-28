@@ -18,6 +18,11 @@
 > - ✅ **动态 menuItemCount 机制**: 根据 activePicker 状态动态计算菜单项数量（主菜单 5 项，textStyle 子菜单 7 项）
 > - ✅ **状态同步架构**: `onSubPickerStateChange(isOpen, activePicker)` 回调传递当前菜单状态
 > - ✅ **键盘快捷键文档**: 完善 FloatingToolbar 数字键快捷键说明（主菜单 1-5，textStyle 子菜单 1-7）
+> - 🆕 **标签自动映射日历功能**: 添加标签时自动更新同步日历配置
+>   - **本地事件**: Plan + Actual 都自动添加标签映射的日历，默认 `bidirectional-private`
+>   - **远程事件**: Plan 保持 `receive-only` 不添加映射，Actual 自动添加标签映射的日历
+>   - **实时同步**: 标签变更后，日历选择器立即更新显示
+>   - **智能合并**: 与用户手动选择的日历合并（不覆盖）
 > 
 > **🔥 v2.0.4 历史更新** (2025-11-27):
 > - ✅ **父-子事件单一配置架构**: 移除 planSyncConfig/actualSyncConfig 双配置，改用 calendarIds + syncMode 单一配置
@@ -2952,6 +2957,104 @@ function getTagMappedCalendarIds(
 }
 
 /**
+ * 🆕 v2.0.5 标签变更时自动映射日历功能
+ * 
+ * 功能说明：
+ * 当用户添加/删除标签时，自动更新事件的同步日历配置
+ * 
+ * 规则 1: 本地事件（remarkableSource = true 或 source = 'local'）
+ *   - 计划安排部分：自动添加标签映射的日历到 calendarIds
+ *   - 实际进展部分：自动添加标签映射的日历到 subEventConfig.calendarIds
+ *   - 同步模式：默认 'bidirectional-private'（双向同步-仅自己）
+ * 
+ * 规则 2: 远程事件（来自外部日历同步）
+ *   - 计划安排部分：保持原有配置，不添加标签映射（syncMode = 'receive-only'）
+ *   - 实际进展部分：自动添加标签映射的日历到 subEventConfig.calendarIds
+ *   - 同步模式：实际进展默认 'bidirectional-private'
+ * 
+ * 实现位置：EventEditModalV2 标签选择器的 onSelectionChange 回调
+ */
+function handleTagSelectionChange(
+  selectedTagIds: string[],
+  event: Event,
+  isParentMode: boolean,
+  setFormData: (updater: (prev: MockEvent) => MockEvent) => void
+): void {
+  // 判断事件来源
+  const isLocalEvent = event.remarkableSource === true || event.source === 'local';
+  
+  // 提取所有标签映射的日历 IDs
+  const tagService = TagService;
+  const flatTags = tagService.getFlatTags();
+  const mappedCalendarIds = selectedTagIds
+    .map(tagId => flatTags.find(t => t.id === tagId)?.calendarMapping?.calendarId)
+    .filter(id => !!id) as string[];
+  
+  // 根据事件来源应用不同规则
+  setFormData(prev => {
+    if (isLocalEvent) {
+      // 规则 1: 本地事件
+      // Plan 和 Actual 都自动添加标签映射的日历
+      const newCalendarIds = [
+        ...new Set([...(prev.calendarIds || []), ...mappedCalendarIds])
+      ];
+      
+      const newSubEventConfig = {
+        ...prev.subEventConfig,
+        calendarIds: [...new Set([...(prev.subEventConfig?.calendarIds || []), ...mappedCalendarIds])],
+        syncMode: prev.subEventConfig?.syncMode || 'bidirectional-private'
+      };
+      
+      return {
+        ...prev,
+        tags: selectedTagIds,
+        calendarIds: newCalendarIds,
+        syncMode: prev.syncMode || 'bidirectional-private',
+        subEventConfig: newSubEventConfig
+      };
+    } else {
+      // 规则 2: 远程事件
+      // Plan 保持 receive-only，不添加映射
+      // Actual 自动添加标签映射的日历
+      const newSubEventConfig = {
+        ...prev.subEventConfig,
+        calendarIds: [...new Set([...(prev.subEventConfig?.calendarIds || []), ...mappedCalendarIds])],
+        syncMode: prev.subEventConfig?.syncMode || 'bidirectional-private'
+      };
+      
+      return {
+        ...prev,
+        tags: selectedTagIds,
+        // 保持原有 Plan 配置
+        calendarIds: prev.calendarIds || [],
+        syncMode: prev.syncMode || 'receive-only',
+        // 更新 Actual 配置
+        subEventConfig: newSubEventConfig
+      };
+    }
+  });
+}
+
+/**
+ * 🆕 标签选择器渲染（集成自动映射）
+ */
+function renderTagSelectorWithAutoMapping(
+  event: Event,
+  isParentMode: boolean,
+  formData: MockEvent,
+  setFormData: (updater: (prev: MockEvent) => MockEvent) => void
+): ReactNode {
+  return (
+    <TagSelector
+      selectedTagIds={formData.tags || []}
+      onSelectionChange={(selectedIds) => {
+        handleTagSelectionChange(selectedIds, event, isParentMode, setFormData);
+      }}
+    />
+  );
+}
+
+/**
  * 🆕 构建日历选择器选项
  * 合并来源日历 + 标签映射 + 用户已选
  */
@@ -4965,6 +5068,64 @@ function formatDuration(ms: number): string {
 #### 2.4.2 日历同步场景矩阵概览
 
 > **📋 完整场景分析**: 详见下方同步场景矩阵概览
+
+**🆕 v2.0.5 标签自动映射日历功能** (2025-11-28):
+
+当用户添加或删除标签时，EventEditModal 会自动更新事件的同步日历配置：
+
+**规则 1: 本地事件**（`remarkableSource = true` 或 `source = 'local'`）
+```typescript
+// 行为：Plan 和 Actual 都自动添加标签映射的日历
+const isLocalEvent = event.remarkableSource === true || event.source === 'local';
+
+if (isLocalEvent) {
+  // ✅ 计划安排部分：自动添加标签映射日历到 calendarIds
+  event.calendarIds = [...event.calendarIds, ...tagMappedCalendarIds];
+  event.syncMode = event.syncMode || 'bidirectional-private';
+  
+  // ✅ 实际进展部分：自动添加标签映射日历到 subEventConfig
+  event.subEventConfig.calendarIds = [...event.subEventConfig.calendarIds, ...tagMappedCalendarIds];
+  event.subEventConfig.syncMode = event.subEventConfig.syncMode || 'bidirectional-private';
+}
+```
+
+**规则 2: 远程事件**（来自外部日历同步，如 Outlook/Google/iCloud）
+```typescript
+// 行为：Plan 保持 receive-only，Actual 自动添加标签映射的日历
+const isRemoteEvent = !isLocalEvent;
+
+if (isRemoteEvent) {
+  // ⛔ 计划安排部分：不添加标签映射，保持原有配置
+  // 原因：避免修改外部日历的原始事件
+  event.calendarIds = event.calendarIds;  // 保持不变
+  event.syncMode = 'receive-only';        // 保持只接收
+  
+  // ✅ 实际进展部分：自动添加标签映射日历到 subEventConfig
+  event.subEventConfig.calendarIds = [...event.subEventConfig.calendarIds, ...tagMappedCalendarIds];
+  event.subEventConfig.syncMode = event.subEventConfig.syncMode || 'bidirectional-private';
+}
+```
+
+**关键设计原则**:
+- ✅ **智能合并**：与用户手动选择的日历合并，不覆盖已有配置
+- ✅ **实时同步**：标签变更后，日历选择器立即更新显示
+- ✅ **去重处理**：同一日历被多个标签映射时自动去重
+- ✅ **保护来源**：远程事件的计划安排部分保持 receive-only，不被标签映射影响
+- ✅ **默认 Private**：自动添加的日历默认使用 'bidirectional-private' 模式（避免通知打扰）
+
+**用户体验**:
+1. 用户在 EventEditModal 添加标签 `#工作`
+2. 如果标签 `#工作` 映射到 `Outlook Work` 日历
+3. 系统自动勾选该日历，并在日历选择器中显示标签名称
+4. 用户可以取消勾选，此时标签保留但不同步到该日历
+5. 保存事件后，calendarIds 和 subEventConfig 正确更新
+
+**实现位置**:
+- `EventEditModalV2.tsx` (L1765-1830): 标签选择器 onSelectionChange 回调
+- `EventEditModalV2.tsx` (L382-388): actualSyncConfig → syncCalendarIds 同步 useEffect
+- `EventEditModalV2.tsx` (L318-345): event prop → formData 同步 useEffect
+
+---
 
 **相同日历的 9 种场景**（Plan 和 Actual 选择同一日历时）:
 
@@ -9371,6 +9532,36 @@ sequenceDiagram
 - [ ] **多标签显示第一个**: 多个标签映射到同一日历，只显示第一个标签
 - [ ] **取消勾选标签日历**: 可以取消勾选，保留标签但不同步
 - [ ] **标签颜色正确**: 标签名称的颜色和边框与标签本身一致
+
+#### 🆕 v2.0.5 标签变更时自动映射日历（2025-11-28）
+
+**本地事件（remarkableSource = true 或 source = 'local'）**:
+- [ ] **添加标签 → Plan 自动更新**: 添加有日历映射的标签后，计划安排的同步日历自动添加映射日历
+- [ ] **添加标签 → Actual 自动更新**: 添加有日历映射的标签后，实际进展的同步日历自动添加映射日历
+- [ ] **默认同步模式**: 自动添加的日历默认使用 'bidirectional-private' 模式
+- [ ] **删除标签 → 保留日历**: 删除标签后，手动选择的日历保持勾选
+- [ ] **多标签累加**: 添加多个有映射的标签，所有映射日历都自动添加（去重）
+
+**远程事件（来自外部日历同步）**:
+- [ ] **添加标签 → Plan 保持 receive-only**: 添加标签后，计划安排的同步配置不变（保持 receive-only）
+- [ ] **添加标签 → Actual 自动更新**: 添加有日历映射的标签后，实际进展的同步日历自动添加映射日历
+- [ ] **Plan 不添加映射**: 计划安排部分不自动添加标签映射的日历（避免改变远程事件）
+- [ ] **Actual 默认同步模式**: 实际进展自动添加的日历默认使用 'bidirectional-private' 模式
+- [ ] **来源日历保护**: 来源日历始终保持在 Plan 配置中
+
+**实时同步验证**:
+- [ ] **Plan 日历选择器实时更新**: 添加标签后，计划安排的日历选择器立即显示新日历
+- [ ] **Actual 日历选择器实时更新**: 添加标签后，实际进展的日历选择器立即显示新日历
+- [ ] **同步状态显示**: 自动添加的日历正确显示勾选状态和标签名称
+- [ ] **formData 同步**: calendarIds 和 subEventConfig.calendarIds 正确更新
+- [ ] **无闪烁**: UI 更新平滑，无明显闪烁或延迟
+
+**边界情况**:
+- [ ] **无日历映射的标签**: 添加没有日历映射的标签，不触发自动映射
+- [ ] **标签映射不存在的日历**: 标签映射的日历不在可用列表中，自动过滤
+- [ ] **重复映射**: 同一日历被多个标签映射，去重处理
+- [ ] **父子模式切换**: 父模式和子模式下，标签映射行为正确
+- [ ] **已有配置保留**: 用户手动选择的日历不被自动映射覆盖（合并添加）
 
 #### 同步逻辑
 - [ ] **基于 calendarIds 同步**: 取消勾选日历后，不同步到该日历
