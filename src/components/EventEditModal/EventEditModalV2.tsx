@@ -2532,11 +2532,12 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                           还没有计时记录
                         </div>
                       )}
+                </div>
 
-                      {/* 同步状态 */}
-                      <div className="eventmodal-v2-plan-row" style={{ marginTop: '12px', position: 'relative' }}>
-                    <span style={{ flexShrink: 0, color: '#6b7280' }}>同步</span>
-                    <div className="eventmodal-v2-plan-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                {/* 实际进展同步状态 */}
+                <div className="eventmodal-v2-plan-row" style={{ marginTop: '4px' }}>
+                  <span style={{ flexShrink: 0, color: '#6b7280' }}>同步</span>
+                  <div className="eventmodal-v2-plan-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       {/* 日历选择区域 */}
                       <div style={{ position: 'relative', maxWidth: '200px', minWidth: '140px' }}>
                         <div 
@@ -2783,10 +2784,9 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                         )}
                       </div>
                     </div>
+                  </div>
 
-                      </div>
-                    </div>
-              </div>
+                </div>
 
               {/* 右侧：Event Log（仅详情视图） */}
               {isDetailView && (

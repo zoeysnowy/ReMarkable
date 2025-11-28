@@ -635,11 +635,44 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         return;
       }
       
-      // 🎯 提前过滤：只处理 isPlan 事件（避免处理 Outlook/Timer 等无关事件）
+      // 🎯 提前过滤：使用完整的 PlanManager 显示规则（并集逻辑）
       const event = EventService.getEventById(eventId);
-      if (!event || !event.isPlan) {
-        // 🚫 不是 Plan 事件，直接忽略（远程同步、Timer 等）
+      if (!event) {
         return;
+      }
+      
+      // 并集条件：isPlan OR checkType !== 'none' OR isTimeCalendar
+      const matchesInclusionCriteria = 
+        event.isPlan === true || 
+        (event.checkType && event.checkType !== 'none') ||
+        event.isTimeCalendar === true;
+      
+      if (!matchesInclusionCriteria) {
+        // 🚫 不满足任何显示条件，直接忽略
+        return;
+      }
+      
+      // 排除条件：系统事件
+      if (event.isTimer === true || 
+          event.isOutsideApp === true || 
+          event.isTimeLog === true) {
+        // 🚫 系统事件，直接忽略
+        return;
+      }
+      
+      // 排除条件：过期的 TimeCalendar
+      if (event.isTimeCalendar) {
+        if (event.endTime) {
+          const endTime = new Date(event.endTime);
+          const now = new Date();
+          if (now >= endTime) {
+            // 🚫 TimeCalendar 已过期，直接忽略
+            return;
+          }
+        } else {
+          // 🚫 没有 endTime 的 TimeCalendar，视为过期
+          return;
+        }
       }
       
       // ✅ 确认为 Plan 事件的外部更新，执行同步
@@ -683,14 +716,6 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         // 增量更新
         const updatedEvent = EventService.getEventById(eventId);
         if (updatedEvent) {
-          // 🐛 DEBUG: Log checkType from EventService (checkType is at root level)
-          console.log('🔍 [PlanManager] updatedEvent from EventService:', {
-            eventId: eventId?.slice(-10),
-            checkType: updatedEvent.checkType,
-            checkedCount: updatedEvent.checked?.length || 0,
-            title: updatedEvent.title?.simpleTitle?.substring(0, 20)
-          });
-          
           setItems(prev => {
             return prev.map((e: Event) => e.id === eventId ? updatedEvent : e);
           });
