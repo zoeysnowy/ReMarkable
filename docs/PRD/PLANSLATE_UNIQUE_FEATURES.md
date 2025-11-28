@@ -560,17 +560,24 @@ function parseEventLogToSlateNodes(eventlogJson: string): EventLineNode[] {
 // 优势: Slate 结构完整保留，JSON.parse() 直接还原
 ```
 
-### 6.3 与 Slate 序列化对比
+### 6.3 与 SlateEditor 序列化对比
 
-| 特性 | PlanSlate | Slate |
+| 特性 | PlanSlate | SlateEditor |
 |------|--------------|------------|
 | **序列化格式** | ✅ JSON（Slate 原生格式） | ✅ JSON（Slate 原生格式） |
-| **存储方式** | title.fullTitle + eventlog（JSON 字符串） | content（JSON 字符串） |
+| **存储方式** | title.fullTitle + eventlog（JSON 字符串） | eventlog（JSON 字符串） |
+| **使用场景** | PlanManager（多事件列表编辑） | EventEditModal（单事件详情编辑） |
+| **编辑器实例** | UnifiedSlateEditor（1个实例管理多事件） | LightSlateEditor（1个实例编辑1个eventlog） |
 | **层级信息** | ✅ 保留 level（EventLine 层级） + bulletLevel（段落层级） | ✅ 保留 bulletLevel（段落层级） |
 | **多段落支持** | ✅ 每个段落独立 EventLine | ✅ 扁平 paragraph[] |
 | **元数据保留** | ✅ 完整 metadata 对象（EventMetadata） | ❌ 无需元数据 |
-| **事件分组** | ✅ 按 eventId 分组（多事件管理） | ❌ 单一内容 |
-| **架构统一性** | ✅ 与 Slate 相同的 JSON 格式 | ✅ 标准 Slate JSON |
+| **事件分组** | ✅ 按 eventId 分组（多事件管理） | ❌ 单一 eventlog 内容 |
+| **架构统一性** | ✅ 与 SlateEditor 相同的 JSON 格式 | ✅ 标准 Slate JSON |
+
+**重要澄清**:
+1. ✅ **都使用 JSON 格式**: PlanSlate（UnifiedSlateEditor）和 SlateEditor（LightSlateEditor）都使用 Slate JSON 格式存储富文本
+2. ✅ **每个页面一个编辑器实例**: PlanManager 使用 1 个 UnifiedSlateEditor 实例（管理多个事件的 title），EventEditModal 使用 1 个 LightSlateEditor 实例（编辑单个事件的 eventlog）
+3. ✅ **eventlog 字段**: 存储为 JSON 字符串（`JSON.stringify(slateFragment)`），读取时 `JSON.parse()` 还原
 
 ---
 
@@ -900,17 +907,19 @@ const renderElement = useCallback((props: RenderElementProps) => {
 
 ### 9.1 架构层面
 
-| 功能 | PlanSlate | Slate | 是否共享 |
+| 功能 | PlanSlate (UnifiedSlateEditor) | SlateEditor (LightSlateEditor) | 是否共享 |
 |------|--------------|------------|----------|
+| **使用场景** | PlanManager（多事件列表） | EventEditModal（单事件详情） | ❌ |
+| **编辑器实例** | 1个实例管理多事件 | 1个实例编辑1个eventlog | ❌ |
 | **节点结构** | `event-line` → `paragraph[]` | `paragraph[]` | ❌ |
 | **双模式** | title / eventlog | 无（单一内容） | ❌ |
-| **多事件管理** | ✅ 多个 Event | ❌ 单个内容 | ❌ |
+| **多事件管理** | ✅ 多个 Event | ❌ 单个 eventlog | ❌ |
 | **元数据透传** | ✅ 完整 metadata | ❌ 无需元数据 | ❌ |
 | **层级管理** | level（0-∞） | bulletLevel（0-4） | ⚠️ 部分共享 |
 
 ### 9.2 UI 元素
 
-| 功能 | PlanSlate | Slate | 是否共享 |
+| 功能 | PlanSlate (UnifiedSlateEditor) | SlateEditor (LightSlateEditor) | 是否共享 |
 |------|--------------|------------|----------|
 | **Checkbox** | ✅ EventLinePrefix | ❌ | ❌ |
 | **Emoji** | ✅ EventLinePrefix | ❌ | ❌ |
@@ -918,34 +927,35 @@ const renderElement = useCallback((props: RenderElementProps) => {
 | **时间显示** | ✅ EventLineSuffix | ❌ | ❌ |
 | **标签列表** | ✅ EventLineSuffix | ❌ | ❌ |
 | **Bullet** | ✅（eventlog 模式） | ✅ | ✅ |
-| **Timestamp** | ✅（eventlog 模式） | ✅ | ✅ |
+| **Timestamp** | ✅（eventlog 模式，需外部 props） | ✅（需外部 props） | ✅ |
 
 ### 9.3 序列化
 
-| 功能 | PlanSlate | Slate | 是否共享 |
+| 功能 | PlanSlate (UnifiedSlateEditor) | SlateEditor (LightSlateEditor) | 是否共享 |
 |------|--------------|------------|----------|
-| **序列化格式** | HTML（带 data-*） | JSON（Slate 结构） | ❌ |
-| **反序列化** | parseHtmlToParagraphs | jsonToSlateNodes | ❌ |
-| **事件分组** | ✅ 按 eventId 分组 | ❌ | ❌ |
+| **序列化格式** | ✅ JSON（Slate 原生格式） | ✅ JSON（Slate 原生格式） | ✅ |
+| **存储字段** | title.fullTitle + eventlog | eventlog | ⚠️ 字段不同 |
+| **反序列化** | JSON.parse(fullTitle/eventlog) | JSON.parse(eventlog) | ✅ |
+| **事件分组** | ✅ 按 eventId 分组（多事件） | ❌（单 eventlog） | ❌ |
 | **层级保留** | level + bulletLevel | bulletLevel | ⚠️ 部分共享 |
-
 ### 9.4 键盘操作
 
-| 功能 | PlanSlate | Slate | 是否共享 |
+| 功能 | PlanSlate (UnifiedSlateEditor) | SlateEditor (LightSlateEditor) | 是否共享 |
 |------|--------------|------------|----------|
 | **Enter** | 新建事件/段落 | 新建段落 | ⚠️ 逻辑不同 |
 | **Shift+Enter** | 切换到 eventlog 模式 | 无特殊功能 | ❌ |
 | **Tab** | 增加缩进 | 增加 bullet 层级 | ✅ |
 | **Shift+Tab** | 减少缩进/退出 eventlog | 减少 bullet 层级 | ⚠️ 逻辑不同 |
+| **Backspace** | 删除行/合并 | Bullet 删除机制 | ⚠️ 逻辑不同 || ⚠️ 逻辑不同 |
 | **Backspace** | 删除行/合并 | Bullet 删除机制 | ⚠️ 逻辑不同 |
 
 ### 9.5 外部集成
 
-| 功能 | PlanSlate | Slate | 是否共享 |
+| 功能 | PlanSlate (UnifiedSlateEditor) | SlateEditor (LightSlateEditor) | 是否共享 |
 |------|--------------|------------|----------|
-| **与 PlanManager 集成** | ✅ 深度集成 | ❌ | ❌ |
-| **与 EventEditModal 集成** | ❌ | ✅ | ❌ |
-| **与 EventService 集成** | ✅ 批量保存 | ✅ 单个保存 | ⚠️ 接口不同 |
+| **与 PlanManager 集成** | ✅ 深度集成（多事件列表） | ❌ | ❌ |
+| **与 EventEditModal 集成** | ❌ | ✅（eventlog 编辑） | ❌ |
+| **与 EventService 集成** | ✅ 批量保存（多事件） | ✅ 单个保存（单 eventlog） | ⚠️ 接口不同 |
 | **StatusLineContainer** | ✅ | ❌ | ❌ |
 | **FloatingToolbar** | ✅ | ✅ | ✅ |
 
@@ -1051,15 +1061,17 @@ const renderElement = useCallback((props: RenderElementProps) => {
 4. **可视化状态**: Snapshot 模式、状态竖线、删除线等历史追溯功能
 5. **完整元数据**: 透传 20+ 业务字段，保证数据一致性
 
-### 11.2 与 Slate 的本质区别
+### 11.2 与 SlateEditor 的本质区别
 
-| 维度 | PlanSlate | Slate |
+| 维度 | PlanSlate (UnifiedSlateEditor) | SlateEditor (LightSlateEditor) |
 |------|--------------|------------|
-| **定位** | 多事件管理编辑器 | 单内容编辑器 |
-| **使用场景** | PlanManager 页面 | EventEditModal、TimeLog 页面 |
+| **定位** | 多事件列表管理编辑器 | 单内容详情编辑器 |
+| **使用场景** | PlanManager 页面（事件列表） | EventEditModal（eventlog 编辑） |
+| **编辑器实例** | 1个实例管理多个事件的 title | 1个实例编辑1个事件的 eventlog |
 | **复杂度** | 高（2700+ lines） | 低（~500 lines） |
 | **核心架构** | event-line 双模式 | paragraph 扁平结构 |
-| **业务耦合** | EventService、PlanManager | 独立使用，低耦合 |
+| **业务耦合** | EventService、PlanManager | EventService（低耦合） |
+| **序列化格式** | ✅ JSON（与 SlateEditor 相同） | ✅ JSON（Slate 原生格式） |
 
 ### 11.3 重构建议
 
@@ -1077,12 +1089,12 @@ const renderElement = useCallback((props: RenderElementProps) => {
 
 3. **适配性改造**:
    - 段落移动：增加 event-line 边界检测参数
-   - 序列化：提供双格式支持（HTML + JSON）
+   - 序列化：✅ **已统一为 JSON 格式**（PlanSlate 和 SlateEditor 都使用 Slate JSON）
    - 节点操作：提供通用工具函数，编辑器自行调用
 
 4. **不建议提炼的功能**:
    - EventLinePrefix/Suffix 组件（业务逻辑强）
-   - PlanItem 序列化（PlanSlate 专用）
+   - PlanItem 序列化（PlanSlate 专用，但格式与 SlateEditor 统一为 JSON）
    - 元数据透传机制（PlanSlate 专用）
 
 ---
