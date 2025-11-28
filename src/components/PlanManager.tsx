@@ -329,6 +329,40 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       })
     });
     
+    // 🔧 数据迁移：为旧的 isPlan 事件批量设置 checkType（仅执行一次）
+    const needsMigration = allEvents.filter(e => e.isPlan && !e.checkType);
+    if (needsMigration.length > 0) {
+      console.log('🔧 [数据迁移] 检测到需要迁移的 isPlan 事件:', needsMigration.length);
+      
+      // 直接修改内存中的事件对象
+      needsMigration.forEach(event => {
+        event.checkType = 'once';
+      });
+      
+      // 批量更新到 localStorage（静默更新，不触发事件广播）
+      const eventsData = localStorage.getItem('remarkable_events');
+      if (eventsData) {
+        try {
+          const events = JSON.parse(eventsData);
+          let updatedCount = 0;
+          
+          events.forEach((e: Event) => {
+            if (e.isPlan && !e.checkType) {
+              e.checkType = 'once';
+              updatedCount++;
+            }
+          });
+          
+          if (updatedCount > 0) {
+            localStorage.setItem('remarkable_events', JSON.stringify(events));
+            console.log(`✅ [数据迁移] 已静默更新 ${updatedCount} 个事件的 checkType`);
+          }
+        } catch (err) {
+          console.error('❌ [数据迁移] 批量更新失败:', err);
+        }
+      }
+    }
+    
     // 🎯 三步过滤公式：isPlan + checkType - 系统事件
     const filtered = allEvents.filter((event: Event) => {
       // 步骤 1: 必须是 Plan 事件
@@ -387,9 +421,20 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     
     // 🚨 DIAGNOSIS: 检测空数组异常
     if (filtered.length === 0 && allEvents.length > 0) {
+      const isPlanEvents = allEvents.filter(e => e.isPlan);
       console.error('🔴 [诊断] PlanManager 所有事件被过滤！', {
         总事件数: allEvents.length,
-        isPlan事件: allEvents.filter(e => e.isPlan).length,
+        isPlan事件: isPlanEvents.length,
+        'isPlan事件详情': isPlanEvents.map(e => ({
+          id: e.id?.substring(0, 20),
+          title: e.title?.simpleTitle?.substring(0, 20) || '',
+          isPlan: e.isPlan,
+          checkType: e.checkType, // 🔍 检查 checkType
+          isTimeCalendar: e.isTimeCalendar,
+          isTimer: e.isTimer,
+          isOutsideApp: e.isOutsideApp,
+          isTimeLog: e.isTimeLog,
+        })),
         有parentEventId的: allEvents.filter(e => e.parentEventId).length,
         TimeCalendar事件: allEvents.filter(e => e.isTimeCalendar).length,
         TimeCalendar已过期: allEvents.filter(e => e.isTimeCalendar && e.endTime && new Date(e.endTime) <= now).length,
@@ -590,8 +635,15 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         return;
       }
       
-      // ✅ 确认为外部更新，执行同步
-      console.log('📡 [PlanManager] 外部更新，执行同步', { eventId: eventId?.slice(-10), source, originComponent });
+      // 🎯 提前过滤：只处理 isPlan 事件（避免处理 Outlook/Timer 等无关事件）
+      const event = EventService.getEventById(eventId);
+      if (!event || !event.isPlan) {
+        // 🚫 不是 Plan 事件，直接忽略（远程同步、Timer 等）
+        return;
+      }
+      
+      // ✅ 确认为 Plan 事件的外部更新，执行同步
+      console.log('📡 [PlanManager] Plan 事件外部更新，执行同步', { eventId: eventId?.slice(-10), source, originComponent });
       
       // 🧹 清除该事件的状态缓存
       eventStatusCacheRef.current.delete(eventId);
@@ -1842,6 +1894,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           isTask: true, // ✅ 标记为待办事项
           isTimeCalendar: false, // ✅ 不是 TimeCalendar 创建的事件
           remarkableSource: true, // ✅ 标识事件来源（用于同步识别）
+          checkType: 'once', // 🆕 默认单次签到（显示 checkbox）
           // ✅ 默认不设置时间，用户通过 FloatingBar 或 @chrono 自行定义
           startTime: '', // ✅ 空字符串表示无时间
           endTime: '',   // ✅ 空字符串表示无时间

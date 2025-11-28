@@ -2412,11 +2412,12 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                       >
                         <span style={{ flexShrink: 0, pointerEvents: 'none' }}>{getSyncModeInfo(sourceSyncMode).emoji}</span>
                         <span style={{ 
-                          flexShrink: 0, 
+                          flex: 1,
                           pointerEvents: 'none',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap'
+                          whiteSpace: 'nowrap',
+                          minWidth: 0
                         }}>{getSyncModeInfo(sourceSyncMode).name}</span>
                       </div>
                       
@@ -2680,11 +2681,12 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                         >
                           <span style={{ flexShrink: 0, pointerEvents: 'none' }}>{getSyncModeInfo(syncSyncMode).emoji}</span>
                           <span style={{ 
-                            flexShrink: 0, 
+                            flex: 1,
                             pointerEvents: 'none',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'
+                            whiteSpace: 'nowrap',
+                            minWidth: 0
                           }}>{getSyncModeInfo(syncSyncMode).name}</span>
                         </div>
                         
