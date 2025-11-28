@@ -728,5 +728,13 @@ const expectedValue = [
 
 **实现状态**:
 - ✅ LightSlateEditor - 已完成（2025-11-28）
+  - moveParagraphUp/Down 函数
+  - Shift+Alt+↑/↓ 快捷键
+  - Timestamp 自动跳过
+  - 边界保护
 - ✅ UnifiedSlateEditor - 已完成（2025-11-28）
+  - moveTitleWithEventlogs 函数
+  - moveEventlogParagraph 函数
+  - 双模式移动逻辑
+  - 事件完整性保护
 - ⏳ 完整测试验证 - 进行中
