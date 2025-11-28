@@ -898,6 +898,15 @@ const PlanManager: React.FC<PlanManagerProps> = ({
 
   // 🆕 v1.5: 批处理执行函数（从 onChange 中提取）
   const executeBatchUpdate = useCallback((updatedItems: any[]) => {
+    console.log('[executeBatchUpdate] 开始处理:', {
+      总数: updatedItems.length,
+      items: updatedItems.map(item => ({
+        id: item.id?.slice(-8),
+        title: item.title?.simpleTitle?.substring(0, 20) || item.content?.substring(0, 20),
+        _isDeleted: item._isDeleted || false
+      }))
+    });
+    
     // 🔧 过滤掉 ghost events（Snapshot 模式的虚拟事件，不应该保存）
     const realItems = updatedItems.filter(item => !(item as any)._isDeleted);
     
@@ -905,7 +914,11 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       console.log('[executeBatchUpdate] 🔧 过滤掉 ghost events:', {
         原始数量: updatedItems.length,
         过滤后: realItems.length,
-        过滤掉: updatedItems.length - realItems.length
+        过滤掉: updatedItems.length - realItems.length,
+        ghost列表: updatedItems.filter(item => (item as any)._isDeleted).map(item => ({
+          id: item.id?.slice(-8),
+          title: item.title?.simpleTitle?.substring(0, 20)
+        }))
       });
     }
     
@@ -934,8 +947,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       // Slate 通过 metadata 透传了所有业务字段
       
       // 🆕 空白检测（使用透传后的字段）
+      // 🔥 FIX: 检查所有 title 字段（fullTitle/colorTitle/simpleTitle）
+      const hasTitle = updatedItem.title?.fullTitle?.trim() || 
+                      updatedItem.title?.simpleTitle?.trim() || 
+                      updatedItem.title?.colorTitle?.trim();
       const isEmpty = (
-        !updatedItem.title?.simpleTitle?.trim() && 
+        !hasTitle && 
         !updatedItem.content?.trim() && 
         !updatedItem.description?.trim() &&
         !updatedItem.eventlog?.trim() && // 🆕 v1.8: 检测富文本描述
@@ -958,8 +975,10 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       }
       
       // 变更检测
+      // 🔥 FIX: title 现在是对象，需要深度比较
+      const titleChanged = JSON.stringify(existingItem?.title) !== JSON.stringify(updatedItem.title);
       const isChanged = !existingItem || 
-        existingItem.title !== updatedItem.title ||
+        titleChanged ||
         existingItem.content !== updatedItem.content ||
         existingItem.description !== updatedItem.description ||
         existingItem.eventlog !== updatedItem.eventlog || // 🆕 v1.8: 检测 eventlog 变化
@@ -2101,6 +2120,18 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         onDateRangeChange={(start, end) => {
           // 如果传入 null，则退出 snapshot 模式
           if (start === null || end === null) {
+            // 🔥 [FIX] 退出 snapshot 前，强制保存所有待处理的编辑
+            if (onChangeTimerRef.current) {
+              clearTimeout(onChangeTimerRef.current);
+              onChangeTimerRef.current = null;
+            }
+            
+            if (pendingUpdatedItemsRef.current) {
+              console.log('[PlanManager] 🔧 退出 snapshot 前保存待处理编辑:', pendingUpdatedItemsRef.current.length, '个');
+              executeBatchUpdate(pendingUpdatedItemsRef.current);
+              pendingUpdatedItemsRef.current = null;
+            }
+            
             setDateRange(null as any);
             console.log('[PlanManager] 退出 snapshot 模式');
             return;

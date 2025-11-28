@@ -445,7 +445,7 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
         </button>
         {isInSnapshotMode ? (
           <button className="panel-show-all-btn" onClick={handleExitSnapshot}>
-            退出<br />Review模式
+            退出Review模式
           </button>
         ) : (
           <div className="panel-notice-icon-wrapper" title="选择日期进入Review模式">

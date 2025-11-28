@@ -566,9 +566,14 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
   
   // ✅ v1.5: 过滤掉空节点（临时占位节点）
   const result = Array.from(items.values()).filter(item => {
-    const isEmpty = !item.title?.simpleTitle?.trim() && 
+    // 🔥 FIX: 检查 fullTitle 而不是 simpleTitle（因为 simpleTitle 在这里是 undefined）
+    const hasTitle = item.title?.fullTitle?.trim() || 
+                    item.title?.simpleTitle?.trim() || 
+                    item.title?.colorTitle?.trim();
+    const isEmpty = !hasTitle && 
                    !item.content?.trim() && 
                    !item.description?.trim() &&
+                   !item.eventlog?.trim() && // 🆕 也检查 eventlog
                    (!item.tags || item.tags.length === 0);
     return !isEmpty;  // 只保留非空节点
   });
