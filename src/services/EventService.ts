@@ -1473,12 +1473,148 @@ export class EventService {
   // ========== 日历同步相关方法 ==========
 
   /**
+   * 🆕 v2.0.5 同步事件到多个远程日历（智能合并管理）
+   * 
+   * 核心原则：
+   * - 本地：一个 event
+   * - 远程：多个日历可能有多个远程事件
+   * - 远程同步回来后，本地不能变成多个 event，应当合并管理
+   * - 修改日历分组后，需要删除旧的远程事件，重新创建新的
+   * 
+   * @param event 要同步的事件
+   * @param calendarIds 目标日历 IDs
+   * @param syncMode 同步模式
+   * @param syncType 同步类型：'plan' 或 'actual'
+   * @returns 远程事件 ID 映射 Map<calendarId, remoteEventId>
+   */
+  static async syncToMultipleCalendars(
+    event: Event,
+    calendarIds: string[],
+    syncMode: string,
+    syncType: 'plan' | 'actual'
+  ): Promise<Map<string, string>> {
+    const remoteEventIds = new Map<string, string>();
+    
+    try {
+      eventLogger.log(`📤 [syncToMultipleCalendars] 开始同步到多个日历`, {
+        eventId: event.id,
+        calendarIds,
+        syncMode,
+        syncType
+      });
+      
+      // Step 1: 获取当前已同步的日历列表
+      const existingSyncedCalendars = syncType === 'plan' 
+        ? (event.syncedPlanCalendars || [])
+        : (event.syncedActualCalendars || []);
+      
+      // Step 2: 找出需要删除的旧日历（不在新列表中的）
+      const calendarsToDelete = existingSyncedCalendars.filter(cal => !calendarIds.includes(cal.calendarId));
+      
+      // Step 3: 删除旧的远程事件（修改日历分组后）
+      for (const oldCalendar of calendarsToDelete) {
+        try {
+          if (syncManagerInstance && oldCalendar.remoteEventId) {
+            await syncManagerInstance.deleteRemoteEvent(oldCalendar.calendarId, oldCalendar.remoteEventId);
+            eventLogger.log(`🗑️ [syncToMultipleCalendars] 删除旧远程事件`, {
+              calendarId: oldCalendar.calendarId,
+              remoteEventId: oldCalendar.remoteEventId
+            });
+          }
+        } catch (deleteError) {
+          eventLogger.error(`❌ [syncToMultipleCalendars] 删除旧远程事件失败`, deleteError);
+          // 继续处理其他日历，不中断整个流程
+        }
+      }
+      
+      // Step 4: 同步到新的日历列表（创建或更新）
+      const { prepareRemoteEventData } = await import('../utils/calendarSyncUtils');
+      
+      for (const calendarId of calendarIds) {
+        try {
+          // 准备远程事件数据（处理 Private 模式）
+          const remoteEventData = prepareRemoteEventData(event, syncMode);
+          
+          // 检查是否已经同步过这个日历
+          const existingSync = existingSyncedCalendars.find(cal => cal.calendarId === calendarId);
+          
+          let remoteEventId: string | null = null;
+          
+          if (existingSync && existingSync.remoteEventId && syncManagerInstance) {
+            // 更新已有的远程事件
+            try {
+              await syncManagerInstance.updateRemoteEvent(calendarId, existingSync.remoteEventId, remoteEventData);
+              remoteEventId = existingSync.remoteEventId;
+              eventLogger.log(`♻️ [syncToMultipleCalendars] 更新远程事件`, {
+                calendarId,
+                remoteEventId
+              });
+            } catch (updateError) {
+              // 更新失败，尝试删除后重建
+              eventLogger.warn(`⚠️ [syncToMultipleCalendars] 更新失败，尝试删除重建`, updateError);
+              await syncManagerInstance.deleteRemoteEvent(calendarId, existingSync.remoteEventId);
+              remoteEventId = await syncManagerInstance.createRemoteEvent(calendarId, remoteEventData);
+              eventLogger.log(`🆕 [syncToMultipleCalendars] 重建远程事件`, {
+                calendarId,
+                remoteEventId
+              });
+            }
+          } else if (syncManagerInstance) {
+            // 创建新的远程事件
+            remoteEventId = await syncManagerInstance.createRemoteEvent(calendarId, remoteEventData);
+            eventLogger.log(`🆕 [syncToMultipleCalendars] 创建远程事件`, {
+              calendarId,
+              remoteEventId
+            });
+          }
+          
+          if (remoteEventId) {
+            remoteEventIds.set(calendarId, remoteEventId);
+          }
+        } catch (calendarError) {
+          eventLogger.error(`❌ [syncToMultipleCalendars] 日历 ${calendarId} 同步失败`, calendarError);
+          // 继续处理其他日历
+        }
+      }
+      
+      // Step 5: 更新本地事件的同步记录（合并管理）
+      const syncedCalendars = Array.from(remoteEventIds.entries()).map(([calendarId, remoteEventId]) => ({
+        calendarId,
+        remoteEventId
+      }));
+      
+      const updates: Partial<Event> = {};
+      if (syncType === 'plan') {
+        updates.syncedPlanCalendars = syncedCalendars;
+      } else {
+        updates.syncedActualCalendars = syncedCalendars;
+      }
+      
+      await this.updateEvent(event.id, updates);
+      
+      eventLogger.log(`✅ [syncToMultipleCalendars] 成功同步到 ${remoteEventIds.size} 个日历`, {
+        eventId: event.id,
+        syncedCalendars: remoteEventIds.size,
+        syncType
+      });
+      
+      return remoteEventIds;
+    } catch (error) {
+      eventLogger.error(`❌ [syncToMultipleCalendars] 同步失败`, error);
+      const { handleSyncError } = await import('../utils/calendarSyncUtils');
+      handleSyncError('syncToMultipleCalendars', event, error);
+      throw error;
+    }
+  }
+
+  /**
    * 同步事件到远程日历（支持 Private 模式）
    * 
    * @param event 要同步的事件
    * @param syncMode 同步模式
    * @param calendarId 目标日历 ID  
    * @param syncType 同步类型：'plan' 或 'actual'
+   * @deprecated 使用 syncToMultipleCalendars 替代，支持多日历同步
    */
   static async syncToRemoteCalendar(
     event: Event, 
@@ -1486,42 +1622,9 @@ export class EventService {
     calendarId: string,
     syncType: 'plan' | 'actual'
   ): Promise<string | null> {
-    try {
-      const { prepareRemoteEventData, logSyncOperation } = await import('../utils/calendarSyncUtils');
-      
-      logSyncOperation('syncToRemoteCalendar', event, { syncMode, calendarId, syncType });
-      
-      // 准备远程事件数据（处理 Private 模式）
-      const remoteEventData = prepareRemoteEventData(event, syncMode);
-      
-      // 调用同步管理器执行同步（此处需要根据实际的同步服务实现）
-      let remoteEventId: string | null = null;
-      if (syncManagerInstance) {
-        remoteEventId = await syncManagerInstance.createOrUpdateEvent(calendarId, remoteEventData);
-      }
-      
-      // 更新对应的同步事件 ID
-      const updates: Partial<Event> = {};
-      if (syncType === 'plan') {
-        updates.syncedPlanEventId = remoteEventId;
-      } else {
-        updates.syncedActualEventId = remoteEventId;
-      }
-      
-      await this.updateEvent(event.id, updates);
-      
-      eventLogger.log(`✅ [syncToRemoteCalendar] Success: ${syncType} event synced`, {
-        eventId: event.id,
-        remoteEventId,
-        syncMode
-      });
-      
-      return remoteEventId;
-    } catch (error) {
-      const { handleSyncError } = await import('../utils/calendarSyncUtils');
-      handleSyncError('syncToRemoteCalendar', event, error);
-      throw error;
-    }
+    // 调用新的多日历同步方法
+    const result = await this.syncToMultipleCalendars(event, [calendarId], syncMode, syncType);
+    return result.get(calendarId) || null;
   }
 
   /**

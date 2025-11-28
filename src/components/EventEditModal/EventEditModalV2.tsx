@@ -379,13 +379,13 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     }
   });
 
-  // 🆕 同步 formData.actualSyncConfig 到 syncCalendarIds
+  // 🆕 v2.0.5 同步 formData.subEventConfig.calendarIds 到 syncCalendarIds（使用新架构）
   React.useEffect(() => {
-    if (formData.actualSyncConfig?.targetCalendars) {
-      console.log('🔄 [EventEditModalV2] 同步 actualSyncConfig 到 syncCalendarIds:', formData.actualSyncConfig.targetCalendars);
-      setSyncCalendarIds(formData.actualSyncConfig.targetCalendars);
+    if (formData.subEventConfig?.calendarIds) {
+      console.log('🔄 [EventEditModalV2] 同步 subEventConfig.calendarIds 到 syncCalendarIds:', formData.subEventConfig.calendarIds);
+      setSyncCalendarIds(formData.subEventConfig.calendarIds);
     }
-  }, [formData.actualSyncConfig?.targetCalendars]);
+  }, [formData.subEventConfig?.calendarIds]);
 
   // 🆕 刷新计数器：用于强制刷新 parentEvent 和 childEvents
   const [refreshCounter, setRefreshCounter] = React.useState(0);
@@ -1810,7 +1810,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                         }))}
                         selectedTagIds={formData.tags}
                         onSelectionChange={(selectedIds) => {
-                          // 🆕 标签变更时，自动处理日历映射
+                          // 🆕 v2.0.5 标签变更时，自动处理日历映射（使用新架构：syncMode + subEventConfig）
                           const isLocalEvent = event?.remarkableSource === true || event?.source === 'local';
                           
                           // 提取标签的日历映射
@@ -1825,11 +1825,11 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                             selectedTags: selectedIds,
                             mappedCalendars,
                             isLocalEvent,
-                            '当前planSyncConfig': formData.planSyncConfig,
-                            '当前actualSyncConfig': formData.actualSyncConfig
+                            '当前syncMode': formData.syncMode,
+                            '当前subEventConfig': formData.subEventConfig
                           });
                           
-                          // 更新 formData
+                          // 更新 formData（使用新的 syncMode + subEventConfig 架构）
                           setFormData(prev => {
                             const updates: any = {
                               ...prev,
@@ -1839,36 +1839,40 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                             // 规则 1: 本地事件 - Plan 和 Actual 都自动添加映射日历
                             if (isLocalEvent) {
                               if (mappedCalendars.length > 0) {
-                                updates.calendarIds = mappedCalendars;
-                                updates.planSyncConfig = {
-                                  mode: 'bidirectional-private',
-                                  targetCalendars: mappedCalendars
+                                // ✅ Plan 配置（mainEvent）
+                                updates.calendarIds = [...new Set([...(prev.calendarIds || []), ...mappedCalendars])];
+                                updates.syncMode = prev.syncMode || 'bidirectional-private';
+                                
+                                // ✅ Actual 配置（subEventConfig）
+                                updates.subEventConfig = {
+                                  calendarIds: [...new Set([...(prev.subEventConfig?.calendarIds || []), ...mappedCalendars])],
+                                  syncMode: prev.subEventConfig?.syncMode || 'bidirectional-private'
                                 };
-                                updates.actualSyncConfig = {
-                                  mode: 'bidirectional-private',
-                                  targetCalendars: mappedCalendars
-                                };
-                                console.log('✅ [EventEditModalV2] 本地事件：Plan + Actual 都添加映射日历');
+                                
+                                console.log('✅ [EventEditModalV2] 本地事件：Plan + Actual 都添加映射日历', {
+                                  calendarIds: updates.calendarIds,
+                                  syncMode: updates.syncMode,
+                                  subEventConfig: updates.subEventConfig
+                                });
                               }
                             }
                             // 规则 2: 远程事件 - Plan 保持 receive-only，Actual 自动添加映射日历
                             else {
-                              // Plan 保持不变（receive-only）
-                              if (!prev.planSyncConfig || prev.planSyncConfig.mode === 'receive-only') {
-                                updates.planSyncConfig = {
-                                  mode: 'receive-only',
-                                  targetCalendars: prev.planSyncConfig?.targetCalendars || []
-                                };
-                                console.log('✅ [EventEditModalV2] 远程事件：Plan 保持 receive-only');
-                              }
+                              // ⛔ Plan 保持不变（receive-only）
+                              updates.calendarIds = prev.calendarIds || [];
+                              updates.syncMode = prev.syncMode || 'receive-only';
                               
-                              // Actual 添加映射日历
+                              console.log('✅ [EventEditModalV2] 远程事件：Plan 保持 receive-only');
+                              
+                              // ✅ Actual 添加映射日历
                               if (mappedCalendars.length > 0) {
-                                updates.actualSyncConfig = {
-                                  mode: 'bidirectional-private',
-                                  targetCalendars: mappedCalendars
+                                updates.subEventConfig = {
+                                  calendarIds: [...new Set([...(prev.subEventConfig?.calendarIds || []), ...mappedCalendars])],
+                                  syncMode: prev.subEventConfig?.syncMode || 'bidirectional-private'
                                 };
-                                console.log('✅ [EventEditModalV2] 远程事件：Actual 添加映射日历');
+                                console.log('✅ [EventEditModalV2] 远程事件：Actual 添加映射日历', {
+                                  subEventConfig: updates.subEventConfig
+                                });
                               }
                             }
                             

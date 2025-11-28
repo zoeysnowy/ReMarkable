@@ -21,7 +21,8 @@ import {
   Text,
   Node as SlateNode,
   Element as SlateElement,
-  Range
+  Range,
+  Path
 } from 'slate';
 import { 
   Slate, 
@@ -870,11 +871,181 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
   }, [pendingTimestamp, onChange, enableTimestamp, parentEventId]);
   
   /**
+   * 向上移动当前段落
+   */
+  const moveParagraphUp = useCallback(() => {
+    const { selection } = editor;
+    if (!selection) return;
+    
+    // 获取所有段落节点
+    const paragraphs = Array.from(Editor.nodes(editor, {
+      at: [],
+      match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+    }));
+    
+    // 找到当前段落的索引
+    let currentIndex = -1;
+    for (let i = 0; i < paragraphs.length; i++) {
+      const [, path] = paragraphs[i];
+      if (Path.isAncestor(path, selection.anchor.path) || Path.equals(path, selection.anchor.path)) {
+        currentIndex = i;
+        break;
+      }
+    }
+    
+    if (currentIndex === -1) {
+      console.log('[moveParagraphUp] 未找到当前段落');
+      return;
+    }
+    
+    if (currentIndex === 0) {
+      console.log('[moveParagraphUp] 已在第一行，无法上移');
+      return;
+    }
+    
+    // 查找目标段落（跳过 timestamp）
+    let targetIndex = currentIndex - 1;
+    while (targetIndex >= 0) {
+      const [targetNode] = paragraphs[targetIndex];
+      // 跳过 timestamp-divider
+      if ((targetNode as any).type === 'timestamp-divider') {
+        targetIndex--;
+        continue;
+      }
+      break;
+    }
+    
+    if (targetIndex < 0) {
+      console.log('[moveParagraphUp] 无有效目标位置');
+      return;
+    }
+    
+    const [currentNode, currentPath] = paragraphs[currentIndex];
+    const [targetNode, targetPath] = paragraphs[targetIndex];
+    
+    // 交换节点
+    Editor.withoutNormalizing(editor, () => {
+      // 1. 删除当前节点
+      Transforms.removeNodes(editor, { at: currentPath });
+      
+      // 2. 删除目标节点（路径已更新）
+      Transforms.removeNodes(editor, { at: targetPath });
+      
+      // 3. 插入当前节点到目标位置
+      Transforms.insertNodes(editor, currentNode as any, { at: targetPath });
+      
+      // 4. 插入目标节点到原位置
+      Transforms.insertNodes(editor, targetNode as any, { at: currentPath });
+      
+      // 5. 恢复光标到新位置
+      setTimeout(() => {
+        Transforms.select(editor, {
+          anchor: { path: [...targetPath, 0], offset: 0 },
+          focus: { path: [...targetPath, 0], offset: 0 },
+        });
+      }, 10);
+    });
+    
+    console.log(`[moveParagraphUp] 上移段落: ${currentIndex} ↔ ${targetIndex}`);
+  }, [editor]);
+  
+  /**
+   * 向下移动当前段落
+   */
+  const moveParagraphDown = useCallback(() => {
+    const { selection } = editor;
+    if (!selection) return;
+    
+    // 获取所有段落节点
+    const paragraphs = Array.from(Editor.nodes(editor, {
+      at: [],
+      match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+    }));
+    
+    // 找到当前段落的索引
+    let currentIndex = -1;
+    for (let i = 0; i < paragraphs.length; i++) {
+      const [, path] = paragraphs[i];
+      if (Path.isAncestor(path, selection.anchor.path) || Path.equals(path, selection.anchor.path)) {
+        currentIndex = i;
+        break;
+      }
+    }
+    
+    if (currentIndex === -1) {
+      console.log('[moveParagraphDown] 未找到当前段落');
+      return;
+    }
+    
+    if (currentIndex >= paragraphs.length - 1) {
+      console.log('[moveParagraphDown] 已在最后一行，无法下移');
+      return;
+    }
+    
+    // 查找目标段落（跳过 timestamp）
+    let targetIndex = currentIndex + 1;
+    while (targetIndex < paragraphs.length) {
+      const [targetNode] = paragraphs[targetIndex];
+      // 跳过 timestamp-divider
+      if ((targetNode as any).type === 'timestamp-divider') {
+        targetIndex++;
+        continue;
+      }
+      break;
+    }
+    
+    if (targetIndex >= paragraphs.length) {
+      console.log('[moveParagraphDown] 无有效目标位置');
+      return;
+    }
+    
+    const [currentNode, currentPath] = paragraphs[currentIndex];
+    const [targetNode, targetPath] = paragraphs[targetIndex];
+    
+    // 交换节点
+    Editor.withoutNormalizing(editor, () => {
+      // 1. 删除目标节点
+      Transforms.removeNodes(editor, { at: targetPath });
+      
+      // 2. 删除当前节点（路径已更新）
+      Transforms.removeNodes(editor, { at: currentPath });
+      
+      // 3. 插入目标节点到原位置
+      Transforms.insertNodes(editor, targetNode as any, { at: currentPath });
+      
+      // 4. 插入当前节点到目标位置
+      Transforms.insertNodes(editor, currentNode as any, { at: targetPath });
+      
+      // 5. 恢复光标到新位置
+      setTimeout(() => {
+        Transforms.select(editor, {
+          anchor: { path: [...targetPath, 0], offset: 0 },
+          focus: { path: [...targetPath, 0], offset: 0 },
+        });
+      }, 10);
+    });
+    
+    console.log(`[moveParagraphDown] 下移段落: ${currentIndex} ↔ ${targetIndex}`);
+  }, [editor]);
+  
+  /**
    * 处理键盘事件
    */
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
     // IME 组字中，不处理快捷键
     if (event.nativeEvent?.isComposing) return;
+    
+    // Shift+Alt+↑/↓ - 移动段落
+    if (event.shiftKey && event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+      event.preventDefault();
+      
+      if (event.key === 'ArrowUp') {
+        moveParagraphUp();
+      } else {
+        moveParagraphDown();
+      }
+      return;
+    }
     
     // 文本格式化快捷键
     if (event.ctrlKey || event.metaKey) {
