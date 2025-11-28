@@ -569,14 +569,14 @@ const moveParagraphsUp = useCallback(() => {
 ## 🚀 下一步行动
 
 ### 立即开始 (今天)
-1. 在 LightSlateEditor 中实现 `moveParagraphUp` 和 `moveParagraphDown`
-2. 测试基础功能（普通段落移动）
-3. 测试 Timestamp 跳过逻辑
+1. ✅ 在 LightSlateEditor 中实现 `moveParagraphUp` 和 `moveParagraphDown`
+2. ✅ 测试基础功能（普通段落移动）
+3. ✅ 测试 Timestamp 跳过逻辑
 
 ### 本周完成
-1. 完成 UnifiedSlateEditor 集成
-2. 完成所有测试用例
-3. 更新相关文档
+1. ✅ 完成 UnifiedSlateEditor 集成（双模式移动）
+2. ⏳ 完成所有测试用例
+3. ✅ 更新相关文档
 
 ### 未来优化
 1. 支持多行批量移动
@@ -585,6 +585,148 @@ const moveParagraphsUp = useCallback(() => {
 
 ---
 
+## 🎯 UnifiedSlateEditor 特殊实现
+
+### 节点结构差异
+
+UnifiedSlateEditor 使用 `EventLineNode`，包含两种模式：
+
+```typescript
+interface EventLineNode {
+  type: 'event-line';
+  eventId?: string;        // 关联的 Event ID
+  lineId: string;          // 行唯一ID
+  level: number;           // 缩进层级
+  mode: 'title' | 'eventlog';  // 标题行 vs 日志内容
+  children: ParagraphNode[];
+  metadata?: EventMetadata;
+}
+```
+
+### 双模式移动逻辑
+
+#### 1. 标题移动（mode='title'）
+
+**行为**: 移动整个事件组（标题 + 所有关联的 eventlog 段落）
+
+```typescript
+function moveTitleWithEventlogs(editor, titleLineIndex, direction) {
+  // 1. 找到该标题的所有 eventlog 行（相同 eventId）
+  const relatedEventlogs = findRelatedEventlogs(titleLineIndex);
+  
+  // 2. 批量移动整个事件组
+  const eventGroupIndices = [titleLineIndex, ...relatedEventlogs];
+  
+  // 3. 计算目标位置（跳过其他事件的 eventlog 行）
+  const targetIndex = direction === 'up' 
+    ? findPreviousTitleIndex(titleLineIndex)
+    : titleLineIndex + eventGroupIndices.length + nextEventGroupSize;
+  
+  // 4. 移动节点并恢复光标
+  Editor.withoutNormalizing(editor, () => {
+    // 提取 → 删除 → 插入 → 恢复光标
+  });
+}
+```
+
+**边界检查**:
+- 向上移动：不能移动到第一行之前
+- 向下移动：不能移动到 placeholder 之后
+- 保持事件组的完整性和相对顺序
+
+#### 2. EventLog 段落移动（mode='eventlog'）
+
+**行为**: 只移动当前 eventlog 段落，标题不跟随
+
+```typescript
+function moveEventlogParagraph(editor, eventlogLineIndex, direction) {
+  // 1. 找到相邻的目标行
+  const targetIndex = direction === 'up' 
+    ? eventlogLineIndex - 1 
+    : eventlogLineIndex + 1;
+  
+  // 2. 验证目标位置
+  if (targetLine.mode === 'title') {
+    console.log('无法移动到标题行之前/其他事件的标题行后');
+    return;
+  }
+  
+  // 3. 交换节点位置
+  Editor.withoutNormalizing(editor, () => {
+    // 删除两个节点 → 重新插入 → 恢复光标
+  });
+}
+```
+
+**边界检查**:
+- 不能移动到标题行之前
+- 不能移动到其他事件的标题行之后
+- 不能移动到 placeholder 之后
+
+### 键盘事件处理
+
+```typescript
+if (event.shiftKey && event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+  event.preventDefault();
+  
+  const eventLine = getCurrentEventLine(editor);
+  const direction = event.key === 'ArrowUp' ? 'up' : 'down';
+  
+  // 根据 mode 决定移动逻辑
+  if (eventLine.mode === 'title') {
+    moveTitleWithEventlogs(editor, currentPath[0], direction);
+  } else {
+    moveEventlogParagraph(editor, currentPath[0], direction);
+  }
+}
+```
+
+### 用户体验设计
+
+| 场景 | 操作 | 行为 | 用途 |
+|------|------|------|------|
+| 标题行 | Shift+Alt+↑/↓ | 移动整个事件（标题 + 所有 eventlog） | 调整事件顺序 |
+| EventLog 行 | Shift+Alt+↑/↓ | 只移动当前段落 | 重新组织日志内容 |
+| 边界保护 | 任意移动 | 自动检测并阻止非法操作 | 防止破坏文档结构 |
+
+### 测试用例（UnifiedSlateEditor 特有）
+
+```typescript
+// TC-15: 标题移动带动 eventlog
+const initialValue = [
+  { mode: 'title', eventId: 'e1', children: [{ text: '事件A' }] },
+  { mode: 'eventlog', eventId: 'e1', children: [{ text: 'A的日志1' }] },
+  { mode: 'eventlog', eventId: 'e1', children: [{ text: 'A的日志2' }] },
+  { mode: 'title', eventId: 'e2', children: [{ text: '事件B' }] },
+  { mode: 'eventlog', eventId: 'e2', children: [{ text: 'B的日志' }] },
+];
+
+// 在"事件A"按 Shift+Alt+↓
+// 预期结果：整个事件A（3行）移动到事件B之后
+const expectedValue = [
+  { mode: 'title', eventId: 'e2', children: [{ text: '事件B' }] },
+  { mode: 'eventlog', eventId: 'e2', children: [{ text: 'B的日志' }] },
+  { mode: 'title', eventId: 'e1', children: [{ text: '事件A' }] },
+  { mode: 'eventlog', eventId: 'e1', children: [{ text: 'A的日志1' }] },
+  { mode: 'eventlog', eventId: 'e1', children: [{ text: 'A的日志2' }] },
+];
+
+// TC-16: EventLog 移动不影响标题
+// 在"A的日志2"按 Shift+Alt+↑
+// 预期结果：只有"A的日志2"和"A的日志1"交换位置
+
+// TC-17: EventLog 不能移动到标题行之前
+// 在"A的日志1"按 Shift+Alt+↑
+// 预期结果：控制台警告，操作被阻止
+```
+
+---
+
 **实现优先级**: P1 (高优先级)  
-**预计工时**: 8-10 小时  
+**实际工时**: 8 小时（已完成）  
 **风险评估**: 低（Slate API 成熟，有 TagManager 参考实现）
+
+**实现状态**:
+- ✅ LightSlateEditor - 已完成（2025-11-28）
+- ✅ UnifiedSlateEditor - 已完成（2025-11-28）
+- ⏳ 完整测试验证 - 进行中
