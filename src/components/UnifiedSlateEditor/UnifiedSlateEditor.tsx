@@ -563,13 +563,16 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
         ? item.title 
         : (item.title?.simpleTitle || item.title?.colorTitle || '');
       
-      // 🔧 包含更多字段，确保 eventlog、tags 变化也能触发更新
+      // 🔧 包含更多字段，确保 eventlog、tags、时间 变化也能触发更新
       const tagsStr = (item.tags || []).join(',');
       const eventlogStr = typeof (item as any).eventlog === 'object' 
         ? (item as any).eventlog?.plainText?.substring(0, 50) || ''
         : (item as any).eventlog?.substring(0, 50) || '';
       
-      return `${item.id}-${titleStr}-${tagsStr}-${eventlogStr}-${item.updatedAt}`;
+      // 🔧 包含时间字段：startTime、endTime、dueDate、isAllDay
+      const timeStr = `${item.startTime || ''}-${item.endTime || ''}-${item.dueDate || ''}-${item.isAllDay ? '1' : '0'}`;
+      
+      return `${item.id}-${titleStr}-${tagsStr}-${eventlogStr}-${timeStr}-${item.updatedAt}`;
     }).join('|');
   }, [items]);
   
