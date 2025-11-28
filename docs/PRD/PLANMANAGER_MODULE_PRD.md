@@ -1,15 +1,46 @@
 ﻿# PlanManager 模块 PRD
 
 **模块路径**: `src/components/PlanManager.tsx`  
-**代码行数**: ~2400 lines  
-**架构版本**: v2.1 (checkType 字段支持)  
-**最后更新**: 2025-11-25  
+**代码行数**: ~2908 lines  
+**架构版本**: v2.5 (已完成任务自动隐藏)  
+**最后更新**: 2025-11-29  
 **编写框架**: Copilot PRD Reverse Engineering Framework v1.0  
 **Figma 设计稿**: [ReMarkable-0.1 - 1450w default](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=290-2646&m=dev)
 
 ---
 
-## 🎯 v2.3 checkType 字段与 UpcomingEventsPanel 集成 (2025-11-25)
+## 📋 版本历史
+
+### v2.5 (2025-11-29) - 已完成任务自动隐藏 ✅
+
+**核心功能**:
+- ✅ 已完成任务过0点后自动隐藏（filter-not-load 性能优化）
+- ✅ 错过的未完成任务继续显示（允许补做或手动删除）
+- ✅ 纯日历事件过期后自动清理（无 checkbox 的 TimeCalendar 事件）
+- ✅ 三步过滤公式：包含条件 → 排除系统事件 → 过期/完成处理
+- ✅ TIME_ARCHITECTURE 合规：使用 `setHours(0,0,0,0)` 进行本地时间0点判断
+- ✅ Snapshot 模式支持：历史完成任务可查看（includeDeleted 选项）
+- ✅ eventsUpdated 监听器早期过滤：避免无效状态更新
+- ✅ 详细文档：PlanManager vs UpcomingEventsPanel 过滤逻辑对比
+
+**代码位置**:
+- PlanManager.tsx L365-420: 初始化过滤逻辑
+- PlanManager.tsx L686-708: eventsUpdated 监听器过滤
+- upcomingEventsHelper.ts L73-96: isEventExpired 工具函数
+
+**用户体验改进**:
+- 界面更清爽：已完成任务不会堆积
+- 错过任务可见：避免遗漏重要待办
+- 历史可查：Snapshot 模式查看过往完成任务
+
+### v2.4 (2025-11-28) - 并集过滤逻辑优化
+
+**核心改进**:
+- ✅ 并集过滤公式：`(isPlan OR checkType OR isTimeCalendar) - 系统事件`
+- ✅ Outlook 集成：同步的事件如果有 `checkType`，也显示在 Plan 页面
+- ✅ TimeCalendar 融合：时光日历事件无缝显示
+
+### v2.3 (2025-11-25) - checkType 字段与 UpcomingEventsPanel 集成
 
 ### 功能概述
 
@@ -1771,16 +1802,16 @@ const newItem: Event = {
 
 ---
 
-## 2.4 Plan页面事件显示和过滤逻辑 (v2.1 优化)
+## 2.4 Plan页面事件显示和过滤逻辑 (v2.5 优化 - 已完成任务自动隐藏)
 
 ### 2.4.1 数据来源和过滤规则
 
-**数据加载**: PlanManager 从 EventService.getAllEvents() 获取所有事件，然后应用以下过滤规则（v2.4 更新）:
+**数据加载**: PlanManager 从 EventService.getAllEvents() 获取所有事件，然后应用以下过滤规则（v2.5 更新）:
 
 ```typescript
-// 🎯 并集过滤公式：(isPlan OR checkType OR isTimeCalendar) - 排除条件
+// 🎯 三步过滤公式：步骤1(包含条件) → 步骤2(排除系统事件) → 步骤3(过期/完成处理)
 const filtered = allEvents.filter((event: Event) => {
-  // 步骤 1: 并集条件 - 满足任意一个即纳入
+  // 步骤 1: 包含条件（并集） - 满足任意一个即纳入
   const matchesInclusionCriteria = 
     event.isPlan === true || 
     (event.checkType && event.checkType !== 'none') ||
@@ -1797,28 +1828,56 @@ const filtered = allEvents.filter((event: Event) => {
     return false;
   }
   
-  // 步骤 3: 排除过期的 TimeCalendar 事件
-  if (event.isTimeCalendar) {
-    if (event.endTime) {
-      const endTime = new Date(event.endTime);
-      if (now >= endTime) {
-        return false; // TimeCalendar 已过期
-      }
-    } else {
-      return false; // 没有endTime的TimeCalendar事件视为已过期
+  // 步骤 3: 过期和完成状态处理
+  const now = new Date();
+  const isExpired = isEventExpired(event, now); // 使用 TIME_ARCHITECTURE 标准
+  
+  // 步骤 3.1: 纯日历事件过期清理
+  if (event.isTimeCalendar && isExpired) {
+    // 判断是否为任务类事件（有 checkbox）
+    const isTaskLike = event.isPlan === true || 
+                       (event.checkType && event.checkType !== 'none');
+    
+    if (!isTaskLike) {
+      return false; // 纯日历事件过期后自动清理
     }
   }
+  
+  // 步骤 3.2: 已完成任务过0点后自动隐藏（v2.5 新增）
+  if (event.checkType && event.checkType !== 'none') {
+    // 判断完成状态：checked 数组最后一项 > unchecked 数组最后一项
+    const lastChecked = event.checked?.[event.checked.length - 1];
+    const lastUnchecked = event.unchecked?.[event.unchecked.length - 1];
+    const isCompleted = lastChecked && (!lastUnchecked || lastChecked > lastUnchecked);
+    
+    if (isCompleted && lastChecked) {
+      const completedTime = new Date(lastChecked);
+      const todayStart = new Date(now);
+      todayStart.setHours(0, 0, 0, 0); // ✅ TIME_ARCHITECTURE: 本地时间0点判断
+      
+      if (completedTime < todayStart) {
+        return false; // 过0点的已完成任务自动隐藏（filter-not-load 性能优化）
+      }
+    }
+  }
+  
+  // 步骤 3.3: 错过的未完成任务保留显示
+  // 允许用户补做或手动删除，不自动清理
   
   return true;
 });
 ```
 
-**关键改进（v2.4 2025-11-28）**:
+**关键改进（v2.5 2025-11-29）**:
+- ✅ **三步过滤公式**：包含条件(并集) → 排除系统事件 → 过期/完成处理
+- ✅ **已完成任务自动隐藏**：过0点后自动从列表中移除（filter-not-load 性能优化）
+- ✅ **错过未完成任务保留**：允许用户补做或手动删除，不自动清理
+- ✅ **纯日历事件清理**：无 checkbox 的 TimeCalendar 事件过期后自动清理
 - ✅ **并集逻辑**：显示所有满足 `isPlan` OR `checkType !== 'none'` OR `isTimeCalendar` 的事件
 - ✅ **灵活显示**：Outlook 同步的事件如果有 `checkType`，也会显示在 Plan 页面
 - ✅ **TimeCalendar 集成**：所有未过期的 TimeCalendar 事件都显示（无论是否有 `isPlan`）
 - ✅ **系统事件排除**：Timer/TimeLog/OutsideApp 始终不显示
-- ✅ **过期清理**：过期的 TimeCalendar 事件自动隐藏
+- ✅ **TIME_ARCHITECTURE 合规**：使用 `setHours(0,0,0,0)` 进行本地时间0点判断
 - 使用严格比较 `=== true`：避免 `undefined` 被误判
 
 ### 2.4.2 事件类型分类表
@@ -1828,11 +1887,14 @@ const filtered = allEvents.filter((event: Event) => {
 | **用户计划** | `isPlan: true` | ✅ 显示 | 用户在Plan页面创建的正常计划事件 |
 | **计划分项** | `isPlan: true, parentEventId: 存在` | ✅ 显示 | 用户创建的子任务/分项 |
 | **有 checkbox 的事件** | `checkType: 'once'/'recurring'` | ✅ 显示 | 任何有 checkbox 的事件（包括 Outlook 同步的） |
+| **今天完成的任务** | `checkType: 存在, lastChecked >= 今天0点` | ✅ 显示 | 今天完成的任务继续显示（允许查看当日成果） |
+| **过0点已完成任务** | `checkType: 存在, lastChecked < 今天0点` | ❌ 隐藏 | 过0点后自动隐藏（Snapshot 模式可查看） |
+| **错过的未完成任务** | `checkType: 存在, isExpired=true, !isCompleted` | ✅ 显示 | 保留显示，允许用户补做或手动删除 |
 | **TimeCalendar 事件** | `isTimeCalendar: true, endTime > now` | ✅ 显示 | 未过期的 TimeCalendar 事件 |
+| **纯日历事件（已过期）** | `isTimeCalendar: true, checkType='none', isExpired=true` | ❌ 隐藏 | 无 checkbox 的纯日历事件过期后自动清理 |
 | **计时器子事件** | `isTimer: true` | ❌ 隐藏 | 系统自动生成的计时记录 |
 | **时间日志** | `isTimeLog: true` | ❌ 隐藏 | 系统自动记录的活动轨迹或纯粹的用户日志笔记 |
 | **外部应用数据** | `isOutsideApp: true` | ❌ 隐藏 | 外部应用同步的数据（音乐、录屏等） |
-| **过期TimeCalendar** | `isTimeCalendar: true, endTime < now` | ❌ 隐藏 | 已过期的TimeCalendar事件 |
 
 ### 2.4.3 新增事件类型字段定义
 
@@ -1872,7 +1934,7 @@ if (!event.checkType || event.checkType === 'none') return false;
 - TimeCalendar 创建的事件如果没有 `isPlan`，也被排除
 - 逻辑过于严格，不符合实际使用场景
 
-#### v2.4（当前 - 并集逻辑）
+#### v2.4（已废弃 - 缺少完成任务隐藏）
 ```typescript
 // ✅ 并集逻辑：满足任意条件即显示
 const matchesInclusionCriteria = 
@@ -1894,11 +1956,245 @@ if (event.isTimeCalendar && (!event.endTime || new Date(event.endTime) <= now)) 
 - ✅ 灵活包容：任何有意义的事件都能显示
 - ✅ Outlook 集成：同步的事件如果有 checkbox，自动纳入 Plan 管理
 - ✅ TimeCalendar 融合：时光日历的事件无缝显示在 Plan 页面
-- ✅ 精准排除：只排除真正的系统事件和过期事件
-```
-**优势**: 保留用户手动创建的子任务，提升计划管理的层级结构完整性
 
-### 2.4.5 兼容性说明
+**问题**:
+- ❌ 已完成任务一直显示，列表越来越长
+- ❌ 没有区分纯日历事件和任务类事件的过期处理
+
+#### v2.5（当前 - 三步过滤 + 完成任务隐藏）
+```typescript
+// 🎯 三步过滤公式：包含条件 → 排除系统事件 → 过期/完成处理
+const filtered = allEvents.filter((event: Event) => {
+  // 步骤 1: 包含条件（并集）
+  const matchesInclusionCriteria = 
+    event.isPlan === true || 
+    (event.checkType && event.checkType !== 'none') ||
+    event.isTimeCalendar === true;
+  
+  if (!matchesInclusionCriteria) return false;
+  
+  // 步骤 2: 排除系统事件
+  if (event.isTimer === true || 
+      event.isOutsideApp === true || 
+      event.isTimeLog === true) {
+    return false;
+  }
+  
+  // 步骤 3: 过期和完成状态处理
+  const isExpired = isEventExpired(event, now);
+  
+  // 3.1 纯日历事件过期清理
+  if (event.isTimeCalendar && isExpired) {
+    const isTaskLike = event.isPlan === true || 
+                       (event.checkType && event.checkType !== 'none');
+    if (!isTaskLike) return false; // 纯日历事件过期后清理
+  }
+  
+  // 3.2 已完成任务过0点后自动隐藏
+  if (event.checkType && event.checkType !== 'none') {
+    const lastChecked = event.checked?.[event.checked.length - 1];
+    const lastUnchecked = event.unchecked?.[event.unchecked.length - 1];
+    const isCompleted = lastChecked && (!lastUnchecked || lastChecked > lastUnchecked);
+    
+    if (isCompleted && lastChecked) {
+      const completedTime = new Date(lastChecked);
+      const todayStart = new Date(now);
+      todayStart.setHours(0, 0, 0, 0); // TIME_ARCHITECTURE 标准
+      
+      if (completedTime < todayStart) {
+        return false; // 过0点已完成任务自动隐藏
+      }
+    }
+  }
+  
+  // 3.3 错过的未完成任务保留显示
+  
+  return true;
+});
+```
+
+**优势**: 
+- ✅ **三步公式清晰**：包含条件 → 排除系统事件 → 过期/完成处理
+- ✅ **已完成任务自动隐藏**：过0点后从列表移除，保持界面清爽
+- ✅ **错过未完成任务保留**：允许用户补做或手动删除
+- ✅ **纯日历事件智能清理**：无 checkbox 的事件过期后自动清理
+- ✅ **任务类事件区分**：有 checkbox 的事件（任务）和纯日历事件分别处理
+- ✅ **TIME_ARCHITECTURE 合规**：使用 `setHours(0,0,0,0)` 进行本地时间0点判断
+- ✅ **性能优化**：filter-not-load 策略，不加载到内存（比 CSS hide 更高效）
+- ✅ **Snapshot 查看**：历史完成任务可在 Snapshot 模式查看（includeDeleted 选项）
+
+### 2.4.5 eventsUpdated 监听器过滤逻辑
+
+**代码位置**: PlanManager.tsx L686-708
+
+除了初始化时的过滤（L365-420），PlanManager 还在 `eventsUpdated` 事件监听器中对新增/更新的事件进行早期过滤，避免不必要的状态更新。
+
+```typescript
+// EventService 触发 eventsUpdated 事件时的过滤逻辑
+EventHub.on('eventsUpdated', (changes: EventChange[]) => {
+  changes.forEach(change => {
+    const event = change.event;
+    
+    // 早期过滤：纯日历事件过期检查
+    if (event.isTimeCalendar && isEventExpired(event)) {
+      const isTaskLike = event.isPlan === true || 
+                         (event.checkType && event.checkType !== 'none');
+      
+      if (!isTaskLike) {
+        return; // 纯日历事件过期后不处理
+      }
+      
+      // 已完成任务过0点后不处理
+      const lastChecked = event.checked?.[event.checked?.length - 1];
+      const lastUnchecked = event.unchecked?.[event.unchecked?.length - 1];
+      const isCompleted = lastChecked && (!lastUnchecked || lastChecked > lastUnchecked);
+      
+      if (isCompleted) {
+        const completedTime = new Date(lastChecked);
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        
+        if (completedTime < todayStart) {
+          return; // 过0点已完成任务不处理
+        }
+      }
+    }
+    
+    // 通过过滤后，更新状态
+    if (change.type === 'added' || change.type === 'updated') {
+      // ... 更新 items 状态
+    }
+  });
+});
+```
+
+**性能优势**:
+- 早期过滤避免无效状态更新
+- 减少 React re-render 次数
+- 降低内存占用
+
+### 2.4.6 PlanManager vs UpcomingEventsPanel 过滤逻辑对比
+
+#### 核心区别
+
+| 维度 | PlanManager（计划清单） | UpcomingEventsPanel（即将到来面板） |
+|------|------------------------|-----------------------------------|
+| **定位** | 全局任务管理中心 | 时间提醒面板 |
+| **时间范围** | 全时间范围（未来+当前） | 特定时间窗口（Today/Tomorrow/Week） |
+| **包含条件** | isPlan OR checkType OR isTimeCalendar | 相同（三步公式步骤1相同） |
+| **系统事件排除** | isTimer/isOutsideApp/isTimeLog | 相同（三步公式步骤2相同） |
+| **过期处理** | 纯日历事件清理 + 完成任务隐藏 | 相同（三步公式步骤3相同） |
+| **时间过滤** | ❌ 不限制时间窗口 | ✅ 限制在特定时间窗口内 |
+| **显示目标** | 所有待办+今日完成 | 近期待办事项提醒 |
+
+#### 共享的三步过滤公式
+
+**步骤1**: 包含条件（并集）
+```typescript
+const matchesInclusionCriteria = 
+  event.isPlan === true || 
+  (event.checkType && event.checkType !== 'none') ||
+  event.isTimeCalendar === true;
+```
+
+**步骤2**: 排除系统事件
+```typescript
+if (event.isTimer === true || 
+    event.isOutsideApp === true || 
+    event.isTimeLog === true) {
+  return false;
+}
+```
+
+**步骤3**: 过期和完成状态处理
+```typescript
+// 3.1 纯日历事件过期清理
+if (event.isTimeCalendar && isExpired && !isTaskLike) {
+  return false;
+}
+
+// 3.2 已完成任务过0点后隐藏
+if (isCompleted && completedTime < todayStart) {
+  return false;
+}
+```
+
+#### UpcomingEventsPanel 的额外时间窗口过滤
+
+**代码位置**: `src/utils/upcomingEventsHelper.ts` L73-96
+
+```typescript
+export function filterEventsByTimeRange(
+  events: Event[],
+  timeFilter: TimeFilter,
+  customStart?: Date,
+  customEnd?: Date
+): Event[] {
+  const { start, end } = getTimeRangeBounds(timeFilter, customStart, customEnd);
+  
+  return events.filter(event => {
+    // 前三步与 PlanManager 相同（包含条件 → 排除系统事件 → 过期/完成处理）
+    // ...
+    
+    // 🆕 步骤4: 时间窗口过滤（PlanManager 没有此步骤）
+    if (!event.timeSpec?.resolved) return false;
+    
+    const eventStart = new Date(event.timeSpec.resolved.start);
+    return eventStart >= start && eventStart <= end;
+  });
+}
+```
+
+**时间窗口选项**:
+- `today`: 今天0点 ~ 明天0点
+- `tomorrow`: 明天0点 ~ 后天0点
+- `thisWeek`: 本周一0点 ~ 下周一0点
+- `custom`: 自定义时间范围（Snapshot 模式）
+
+#### 过滤逻辑的关系
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   EventService.getAllEvents()            │
+│                    (所有事件数据源)                       │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+         ┌─────────────┴─────────────┐
+         │                           │
+         ▼                           ▼
+┌────────────────────┐      ┌────────────────────────┐
+│  PlanManager       │      │ UpcomingEventsPanel    │
+│  (计划清单)         │      │ (即将到来面板)          │
+└────────────────────┘      └────────────────────────┘
+         │                           │
+         ▼                           ▼
+┌────────────────────┐      ┌────────────────────────┐
+│ 三步过滤公式        │      │ 三步过滤公式            │
+│ 1. 包含条件(并集)   │      │ 1. 包含条件(并集)       │
+│ 2. 排除系统事件     │ ===  │ 2. 排除系统事件        │
+│ 3. 过期/完成处理    │      │ 3. 过期/完成处理       │
+└────────────────────┘      └────────┬───────────────┘
+         │                           │
+         │                           ▼
+         │                  ┌────────────────────────┐
+         │                  │ 🆕 步骤4: 时间窗口过滤  │
+         │                  │ 只显示特定时间范围内    │
+         │                  └────────────────────────┘
+         │                           │
+         ▼                           ▼
+┌────────────────────┐      ┌────────────────────────┐
+│ 显示全时间范围      │      │ 显示时间窗口内事件      │
+│ (未来+当前)         │      │ (Today/Tomorrow/Week)  │
+└────────────────────┘      └────────────────────────┘
+```
+
+**设计思路**:
+- ✅ **统一过滤基础**：两个组件共享三步过滤公式，保证一致性
+- ✅ **时间窗口差异化**：UpcomingEventsPanel 额外添加时间窗口过滤
+- ✅ **职责清晰**：PlanManager = 全局管理，UpcomingPanel = 时间提醒
+- ✅ **工具函数复用**：`isEventExpired()` 函数在两处共用（TIME_ARCHITECTURE 标准）
+
+### 2.4.8 兼容性说明
 
 #### 向后兼容
 - 现有事件如果没有新字段，默认会显示在Plan页面
@@ -1910,7 +2206,109 @@ if (event.isTimeCalendar && (!event.endTime || new Date(event.endTime) <= now)) 
 - 新功能开发时需要正确设置事件类型标识
 - 建议在创建系统生成事件时明确设置对应的类型标识
 
-### 2.4.6 最佳实践
+### 2.4.9 Snapshot 模式下的特殊处理
+
+**功能**: 在 Snapshot 快照模式下，用户可查看特定历史时间范围内的所有事件（包括已完成和已删除的事件）
+
+**实现**:
+```typescript
+// Snapshot 模式下的过滤（保留所有历史事件）
+const snapshotFilter = (event: Event) => {
+  // 步骤 1-2: 包含条件和系统事件排除（与正常模式相同）
+  const matchesInclusionCriteria = 
+    event.isPlan === true || 
+    (event.checkType && event.checkType !== 'none') ||
+    event.isTimeCalendar === true;
+  
+  if (!matchesInclusionCriteria) return false;
+  
+  if (event.isTimer === true || 
+      event.isOutsideApp === true || 
+      event.isTimeLog === true) {
+    return false;
+  }
+  
+  // 🆕 步骤 3: Snapshot 模式下不过滤已完成任务和过期事件
+  // 允许查看历史完成任务和过期事件
+  
+  return true; // 显示所有符合包含条件的事件
+};
+
+// 获取 Snapshot 时间范围内的事件
+EventService.getAllEvents({ 
+  includeDeleted: true,  // 包含软删除的事件
+  startTime: snapshotStartDate,
+  endTime: snapshotEndDate
+});
+```
+
+**Snapshot vs 正常模式的差异**:
+
+| 处理逻辑 | 正常模式 | Snapshot 模式 |
+|---------|---------|--------------|
+| 包含条件 | ✅ 相同 | ✅ 相同 |
+| 系统事件排除 | ✅ 相同 | ✅ 相同 |
+| 已完成任务 | ❌ 过0点后隐藏 | ✅ 显示所有 |
+| 过期日历事件 | ❌ 自动清理 | ✅ 显示所有 |
+| 软删除事件 | ❌ 不显示 | ✅ 显示（includeDeleted=true） |
+| 时间窗口 | 无限制 | 限制在 Snapshot 时间范围 |
+
+**使用场景**:
+- 📊 查看历史周期的完成情况
+- 🔍 复盘过去某段时间的任务安排
+- 📝 统计历史数据（完成率、任务量等）
+- 🗂️ 查找已删除的事件内容
+
+### 2.4.11 已完成任务完成时间判断详解
+
+**完成状态判断逻辑**:
+```typescript
+// 读取 checked 和 unchecked 数组的最后一项时间戳
+const lastChecked = event.checked?.[event.checked.length - 1];
+const lastUnchecked = event.unchecked?.[event.unchecked.length - 1];
+
+// 完成状态 = 有 checked 记录 且 (无 unchecked 记录 或 最后 checked > 最后 unchecked)
+const isCompleted = lastChecked && (!lastUnchecked || lastChecked > lastUnchecked);
+
+// 完成时间 = lastChecked 时间戳
+const completedTime = new Date(lastChecked);
+```
+
+**完成时间判断原理**:
+- `checked` 数组：记录每次勾选 checkbox 的时间戳（`[timestamp1, timestamp2, ...]`）
+- `unchecked` 数组：记录每次取消勾选的时间戳（`[timestamp1, timestamp2, ...]`）
+- 最终状态取决于最后一次操作：
+  - 如果 `lastChecked > lastUnchecked`：当前为已完成状态
+  - 如果 `lastUnchecked > lastChecked`：当前为未完成状态
+  - 如果只有 `lastChecked` 没有 `lastUnchecked`：当前为已完成状态
+
+**0点判断（TIME_ARCHITECTURE 标准）**:
+```typescript
+const todayStart = new Date(now);
+todayStart.setHours(0, 0, 0, 0); // 设置为本地时间今天0点
+
+if (completedTime < todayStart) {
+  // 完成时间在今天0点之前 = 过0点的已完成任务
+  return false; // 自动隐藏
+}
+```
+
+**示例场景**:
+
+| 完成时间 | 当前时间 | 今天0点 | 判断结果 | 是否显示 |
+|---------|---------|---------|---------|---------|
+| 2025-11-28 22:00 | 2025-11-29 08:00 | 2025-11-29 00:00 | completedTime < todayStart | ❌ 隐藏（过0点） |
+| 2025-11-29 08:00 | 2025-11-29 10:00 | 2025-11-29 00:00 | completedTime >= todayStart | ✅ 显示（今天完成） |
+| 2025-11-29 23:50 | 2025-11-29 23:55 | 2025-11-29 00:00 | completedTime >= todayStart | ✅ 显示（今天完成） |
+| 2025-11-29 23:50 | 2025-11-30 00:05 | 2025-11-30 00:00 | completedTime < todayStart | ❌ 隐藏（已过0点） |
+
+**为什么使用 `setHours(0,0,0,0)`**:
+- ✅ 符合 TIME_ARCHITECTURE 规范（使用本地时间，避免 ISO 字符串解析）
+- ✅ 避免时区问题（直接操作本地时间对象）
+- ✅ 精确到毫秒（`setHours(0,0,0,0)` = 2025-11-29 00:00:00.000）
+- ✅ 避免字符串解析错误（不依赖 ISO 8601 格式）
+
+### 2.4.12 最佳实践
 
 #### 事件创建时的标识设置
 ```typescript
@@ -1918,6 +2316,7 @@ if (event.isTimeCalendar && (!event.endTime || new Date(event.endTime) <= now)) 
 const userPlan = {
   isPlan: true,
   isTask: true,
+  checkType: 'once', // 显示 checkbox
   // 不设置 isTimer, isTimeLog, isOutsideApp
 };
 
