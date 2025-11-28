@@ -487,76 +487,90 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
 }
 ```
 
-### 6.2 HTML 序列化（支持 Bullet 层级）
+### 6.2 JSON 序列化（Slate 原生格式）
 
-**独有特性**: PlanSlate 的 HTML 序列化保留 bullet 层级信息
+**核心原则**: PlanSlate 和 SlateEditor 统一使用 **Slate JSON 格式**存储富文本
 
 ```typescript
-export function slateNodesToRichHtml(nodes: EventLineNode[]): string {
-  const html: string[] = [];
-  
-  nodes.forEach(node => {
-    const paragraph = node.children[0];
-    const bullet = (paragraph as any).bullet;
-    const bulletLevel = (paragraph as any).bulletLevel || 0;
-    const level = node.level;
-    
-    // ✅ 保存 bullet 层级到 HTML 属性
-    const attrs = [
-      `data-level="${level}"`,
-      bullet ? `data-bullet="true"` : '',
-      bullet ? `data-bullet-level="${bulletLevel}"` : '',
-    ].filter(Boolean).join(' ');
-    
-    const content = serializeParagraphToHtml(paragraph);
-    html.push(`<p ${attrs}>${content}</p>`);
-  });
-  
-  return html.join('\n');
+// ✅ Title 序列化为 Slate JSON
+const titleNode: EventLineNode = {
+  type: 'event-line',
+  mode: 'title',
+  children: [{
+    type: 'paragraph',
+    children: item.title?.fullTitle 
+      ? JSON.parse(item.title.fullTitle)  // ✅ fullTitle 是 Slate JSON 字符串
+      : [{ text: '' }]
+  }],
+  // ...
+};
+
+// ✅ EventLog 序列化为 Slate JSON
+if (node.mode === 'title') {
+  const fragment = node.children[0]?.children;
+  item.title = {
+    fullTitle: fragment ? JSON.stringify(fragment) : '',  // ✅ 保存为 Slate JSON
+  };
+} else if (node.mode === 'eventlog') {
+  // ✅ EventLog 同样使用 JSON 格式
+  const fragment = node.children[0]?.children;
+  const jsonStr = JSON.stringify(fragment);
+  item.eventlog = (item.eventlog || '') + jsonStr + '\n';
 }
 ```
 
+**为什么使用 JSON 而非 HTML？**
+1. ✅ **完整保留 Slate 结构**: bullet、层级、格式化、inline 元素（Tag、Emoji、DateMention）
+2. ✅ **避免信息丢失**: HTML 转换会丢失 Slate 内部属性
+3. ✅ **回读精确**: JSON.parse() 直接还原 Slate 节点，无需解析 HTML
+4. ✅ **统一格式**: title.fullTitle 和 eventlog 都用 JSON，架构一致
+
 **回读支持**:
 ```typescript
-function parseHtmlToParagraphsWithLevel(html: string): Array<{ paragraph: ParagraphNode; level: number }> {
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = html;
+// ✅ 从 JSON 字符串恢复 Slate 节点（无损还原）
+function parseEventLogToSlateNodes(eventlogJson: string): EventLineNode[] {
+  // eventlog 格式: 多个 JSON 对象用换行符分隔
+  const jsonLines = eventlogJson.split('\n').filter(line => line.trim());
   
-  const result: Array<{ paragraph: ParagraphNode; level: number }> = [];
-  const pElements = tempDiv.querySelectorAll('p');
-  
-  pElements.forEach(pElement => {
-    const bullet = pElement.getAttribute('data-bullet') === 'true';
-    const bulletLevel = parseInt(pElement.getAttribute('data-bullet-level') || '0', 10);
-    const level = parseInt(pElement.getAttribute('data-level') || '0', 10);
+  return jsonLines.map((jsonStr, index) => {
+    const fragment = JSON.parse(jsonStr);  // ✅ 直接 parse JSON
     
-    // ✅ 还原 bullet 和 level 信息
-    const para: ParagraphNode = {
-      type: 'paragraph',
-      children: htmlToSlateFragment(pElement.innerHTML),
+    return {
+      type: 'event-line',
+      mode: 'eventlog',
+      lineId: `eventlog-${index}`,
+      level: 0,  // 从 paragraph.bullet/bulletLevel 计算
+      children: [{
+        type: 'paragraph',
+        children: fragment  // ✅ Slate JSON 直接还原
+      }]
     };
-    
-    if (bullet) {
-      (para as any).bullet = true;
-      (para as any).bulletLevel = bulletLevel;
-    }
-    
-    result.push({ paragraph: para, level });
   });
-  
-  return result;
 }
+```
+
+**JSON vs HTML 对比**:
+```typescript
+// ❌ HTML 格式（旧架构）- 信息丢失
+"<p data-bullet='true' data-level='1'><span style='color: red'>重要</span></p>"
+// 问题: Slate 的 inline 元素、格式化属性可能丢失
+
+// ✅ JSON 格式（当前架构）- 完整保留
+"[{\"type\":\"paragraph\",\"bullet\":true,\"bulletLevel\":1,\"children\":[{\"text\":\"重要\",\"color\":\"red\"}]}]"
+// 优势: Slate 结构完整保留，JSON.parse() 直接还原
 ```
 
 ### 6.3 与 Slate 序列化对比
 
 | 特性 | PlanSlate | Slate |
 |------|--------------|------------|
-| **序列化格式** | HTML（带 data-* 属性） | JSON（纯 Slate 结构） |
-| **层级信息** | 保留 level + bulletLevel | 只保留 bulletLevel |
+| **序列化格式** | ✅ JSON（Slate 原生格式） | ✅ JSON（Slate 原生格式） |
+| **存储方式** | title.fullTitle + eventlog（JSON 字符串） | content（JSON 字符串） |
+| **层级信息** | ✅ 保留 level（EventLine 层级） + bulletLevel（段落层级） | ✅ 保留 bulletLevel（段落层级） |
 | **多段落支持** | ✅ 每个段落独立 EventLine | ✅ 扁平 paragraph[] |
-| **元数据保留** | ✅ 完整 metadata 对象 | ❌ 无需元数据 |
-| **事件分组** | ✅ 按 eventId 分组 | ❌ 单一内容 |
+| **元数据保留** | ✅ 完整 metadata 对象（EventMetadata） | ❌ 无需元数据 |
+| **事件分组** | ✅ 按 eventId 分组（多事件管理） | ❌ 单一内容 |
+| **架构统一性** | ✅ 与 Slate 相同的 JSON 格式 | ✅ 标准 Slate JSON |
 
 ---
 
