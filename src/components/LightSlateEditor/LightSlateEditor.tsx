@@ -71,9 +71,6 @@ type CustomText = TextNode;
 // 导入 EventHistoryService 获取创建时间
 import { EventHistoryService } from '../../services/EventHistoryService';
 
-// 导入序列化工具
-import { jsonToSlateNodes, slateNodesToJson } from './serialization';
-
 // 样式复用 UnifiedSlateEditor 的样式
 import './LightSlateEditor.css';
 
@@ -248,97 +245,38 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
   }, []);
   
   /**
-   * 应用文本格式化（复用 helpers 逻辑）
+   * 应用文本格式化（使用 SlateCore）
    */
   const applyTextFormat = useCallback((command: string): boolean => {
     try {
-      switch (command) {
-        case 'bold':
-          Editor.addMark(editor, 'bold', true);
-          break;
-        case 'italic':
-          Editor.addMark(editor, 'italic', true);
-          break;
-        case 'underline':
-          Editor.addMark(editor, 'underline', true);
-          break;
-        case 'strikethrough':
-          Editor.addMark(editor, 'strikethrough', true);
-          break;
-        case 'removeFormat':
-          Editor.removeMark(editor, 'bold');
-          Editor.removeMark(editor, 'italic');
-          Editor.removeMark(editor, 'underline');
-          Editor.removeMark(editor, 'strikethrough');
-          Editor.removeMark(editor, 'color');
-          Editor.removeMark(editor, 'backgroundColor');
-          break;
-        case 'toggleBulletList': {
-          const [paraMatch] = Editor.nodes(editor, {
-            match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
-          });
+      // 对于 bullet 相关命令，保留原有逻辑以支持 pendingTimestamp
+      if (command === 'toggleBulletList') {
+        const [paraMatch] = Editor.nodes(editor, {
+          match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+        });
+        
+        if (paraMatch) {
+          const [node] = paraMatch;
+          const para = node as any;
           
-          if (paraMatch) {
-            const [node] = paraMatch;
-            const para = node as any;
+          if (para.bullet) {
+            // 已是 bullet，取消
+            Transforms.setNodes(editor, { bullet: undefined, bulletLevel: undefined } as any);
+          } else {
+            // 设置为 bullet（默认 level 0）
+            Transforms.setNodes(editor, { bullet: true, bulletLevel: 0 } as any);
             
-            if (para.bullet) {
-              // 已是 bullet，取消
-              Transforms.setNodes(editor, { bullet: undefined, bulletLevel: undefined } as any);
-            } else {
-              // 设置为 bullet（默认 level 0）
-              Transforms.setNodes(editor, { bullet: true, bulletLevel: 0 } as any);
-              
-              // 🔥 清除 pendingTimestamp 标记，bullet 算作有效内容
-              setPendingTimestamp(false);
-              console.log('[LightSlateEditor] 插入 bullet，清除 pendingTimestamp');
-            }
+            // 🔥 清除 pendingTimestamp 标记，bullet 算作有效内容
+            setPendingTimestamp(false);
+            console.log('[LightSlateEditor] 插入 bullet，清除 pendingTimestamp');
           }
-          break;
         }
-        case 'increaseBulletLevel': {
-          const [paraMatch] = Editor.nodes(editor, {
-            match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
-          });
-          
-          if (paraMatch) {
-            const [node] = paraMatch;
-            const para = node as any;
-            
-            if (para.bullet) {
-              const currentLevel = para.bulletLevel || 0;
-              if (currentLevel < 4) {
-                Transforms.setNodes(editor, { bulletLevel: currentLevel + 1 } as any);
-              }
-            }
-          }
-          break;
-        }
-        case 'decreaseBulletLevel': {
-          const [paraMatch] = Editor.nodes(editor, {
-            match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
-          });
-          
-          if (paraMatch) {
-            const [node] = paraMatch;
-            const para = node as any;
-            
-            if (para.bullet) {
-              const currentLevel = para.bulletLevel || 0;
-              if (currentLevel > 0) {
-                Transforms.setNodes(editor, { bulletLevel: currentLevel - 1 } as any);
-              } else {
-                Transforms.setNodes(editor, { bullet: undefined, bulletLevel: undefined } as any);
-              }
-            }
-          }
-          break;
-        }
-        default:
-          console.warn('[LightSlateEditor.applyTextFormat] Unknown command:', command);
-          return false;
+        return true;
       }
-      return true;
+      
+      // 其他格式化命令使用 SlateCore
+      const result = slateApplyTextFormat(editor, command);
+      return result;
     } catch (err) {
       console.error('[LightSlateEditor.applyTextFormat] Failed:', err);
       return false;
@@ -354,9 +292,9 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
   // 记录已添加 timestamp 的 content (必须在 initialValue 之前定义)
   const timestampAddedForContentRef = useRef<string | null>(null);
   
-  // 将 Slate JSON 字符串转换为 Slate nodes
+  // 将 Slate JSON 字符串转换为 Slate nodes（使用 SlateCore）
   const initialValue = useMemo(() => {
-    let nodes = jsonToSlateNodes(content);
+    let nodes = slateJsonToNodes(content);
     console.log('[LightSlateEditor] 解析内容为节点:', { content, nodes });
     
     // 如果启用 timestamp 且这个 content 还没添加过 timestamp
@@ -425,7 +363,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
     }
     
     // 只在外部内容真正不同时才同步（排除 onChange 循环回来的情况）
-    const currentContent = slateNodesToJson(editor.children);
+    const currentContent = slateNodesToJsonCore(editor.children);
     const contentChanged = content !== currentContent;
     const notFromSelf = content !== lastContentRef.current;
     
@@ -434,7 +372,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
       console.log('当前内容长度:', currentContent.length);
       console.log('新内容长度:', content.length);
       
-      const nodes = jsonToSlateNodes(content);
+      const nodes = slateJsonToNodes(content);
       
       // 使用 withoutNormalizing 包裹，提高性能
       Editor.withoutNormalizing(editor, () => {
@@ -798,7 +736,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
       autoSaveTimerRef.current = null;
     }
     
-    const newContent = slateNodesToJson(editor.children);
+    const newContent = slateNodesToJsonCore(editor.children);
     if (newContent !== lastContentRef.current) {
       lastContentRef.current = newContent;
       onChange(newContent);
@@ -876,7 +814,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
     }
     
     autoSaveTimerRef.current = setTimeout(() => {
-      const newContent = slateNodesToJson(newValue);
+      const newContent = slateNodesToJsonCore(newValue);
       if (newContent !== lastContentRef.current) {
         lastContentRef.current = newContent;
         onChange(newContent);
@@ -886,161 +824,43 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
   }, [pendingTimestamp, onChange, enableTimestamp, parentEventId]);
   
   /**
-   * 向上移动当前段落
+   * 向上移动当前段落（使用 SlateCore）
    */
   const moveParagraphUp = useCallback(() => {
     const { selection } = editor;
     if (!selection) return;
     
-    // 获取所有段落节点
-    const paragraphs = Array.from(Editor.nodes(editor, {
-      at: [],
+    // 获取当前段落路径
+    const [paraMatch] = Editor.nodes(editor, {
       match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
-    }));
-    
-    // 找到当前段落的索引
-    let currentIndex = -1;
-    for (let i = 0; i < paragraphs.length; i++) {
-      const [, path] = paragraphs[i];
-      if (Path.isAncestor(path, selection.anchor.path) || Path.equals(path, selection.anchor.path)) {
-        currentIndex = i;
-        break;
-      }
-    }
-    
-    if (currentIndex === -1) {
-      console.log('[moveParagraphUp] 未找到当前段落');
-      return;
-    }
-    
-    if (currentIndex === 0) {
-      console.log('[moveParagraphUp] 已在第一行，无法上移');
-      return;
-    }
-    
-    // 查找目标段落（跳过 timestamp）
-    let targetIndex = currentIndex - 1;
-    while (targetIndex >= 0) {
-      const [targetNode] = paragraphs[targetIndex];
-      // 跳过 timestamp-divider
-      if ((targetNode as any).type === 'timestamp-divider') {
-        targetIndex--;
-        continue;
-      }
-      break;
-    }
-    
-    if (targetIndex < 0) {
-      console.log('[moveParagraphUp] 无有效目标位置');
-      return;
-    }
-    
-    const [currentNode, currentPath] = paragraphs[currentIndex];
-    const [targetNode, targetPath] = paragraphs[targetIndex];
-    
-    // 交换节点
-    Editor.withoutNormalizing(editor, () => {
-      // 1. 删除当前节点
-      Transforms.removeNodes(editor, { at: currentPath });
-      
-      // 2. 删除目标节点（路径已更新）
-      Transforms.removeNodes(editor, { at: targetPath });
-      
-      // 3. 插入当前节点到目标位置
-      Transforms.insertNodes(editor, currentNode as any, { at: targetPath });
-      
-      // 4. 插入目标节点到原位置
-      Transforms.insertNodes(editor, targetNode as any, { at: currentPath });
-      
-      // 5. 恢复光标到新位置
-      setTimeout(() => {
-        Transforms.select(editor, {
-          anchor: { path: [...targetPath, 0], offset: 0 },
-          focus: { path: [...targetPath, 0], offset: 0 },
-        });
-      }, 10);
     });
     
-    console.log(`[moveParagraphUp] 上移段落: ${currentIndex} ↔ ${targetIndex}`);
+    if (paraMatch) {
+      const [, currentPath] = paraMatch;
+      slatMoveParagraphUp(editor, currentPath, {
+        skipTypes: ['timestamp-divider'],
+      });
+    }
   }, [editor]);
   
   /**
-   * 向下移动当前段落
+   * 向下移动当前段落（使用 SlateCore）
    */
   const moveParagraphDown = useCallback(() => {
     const { selection } = editor;
     if (!selection) return;
     
-    // 获取所有段落节点
-    const paragraphs = Array.from(Editor.nodes(editor, {
-      at: [],
+    // 获取当前段落路径
+    const [paraMatch] = Editor.nodes(editor, {
       match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
-    }));
-    
-    // 找到当前段落的索引
-    let currentIndex = -1;
-    for (let i = 0; i < paragraphs.length; i++) {
-      const [, path] = paragraphs[i];
-      if (Path.isAncestor(path, selection.anchor.path) || Path.equals(path, selection.anchor.path)) {
-        currentIndex = i;
-        break;
-      }
-    }
-    
-    if (currentIndex === -1) {
-      console.log('[moveParagraphDown] 未找到当前段落');
-      return;
-    }
-    
-    if (currentIndex >= paragraphs.length - 1) {
-      console.log('[moveParagraphDown] 已在最后一行，无法下移');
-      return;
-    }
-    
-    // 查找目标段落（跳过 timestamp）
-    let targetIndex = currentIndex + 1;
-    while (targetIndex < paragraphs.length) {
-      const [targetNode] = paragraphs[targetIndex];
-      // 跳过 timestamp-divider
-      if ((targetNode as any).type === 'timestamp-divider') {
-        targetIndex++;
-        continue;
-      }
-      break;
-    }
-    
-    if (targetIndex >= paragraphs.length) {
-      console.log('[moveParagraphDown] 无有效目标位置');
-      return;
-    }
-    
-    const [currentNode, currentPath] = paragraphs[currentIndex];
-    const [targetNode, targetPath] = paragraphs[targetIndex];
-    
-    // 交换节点
-    Editor.withoutNormalizing(editor, () => {
-      // 1. 删除目标节点
-      Transforms.removeNodes(editor, { at: targetPath });
-      
-      // 2. 删除当前节点（路径已更新）
-      Transforms.removeNodes(editor, { at: currentPath });
-      
-      // 3. 插入目标节点到原位置
-      Transforms.insertNodes(editor, targetNode as any, { at: currentPath });
-      
-      // 4. 插入当前节点到目标位置
-      Transforms.insertNodes(editor, currentNode as any, { at: targetPath });
-      
-      // 5. 恢复光标到新位置
-      setTimeout(() => {
-        Transforms.select(editor, {
-          anchor: { path: [...targetPath, 0], offset: 0 },
-          focus: { path: [...targetPath, 0], offset: 0 },
-        });
-      }, 10);
     });
     
-    console.log(`[moveParagraphDown] 下移段落: ${currentIndex} ↔ ${targetIndex}`);
+    if (paraMatch) {
+      const [, currentPath] = paraMatch;
+      slateMoveParagraphDown(editor, currentPath, {
+        skipTypes: ['timestamp-divider'],
+      });
+    }
   }, [editor]);
   
   /**
@@ -1080,87 +900,25 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
       }
     }
     
-    // Backspace 删除 bullet 机制（OneNote 风格）
+    // Backspace 删除 bullet 机制（使用 SlateCore）
     if (event.key === 'Backspace') {
       const { selection } = editor;
-      if (!selection || !Range.isCollapsed(selection)) return;
-      
-      // 获取当前段落节点
-      const [paraMatch] = Editor.nodes(editor, {
-        match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
-      });
-      
-      if (paraMatch) {
-        const [node, path] = paraMatch;
-        const para = node as any;
+      if (selection && Range.isCollapsed(selection)) {
+        const [paraMatch] = Editor.nodes(editor, {
+          match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
+        });
         
-        // 只在行首且有 bullet 时处理
-        if (para.bullet && selection.anchor.offset === 0) {
-          event.preventDefault();
+        if (paraMatch) {
+          const [node, path] = paraMatch;
+          const para = node as any;
           
-          const currentLevel = para.bulletLevel || 0;
-          
-          if (currentLevel > 0) {
-            // 有层级：减少层级
-            Transforms.setNodes(editor, { bulletLevel: currentLevel - 1 } as any);
-            console.log('[LightSlateEditor] Backspace 行首：降低 bullet 层级', currentLevel, '→', currentLevel - 1);
-          } else {
-            // Level 0：删除 bullet，保留文本
-            Transforms.setNodes(editor, { bullet: undefined, bulletLevel: undefined } as any);
-            console.log('[LightSlateEditor] Backspace 行首：删除 bullet，保留文本');
+          if (para.bullet && selection.anchor.offset === 0) {
+            const handled = handleBulletBackspace(editor, path, selection.anchor.offset);
+            if (handled) {
+              event.preventDefault();
+              return;
+            }
           }
-          return;
-        }
-      }
-    }
-    
-    // Backspace/Delete 禁止删除 timestamp
-    if (event.key === 'Backspace' || event.key === 'Delete') {
-      const { selection } = editor;
-      if (!selection) return;
-      
-      // 检查是否试图删除 timestamp
-      const [nodeEntry] = Editor.nodes(editor, {
-        match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'timestamp-divider',
-      });
-      
-      if (nodeEntry) {
-        event.preventDefault();
-        console.log('[LightSlateEditor] ⛔ 禁止删除 timestamp');
-        return;
-      }
-    }
-    
-    // Backspace 删除 bullet 机制（OneNote 风格）
-    if (event.key === 'Backspace') {
-      const { selection } = editor;
-      if (!selection || !Range.isCollapsed(selection)) return;
-      
-      // 获取当前段落节点
-      const [paraMatch] = Editor.nodes(editor, {
-        match: (n: any) => !Editor.isEditor(n) && SlateElement.isElement(n) && (n as any).type === 'paragraph',
-      });
-      
-      if (paraMatch) {
-        const [node, path] = paraMatch;
-        const para = node as any;
-        
-        // 只在行首且有 bullet 时处理
-        if (para.bullet && selection.anchor.offset === 0) {
-          event.preventDefault();
-          
-          const currentLevel = para.bulletLevel || 0;
-          
-          if (currentLevel > 0) {
-            // 有层级：减少层级
-            Transforms.setNodes(editor, { bulletLevel: currentLevel - 1 } as any);
-            console.log('[LightSlateEditor] Backspace 行首：降低 bullet 层级', currentLevel, '→', currentLevel - 1);
-          } else {
-            // Level 0：删除 bullet，保留文本
-            Transforms.setNodes(editor, { bullet: undefined, bulletLevel: undefined } as any);
-            console.log('[LightSlateEditor] Backspace 行首：删除 bullet，保留文本');
-          }
-          return;
         }
       }
     }
@@ -1216,7 +974,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
       }
       return;
     }
-  }, [editor]);
+  }, [editor, moveParagraphUp, moveParagraphDown]);
   
   // 组件卸载时清理定时器
   useEffect(() => {
