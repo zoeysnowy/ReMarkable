@@ -557,7 +557,20 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   // 🆕 增强的 value：始终在末尾添加一个 placeholder 提示行
   // 🛡️ PERFORMANCE FIX: 添加深度比较避免不必要的重计算
   const itemsHash = useMemo(() => {
-    return items.map(item => `${item.id}-${item.title}-${item.updatedAt}`).join('|');
+    return items.map(item => {
+      // 🔧 修复：正确处理 EventTitle 对象
+      const titleStr = typeof item.title === 'string' 
+        ? item.title 
+        : (item.title?.simpleTitle || item.title?.colorTitle || '');
+      
+      // 🔧 包含更多字段，确保 eventlog、tags 变化也能触发更新
+      const tagsStr = (item.tags || []).join(',');
+      const eventlogStr = typeof (item as any).eventlog === 'object' 
+        ? (item as any).eventlog?.plainText?.substring(0, 50) || ''
+        : (item as any).eventlog?.substring(0, 50) || '';
+      
+      return `${item.id}-${titleStr}-${tagsStr}-${eventlogStr}-${item.updatedAt}`;
+    }).join('|');
   }, [items]);
   
   const enhancedValue = useMemo(() => {
