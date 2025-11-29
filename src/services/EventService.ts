@@ -1310,19 +1310,100 @@ export class EventService {
   }
 
   /**
-   * 纯文本 → Slate JSON
-   * @param simpleTitle - 纯文本
+   * 纯文本 → Slate JSON（支持 #hashtag 转 Tag 节点）
+   * @param simpleTitle - 纯文本（可能包含 #hashtag）
    * @returns Slate JSON 字符串
+   * 
+   * 🆕 v2.15.3: 支持 #hashtag 解析
+   * 示例: "#work meeting with #team" → [Tag节点(work), 文本节点(" meeting with "), Tag节点(team)]
    */
   private static simpleTitleToFullTitle(simpleTitle: string): string {
     if (!simpleTitle) return JSON.stringify([{ type: 'paragraph', children: [{ text: '' }] }]);
     
+    // 检测是否包含 #hashtag
+    const hashtagPattern = /#(\w+)/g;
+    const hasHashtags = hashtagPattern.test(simpleTitle);
+    
+    if (!hasHashtags) {
+      // 没有 hashtag，返回简单文本节点
+      return JSON.stringify([
+        {
+          type: 'paragraph',
+          children: [{ text: simpleTitle }]
+        }
+      ]);
+    }
+    
+    // 解析 hashtags 并创建混合节点
+    const children = this.parseHashtagsToNodes(simpleTitle);
+    
     return JSON.stringify([
       {
         type: 'paragraph',
-        children: [{ text: simpleTitle }]
+        children
       }
     ]);
+  }
+
+  /**
+   * 解析文本中的 #hashtag 并转换为 Tag 节点和文本节点的混合数组
+   * @param text - 包含 #hashtag 的文本
+   * @returns Slate children 节点数组
+   * 
+   * 示例: "#work meeting #urgent" 
+   * → [
+   *      {type: 'tag', tagName: 'work', ...},
+   *      {text: ' meeting '},
+   *      {type: 'tag', tagName: 'urgent', ...}
+   *    ]
+   */
+  private static parseHashtagsToNodes(text: string): any[] {
+    const hashtagPattern = /#(\w+)/g;
+    const children: any[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    
+    // 重置正则表达式的 lastIndex
+    hashtagPattern.lastIndex = 0;
+    
+    while ((match = hashtagPattern.exec(text)) !== null) {
+      const matchIndex = match.index;
+      const tagName = match[1];
+      
+      // 添加 hashtag 之前的文本
+      if (matchIndex > lastIndex) {
+        const beforeText = text.substring(lastIndex, matchIndex);
+        if (beforeText) {
+          children.push({ text: beforeText });
+        }
+      }
+      
+      // 添加 Tag 节点
+      children.push({
+        type: 'tag',
+        tagId: `tag-${tagName.toLowerCase()}-${Date.now()}`, // 生成临时 ID
+        tagName: tagName,
+        tagColor: '#3B82F6', // 默认蓝色
+        children: [{ text: '' }]
+      });
+      
+      lastIndex = matchIndex + match[0].length;
+    }
+    
+    // 添加最后剩余的文本
+    if (lastIndex < text.length) {
+      const remainingText = text.substring(lastIndex);
+      if (remainingText) {
+        children.push({ text: remainingText });
+      }
+    }
+    
+    // 如果没有解析出任何节点（不应该发生），返回原始文本
+    if (children.length === 0) {
+      children.push({ text: text });
+    }
+    
+    return children;
   }
 
   /**

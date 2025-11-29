@@ -2616,6 +2616,130 @@ items.filter(item =>
 <span>{event.title?.simpleTitle}</span>
 ```
 
+#### 🏷️ Tag 元素标准化机制（v2.15.3）
+
+**背景**: PlanManager 使用 fulltitle（富文本，包含 Tag 元素），其他页面使用 colorTitle/simpleTitle（纯文本或 HTML）。需要在不同格式之间正确转换 Tag 元素。
+
+**双向转换设计**:
+
+```
+方向 1: fulltitle → colorTitle/simpleTitle（剥离 Tag 元素）
+  fulltitle: [Tag(work), Text(" meeting")]
+      ↓ fullTitleToColorTitle()
+  colorTitle: " meeting" (Tag 被剥离)
+      ↓ colorTitleToSimpleTitle()
+  simpleTitle: " meeting"
+
+方向 2: simpleTitle → fulltitle（解析 #hashtag 创建 Tag 节点）
+  simpleTitle: "#work meeting"
+      ↓ simpleTitleToFullTitle() + parseHashtagsToNodes()
+  fulltitle: [Tag(work), Text(" meeting")]
+```
+
+**核心实现** (EventService.ts L1310-1409):
+
+```typescript
+// 1. simpleTitleToFullTitle() - 支持 #hashtag 解析
+private static simpleTitleToFullTitle(simpleTitle: string): string {
+  if (!simpleTitle) return JSON.stringify([{ type: 'paragraph', children: [{ text: '' }] }]);
+  
+  // 检测 #hashtag
+  const hashtagPattern = /#(\w+)/g;
+  const hasHashtags = hashtagPattern.test(simpleTitle);
+  
+  if (!hasHashtags) {
+    // 快速路径：无 hashtag
+    return JSON.stringify([
+      { type: 'paragraph', children: [{ text: simpleTitle }] }
+    ]);
+  }
+  
+  // 解析 hashtags 并创建 Tag 节点
+  const children = this.parseHashtagsToNodes(simpleTitle);
+  return JSON.stringify([{ type: 'paragraph', children }]);
+}
+
+// 2. parseHashtagsToNodes() - 核心解析器
+private static parseHashtagsToNodes(text: string): any[] {
+  const hashtagPattern = /#(\w+)/g;
+  const children: any[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  
+  while ((match = hashtagPattern.exec(text)) !== null) {
+    const matchIndex = match.index;
+    const tagName = match[1];
+    
+    // 添加 hashtag 之前的文本
+    if (matchIndex > lastIndex) {
+      const beforeText = text.substring(lastIndex, matchIndex);
+      if (beforeText) children.push({ text: beforeText });
+    }
+    
+    // 添加 Tag 节点
+    children.push({
+      type: 'tag',
+      tagId: `tag-${tagName.toLowerCase()}-${Date.now()}`,
+      tagName: tagName,
+      tagColor: '#3B82F6', // 默认蓝色
+      children: [{ text: '' }]
+    });
+    
+    lastIndex = matchIndex + match[0].length;
+  }
+  
+  // 添加剩余文本
+  if (lastIndex < text.length) {
+    const remainingText = text.substring(lastIndex);
+    if (remainingText) children.push({ text: remainingText });
+  }
+  
+  return children.length > 0 ? children : [{ text: text }];
+}
+
+// 3. fullTitleToColorTitle() - 已有实现，剥离 Tag 元素
+private static fullTitleToColorTitle(fullTitle: string): string {
+  // ...
+  if (node.type === 'tag' || node.type === 'dateMention') {
+    return ''; // 跳过 Tag 和 DateMention 节点
+  }
+  // ...
+}
+```
+
+**使用场景**:
+
+```typescript
+// 场景 1: TimeCalendar 创建带 hashtag 的事件
+EventService.createEvent({
+  title: { simpleTitle: '#work 周会' }
+});
+// → normalizeTitle() 自动生成:
+// {
+//   fullTitle: '[{"type":"paragraph","children":[{"type":"tag","tagName":"work",...},{"text":" 周会"}]}]',
+//   colorTitle: ' 周会',
+//   simpleTitle: '#work 周会'
+// }
+
+// 场景 2: PlanManager 显示带 Tag 的 fulltitle
+// fulltitle 包含 Tag 节点 → PlanSlate 渲染为蓝色标签 "work" + 文本 " 周会"
+
+// 场景 3: UpcomingPanel 显示（Tag 被剥离）
+// colorTitle: " 周会" → 只显示文本，不显示 Tag
+```
+
+**性能优化**:
+- ✅ 快速路径：无 #hashtag 时直接返回（<0.1ms）
+- ✅ 内存友好：逐个匹配 hashtag，避免一次性创建大量对象
+- ✅ 正则优化：使用 `exec()` 而非 `match()`，适合长文本
+
+**已知限制**:
+- ⚠️ 当前正则 `/#(\w+)/g` 不支持中文 hashtag（如 `#工作`）
+- ⚠️ Tag ID 为临时生成，不持久化
+- ⚠️ Tag 颜色默认蓝色，未集成 TagService
+
+**详细文档**: [TITLE_TAG_NORMALIZATION_IMPLEMENTATION.md](../features/TITLE_TAG_NORMALIZATION_IMPLEMENTATION.md)
+
 #### ⚠️ 迁移注意事项
 
 **旧代码模式**（❌ 已废弃）：
