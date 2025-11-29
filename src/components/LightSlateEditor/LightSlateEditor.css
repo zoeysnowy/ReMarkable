@@ -1,0 +1,119 @@
+/**
+ * ModalSlate 样式
+ * 复用 PlanSlate 的核心样式，移除 PlanManager 特定样式
+ */
+
+.light-slate-editor {
+  position: relative;
+  width: 100%;
+  height: 100%; /* 填充父容器高度 */
+  display: flex;
+  flex-direction: column;
+}
+
+/* Bullet Point 样式 */
+.light-slate-editor .bullet-paragraph {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+}
+
+.light-slate-editor .bullet-symbol {
+  position: absolute;
+  user-select: none;
+  color: #666;
+  font-weight: bold;
+  pointer-events: none;
+}
+
+.light-slate-editor .slate-editable {
+  outline: none;
+  line-height: 1.6;
+  font-size: 14px;
+  color: #333;
+  background: transparent;
+  border-radius: 4px;
+  flex: 1; /* 占满剩余空间 */
+  min-height: 200px; /* 最小高度与父容器一致 */
+}
+
+.light-slate-editor .slate-editable:focus {
+  background-color: transparent;
+  /* hover 背景色已移除 */
+}
+
+/* 段落样式 */
+.light-slate-editor .slate-paragraph {
+  margin: 4px 0; /* 减少 margin 为 4px */
+}
+
+/* preline 样式已移到 JS 中动态渲染，这里不需要 CSS */
+
+.light-slate-editor .slate-paragraph:first-child {
+  margin-top: 0;
+}
+
+.light-slate-editor .slate-paragraph:last-child {
+  margin-bottom: 0;
+}
+
+/* 空段落样式 */
+.light-slate-editor .slate-paragraph:empty::before {
+  content: attr(data-placeholder);
+  color: #999;
+  font-style: italic;
+}
+
+/* Timestamp divider 样式 - 左侧竖直线 + 右侧文字 */
+.timestamp-divider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 16px 0;
+  padding-left: 20px; /* 为左边竖线留空间 */
+  opacity: 0.7;
+  user-select: none;
+}
+
+
+
+.timestamp-divider .timestamp-text {
+  font-size: 12px;
+  color: #999;
+  white-space: nowrap;
+}
+
+/* 为 ModalSlate 中的 timestamp 提供额外样式 */
+.light-slate-editor .timestamp-divider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding-left: 20px;
+  opacity: 0.7;
+  user-select: none;
+}
+
+/* inline element 样式会从各自的组件文件中继承 */
+
+/* FloatingToolbar 位置调整 */
+.light-slate-editor .floating-toolbar {
+  z-index: 1000;
+}
+
+/* 选中状态 */
+.light-slate-editor .slate-editable [data-slate-selected="true"] {
+  background-color: rgba(0, 123, 255, 0.1);
+  border-radius: 2px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .light-slate-editor .slate-editable {
+    padding: 8px;
+    font-size: 13px;
+  }
+  
+  .light-slate-editor .timestamp-divider {
+    margin: 12px 0;
+  }
+}

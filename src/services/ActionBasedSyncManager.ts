@@ -3689,10 +3689,12 @@ private getUserSettings(): any {
     // 不要重复添加前缀！同时 externalId 应该是纯 Outlook ID（不带前缀）
     const pureOutlookId = remoteEvent.id.replace(/^outlook-/, '');
     
-    return {
+    // ✅ [v2.15.3 架构修复] 返回部分数据，让 EventService.normalizeEvent() 统一处理
+    // 原因：normalizeEvent() 会自动从 description 生成完整的 eventlog 对象
+    const partialEvent = {
       id: remoteEvent.id, // 已经是 'outlook-AAMkAD...'
-      title: { simpleTitle: cleanTitle, colorTitle: cleanTitle, fullTitle: JSON.stringify([{ type: 'paragraph', children: [{ text: cleanTitle }] }]) }, // 🔧 转换为完整的 EventTitle 对象（避免 normalizeTitle 重复计算）
-      description: cleanDescription,
+      title: cleanTitle,  // ✅ 传递字符串，让 normalizeTitle() 转换
+      description: cleanDescription,  // ✅ 传递字符串，让 normalizeEventLog() 生成 EventLog
       startTime: this.safeFormatDateTime(remoteEvent.start?.dateTime || remoteEvent.start),
       endTime: this.safeFormatDateTime(remoteEvent.end?.dateTime || remoteEvent.end),
       isAllDay: remoteEvent.isAllDay || false,
@@ -3706,6 +3708,10 @@ private getUserSettings(): any {
       syncStatus: 'synced',
       remarkableSource: isReMarkableCreated // 根据描述内容判断来源
     };
+    
+    // ✅ 通过 EventService 规范化，自动生成 title 和 eventlog 对象
+    const { EventService } = require('./EventService');
+    return EventService.normalizeEvent(partialEvent);
   }
 
   private cleanHtmlContent(htmlContent: string): string {
