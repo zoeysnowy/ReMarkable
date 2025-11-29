@@ -187,11 +187,11 @@ export class EventService {
       
       if (!event) return null;
       
-      // 规范化 title 和 eventlog
+      // 规范化 title 和 eventlog（传递 description 作为 fallback）
       return {
         ...event,
         title: this.normalizeTitle(event.title),
-        eventlog: this.normalizeEventLog(event.eventlog)
+        eventlog: this.normalizeEventLog(event.eventlog, event.description)
       };
     } catch (error) {
       eventLogger.error('❌ [EventService] Failed to get event by ID:', error);
