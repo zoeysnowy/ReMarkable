@@ -801,9 +801,14 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       if (enhancedValue.length > 0) {
         skipNextOnChangeRef.current = true;
         setValue(enhancedValue);
-        console.log('%c[✅ 同步完成] setValue 已调用', 'background: #4CAF50; color: white; padding: 2px 6px;', {
+        
+        // 🔥 强制 Slate 编辑器重新渲染（通过 key 变化）
+        setEditorKey(prev => prev + 1);
+        
+        console.log('%c[✅ 同步完成] setValue + editorKey 已调用', 'background: #4CAF50; color: white; padding: 2px 6px;', {
           newLength: enhancedValue.length,
-          skipNextOnChange: skipNextOnChangeRef.current
+          skipNextOnChange: skipNextOnChangeRef.current,
+          editorKeyIncremented: true
         });
       } else {
         console.warn('%c[⚠️ 同步跳过] enhancedValue 为空，保持当前 value', 'background: #FF9800; color: white;');
