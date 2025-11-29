@@ -3712,7 +3712,20 @@ private getUserSettings(): any {
     
     // ✅ 通过 EventService 规范化，自动生成 title 和 eventlog 对象
     // 注意：EventService 已在文件顶部通过 import 引入（如果未引入则需添加）
-    return EventService.normalizeEvent(partialEvent);
+    const normalizedEvent = EventService.normalizeEvent(partialEvent);
+    
+    // 🔍 诊断日志：检查 eventlog 是否正确生成
+    if (!normalizedEvent.eventlog || !normalizedEvent.eventlog.slateJson || normalizedEvent.eventlog.slateJson === '[]') {
+      console.warn('[convertRemoteEventToLocal] eventlog 可能为空:', {
+        eventId: normalizedEvent.id.substring(0, 20),
+        hasEventlog: !!normalizedEvent.eventlog,
+        slateJson: normalizedEvent.eventlog?.slateJson?.substring(0, 50),
+        descriptionLength: cleanDescription.length,
+        descriptionPreview: cleanDescription.substring(0, 50)
+      });
+    }
+    
+    return normalizedEvent;
   }
 
   private cleanHtmlContent(htmlContent: string): string {
