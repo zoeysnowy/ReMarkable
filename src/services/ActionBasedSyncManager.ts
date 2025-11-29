@@ -1,6 +1,7 @@
 import { STORAGE_KEYS } from '../constants/storage';
 import { PersistentStorage, PERSISTENT_OPTIONS } from '../utils/persistentStorage';
 import { logger } from '../utils/logger';
+import { EventService } from './EventService';
 
 const syncLogger = logger.module('Sync');
 
