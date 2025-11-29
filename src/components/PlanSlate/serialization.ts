@@ -336,6 +336,14 @@ function parseHtmlToParagraphsWithLevel(html: string): Array<{ paragraph: Paragr
     if (bullet) {
       (para as any).bullet = true;
       (para as any).bulletLevel = bulletLevel;
+      
+      // 🔍 调试日志：确认 bullet 属性已设置
+      console.log('[parseHtmlToParagraphsWithLevel] ✅ Bullet paragraph 已创建:', {
+        bullet: true,
+        bulletLevel,
+        level,
+        text: pElement.textContent?.substring(0, 30)
+      });
     }
     
     result.push({ paragraph: para, level });

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>测试 Bullet Point 解析</title>
+</head>
+<body>
+  <h1>测试 Bullet Point 数据流</h1>
+  <div id="output"></div>
+  
+  <script>
+    // 模拟保存的 HTML（包含 bulletpoint）
+    const testHTML = `<p data-bullet="true" data-bullet-level="0" data-level="0">First bullet item</p><p data-bullet="true" data-bullet-level="1" data-level="1">Second bullet item (indented)</p><p data-level="0">Regular paragraph</p>`;
+    
+    console.log('原始 HTML:', testHTML);
+    
+    // 模拟解析过程
+    function parseHtmlToParagraphsWithLevel(html) {
+      if (!html) return [];
+      
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = html;
+      
+      const result = [];
+      const pElements = tempDiv.querySelectorAll('p');
+      
+      if (pElements.length === 0) {
+        return [{
+          paragraph: {
+            type: 'paragraph',
+            children: [{ text: html }],
+          },
+          level: 0,
+        }];
+      }
+      
+      pElements.forEach(pElement => {
+        const bullet = pElement.getAttribute('data-bullet') === 'true';
+        const bulletLevel = parseInt(pElement.getAttribute('data-bullet-level') || '0', 10);
+        const level = parseInt(pElement.getAttribute('data-level') || '0', 10);
+        
+        const para = {
+          type: 'paragraph',
+          children: [{ text: pElement.textContent }],
+        };
+        
+        if (bullet) {
+          para.bullet = true;
+          para.bulletLevel = bulletLevel;
+        }
+        
+        result.push({ paragraph: para, level });
+      });
+      
+      return result;
+    }
+    
+    const parsed = parseHtmlToParagraphsWithLevel(testHTML);
+    console.log('解析结果:', parsed);
+    
+    // 输出到页面
+    const output = document.getElementById('output');
+    output.innerHTML = '<pre>' + JSON.stringify(parsed, null, 2) + '</pre>';
+    
+    // 检查每个paragraph是否有bullet属性
+    parsed.forEach((item, index) => {
+      console.log(`Paragraph ${index}:`, {
+        hasBullet: item.paragraph.bullet === true,
+        bulletLevel: item.paragraph.bulletLevel,
+        level: item.level,
+        text: item.paragraph.children[0].text
+      });
+    });
+  </script>
+</body>
+</html>

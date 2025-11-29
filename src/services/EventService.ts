@@ -1475,8 +1475,27 @@ export class EventService {
     // 注意：这个分支通常不会被直接调用，因为上面的"纯文本字符串"分支已覆盖
     // 但保留作为明确的文档说明
     
+    // 情况7: 未知对象格式 - 尝试智能提取
+    if (typeof eventlogInput === 'object' && eventlogInput !== null) {
+      console.warn('[EventService] 未知 eventlog 对象格式，尝试提取字段:', Object.keys(eventlogInput));
+      
+      // 尝试提取常见字段
+      const possibleText = eventlogInput.plainText || 
+                          eventlogInput.text || 
+                          eventlogInput.description || 
+                          JSON.stringify(eventlogInput);
+      
+      if (typeof possibleText === 'string' && possibleText.trim()) {
+        console.log('[EventService] 从未知对象提取文本:', possibleText.substring(0, 50));
+        return this.convertSlateJsonToEventLog(JSON.stringify([{
+          type: 'paragraph',
+          children: [{ text: possibleText }]
+        }]));
+      }
+    }
+    
     // 未知格式 - 降级为空
-    console.warn('[EventService] 未知 eventlog 格式:', typeof eventlogInput);
+    console.warn('[EventService] 无法处理的 eventlog 格式:', typeof eventlogInput);
     return this.convertSlateJsonToEventLog('[]');
   }
   
