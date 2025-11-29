@@ -68,13 +68,17 @@ export class EventHistoryService {
       changes: this.extractChanges({}, event)
     };
 
-    this.saveLog(log);
-    console.log('[EventHistoryService] ✅ logCreate:', {
+    console.log('[EventHistoryService] 🔄 准备 logCreate:', {
       eventId: event.id?.slice(-10),
+      fullEventId: event.id,
       timestamp: log.timestamp,
       title: event.title,
       source
     });
+    
+    this.saveLog(log);
+    
+    console.log('[EventHistoryService] ✅ logCreate 完成');
     historyLogger.log('📝 [Create] 记录创建:', event.title);
     return log;
   }
@@ -529,6 +533,7 @@ export class EventHistoryService {
       console.log('[EventHistoryService] 💾 saveLog:', {
         operation: log.operation,
         eventId: log.eventId?.slice(-10),
+        fullEventId: log.eventId,
         timestamp: log.timestamp,
         历史总数: logs.length
       });
@@ -539,8 +544,12 @@ export class EventHistoryService {
       } else {
         localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(logs));
       }
-    } catch (error) {
+    } catch (error: any) {
       historyLogger.error('❌ 保存日志失败:', error);
+      // 重新抛出 QuotaExceededError，让上层处理
+      if (error.name === 'QuotaExceededError') {
+        throw error;
+      }
     }
   }
 

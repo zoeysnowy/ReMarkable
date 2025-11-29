@@ -199,13 +199,22 @@ export class EventService {
         eventlog: this.normalizeEventLog(event.eventlog, event.description)
       };
       
-      // 🔧 如果 eventlog 被修复了（从空变成有内容），更新回 localStorage
+      // 🔧 如果 eventlog 被修复了（从空变成有内容），尝试更新回 localStorage
       if (needsEventLogFix && normalizedEvent.eventlog.slateJson !== '[]') {
-        eventLogger.log('🔧 [EventService] 自动修复空 eventlog，更新到 localStorage:', eventId);
+        eventLogger.log('🔧 [EventService] 自动修复空 eventlog，尝试更新到 localStorage:', eventId);
         const eventIndex = events.findIndex(e => e.id === eventId);
         if (eventIndex !== -1) {
-          events[eventIndex] = { ...events[eventIndex], eventlog: normalizedEvent.eventlog };
-          localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+          try {
+            events[eventIndex] = { ...events[eventIndex], eventlog: normalizedEvent.eventlog };
+            localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+            eventLogger.log('✅ [EventService] eventlog 修复已保存');
+          } catch (saveError: any) {
+            if (saveError.name === 'QuotaExceededError') {
+              eventLogger.warn('⚠️ [EventService] localStorage quota exceeded, eventlog fix not persisted (will regenerate on next load)');
+            } else {
+              throw saveError;
+            }
+          }
         }
       }
       
@@ -1431,6 +1440,35 @@ export class EventService {
       
       console.log('[EventService] eventlog 已是标准对象');
       
+      // 🔍 检查是否需要将单个 paragraph 拆分成 timestamp-divider 结构
+      // （用于修复从 Outlook 同步回来的旧事件）
+      try {
+        const slateNodes = typeof eventLog.slateJson === 'string' 
+          ? JSON.parse(eventLog.slateJson) 
+          : eventLog.slateJson;
+        
+        // 如果是单个 paragraph 节点，且包含时间戳文本
+        if (Array.isArray(slateNodes) && 
+            slateNodes.length === 1 && 
+            slateNodes[0].type === 'paragraph' &&
+            slateNodes[0].children?.[0]?.text) {
+          
+          const text = slateNodes[0].children[0].text;
+          const timestampPattern = /^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})$/gm;
+          const matches = [...text.matchAll(timestampPattern)];
+          
+          if (matches.length > 0) {
+            // 发现时间戳，需要重新解析
+            console.log('[EventService] 发现旧格式事件（单段落包含时间戳），重新解析:', matches.length, '个时间戳');
+            const newSlateNodes = this.parseTextWithTimestamps(text);
+            const newSlateJson = JSON.stringify(newSlateNodes);
+            return this.convertSlateJsonToEventLog(newSlateJson);
+          }
+        }
+      } catch (error) {
+        console.warn('[EventService] 检查时间戳拆分时出错，使用原 eventlog:', error);
+      }
+      
       // 🔧 确保所有必需字段都存在（从 slateJson 生成缺失的字段）
       if (!eventLog.html || !eventLog.plainText) {
         console.log('[EventService] EventLog 缺少 html/plainText，从 slateJson 生成');
@@ -1489,8 +1527,22 @@ export class EventService {
         return this.convertSlateJsonToEventLog(slateJson);
       }
       
-      // 纯文本字符串
-      console.log('[EventService] 检测到纯文本，转换为单段落');
+      // 纯文本字符串 - 检查是否包含时间戳分隔符
+      console.log('[EventService] 检测到纯文本，检查是否包含时间戳');
+      
+      // 🔍 尝试识别 YYYY-MM-DD HH:mm:ss 格式的时间戳（用于 Outlook 同步回来的文本）
+      const timestampPattern = /^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})$/gm;
+      const matches = [...eventlogInput.matchAll(timestampPattern)];
+      
+      if (matches.length > 0) {
+        // 发现时间戳，按时间戳分割内容
+        console.log('[EventService] 发现', matches.length, '个时间戳，按时间分割内容');
+        const slateNodes = this.parseTextWithTimestamps(eventlogInput);
+        const slateJson = JSON.stringify(slateNodes);
+        return this.convertSlateJsonToEventLog(slateJson);
+      }
+      
+      // 没有时间戳，转换为单段落
       const slateJson = JSON.stringify([{
         type: 'paragraph',
         children: [{ text: eventlogInput }]
@@ -1643,6 +1695,97 @@ export class EventService {
       localVersion: (event.localVersion || 0) + 1,
       syncStatus: event.syncStatus || 'pending',
     } as Event;
+  }
+
+  /**
+   * 解析包含时间戳的纯文本，将其分割为 timestamp-divider + paragraph 节点
+   * 
+   * @param text - 包含时间戳的纯文本（如 Outlook 同步回来的 description）
+   * @returns Slate 节点数组，包含 timestamp-divider 和 paragraph 节点
+   * 
+   * 输入示例:
+   * ```
+   * 2025-11-27 01:05:22
+   * 第一段内容...
+   * 2025-11-27 01:36:23
+   * 第二段内容...
+   * ```
+   * 
+   * 输出:
+   * ```
+   * [
+   *   { type: 'timestamp-divider', timestamp: '2025-11-27T01:05:22', children: [{ text: '' }] },
+   *   { type: 'paragraph', children: [{ text: '第一段内容...' }] },
+   *   { type: 'timestamp-divider', timestamp: '2025-11-27T01:36:23', children: [{ text: '' }] },
+   *   { type: 'paragraph', children: [{ text: '第二段内容...' }] }
+   * ]
+   * ```
+   */
+  private static parseTextWithTimestamps(text: string): any[] {
+    const slateNodes: any[] = [];
+    
+    // 按行分割
+    const lines = text.split('\n');
+    
+    // 时间戳正则（独立成行，可能带有 "| Xmin later" 等后缀）
+    // 匹配: "2025-11-27 01:05:22" 或 "2025-11-27 01:36:23 | 31min later"
+    const timestampPattern = /^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})(\s*\|.*)?$/;
+    
+    let currentParagraphLines: string[] = [];
+    
+    for (const line of lines) {
+      const match = line.match(timestampPattern);
+      
+      if (match) {
+        // 遇到时间戳行
+        
+        // 1. 先保存之前累积的段落内容（如果有）
+        if (currentParagraphLines.length > 0) {
+          const paragraphText = currentParagraphLines.join('\n').trim();
+          if (paragraphText) {
+            slateNodes.push({
+              type: 'paragraph',
+              children: [{ text: paragraphText }]
+            });
+          }
+          currentParagraphLines = [];
+        }
+        
+        // 2. 添加 timestamp-divider 节点
+        const timeStr = match[1]; // 保持原格式：YYYY-MM-DD HH:mm:ss
+        
+        slateNodes.push({
+          type: 'timestamp-divider',
+          timestamp: timeStr, // 不转换，保持空格分隔符
+          children: [{ text: '' }]
+        });
+        
+      } else {
+        // 普通文本行，累积到当前段落
+        currentParagraphLines.push(line);
+      }
+    }
+    
+    // 处理最后剩余的段落
+    if (currentParagraphLines.length > 0) {
+      const paragraphText = currentParagraphLines.join('\n').trim();
+      if (paragraphText) {
+        slateNodes.push({
+          type: 'paragraph',
+          children: [{ text: paragraphText }]
+        });
+      }
+    }
+    
+    // 确保至少有一个节点
+    if (slateNodes.length === 0) {
+      slateNodes.push({
+        type: 'paragraph',
+        children: [{ text: '' }]
+      });
+    }
+    
+    return slateNodes;
   }
 
   /**
@@ -2529,28 +2672,41 @@ export class EventService {
       const createTime = timestamps[0];
       const event = this.getEventById(eventId);
       if (event) {
-        EventHistoryService.logCreate(event, 'backfill-from-timestamp', createTime);
-        backfilledCount++;
-        eventLogger.log('✅ [EventService] Backfilled create log:', {
-          eventId,
-          createTime: createTime.toISOString()
-        });
+        // 添加 try-catch 处理 QuotaExceededError
+        try {
+          EventHistoryService.logCreate(event, 'backfill-from-timestamp', createTime);
+          backfilledCount++;
+          eventLogger.log('✅ [EventService] Backfilled create log:', {
+            eventId,
+            createTime: createTime.toISOString()
+          });
+        } catch (error: any) {
+          if (error.name === 'QuotaExceededError') {
+            eventLogger.warn('⚠️ localStorage quota exceeded, cannot backfill EventHistory. Consider cleaning old records.');
+            return 0;  // 优雅降级：跳过补录
+          }
+          throw error;  // 其他错误继续抛出
+        }
       }
       
-      // 后续的 timestamp 作为编辑记录
+      // 🔧 暂时只补录创建记录，不补录后续的编辑记录
+      // 原因：避免 localStorage 配额超限（EventHistory 已经很大）
+      // TODO: 后续可以考虑只补录最近的几个 timestamp
+      /*
       for (let i = 1; i < timestamps.length; i++) {
         const editTime = timestamps[i];
         if (event) {
           EventHistoryService.logUpdate(
+            eventId,  // ✅ 修复：第一个参数是 eventId 字符串，不是 event 对象
             event, 
-            event, 
-            [{ field: 'eventlog', oldValue: '', newValue: 'content-edit' }],
+            event,
             'backfill-from-timestamp',
             editTime
           );
           backfilledCount++;
         }
       }
+      */
       
       eventLogger.log('✅ [EventService] Backfill completed:', {
         eventId,
