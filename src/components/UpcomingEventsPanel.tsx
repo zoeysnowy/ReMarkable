@@ -211,24 +211,6 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
     onEventClick?.(event);
   };
 
-  /**
-   * 从标题中移除标签和日期mention元素
-   * 标签格式: #tagName 或 #emoji tagName
-   * 日期格式: 📅 日期文本
-   */
-  const cleanEventTitle = (title: string): string => {
-    if (!title) return '';
-    
-    return title
-      // 移除标签（# 开头，后面可能有emoji和文字）
-      .replace(/#[^\s#📅]*/g, '')
-      // 移除日期mention（📅 开头的内容）
-      .replace(/📅[^📅#]*/g, '')
-      // 移除多余空格
-      .replace(/\s+/g, ' ')
-      .trim();
-  };
-
   const renderEventCard = (event: Event) => {
     // ✅ 符合 TIME_ARCHITECTURE：强制使用 timeSpec.resolved
     if (!event.timeSpec?.resolved) {
@@ -255,9 +237,8 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
     const tagEmoji = primaryTag?.emoji;
     const tagName = primaryTag?.name;
     
-    // 移除标签和日期mention的纯文本标题（用于显示）
-    const rawTitle = event.title?.colorTitle || event.title?.simpleTitle || '';
-    const cleanTitle = cleanEventTitle(rawTitle);
+    // ✅ 直接使用 colorTitle（已经通过 fullTitleToColorTitle 自动剥离了 Tag 和 DateMention 元素）
+    const displayTitle = event.title?.colorTitle || event.title?.simpleTitle || '';
     
     // 计算是否需要显示日期（仅过期事件需要）
     let dateDisplay: string | undefined;
@@ -311,7 +292,10 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
                   </div>
                 );
               })()}
-              <h4 className="event-title">{cleanTitle}</h4>
+              <h4 
+                className="event-title"
+                dangerouslySetInnerHTML={{ __html: displayTitle }}
+              />
             </div>
             {timeLabel && (
               <div className="event-time-info">

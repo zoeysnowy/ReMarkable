@@ -2363,7 +2363,7 @@ export class EventService {
       }
       
       // 获取 Microsoft Calendar Service
-      const { MicrosoftCalendarService } = await import('./MicrosoftCalendarService');
+      const { MicrosoftCalendarService } = await import('./calendar/MicrosoftCalendarService');
       const microsoftService = MicrosoftCalendarService.getInstance();
       
       // ========== 第二步：获取现有同步状态 ==========
