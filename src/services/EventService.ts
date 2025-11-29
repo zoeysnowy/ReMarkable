@@ -2409,29 +2409,22 @@ export class EventService {
 
   /**
    * 从远程同步创建事件（内部方法，供 ActionBasedSyncManager 使用）
-   * - 规范化事件数据
    * - 直接保存到 localStorage（不触发 sync）
    * - 记录到 EventHistoryService
    * 
-   * @param event - 事件对象（已经过 convertRemoteEventToLocal 处理）
+   * @param event - 事件对象（已经过 convertRemoteEventToLocal 和 normalizeEvent 处理）
    * @returns 创建的事件对象
    */
   static createEventFromRemoteSync(event: Event): Event {
     try {
       eventLogger.log('🌐 [EventService] Creating event from remote sync:', event.id);
 
-      // 🔥 规范化事件数据（统一处理 title/eventlog/description）
-      const normalizedEvent = this.normalizeEvent(event);
-      
-      // 确保必要字段
+      // ⚠️ 注意：event 已经过 convertRemoteEventToLocal 中的 normalizeEvent 处理
+      // 这里不需要再次规范化，直接使用传入的事件对象
       const finalEvent: Event = {
-        ...normalizedEvent,
-        // 保留 remote sync 的标识字段
-        remarkableSource: event.remarkableSource,
-        externalId: event.externalId,
+        ...event,
+        // 确保 sync 相关字段正确
         syncStatus: event.syncStatus || 'synced',
-        syncedPlanCalendars: event.syncedPlanCalendars,
-        syncedActualCalendars: event.syncedActualCalendars,
       };
 
       // 读取现有事件
