@@ -750,13 +750,24 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       console.log('%c[🔄 同步 enhancedValue] 用户未编辑，全量更新', 'background: #4CAF50; color: white; padding: 2px 6px;', {
         oldLength: value.length,
         newLength: enhancedValue.length,
-        enhancedValue: enhancedValue.map(n => ({ eventId: n.eventId, type: n.type }))
+        enhancedValue: enhancedValue.map((n, i) => ({ 
+          index: i,
+          eventId: n.eventId?.slice(-10), 
+          type: n.type,
+          hasChildren: !!n.children,
+          childrenCount: n.children?.length || 0,
+          firstChild: n.children?.[0]?.type
+        }))
       });
       
       // 🔧 安全检查：确保 enhancedValue 不为空
       if (enhancedValue.length > 0) {
         skipNextOnChangeRef.current = true;
         setValue(enhancedValue);
+        console.log('%c[✅ 同步完成] setValue 已调用', 'background: #4CAF50; color: white; padding: 2px 6px;', {
+          newLength: enhancedValue.length,
+          skipNextOnChange: skipNextOnChangeRef.current
+        });
       } else {
         console.warn('%c[⚠️ 同步跳过] enhancedValue 为空，保持当前 value', 'background: #FF9800; color: white;');
       }
