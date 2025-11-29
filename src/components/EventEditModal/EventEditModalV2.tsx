@@ -241,7 +241,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     if (event) {
       return {
         id: event.id,
-        title: event.title?.colorTitle || event.title?.simpleTitle || '',
+        title: event.title?.simpleTitle || event.title?.colorTitle || '',
         tags: event.tags || [],
         isTask: event.isTask || false,
         isTimer: event.isTimer || false,

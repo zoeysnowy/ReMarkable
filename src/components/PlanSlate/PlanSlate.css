@@ -74,12 +74,20 @@
   pointer-events: all;
 }
 
+/* 普通 Paragraph 样式 - 支持换行 */
+.unified-slate-editor [data-slate-editor] > div > div {
+  white-space: pre-wrap; /* 保留空格和换行 */
+  word-break: break-word; /* 长单词换行 */
+}
+
 /* 🆕 Bullet Paragraph 样式 */
 .slate-bullet-paragraph {
   position: relative;
   padding-left: 1.5em; /* 🔧 bullet 与文字之间约半个字符宽度的 gap */
   margin: 1px 0; /* 🔧 紧凑间距 */
   line-height: 1.5; /* 🔧 稍紧凑的行高 */
+  white-space: pre-wrap; /* 保留空格和换行 */
+  word-break: break-word; /* 长单词换行 */
 }
 
 /* 🔧 eventlog 模式下的 bullet 更紧凑 */
