@@ -1958,6 +1958,25 @@ interface PlanItem {
 // eventlog ↔ description: 修改任一字段时，另一字段自动同步
 //   - eventlog → description: 提取纯文本
 //   - description → eventlog: 创建EventLog对象
+
+// 🔥 v2.15.3: EventLog 自动生成机制（远程同步兼容）
+// EventService.normalizeEventLog() 统一处理所有输入格式：
+//   1. EventLog 对象 → 确保包含 html/plainText 字段
+//   2. undefined/null → 从 description 生成（远程同步场景）
+//   3. Slate JSON 字符串 → 转换为完整 EventLog 对象
+//   4. HTML 字符串 → 反向识别转换
+//   5. 纯文本字符串 → 创建单段落 EventLog
+// 
+// 远程同步数据流（v2.15.3）：
+//   Outlook API → convertFromCalendarEvent ({ title: "字符串", description: "字符串" })
+//                                          ↓
+//                               EventService.createEvent()
+//                                          ↓
+//                              normalizeEventLog(description)
+//                                          ↓
+//                 完整 Event { eventlog: { slateJson, html, plainText } }
+//                                          ↓
+//                             EventEditModal 正常显示 ✅
 ```
 
 **使用场景**:

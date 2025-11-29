@@ -105,6 +105,112 @@ childEvent.syncMode = 'send-only';
 
 ---
 
+## 🔥 v2.15.3 EventService 中枢化架构 (2025-11-29)
+
+### 核心变更
+
+**背景**: EventLog 重构后，远程同步的事件缺少 eventlog 字段，导致 EventEditModal 显示空白  
+**根本原因**: `convertFromCalendarEvent` 自己处理数据转换，绕过了 EventService 的规范化机制  
+**解决方案**: 建立 EventService 作为唯一数据中枢，所有数据转换统一由 normalizeEvent 处理
+
+### 架构改进
+
+#### 1. 数据流中枢化
+
+**旧架构问题** ❌:
+```
+Outlook API → convertFromCalendarEvent (自己转换 title/eventlog)
+                        ↓
+               EventService.createEvent()
+                        ↓
+                  localStorage
+
+问题：数据转换逻辑分散，绕过 normalizeTitle/normalizeEventLog
+```
+
+**新架构** ✅:
+```
+Outlook API → convertFromCalendarEvent (只映射字段，返回字符串)
+                        ↓
+           返回 Partial<Event> { title: "字符串", description: "字符串" }
+                        ↓
+               EventService.createEvent()
+                        ↓
+               normalizeEvent() 统一处理:
+                 - normalizeTitle("字符串") → EventTitle 对象
+                 - normalizeEventLog(description) → EventLog 对象
+                        ↓
+          完整 Event { title: EventTitle, eventlog: EventLog }
+                        ↓
+                  localStorage
+```
+
+#### 2. 增强 normalizeTitle - 支持字符串输入
+
+```typescript
+// 🆕 支持远程同步场景的字符串输入
+private static normalizeTitle(titleInput: any): EventTitle {
+  // 情况0: 简单字符串
+  if (typeof titleInput === 'string') {
+    return {
+      simpleTitle: titleInput,
+      colorTitle: undefined,  // 后续自动生成
+      fullTitle: undefined
+    };
+  }
+  
+  // 情况-1: 空值
+  if (!titleInput) {
+    return { simpleTitle: '(无标题)' };
+  }
+  
+  // 现有逻辑: EventTitle 对象...
+}
+```
+
+#### 3. 增强 normalizeEventLog - 自动从 description 生成
+
+```typescript
+private static normalizeEventLog(eventlogInput: any): EventLog {
+  // 🆕 支持从纯文本 description 生成 EventLog
+  if (typeof eventlogInput === 'string' && eventlogInput.trim()) {
+    return this.convertSlateJsonToEventLog(JSON.stringify([{
+      type: 'paragraph',
+      children: [{ text: eventlogInput }]
+    }]));
+  }
+  
+  // 现有逻辑...
+}
+```
+
+#### 4. 简化 convertFromCalendarEvent - 只做字段映射
+
+```typescript
+// 🔥 移除复杂转换，返回 Partial<Event>
+export function convertFromCalendarEvent(
+  calendarEvent: any, 
+  originalEvent?: Event
+): Partial<Event> {
+  return {
+    title: calendarEvent.title || '(无标题)',  // ✅ 字符串
+    description: calendarEvent.body || '',      // ✅ 字符串
+    // ❌ 不再自己创建 eventlog，交给 EventService
+  };
+}
+```
+
+### 优势总结
+
+| 方面 | 旧架构 | 新架构 |
+|------|-------|-------|
+| **数据转换** | 分散各模块 | 统一 EventService |
+| **远程同步** | 手动创建 EventLog | 自动生成 |
+| **代码冗余** | 多处重复 | 单一入口 |
+| **数据一致性** | 容易不一致 | 完全一致 |
+
+---
+
 ## 🔧 v2.15.2 EventService 生命周期管理 (2025-11-27)
 
 ### 问题背景
