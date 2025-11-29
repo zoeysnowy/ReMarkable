@@ -26,9 +26,26 @@ import { Slate, Editable, withReact, RenderElementProps, RenderLeafProps, ReactE
 import { withHistory } from 'slate-history';
 import { EventLineNode, ParagraphNode, TagNode, DateMentionNode, TextNode, CustomEditor } from './types';
 import { EventLineElement } from './EventLineElement';
-import { TagElementComponent } from './elements/TagElement';
-import DateMentionElement from './elements/DateMentionElement';
-import { TimestampDividerElement } from './elements/TimestampDividerElement';
+
+// ✅ 从 SlateCore 导入共享元素组件
+import { TagElementComponent } from '../SlateCore/elements/TagElement';
+import DateMentionElement from '../SlateCore/elements/DateMentionElement';
+import { TimestampDividerElement } from '../SlateCore/elements/TimestampDividerElement';
+
+// ✅ 从 SlateCore 导入共享服务
+import { EventLogTimestampService } from '../SlateCore/services/timestampService';
+
+// ✅ 从 SlateCore 导入共享操作工具（备用，后续可能使用）
+import {
+  moveParagraphUp as slateMoveParagraphUp,
+  moveParagraphDown as slateMoveParagraphDown,
+} from '../SlateCore/operations/paragraphOperations';
+
+import {
+  handleBulletBackspace,
+  handleBulletEnter,
+} from '../SlateCore/operations/bulletOperations';
+
 import UnifiedDateTimePicker from '../FloatingToolbar/pickers/UnifiedDateTimePicker';
 import { SlateErrorBoundary } from './ErrorBoundary';
 import { EventService } from '../../services/EventService';
@@ -41,7 +58,6 @@ import {
   parseExternalHtml,
 } from './serialization';
 import { insertDateMention } from './helpers';
-import { EventLogTimestampService } from './timestampService';
 import { formatTimeForStorage } from '../../utils/timeUtils';
 import {
   initDebug,
