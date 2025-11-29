@@ -2425,6 +2425,110 @@ export class EventService {
   }
 
   /**
+   * 从事件的 eventlog 中提取 timestamp 节点，补录到 EventHistoryService
+   * 用于修复旧事件缺失的历史记录
+   * 
+   * @param eventId - 事件ID
+   * @param eventlog - 事件日志对象
+   * @returns 补录的历史记录数量
+   */
+  static backfillEventHistoryFromTimestamps(eventId: string, eventlog: any): number {
+    try {
+      // 检查是否已有创建记录
+      const existingLogs = EventHistoryService.queryHistory({
+        eventId,
+        operations: ['create'],
+        limit: 1
+      });
+      
+      if (existingLogs.length > 0) {
+        eventLogger.log('✅ [EventService] Event already has history, skip backfill:', eventId);
+        return 0;
+      }
+      
+      // 解析 eventlog 中的 slateJson
+      if (!eventlog || typeof eventlog !== 'object' || !eventlog.slateJson) {
+        eventLogger.warn('⚠️ [EventService] Invalid eventlog for backfill:', eventId);
+        return 0;
+      }
+      
+      let slateNodes: any[];
+      try {
+        slateNodes = typeof eventlog.slateJson === 'string' 
+          ? JSON.parse(eventlog.slateJson) 
+          : eventlog.slateJson;
+      } catch (error) {
+        eventLogger.error('❌ [EventService] Failed to parse slateJson:', error);
+        return 0;
+      }
+      
+      // 提取所有 timestamp-divider 节点
+      const timestamps: Date[] = [];
+      for (const node of slateNodes) {
+        if (node.type === 'timestamp-divider' && node.timestamp) {
+          try {
+            const timestampDate = new Date(node.timestamp);
+            if (!isNaN(timestampDate.getTime())) {
+              timestamps.push(timestampDate);
+            }
+          } catch (error) {
+            eventLogger.warn('⚠️ [EventService] Invalid timestamp:', node.timestamp);
+          }
+        }
+      }
+      
+      if (timestamps.length === 0) {
+        eventLogger.log('📋 [EventService] No timestamps found in eventlog, skip backfill:', eventId);
+        return 0;
+      }
+      
+      // 按时间排序（最早的在前）
+      timestamps.sort((a, b) => a.getTime() - b.getTime());
+      
+      // 补录历史记录
+      let backfilledCount = 0;
+      
+      // 第一个 timestamp 作为创建记录
+      const createTime = timestamps[0];
+      const event = this.getEventById(eventId);
+      if (event) {
+        EventHistoryService.logCreate(event, 'backfill-from-timestamp', createTime);
+        backfilledCount++;
+        eventLogger.log('✅ [EventService] Backfilled create log:', {
+          eventId,
+          createTime: createTime.toISOString()
+        });
+      }
+      
+      // 后续的 timestamp 作为编辑记录
+      for (let i = 1; i < timestamps.length; i++) {
+        const editTime = timestamps[i];
+        if (event) {
+          EventHistoryService.logUpdate(
+            event, 
+            event, 
+            [{ field: 'eventlog', oldValue: '', newValue: 'content-edit' }],
+            'backfill-from-timestamp',
+            editTime
+          );
+          backfilledCount++;
+        }
+      }
+      
+      eventLogger.log('✅ [EventService] Backfill completed:', {
+        eventId,
+        totalTimestamps: timestamps.length,
+        backfilledCount
+      });
+      
+      return backfilledCount;
+    } catch (error) {
+      eventLogger.error('❌ [EventService] Backfill failed:', error);
+      return 0;
+    }
+  }
+
+  /**
    * 从远程同步创建事件（内部方法，供 ActionBasedSyncManager 使用）
    * - 直接保存到 localStorage（不触发 sync）
    * - 记录到 EventHistoryService

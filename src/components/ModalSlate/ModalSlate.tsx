@@ -463,7 +463,30 @@ export const ModalSlate = forwardRef<ModalSlateRef, ModalSlateProps>((
           firstLog: createLogs[0]
         });
         
-        const createLog = createLogs[0];
+        let createLog = createLogs[0];
+        
+        // 🔧 如果没有创建日志，尝试从 eventlog 的 timestamp 节点补录
+        if (!createLog) {
+          console.log('[ModalSlate] 未找到创建日志，尝试从 timestamp 节点补录');
+          const event = EventService.getEventById(parentEventId);
+          if (event && event.eventlog) {
+            const backfilledCount = EventService.backfillEventHistoryFromTimestamps(
+              parentEventId, 
+              event.eventlog
+            );
+            
+            if (backfilledCount > 0) {
+              console.log('[ModalSlate] 补录成功，重新查询创建日志');
+              // 重新查询
+              const retryLogs = EventHistoryService.queryHistory({
+                eventId: parentEventId,
+                operations: ['create'],
+                limit: 1
+              });
+              createLog = retryLogs[0];
+            }
+          }
+        }
         
         if (createLog) {
           const createTime = new Date(createLog.timestamp);

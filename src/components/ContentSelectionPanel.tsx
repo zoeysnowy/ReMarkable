@@ -288,8 +288,8 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
     return (
       <div key={node.id} className={`task-node task-node-depth-${level}`}>
         <div className="task-node-row">
-          {/* 可见性图标 - 不受缩进影响 */}
-          <div className="task-visibility-container">
+          {/* 可见性图标 - ✅ 跟随标签缩进 */}
+          <div className="task-visibility-container" style={{ marginLeft: `${indent}px` }}>
             {node.isHidden ? (
               <button 
                 className="task-visibility-btn task-visibility-btn-visible"
@@ -324,8 +324,8 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
             <span className="task-icon task-icon-favorite">⭐</span>
           )}
           
-          {/* 任务标题 - ✅ 添加左边距实现缩进 */}
-          <div className="task-title" style={{ color: node.color, marginLeft: `${indent}px` }}>
+          {/* 任务标题 - ✅ 不需要额外缩进，因为 hide/unhide 图标已经缩进了 */}
+          <div className="task-title" style={{ color: node.color }}>
             {node.title}
           </div>
           

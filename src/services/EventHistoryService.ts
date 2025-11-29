@@ -55,13 +55,14 @@ const FIELD_DISPLAY_NAMES: Record<string, string> = {
 export class EventHistoryService {
   /**
    * 记录事件创建
+   * @param customTimestamp - 可选，指定创建时间（用于补录历史记录）
    */
-  static logCreate(event: Event, source: string = 'user'): EventChangeLog {
+  static logCreate(event: Event, source: string = 'user', customTimestamp?: Date): EventChangeLog {
     const log: EventChangeLog = {
       id: this.generateLogId(),
       eventId: event.id,
       operation: 'create',
-      timestamp: formatTimeForStorage(new Date()),
+      timestamp: formatTimeForStorage(customTimestamp || new Date()),
       after: { ...event },
       source,
       changes: this.extractChanges({}, event)
@@ -80,12 +81,14 @@ export class EventHistoryService {
 
   /**
    * 记录事件更新
+   * @param customTimestamp - 可选，指定更新时间（用于补录历史记录）
    */
   static logUpdate(
     eventId: string,
     before: Event,
     after: Partial<Event>,
-    source: string = 'user'
+    source: string = 'user',
+    customTimestamp?: Date
   ): EventChangeLog {
     const changes = this.extractChanges(before, after);
     
@@ -98,7 +101,7 @@ export class EventHistoryService {
       id: this.generateLogId(),
       eventId,
       operation: 'update',
-      timestamp: formatTimeForStorage(new Date()),
+      timestamp: formatTimeForStorage(customTimestamp || new Date()),
       before: { ...before },
       after: { ...after },
       source,
