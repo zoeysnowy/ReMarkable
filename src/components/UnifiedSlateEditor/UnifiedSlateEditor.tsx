@@ -506,6 +506,9 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   enableTimestamp = false,  // 🆕 是否启用 timestamp
   className = '',
 }) => {
+  // 🔍 版本标记 - 用于验证代码是否被加载
+  console.log('%c[UnifiedSlateEditor v2.15] 组件加载 - 包含 itemsHash 详细日志', 'background: #4ECDC4; color: white; font-weight: bold; padding: 4px 8px;');
+  
   // 🆕 Debug: 检查 timestamp 相关的 props
   console.log('[UnifiedSlateEditor] 初始化参数:', {
     eventId,

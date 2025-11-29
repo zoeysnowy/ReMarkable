@@ -276,6 +276,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   onUpdateEvent,
   microsoftService, // 🆕 接收 Microsoft 服务
 }) => {
+  // 🔍 版本标记 - 用于验证代码是否被加载
+  console.log('%c[PlanManager v2.15] 组件加载 - 包含 itemsHash 诊断日志', 'background: #FF6B6B; color: white; font-weight: bold; padding: 4px 8px;');
+  
   // ✅ PlanManager 自己维护 items state
   // 🛡️ PERFORMANCE FIX: 使用useRef缓存初始数据，避免重复计算
   const initialItemsRef = useRef<Event[] | null>(null);
