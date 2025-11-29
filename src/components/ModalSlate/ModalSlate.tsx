@@ -450,11 +450,20 @@ export const ModalSlate = forwardRef<ModalSlateRef, ModalSlateProps>((
         console.log('[ModalSlate] 有内容但无 timestamp，插入初始 timestamp');
         
         // 从 EventHistoryService 获取创建时间
-        const createLog = EventHistoryService.queryHistory({
+        const createLogs = EventHistoryService.queryHistory({
           eventId: parentEventId,
           operations: ['create'],
           limit: 1
-        })[0];
+        });
+        
+        console.log('[ModalSlate] 查询创建日志:', {
+          eventId: parentEventId,
+          foundLogs: createLogs.length,
+          allHistoryCount: EventHistoryService.queryHistory({}).length,
+          firstLog: createLogs[0]
+        });
+        
+        const createLog = createLogs[0];
         
         if (createLog) {
           const createTime = new Date(createLog.timestamp);

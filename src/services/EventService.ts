@@ -2444,13 +2444,24 @@ export class EventService {
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
       
       // 🆕 记录到事件历史（使用 outlook-sync 作为来源）
-      EventHistoryService.logCreate(finalEvent, 'outlook-sync');
+      const historyLog = EventHistoryService.logCreate(finalEvent, 'outlook-sync');
+      
+      // 🔍 验证历史记录是否真的保存成功
+      const verifyLog = EventHistoryService.queryHistory({
+        eventId: finalEvent.id,
+        operations: ['create'],
+        limit: 1
+      })[0];
       
       eventLogger.log('✅ [EventService] Remote event created:', {
         eventId: finalEvent.id,
         title: finalEvent.title,
         hasEventlog: typeof finalEvent.eventlog === 'object' && !!finalEvent.eventlog?.slateJson,
-        总事件数: existingEvents.length
+        总事件数: existingEvents.length,
+        historyLogSaved: !!historyLog,
+        historyLogVerified: !!verifyLog,
+        historyLogId: historyLog?.id,
+        verifyLogId: verifyLog?.id
       });
 
       // 触发全局更新事件
