@@ -593,13 +593,29 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       // 🔧 包含时间字段：startTime、endTime、dueDate、isAllDay
       const timeStr = `${item.startTime || ''}-${item.endTime || ''}-${item.dueDate || ''}-${item.isAllDay ? '1' : '0'}`;
       
-      return `${item.id}-${titleStr}-${tagsStr}-${eventlogStr}-${timeStr}-${item.updatedAt}`;
+      const itemHash = `${item.id}-${titleStr}-${tagsStr}-${eventlogStr}-${timeStr}-${item.updatedAt}`;
+      
+      // 🔍 记录 Event[3] 的完整 hash
+      if (index === 3) {
+        console.log('%c[itemsHash] Event[3] 完整 hash:', 'background: #FF6B6B; color: white; padding: 2px 6px;', {
+          itemHash,
+          id: item.id.slice(-10),
+          titleStr,
+          tagsStr,
+          eventlogStr: `[${eventlogStr.length}] ${eventlogStr}`,
+          timeStr,
+          updatedAt: item.updatedAt
+        });
+      }
+      
+      return itemHash;
     }).join('|');
     
     console.log('%c[🔍 itemsHash 重新计算]', 'background: #9C27B0; color: white; padding: 2px 6px;', {
       itemsLength: items.length,
       hashLength: hash.length,
-      hashPreview: hash.substring(0, 100) + '...'
+      hashPreview: hash.substring(0, 100) + '...',
+      event3Position: hash.indexOf('line-1764340875831-0.9592671205692446')
     });
     
     return hash;
