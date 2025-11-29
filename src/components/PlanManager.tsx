@@ -2506,7 +2506,10 @@ const PlanManager: React.FC<PlanManagerProps> = ({
               id: latestEvent.id,
               updatedAt: latestEvent.updatedAt,
               tags: latestEvent.tags,
-              eventlog: latestEvent.eventlog ? 'exists' : 'empty'
+              eventlogType: typeof latestEvent.eventlog,
+              eventlogHasPlainText: typeof latestEvent.eventlog === 'object' && latestEvent.eventlog !== null ? !!latestEvent.eventlog.plainText : false,
+              eventlogPlainTextLength: typeof latestEvent.eventlog === 'object' && latestEvent.eventlog !== null ? latestEvent.eventlog.plainText?.length || 0 : 0,
+              eventlogPlainTextPreview: typeof latestEvent.eventlog === 'object' && latestEvent.eventlog !== null ? latestEvent.eventlog.plainText?.substring(0, 50) : 'N/A'
             });
             
             // ✅ 只需要触发 syncToUnifiedTimeline（如果需要的话）
@@ -2517,7 +2520,16 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             // 原因：EventEditModal 保存触发的 eventsUpdated 事件被 isLocalUpdate 拦截
             // 必须手动刷新 UI 以显示最新的 tags、eventlog 等字段
             setItems(prev => {
-              return prev.map((e: Event) => e.id === latestEvent.id ? latestEvent : e);
+              const updated = prev.map((e: Event) => e.id === latestEvent.id ? latestEvent : e);
+              const oldEvent = prev.find((e: Event) => e.id === latestEvent.id);
+              console.log('🔄 [PlanManager] items 数组更新对比:', {
+                eventId: latestEvent.id.slice(-10),
+                oldEventlogType: typeof oldEvent?.eventlog,
+                newEventlogType: typeof latestEvent.eventlog,
+                changed: oldEvent !== latestEvent,
+                arrayChanged: prev !== updated
+              });
+              return updated;
             });
             console.log('🔄 [PlanManager] 手动更新 items 数组，避免去重拦截');
             

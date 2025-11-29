@@ -557,7 +557,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   // 🆕 增强的 value：始终在末尾添加一个 placeholder 提示行
   // 🛡️ PERFORMANCE FIX: 添加深度比较避免不必要的重计算
   const itemsHash = useMemo(() => {
-    const hash = items.map(item => {
+    const hash = items.map((item, index) => {
       // 🔧 修复：正确处理 EventTitle 对象
       const titleStr = typeof item.title === 'string' 
         ? item.title 
@@ -565,9 +565,27 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       
       // 🔧 包含更多字段，确保 eventlog、tags、时间 变化也能触发更新
       const tagsStr = (item.tags || []).join(',');
-      const eventlogStr = typeof (item as any).eventlog === 'object' 
-        ? (item as any).eventlog?.plainText?.substring(0, 50) || ''
-        : (item as any).eventlog?.substring(0, 50) || '';
+      
+      // 🔍 诊断：详细记录 eventlog 处理
+      const eventlog = (item as any).eventlog;
+      const eventlogType = typeof eventlog;
+      const isObject = eventlogType === 'object' && eventlog !== null;
+      const plainText = isObject ? eventlog.plainText : undefined;
+      const eventlogStr = isObject 
+        ? (plainText?.substring(0, 50) || '')
+        : (eventlog?.substring(0, 50) || '');
+      
+      if (index < 5) {  // 只记录前5个事件
+        console.log(`[itemsHash] Event[${index}] ${titleStr}:`, {
+          eventlogType,
+          isObject,
+          hasPlainText: !!plainText,
+          plainTextLength: plainText?.length || 0,
+          plainTextPreview: plainText?.substring(0, 30) || 'N/A',
+          eventlogStr,
+          eventlogStrLength: eventlogStr.length
+        });
+      }
       
       // 🔧 包含时间字段：startTime、endTime、dueDate、isAllDay
       const timeStr = `${item.startTime || ''}-${item.endTime || ''}-${item.dueDate || ''}-${item.isAllDay ? '1' : '0'}`;
