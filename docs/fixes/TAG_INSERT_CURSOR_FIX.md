@@ -30,7 +30,7 @@
 
 ### 修复 1: 移除 `shouldMoveToSpace` 逻辑
 
-**位置**: `UnifiedSlateEditor.tsx` L176-220
+**位置**: `PlanSlate.tsx` L176-220
 
 **修改前**:
 ```typescript
@@ -222,8 +222,8 @@ console.log('%c[normalizeNode] 插入新空格节点，光标位置由 Slate 自
 
 | 文件 | 修改内容 | 行号 |
 |------|---------|------|
-| `src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx` | 优化 normalizeNode 光标移动逻辑 | L176-220 |
-| `src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx` | 添加 tagName 日志 | L142-147 |
+| `src/components/PlanSlate/PlanSlate.tsx` | 优化 normalizeNode 光标移动逻辑 | L176-220 |
+| `src/components/PlanSlate/PlanSlate.tsx` | 添加 tagName 日志 | L142-147 |
 | `diagnose-tag-insert-flow.js` | 新增插入流程诊断脚本 | - |
 
 ---

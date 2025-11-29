@@ -11,10 +11,10 @@
 ### ✅ 已完成 (3/5)
 1. **SlateCore 共享层创建** - 100% ✅
 2. **PRD 文档更新** - 100% ✅
-3. **LightSlateEditor 部分重构** - 40% ⚠️
+3. **ModalSlate 部分重构** - 40% ⚠️
 
 ### 🔄 进行中 (1/5)
-4. **UnifiedSlateEditor 重构** - 0% ⏳
+4. **PlanSlate 重构** - 0% ⏳
 
 ### ⏳ 待开始 (1/5)
 5. **集成测试与验证** - 0% ⏳
@@ -133,7 +133,7 @@ src/components/SlateCore/
 ### 实现内容
 
 #### 📄 PLANSLATE_EDITOR_PRD.md (新建, ~800 lines)
-**完整的 UnifiedSlateEditor (PlanSlate) PRD 文档**
+**完整的 PlanSlate (PlanSlate) PRD 文档**
 
 章节结构：
 1. 产品概述
@@ -145,7 +145,7 @@ src/components/SlateCore/
 2. 架构设计
    - 整体架构（v2.0）
    - SlateCore 共享层
-   - UnifiedSlateEditor 特有层
+   - PlanSlate 特有层
    - 数据流
 
 3. 核心功能
@@ -169,7 +169,7 @@ src/components/SlateCore/
    - 发布计划
 
 #### 📄 SLATEEDITOR_PRD.md (更新为 v2.0, ~700 lines)
-**完整的 LightSlateEditor (Slate) PRD 文档**
+**完整的 ModalSlate (Slate) PRD 文档**
 
 更新内容：
 - 产品定位更新为"轻量级单内容编辑器"
@@ -182,7 +182,7 @@ src/components/SlateCore/
 
 更新内容：
 - 添加 SlateCore 共享层架构
-- 更新 UnifiedSlateEditor 和 LightSlateEditor 架构
+- 更新 PlanSlate 和 ModalSlate 架构
 - 添加实现状态跟踪
 - 添加代码统计和重构进度
 
@@ -199,10 +199,10 @@ src/components/SlateCore/
 
 ---
 
-## ✅ Phase 3: LightSlateEditor 重构 (100% ✅)
+## ✅ Phase 3: ModalSlate 重构 (100% ✅)
 
 ### 目标
-将 LightSlateEditor 重构为使用 SlateCore 共享层。
+将 ModalSlate 重构为使用 SlateCore 共享层。
 
 ### 重构目标
 - **原始代码**: ~1,265 lines
@@ -213,9 +213,9 @@ src/components/SlateCore/
 
 #### 1. 导入更新 (100% ✅)
 ```typescript
-// 旧导入（从 UnifiedSlateEditor）
-import { TagElementComponent } from '../UnifiedSlateEditor/elements/TagElement';
-import { EventLogTimestampService } from '../UnifiedSlateEditor/timestampService';
+// 旧导入（从 PlanSlate）
+import { TagElementComponent } from '../PlanSlate/elements/TagElement';
+import { EventLogTimestampService } from '../PlanSlate/timestampService';
 
 // 新导入（从 SlateCore）
 import {
@@ -253,7 +253,7 @@ type CustomText = SlateCustomText;
 - 实现: 使用 SlateCore 的 `applyTextFormat`，保留 `toggleBulletList` 的 `setPendingTimestamp` 逻辑
 - 代码减少: ~100 lines → ~40 lines
 - 难度: ⭐⭐⭐ (已完成)
-- 特殊处理: 保留 LightSlateEditor 特有的 pendingTimestamp 清除逻辑
+- 特殊处理: 保留 ModalSlate 特有的 pendingTimestamp 清除逻辑
 
 **b) `moveParagraphUp` ✅**
 - 实现: 完全使用 SlateCore，传入 `skipTypes: ['timestamp-divider']`
@@ -292,7 +292,7 @@ type CustomText = SlateCustomText;
 ### 🔍 重构挑战
 
 #### 1. 代码复杂度高
-- **问题**: LightSlateEditor 内部实现包含复杂逻辑
+- **问题**: ModalSlate 内部实现包含复杂逻辑
 - **具体**: 
   - `applyTextFormat`: ~100 lines，switch case + setPendingTimestamp
   - `moveParagraphUp`: ~80 lines，详细的 Timestamp 跳过和路径计算
@@ -308,7 +308,7 @@ type CustomText = SlateCustomText;
   - 上下文不够精确
 
 #### 3. 特有逻辑混杂
-- **问题**: 通用逻辑和 LightSlateEditor 特有逻辑混杂
+- **问题**: 通用逻辑和 ModalSlate 特有逻辑混杂
 - **具体**: 
   - `applyTextFormat` 包含 `setPendingTimestamp` 调用
   - 部分函数包含状态管理逻辑
@@ -345,7 +345,7 @@ type CustomText = SlateCustomText;
 - 需要更多测试
 
 **步骤**:
-1. 创建 `LightSlateEditor.v2.tsx`
+1. 创建 `ModalSlate.v2.tsx`
 2. 从头开始使用 SlateCore 实现
 3. 逐步迁移功能
 4. 测试验证后替换原文件
@@ -378,14 +378,14 @@ type CustomText = SlateCustomText;
 - **代码减少**: 247 lines (19.5%)
 - **原始代码**: 1,265 lines
 - **重构后**: 1,018 lines
-- **Git Commit**: `refactor(LightSlateEditor): 完成使用 SlateCore 共享层重构`
+- **Git Commit**: `refactor(ModalSlate): 完成使用 SlateCore 共享层重构`
 
 ---
 
-## ✅ Phase 4: UnifiedSlateEditor 重构 (已完成 - 部分重构策略)
+## ✅ Phase 4: PlanSlate 重构 (已完成 - 部分重构策略)
 
 ### 目标
-将 UnifiedSlateEditor 重构为使用 SlateCore 共享层，同时保留 EventLine 特有逻辑。
+将 PlanSlate 重构为使用 SlateCore 共享层，同时保留 EventLine 特有逻辑。
 
 ### 重构范围
 - ✅ 使用 SlateCore 的共享元素组件
@@ -427,14 +427,14 @@ import {
 **保留原因分析**:
 
 **a) 段落移动逻辑** (保留原实现 ✅)
-- UnifiedSlateEditor 使用 EventLine 级别的移动：
+- PlanSlate 使用 EventLine 级别的移动：
   - `moveTitleWithEventlogs()` - 移动整个事件（标题 + 所有 eventlog）
   - `moveEventlogParagraph()` - 只移动 eventlog 段落
 - SlateCore 的 `moveParagraphUp/Down` 是通用段落移动
 - **决策**: 保留原实现，不适用 SlateCore 版本
 
 **b) Bullet 操作** (部分兼容 ⚠️)
-- UnifiedSlateEditor 的 Backspace 处理较简单：
+- PlanSlate 的 Backspace 处理较简单：
   ```typescript
   // 在空的 bullet 段落删除 bullet
   if (para.bullet && textNode.text === '') {
@@ -445,7 +445,7 @@ import {
 - **决策**: 可以考虑使用 SlateCore 版本，但需要适配 EventLine 结构
 
 **c) 序列化工具** (保留原实现 ✅)
-- UnifiedSlateEditor 使用 EventLine 特有序列化：
+- PlanSlate 使用 EventLine 特有序列化：
   - `planItemsToSlateNodes()` - PlanItem[] → EventLineNode[]
   - `slateNodesToPlanItems()` - EventLineNode[] → PlanItem[]
   - `slateNodesToRichHtml()` - EventLineNode[] → HTML
@@ -498,7 +498,7 @@ import {
 
 ### 测试计划
 
-#### 1. LightSlateEditor 测试
+#### 1. ModalSlate 测试
 - [ ] EventEditModal 集成
 - [ ] 文本格式化（Bold, Italic, Underline, Strike, Code）
 - [ ] Bullet 操作（切换、Enter、Backspace）
@@ -508,7 +508,7 @@ import {
 - [ ] DateMention 元素
 - [ ] TimestampDivider 元素
 
-#### 2. UnifiedSlateEditor 测试
+#### 2. PlanSlate 测试
 - [ ] PlanManager 集成
 - [ ] EventLine 编辑
 - [ ] Timestamp 自动管理
@@ -537,12 +537,12 @@ import {
 - **共享元素**: 3 个
 - **服务类**: 1 个
 
-### LightSlateEditor (✅ 已完成)
+### ModalSlate (✅ 已完成)
 - **原始代码**: 1,265 lines
 - **重构后**: 1,018 lines
 - **代码减少**: 247 lines (19.5%)
 
-### UnifiedSlateEditor (✅ 已完成 - 部分重构)
+### PlanSlate (✅ 已完成 - 部分重构)
 - **原始代码**: 2,851 lines
 - **重构后**: 2,851 lines
 - **代码减少**: 0 lines (导入更新，保留 EventLine 特有逻辑)
@@ -552,7 +552,7 @@ import {
 - **原始总代码**: 4,116 lines (LightSlate: 1,265 + UnifiedSlate: 2,851)
 - **SlateCore 新增**: ~1,500 lines
 - **重构后总代码**: 5,369 lines (SlateCore: 1,500 + LightSlate: 1,018 + UnifiedSlate: 2,851)
-- **有效代码减少**: 247 lines (LightSlateEditor)
+- **有效代码减少**: 247 lines (ModalSlate)
 - **架构优势**: 共享元素组件和服务，统一维护
 
 ---
@@ -567,7 +567,7 @@ import {
    - 3 个共享元素组件
    - 1 个 Timestamp 服务
 
-2. **LightSlateEditor 重构** (100% ✅)
+2. **ModalSlate 重构** (100% ✅)
    - 导入更新为 SlateCore
    - applyTextFormat - 使用 SlateCore
    - moveParagraphUp/Down - 使用 SlateCore
@@ -575,7 +575,7 @@ import {
    - 序列化工具 - 使用 SlateCore
    - 代码减少: 247 lines (19.5%)
 
-3. **UnifiedSlateEditor 重构** (100% ✅ - 部分策略)
+3. **PlanSlate 重构** (100% ✅ - 部分策略)
    - 元素组件导入 SlateCore
    - Timestamp 服务导入 SlateCore
    - EventLine 特有逻辑保留
@@ -589,8 +589,8 @@ import {
 ### 📋 待完成任务
 
 1. **集成测试** (P0)
-   - [ ] LightSlateEditor 功能验证
-   - [ ] UnifiedSlateEditor 功能验证
+   - [ ] ModalSlate 功能验证
+   - [ ] PlanSlate 功能验证
    - [ ] 回归测试
    - [ ] 性能测试
 
@@ -630,9 +630,9 @@ docs(SlateCore): 创建和更新 PRD 文档反映 v2.0 架构
 文档量: ~2,100 lines
 ```
 
-### Commit 3: LightSlateEditor 部分重构
+### Commit 3: ModalSlate 部分重构
 ```
-refactor(LightSlateEditor): 更新导入使用 SlateCore 共享层（部分重构）
+refactor(ModalSlate): 更新导入使用 SlateCore 共享层（部分重构）
 
 包含：
 - 导入语句更新
@@ -649,7 +649,7 @@ refactor(LightSlateEditor): 更新导入使用 SlateCore 共享层（部分重�
 ## 🤔 问题与决策
 
 ### 问题 1: 重构策略选择
-**问题**: LightSlateEditor 代码复杂，字符串替换困难
+**问题**: ModalSlate 代码复杂，字符串替换困难
 **选项**:
 - A: 逐函数手动重写 (推荐)
 - B: 创建新版本文件

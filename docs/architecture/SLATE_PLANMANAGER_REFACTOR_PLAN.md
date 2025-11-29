@@ -10,7 +10,7 @@
 ## 🎯 重构目标
 
 ### 核心问题
-1. **数据流循环**: PlanManager ↔ UnifiedSlateEditor 双向绑定导致无限更新
+1. **数据流循环**: PlanManager ↔ PlanSlate 双向绑定导致无限更新
 2. **全量重渲染**: 任何变化都触发所有内容重新计算
 3. **初始化竞态**: items 加载与编辑器初始化时序冲突
 4. **保存时机冲突**: 立即同步与防抖保存竞争同一数据
@@ -30,7 +30,7 @@
 
 ```mermaid
 graph TD
-    A[PlanManager items] -->|props| B[UnifiedSlateEditor]
+    A[PlanManager items] -->|props| B[PlanSlate]
     B -->|enhancedValue useMemo| C[planItemsToSlateNodes]
     C -->|全量转换| D[Slate Nodes]
     D -->|onChange| E[slateNodesToPlanItems]
@@ -58,7 +58,7 @@ graph TD
 
 ```mermaid
 graph TD
-    A[PlanManager items] -->|初始化一次| B[UnifiedSlateEditor]
+    A[PlanManager items] -->|初始化一次| B[PlanSlate]
     B -->|内部状态管理| C[Local Slate State]
     C -->|用户编辑| D[Editor Changes]
     D -->|手动保存触发| E[Save Handler]
@@ -195,7 +195,7 @@ const handleSave = useCallback(() => {
 // 例如：其他页面创建了新事件
 EventService.createEvent(newEvent)
   → 触发 eventsUpdated 事件
-  → UnifiedSlateEditor 收到通知
+  → PlanSlate 收到通知
   → 增量插入新节点（不影响用户正在编辑的内容）
   → 如果用户有未保存内容，显示冲突提示
 ```
@@ -444,7 +444,7 @@ const performanceMonitor = {
 - [ ] 回滚方案准备
 
 ### Phase 2: 核心重构 (2天)
-- [ ] 修改 UnifiedSlateEditor 状态管理
+- [ ] 修改 PlanSlate 状态管理
 - [ ] 实现增量更新机制
 - [ ] 重构 PlanManager 数据流
 

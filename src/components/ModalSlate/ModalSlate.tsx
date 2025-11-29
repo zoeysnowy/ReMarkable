@@ -1,5 +1,5 @@
 /**
- * LightSlateEditor - 轻量化的 Slate 编辑器
+ * ModalSlate - 轻量化的 Slate 编辑器
  * 
  * 设计目标：
  * - 为 EventEditModal 等单事件编辑场景优化
@@ -8,8 +8,8 @@
  * - 简化数据流：content string ↔ Slate nodes
  * 
  * 架构差异：
- * UnifiedSlateEditor: Event[] → PlanItem[] → event-line nodes (多事件管理)
- * LightSlateEditor:  content string → paragraph nodes (单内容编辑)
+ * PlanSlate: Event[] → PlanItem[] → event-line nodes (多事件管理)
+ * ModalSlate:  content string → paragraph nodes (单内容编辑)
  */
 
 import React, { useCallback, useMemo, useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
@@ -71,8 +71,8 @@ type CustomText = TextNode;
 // 导入 EventHistoryService 获取创建时间
 import { EventHistoryService } from '../../services/EventHistoryService';
 
-// 样式复用 UnifiedSlateEditor 的样式
-import './LightSlateEditor.css';
+// 样式复用 PlanSlate 的样式
+import './ModalSlate.css';
 
 /**
  * 格式化日期时间为 "YYYY-MM-DD HH:mm:ss" 格式
@@ -88,7 +88,7 @@ function formatDateTime(date: Date): string {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
-export interface LightSlateEditorProps {
+export interface ModalSlateProps {
   /** Slate JSON 内容 (来自 event.eventlog) */
   content: string;
   
@@ -114,7 +114,7 @@ export interface LightSlateEditorProps {
   floatingBarContainerRef?: React.RefObject<HTMLElement>;
 }
 
-export interface LightSlateEditorRef {
+export interface ModalSlateRef {
   /** Slate Editor 实例 */
   editor: Editor;
   
@@ -136,7 +136,7 @@ const createTimestampDivider = (timestamp: Date): TimestampDividerType => {
   };
 };
 
-export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditorProps>((
+export const ModalSlate = forwardRef<ModalSlateRef, ModalSlateProps>((
   {
     content,
     parentEventId,
@@ -240,7 +240,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
     // 应用 History 插件
     editorInstance = withHistory(editorInstance);
     
-    console.log('[LightSlateEditor] 创建编辑器实例（已配置 isInline, isVoid, normalizeNode）');
+    console.log('[ModalSlate] 创建编辑器实例（已配置 isInline, isVoid, normalizeNode）');
     return editorInstance;
   }, []);
   
@@ -268,7 +268,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
             
             // 🔥 清除 pendingTimestamp 标记，bullet 算作有效内容
             setPendingTimestamp(false);
-            console.log('[LightSlateEditor] 插入 bullet，清除 pendingTimestamp');
+            console.log('[ModalSlate] 插入 bullet，清除 pendingTimestamp');
           }
         }
         return true;
@@ -278,7 +278,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
       const result = slateApplyTextFormat(editor, command);
       return result;
     } catch (err) {
-      console.error('[LightSlateEditor.applyTextFormat] Failed:', err);
+      console.error('[ModalSlate.applyTextFormat] Failed:', err);
       return false;
     }
   }, [editor]);
@@ -295,7 +295,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
   // 将 Slate JSON 字符串转换为 Slate nodes（使用 SlateCore）
   const initialValue = useMemo(() => {
     let nodes = slateJsonToNodes(content);
-    console.log('[LightSlateEditor] 解析内容为节点:', { content, nodes });
+    console.log('[ModalSlate] 解析内容为节点:', { content, nodes });
     
     // 如果启用 timestamp 且这个 content 还没添加过 timestamp
     if (enableTimestamp && parentEventId && timestampAddedForContentRef.current !== content) {
@@ -318,7 +318,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
         
         if (createLog) {
           const createTime = new Date(createLog.timestamp);
-          console.log('[LightSlateEditor] 在 initialValue 中添加 timestamp:', createTime);
+          console.log('[ModalSlate] 在 initialValue 中添加 timestamp:', createTime);
           
           // 在开头插入 timestamp（不插入 preline，由 renderElement 动态绘制）
           nodes = [
@@ -368,7 +368,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
     const notFromSelf = content !== lastContentRef.current;
     
     if (content && contentChanged && notFromSelf) {
-      console.log('[LightSlateEditor] 🔄 外部 content 变化（可能是切换事件），更新编辑器');
+      console.log('[ModalSlate] 🔄 外部 content 变化（可能是切换事件），更新编辑器');
       console.log('当前内容长度:', currentContent.length);
       console.log('新内容长度:', content.length);
       
@@ -401,7 +401,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
   useEffect(() => {
     if (enableTimestamp && parentEventId) {
       timestampServiceRef.current = new EventLogTimestampService();
-      console.log('[LightSlateEditor] 初始化 EventLogTimestampService');
+      console.log('[ModalSlate] 初始化 EventLogTimestampService');
       
       // 如果内容中已有 timestamp，提取最后一个并设置为 lastEditTime
       const timestamps = editor.children.filter((node: any) => node.type === 'timestamp-divider') as any[];
@@ -409,7 +409,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
         const lastTimestamp = timestamps[timestamps.length - 1];
         const lastTime = new Date(lastTimestamp.timestamp);
         timestampServiceRef.current.updateLastEditTime(parentEventId, lastTime);
-        console.log('[LightSlateEditor] 从内容中恢复 lastEditTime:', lastTime);
+        console.log('[ModalSlate] 从内容中恢复 lastEditTime:', lastTime);
       }
     }
   }, [enableTimestamp, parentEventId, editor]);
@@ -440,14 +440,14 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
               lastTimestamp = timestampDate;
             }
           } catch (error) {
-            console.warn('[LightSlateEditor] 解析 timestamp 失败:', element.timestamp);
+            console.warn('[ModalSlate] 解析 timestamp 失败:', element.timestamp);
           }
         }
       }
       
       // 如果有内容但没有 timestamp，插入初始 timestamp（不插入 preline，由 renderElement 动态绘制）
       if (hasActualContent && !hasTimestamp) {
-        console.log('[LightSlateEditor] 有内容但无 timestamp，插入初始 timestamp');
+        console.log('[ModalSlate] 有内容但无 timestamp，插入初始 timestamp');
         
         // 从 EventHistoryService 获取创建时间
         const createLog = EventHistoryService.queryHistory({
@@ -458,7 +458,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
         
         if (createLog) {
           const createTime = new Date(createLog.timestamp);
-          console.log('[LightSlateEditor] 找到创建时间:', createTime);
+          console.log('[ModalSlate] 找到创建时间:', createTime);
           
           // 创建 timestamp 节点（使用创建时间）
           const timestampNode = {
@@ -478,14 +478,14 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
           // 更新 timestampService 的最后编辑时间
           timestampServiceRef.current.updateLastEditTime(parentEventId, createTime);
           
-          console.log('[LightSlateEditor] 初始 timestamp 插入完成');
+          console.log('[ModalSlate] 初始 timestamp 插入完成');
         } else {
-          console.warn('[LightSlateEditor] 未找到创建日志，跳过初始 timestamp 插入');
+          console.warn('[ModalSlate] 未找到创建日志，跳过初始 timestamp 插入');
         }
       }
       // 如果找到现有 timestamp，更新 timestampService 的最后编辑时间
       else if (lastTimestamp) {
-        console.log('[LightSlateEditor] 从内容中提取到最后 timestamp:', lastTimestamp);
+        console.log('[ModalSlate] 从内容中提取到最后 timestamp:', lastTimestamp);
         timestampServiceRef.current.updateLastEditTime(parentEventId, lastTimestamp);
       }
       
@@ -712,7 +712,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
       });
       
       if (shouldInsert) {
-        console.log('[LightSlateEditor] 聚焦时插入 timestamp（等待用户输入）');
+        console.log('[ModalSlate] 聚焦时插入 timestamp（等待用户输入）');
         
         // 创建 timestamp 节点
         const timestampNode = timestampServiceRef.current.createTimestampDivider(parentEventId);
@@ -722,7 +722,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
         
         setPendingTimestamp(true); // 标记有等待用户输入的 timestamp
       } else {
-        console.log('[LightSlateEditor] 聚焦但距上次编辑未超过 5 分钟，不插入 timestamp');
+        console.log('[ModalSlate] 聚焦但距上次编辑未超过 5 分钟，不插入 timestamp');
       }
     }
   }, [enableTimestamp, editor, parentEventId]);
@@ -740,7 +740,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
     if (newContent !== lastContentRef.current) {
       lastContentRef.current = newContent;
       onChange(newContent);
-      console.log('[LightSlateEditor] 💾 立即保存:', newContent.slice(0, 100) + '...');
+      console.log('[ModalSlate] 💾 立即保存:', newContent.slice(0, 100) + '...');
     }
   }, [editor, onChange]);
 
@@ -750,7 +750,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
   const handleBlur = useCallback(() => {
     // Step 1: 清理空 timestamp
     if (pendingTimestamp && timestampServiceRef.current) {
-      console.log('[LightSlateEditor] 失焦时检查是否需要清理空 timestamp');
+      console.log('[ModalSlate] 失焦时检查是否需要清理空 timestamp');
       
       // 查找最后一个 timestamp 后是否有实际内容
       let lastTimestampIndex = -1;
@@ -777,10 +777,10 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
         
         // 如果 timestamp 后面没有内容，删除这个 timestamp 和后面的空段落
         if (!hasContentAfterTimestamp) {
-          console.log('[LightSlateEditor] 用户未输入内容，删除本次插入的 timestamp');
+          console.log('[ModalSlate] 用户未输入内容，删除本次插入的 timestamp');
           timestampServiceRef.current.removeEmptyTimestamp(editor);
         } else {
-          console.log('[LightSlateEditor] 用户已输入内容，保留 timestamp');
+          console.log('[ModalSlate] 用户已输入内容，保留 timestamp');
         }
       }
       
@@ -795,7 +795,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
    * 处理编辑器内容变化
    */
   const handleChange = useCallback((newValue: Descendant[]) => {
-    console.log('[LightSlateEditor] 内容变化:', newValue);
+    console.log('[ModalSlate] 内容变化:', newValue);
     
     // 如果有等待的 timestamp，检查用户是否真正输入了内容
     if (pendingTimestamp) {
@@ -822,7 +822,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
           // 用户开始输入，确认这个 timestamp，更新最后编辑时间
           if (enableTimestamp && timestampServiceRef.current && parentEventId) {
             timestampServiceRef.current.updateLastEditTime(parentEventId);
-            console.log('[LightSlateEditor] 用户输入确认 timestamp，更新最后编辑时间');
+            console.log('[ModalSlate] 用户输入确认 timestamp，更新最后编辑时间');
           }
         }
       }
@@ -838,7 +838,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
       if (newContent !== lastContentRef.current) {
         lastContentRef.current = newContent;
         onChange(newContent);
-        console.log('[LightSlateEditor] 自动保存 Slate JSON:', newContent.slice(0, 100) + '...');
+        console.log('[ModalSlate] 自动保存 Slate JSON:', newContent.slice(0, 100) + '...');
       }
     }, 2000);
   }, [pendingTimestamp, onChange, enableTimestamp, parentEventId]);
@@ -955,7 +955,7 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
       
       if (nodeEntry) {
         event.preventDefault();
-        console.log('[LightSlateEditor] ⛔ 禁止删除 timestamp');
+        console.log('[ModalSlate] ⛔ 禁止删除 timestamp');
         return;
       }
     }
@@ -1055,4 +1055,4 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
   );
 });
 
-LightSlateEditor.displayName = 'LightSlateEditor';
+ModalSlate.displayName = 'ModalSlate';

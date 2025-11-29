@@ -81,7 +81,7 @@ const success = insertTag(
 
 ### 2. 提取标签时过滤 `mentionOnly`
 
-**位置**: `src/components/UnifiedSlateEditor/serialization.ts` L358
+**位置**: `src/components/PlanSlate/serialization.ts` L358
 
 ```typescript
 function extractTags(fragment: (TextNode | TagNode | DateMentionNode)[]): string[] {

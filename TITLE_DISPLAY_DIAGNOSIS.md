@@ -11,7 +11,7 @@
 ### 类型定义
 ```typescript
 interface EventTitle {
-  fullTitle?: string;    // Slate JSON - UnifiedSlateEditor 使用
+  fullTitle?: string;    // Slate JSON - PlanSlate 使用
   colorTitle?: string;   // HTML - UpcomingPanel/EditModal 使用
   simpleTitle?: string;  // 纯文本 - TimeCalendar/搜索/同步使用
 }
@@ -26,7 +26,7 @@ interface Event {
 - **组件职责**: 
   - TimeCalendar 读取 `title.simpleTitle`
   - EventEditModalV2 读写 `title.colorTitle`
-  - UnifiedSlateEditor 读写 `title.fullTitle`
+  - PlanSlate 读写 `title.fullTitle`
 
 ---
 

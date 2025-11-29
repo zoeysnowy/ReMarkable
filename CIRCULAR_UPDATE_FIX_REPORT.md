@@ -3,7 +3,7 @@
 ## 📋 问题诊断
 
 ### 核心问题
-- **循环数据流**：PlanManager ↔ UnifiedSlateEditor 之间的双向数据绑定
+- **循环数据流**：PlanManager ↔ PlanSlate 之间的双向数据绑定
 - **全量重渲染**：每次更新都触发整个Plan页面重新渲染
 - **竞态条件**：初始化阶段多个组件同时写入导致冲突
 - **防护不足**：缺乏有效的循环更新检测机制
@@ -79,7 +79,7 @@ const handleEventUpdated = (e: CustomEvent) => {
 }
 ```
 
-### 3. UnifiedSlateEditor.tsx 防护
+### 3. PlanSlate.tsx 防护
 ```typescript
 const handleEventUpdated = (e: any) => {
   // 🆕 循环更新防护：跳过本组件相关的更新
@@ -182,7 +182,7 @@ http://localhost:3000/test-circular-updates.html
 🔧 **核心文件已修改**：
 - `src/services/EventService.ts`
 - `src/components/PlanManager.tsx`
-- `src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx`
+- `src/components/PlanSlate/PlanSlate.tsx`
 - `src/App.tsx`
 
 🧪 **测试工具已准备**：

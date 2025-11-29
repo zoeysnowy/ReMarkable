@@ -62,7 +62,7 @@ if (isFuzzyDateRange) {
 
 ### 修改的文件
 1. `src/utils/naturalLanguageTimeDictionary.ts` - 修复displayHint
-2. `src/components/UnifiedSlateEditor/EventLineSuffix.tsx` - 优化标签逻辑
+2. `src/components/PlanSlate/EventLineSuffix.tsx` - 优化标签逻辑
 3. `src/utils/relativeDateFormatter.ts` - 改进匹配算法
 
 ### 关键逻辑

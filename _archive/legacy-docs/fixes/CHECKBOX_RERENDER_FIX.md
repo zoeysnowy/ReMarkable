@@ -42,7 +42,7 @@ const renderLinePrefix = (line: FreeFormLine<Event>) => {
 
 **问题**：
 - PlanManager 每次渲染时，`renderLinePrefix` 都是新的函数引用
-- 传递给 UnifiedSlateEditor 的 `renderLinePrefix` prop 变化
+- 传递给 PlanSlate 的 `renderLinePrefix` prop 变化
 - 导致 EventLineElement 重新渲染，checkbox 被重新创建
 
 #### 原因 2: 返回的 JSX 每次都是新对象 ❌

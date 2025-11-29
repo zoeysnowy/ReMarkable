@@ -109,7 +109,7 @@ export type SetEventTimeInput = {
 
 ### 5. 显示层处理
 
-**文件**: `src/components/UnifiedSlateEditor/EventLineSuffix.tsx` L41-42
+**文件**: `src/components/PlanSlate/EventLineSuffix.tsx` L41-42
 
 ```typescript
 // ✅ 当前实现已经正确处理 null

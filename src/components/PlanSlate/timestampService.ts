@@ -128,7 +128,7 @@ export class EventLogTimestampService {
   /**
    * 在 Slate 编辑器中插入 timestamp
    * @param editor Slate Editor 实例
-   * @param timestampElement 预创建的 timestamp 元素 (用于 LightSlateEditor)
+   * @param timestampElement 预创建的 timestamp 元素 (用于 ModalSlate)
    * @param eventId Event ID (可选，用于传统模式)
    */
   insertTimestamp(editor: Editor, timestampElement?: TimestampDividerElement, eventId?: string): void {

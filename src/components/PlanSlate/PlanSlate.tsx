@@ -1,5 +1,5 @@
 ﻿/**
- * UnifiedSlateEditor - 统一的单实例 Slate 编辑器
+ * PlanSlate - 统一的单实例 Slate 编辑器
  * 
  * 核心特性：
  * 1. 单个 Slate 实例，支持跨行文字选择
@@ -73,7 +73,7 @@ import {
   startPerformanceMark,
   endPerformanceMark,
 } from './debugLogger';
-import './UnifiedSlateEditor.css';
+import './PlanSlate.css';
 
 // 🔍 初始化调试系统
 initDebug();
@@ -130,7 +130,7 @@ const safeFocusEditor = (editor: Editor, path?: number[]) => {
   }
 };
 
-export interface UnifiedSlateEditorProps {
+export interface PlanSlateProps {
   items: any[];  // PlanItem[]
   onChange: (items: any[]) => void;
   onFocus?: (lineId: string) => void;
@@ -146,7 +146,7 @@ export interface UnifiedSlateEditorProps {
 }
 
 // 🆕 暴露给外部的编辑器接口
-export interface UnifiedSlateEditorHandle {
+export interface PlanSlateHandle {
   syncFromExternal: (items: any[]) => void;  // 从外部同步内容
   getEditor: () => Editor;  // 获取 Slate Editor 实例
   insertTag: (tagId: string, tagName: string, color: string, emoji: string) => boolean; // 🆕 插入标签命令
@@ -508,7 +508,7 @@ function adjustBulletLevelsAfterDelete(editor: CustomEditor) {
   }, 0);
 }
 
-export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
+export const PlanSlate: React.FC<PlanSlateProps> = ({
   items,
   onChange,
   onFocus,
@@ -523,10 +523,10 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   className = '',
 }) => {
   // 🔍 版本标记 - 用于验证代码是否被加载
-  console.log('%c[UnifiedSlateEditor v2.15] 组件加载 - 包含 itemsHash 详细日志', 'background: #4ECDC4; color: white; font-weight: bold; padding: 4px 8px;');
+  console.log('%c[PlanSlate v2.15] 组件加载 - 包含 itemsHash 详细日志', 'background: #4ECDC4; color: white; font-weight: bold; padding: 4px 8px;');
   
   // 🆕 Debug: 检查 timestamp 相关的 props
-  console.log('[UnifiedSlateEditor] 初始化参数:', {
+  console.log('[PlanSlate] 初始化参数:', {
     eventId,
     enableTimestamp,
     hasItems: !!items,
@@ -537,13 +537,13 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   
   // 🆕 Debug: 监听 eventId 和 enableTimestamp 的变化
   React.useEffect(() => {
-    console.log('[UnifiedSlateEditor] Props 变化:', { eventId, enableTimestamp });
+    console.log('[PlanSlate] Props 变化:', { eventId, enableTimestamp });
   }, [eventId, enableTimestamp]);
   // 🔍 组件挂载日志
   React.useEffect(() => {
     if (isDebugEnabled()) {
       const timestamp = new Date().toISOString().split('T')[1].slice(0, 12);
-      window.console.log(`%c[🚀 ${timestamp}] UnifiedSlateEditor - 调试模式已开启`, 
+      window.console.log(`%c[🚀 ${timestamp}] PlanSlate - 调试模式已开启`, 
         'background: #4CAF50; color: white; padding: 4px 8px; border-radius: 3px; font-weight: bold;');
       window.console.log(`%c关闭调试: localStorage.removeItem('SLATE_DEBUG') 然后刷新`, 
         'color: #9E9E9E; font-style: italic;');
@@ -556,7 +556,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     
     return () => {
       if (isDebugEnabled()) {
-        window.console.log(`%c[👋 ${new Date().toISOString().split('T')[1].slice(0, 12)}] UnifiedSlateEditor unmounted`, 
+        window.console.log(`%c[👋 ${new Date().toISOString().split('T')[1].slice(0, 12)}] PlanSlate unmounted`, 
           'background: #f44336; color: white; padding: 4px 8px; border-radius: 3px;');
       }
     };

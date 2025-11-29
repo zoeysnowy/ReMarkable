@@ -1,5 +1,5 @@
 /**
- * UnifiedSlateEditor 样式
+ * PlanSlate 样式
  */
 
 .unified-slate-editor {
@@ -58,6 +58,7 @@
 
 .unified-slate-editor .gray-text-placeholder:hover {
   color: #6b7280;
+  /* hover 背景色已移除 */
 }
 
 /* 🆕 Placeholder 行样式 */
@@ -66,7 +67,7 @@
 }
 
 .unified-event-line.placeholder-line:hover {
-  background-color: rgba(156, 163, 175, 0.05);
+  /* hover 背景色已移除 */
 }
 
 .unified-event-line.placeholder-line .event-line-content {

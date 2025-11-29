@@ -1,6 +1,6 @@
 /**
- * LightSlateEditor 样式
- * 复用 UnifiedSlateEditor 的核心样式，移除 PlanManager 特定样式
+ * ModalSlate 样式
+ * 复用 PlanSlate 的核心样式，移除 PlanManager 特定样式
  */
 
 .light-slate-editor {
@@ -39,6 +39,7 @@
 
 .light-slate-editor .slate-editable:focus {
   background-color: transparent;
+  /* hover 背景色已移除 */
 }
 
 /* 段落样式 */
@@ -82,7 +83,7 @@
   white-space: nowrap;
 }
 
-/* 为 LightSlateEditor 中的 timestamp 提供额外样式 */
+/* 为 ModalSlate 中的 timestamp 提供额外样式 */
 .light-slate-editor .timestamp-divider {
   position: relative;
   display: flex;

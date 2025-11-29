@@ -1,8 +1,8 @@
-# UnifiedSlateEditor 段落移动功能实现报告
+# PlanSlate 段落移动功能实现报告
 
 > **版本**: v1.0  
 > **完成时间**: 2025-11-28  
-> **实现组件**: UnifiedSlateEditor.tsx  
+> **实现组件**: PlanSlate.tsx  
 > **快捷键**: `Shift+Alt+↑/↓`
 
 ---
@@ -11,11 +11,11 @@
 
 用户提出的特殊需求：
 
-> **UnifiedSlateEditor 还涉及标题和 eventlog 的变动逻辑**：
+> **PlanSlate 还涉及标题和 eventlog 的变动逻辑**：
 > 1. 标题的上下移动，eventlog 跟随
 > 2. eventlog 段落的上下移动，标题不跟随
 
-这与 LightSlateEditor 的简单段落移动不同，需要根据节点的 `mode` 字段实现两种不同的移动逻辑。
+这与 ModalSlate 的简单段落移动不同，需要根据节点的 `mode` 字段实现两种不同的移动逻辑。
 
 ---
 
@@ -23,7 +23,7 @@
 
 ### 节点结构
 
-UnifiedSlateEditor 使用 `EventLineNode`，每个节点包含：
+PlanSlate 使用 `EventLineNode`，每个节点包含：
 
 ```typescript
 interface EventLineNode {
@@ -154,7 +154,7 @@ setTimeout(() => {
 
 ## 📊 用户体验对比
 
-| 场景 | LightSlateEditor | UnifiedSlateEditor (Title) | UnifiedSlateEditor (EventLog) |
+| 场景 | ModalSlate | PlanSlate (Title) | PlanSlate (EventLog) |
 |------|------------------|---------------------------|------------------------------|
 | 移动范围 | 单个段落 | 整个事件组（标题 + eventlog） | 单个 eventlog 段落 |
 | 标题跟随 | N/A | ✅ 标题和 eventlog 一起移动 | ❌ 标题不跟随 |
@@ -215,7 +215,7 @@ setTimeout(() => {
 
 ### 修改文件
 
-- `src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx`
+- `src/components/PlanSlate/PlanSlate.tsx`
 
 ### 新增代码
 
@@ -286,7 +286,7 @@ if (eventLine.mode === 'title') {
 - 位置交换 + 层级调整逻辑
 - `Shift+Alt+↑/↓` 快捷键处理
 
-### LightSlateEditor.tsx
+### ModalSlate.tsx
 
 - `moveParagraphUp` / `moveParagraphDown` 函数
 - Timestamp 跳过逻辑
@@ -394,7 +394,7 @@ if (eventLine.mode === 'title') {
 ### 成功因素
 
 1. **清晰的需求描述**: 用户准确描述了两种移动逻辑的区别
-2. **参考实现**: TagManager 和 LightSlateEditor 提供了成熟的模板
+2. **参考实现**: TagManager 和 ModalSlate 提供了成熟的模板
 3. **Slate API 熟悉**: 对 Transform API 的深入理解
 4. **详细的测试用例**: 覆盖所有边界情况
 

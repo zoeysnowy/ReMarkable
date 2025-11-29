@@ -31,7 +31,7 @@ TagManager 当前使用原生 `contentEditable` 实现标签名编辑，而 Plan
 - `src/components/SlateEditor/elements/`（TagElement、DateMentionElement）
 
 ✅ **PlanManager 已成功应用**：
-- `UnifiedSlateEditor.tsx`（402 lines，多行编辑器）
+- `PlanSlate.tsx`（402 lines，多行编辑器）
 - 已验证 Slate 在生产环境的可行性
 
 ---
@@ -259,7 +259,7 @@ TagManager 当前使用原生 `contentEditable` 实现标签名编辑，而 Plan
 **概率**：🟡 中  
 **缓解措施**：
 - 阅读 Slate 官方文档（Selection 章节）
-- 参考 PlanManager 的 `UnifiedSlateEditor` 实现
+- 参考 PlanManager 的 `PlanSlate` 实现
 - 编写单元测试验证选区计算逻辑
 
 ### 风险 3: IME 兼容性问题

@@ -352,7 +352,7 @@ useEffect(() => {
 
 ```typescript
 interface EventTitle {
-  fullTitle?: string;    // Slate JSON 富文本（UnifiedSlateEditor）
+  fullTitle?: string;    // Slate JSON 富文本（PlanSlate）
   colorTitle?: string;   // HTML 富文本（UpcomingPanel/EditModal）
   simpleTitle?: string;  // 纯文本（TimeCalendar/搜索/同步）
 }
@@ -468,7 +468,7 @@ const eventData = {
 
 | 组件 | 使用字段 | 变更内容 |
 |-----|---------|---------|
-| UnifiedSlateEditor | `fullTitle` | ✅ 读写 title.fullTitle |
+| PlanSlate | `fullTitle` | ✅ 读写 title.fullTitle |
 | UpcomingEventsPanel | `colorTitle` | ✅ 显示 title.colorTitle |
 | EventEditModalV2 | `colorTitle` | ✅ 表单读写 colorTitle |
 | PlanManager | `simpleTitle` | ✅ 搜索/日志用 simpleTitle |
@@ -487,7 +487,7 @@ const eventData = {
 1. types.ts - EventTitle 定义
 2. EventService.ts - 转换函数 + normalizeTitle()
 3. PlanManager.tsx - 所有 title 操作改为 simpleTitle
-4. UnifiedSlateEditor/serialization.ts - 序列化层
+4. PlanSlate/serialization.ts - 序列化层
 5. UpcomingEventsPanel.tsx - 显示 colorTitle
 6. EventEditModalV2.tsx - 表单读写 colorTitle
 7. App.tsx - Timer title 赋值改为对象
@@ -2153,7 +2153,7 @@ await TimeHub.setEventTime(eventId, {
                    │
                    ▼
 ┌──────────────────────────────────────────────────────────────┐
-│  UnifiedSlateEditor (eventsUpdated listener)                 │
+│  PlanSlate (eventsUpdated listener)                 │
 │  1. EventService.getEventById(eventId)                       │
 │  2. Transforms.setNodes({ metadata: { checked, unchecked }}) │
 │  3. setValue([...editor.children]) - 强制重新渲染            │
@@ -2179,7 +2179,7 @@ await TimeHub.setEventTime(eventId, {
 
 #### 1. eventsUpdated 监听器同步数组
 
-**位置**: `UnifiedSlateEditor.tsx` L850-867
+**位置**: `PlanSlate.tsx` L850-867
 
 ```typescript
 const handleEventUpdated = (e: any) => {
@@ -2292,7 +2292,7 @@ return prevChecked === nextChecked;
 // 组件只调用 EventService
 EventService.checkIn(eventId);
 // EventService 触发 eventsUpdated
-// UnifiedSlateEditor 监听器同步到 Slate
+// PlanSlate 监听器同步到 Slate
 // React.memo 检测 metadata 变化
 // 组件自动重新渲染
 ```
@@ -2524,7 +2524,7 @@ interface EventTitle {
 #### 🎯 设计原理
 
 **问题背景**：
-- UnifiedSlateEditor 需要完整 Slate JSON（标签、元素）
+- PlanSlate 需要完整 Slate JSON（标签、元素）
 - UpcomingPanel/EditModal 需要 HTML 格式（颜色、加粗）
 - TimeCalendar/搜索/同步 只需要纯文本
 - 旧架构混用 `title: string` 导致信息丢失
@@ -2568,7 +2568,7 @@ class EventService {
 
 | 组件/场景 | 使用字段 | 原因 | 示例 |
 |---------|---------|------|------|
-| **UnifiedSlateEditor** | `fullTitle` | 需要完整 Slate JSON（标签、元素） | 保存/读取带标签的标题 |
+| **PlanSlate** | `fullTitle` | 需要完整 Slate JSON（标签、元素） | 保存/读取带标签的标题 |
 | **UpcomingEventsPanel** | `colorTitle` | 显示 HTML 格式（颜色、加粗） | 红色加粗标题 |
 | **EventEditModal** | `colorTitle` | 富文本输入框，支持格式 | 用户输入带颜色标题 |
 | **Timer 模块** | `simpleTitle` | 简单文本显示 | "[专注中] 写文档" |
@@ -2580,7 +2580,7 @@ class EventService {
 #### 💡 使用示例
 
 ```typescript
-// ✅ UnifiedSlateEditor 保存
+// ✅ PlanSlate 保存
 slateNodeToPlanItem(node) {
   return {
     title: {
@@ -3403,10 +3403,10 @@ const status = EventService.getCheckInStatus(eventId);
 
 **1. Slate 序列化支持**
 
-`checkType` 字段已集成到 UnifiedSlateEditor 的序列化流程中：
+`checkType` 字段已集成到 PlanSlate 的序列化流程中：
 
 ```typescript
-// src/components/UnifiedSlateEditor/serialization.ts
+// src/components/PlanSlate/serialization.ts
 
 // 1. Event → Slate Node（提取元数据）
 export function planItemToSlateNode(item: any): EventLineNode {
@@ -3445,7 +3445,7 @@ export function slateNodeToPlanItem(node: EventLineNode): Event {
 根据 `checkType` 字段决定是否显示 checkbox：
 
 ```typescript
-// src/components/UnifiedSlateEditor/EventLinePrefix.tsx
+// src/components/PlanSlate/EventLinePrefix.tsx
 const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onSave }) => {
   const metadata = element.metadata || {};
   const checkType = metadata.checkType;
@@ -4245,7 +4245,7 @@ const timerEvent: Event = {
 #### 流程1: 内部编辑 → 外部同步
 
 ```
-用户输入 (LightSlateEditor)
+用户输入 (ModalSlate)
   ↓ onChange (Slate JSON 字符串)
 EventEditModalV2.handleTimelogChange(slateJson: string)
   ↓
@@ -4320,7 +4320,7 @@ EventService.normalizeEventLog(event.eventlog)
   ↓
 PlanManager 直接使用 eventlog.slateJson
   ↓
-LightSlateEditor 渲染（无需格式判断）
+ModalSlate 渲染（无需格式判断）
 ```
 
 ---
@@ -4828,7 +4828,7 @@ private async handleIncomingUpdate(outlookEvent: OutlookEvent) {
 
 **流向1: 内部编辑 → Outlook 同步**
 ```
-用户输入 (LightSlateEditor)
+用户输入 (ModalSlate)
   ↓ onChange (Slate JSON 字符串)
 EventEditModalV2.handleSave()
   ↓
@@ -4903,7 +4903,7 @@ normalizeEventLog(event.eventlog)
   ↓
 PlanManager 直接使用 eventlog.slateJson
   ↓
-LightSlateEditor 渲染（无需格式判断）
+ModalSlate 渲染（无需格式判断）
 ```
 
 ### 4. 实现状态
@@ -5320,7 +5320,7 @@ console.log(`✅ [SyncRemote] Completed: ${successCount} updated, ${skippedCount
 所有订阅 `eventsUpdated` 的组件自动受益:
 - ✅ TimeCalendar: 减少日历重渲染
 - ✅ PlanManager: 减少缓存清理和过滤计算
-- ✅ UnifiedSlateEditor: 减少 Slate 节点操作
+- ✅ PlanSlate: 减少 Slate 节点操作
 - ✅ UpcomingEventsPanel: 减少无效状态更新
 
 #### 7.5 关键要点

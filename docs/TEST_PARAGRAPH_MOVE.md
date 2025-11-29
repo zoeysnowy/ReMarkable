@@ -2,7 +2,7 @@
 
 > **版本**: v1.0  
 > **创建时间**: 2025-11-28  
-> **测试范围**: LightSlateEditor, UnifiedSlateEditor  
+> **测试范围**: ModalSlate, PlanSlate  
 > **快捷键**: `Shift+Alt+↑/↓`
 
 ---
@@ -18,12 +18,12 @@ npm run dev
 
 ### 2. 打开测试页面
 
-- **LightSlateEditor**: Event Edit Modal → 实际进展区域
-- **UnifiedSlateEditor**: Plan Manager → 事件列表
+- **ModalSlate**: Event Edit Modal → 实际进展区域
+- **PlanSlate**: Plan Manager → 事件列表
 
 ---
 
-## 📝 LightSlateEditor 测试用例
+## 📝 ModalSlate 测试用例
 
 ### TC-1: 基础段落上移
 
@@ -140,7 +140,7 @@ npm run dev
 
 ---
 
-## 📚 UnifiedSlateEditor 测试用例
+## 📚 PlanSlate 测试用例
 
 ### TC-8: 标题移动（带动 eventlog）
 
@@ -245,10 +245,10 @@ npm run dev
 在浏览器控制台运行：
 
 ```javascript
-// LightSlateEditor 详细日志
+// ModalSlate 详细日志
 localStorage.setItem('SLATE_VERBOSE_LOG', 'true');
 
-// UnifiedSlateEditor 详细日志
+// PlanSlate 详细日志
 window.SLATE_DEBUG = true;
 
 // 刷新页面生效
@@ -284,7 +284,7 @@ location.reload();
 - ✅ Bullet 格式保持
 - ✅ 边界保护生效
 
-### UnifiedSlateEditor 特殊功能
+### PlanSlate 特殊功能
 - ✅ 标题移动带动 eventlog
 - ✅ EventLog 独立移动
 - ✅ 事件结构完整性保护
@@ -320,7 +320,7 @@ location.reload();
 **测试时间**: [日期]  
 **测试环境**: [Chrome/Edge/Firefox] [版本号]
 
-### LightSlateEditor
+### ModalSlate
 - [ ] TC-1: 基础段落上移
 - [ ] TC-2: 基础段落下移
 - [ ] TC-3: Bullet 段落移动
@@ -329,7 +329,7 @@ location.reload();
 - [ ] TC-6: 边界检查 - 最后一行
 - [ ] TC-7: Bullet 层级保持
 
-### UnifiedSlateEditor
+### PlanSlate
 - [ ] TC-8: 标题移动（带动 eventlog）
 - [ ] TC-9: EventLog 移动（标题不跟随）
 - [ ] TC-10: EventLog 不能移动到标题行之前

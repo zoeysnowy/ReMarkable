@@ -17,7 +17,7 @@ import { validateEventTime } from '../utils/eventValidation';
 import { determineSyncTarget, shouldSync } from '../utils/syncRouter';
 import { ContactService } from './ContactService';
 import { EventHistoryService } from './EventHistoryService'; // 🆕 事件历史记录
-import { jsonToSlateNodes, slateNodesToHtml } from '../components/LightSlateEditor/serialization'; // 🆕 Slate 转换
+import { jsonToSlateNodes, slateNodesToHtml } from '../components/ModalSlate/serialization'; // 🆕 Slate 转换
 
 const eventLogger = logger.module('EventService');
 
@@ -1435,7 +1435,7 @@ export class EventService {
           children: [{ text: fallbackDescription }]
         }]));
       }
-      console.log('[EventService] eventlog 和 fallbackDescription 均为空，返回空对象');
+      // console.log('[EventService] eventlog 和 fallbackDescription 均为空，返回空对象');
       return this.convertSlateJsonToEventLog('[]');
     }
     

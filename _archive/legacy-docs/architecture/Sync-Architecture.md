@@ -2,7 +2,7 @@
 
 **最后更新**: 2025-11-06
 
-> **重要更新**: PlanManager 迁移到 UnifiedSlateEditor 后，优化了时间同步逻辑，避免强制定义时间。
+> **重要更新**: PlanManager 迁移到 PlanSlate 后，优化了时间同步逻辑，避免强制定义时间。
 >
 > **相关文档**:
 > - 📖 [SYNC_MECHANISM_PRD.md](./SYNC_MECHANISM_PRD.md) - 同步机制的产品需求和整体架构

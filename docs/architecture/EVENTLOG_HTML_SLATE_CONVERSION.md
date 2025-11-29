@@ -1637,7 +1637,7 @@ describe('完整场景: Outlook 往返', () => {
 
 #### 阶段3: Nested Event 支持（2-3周）
 1. **定义 NestedEventNode 类型**（types.ts）
-2. **实现 Checkbox 交互**（UnifiedSlateEditor.tsx）
+2. **实现 Checkbox 交互**（PlanSlate.tsx）
 3. **实现事件引用同步**（EventService.ts）
 4. **实现反向识别**（htmlToSlateJsonWithRecognition）
 5. **更新序列化逻辑**（serialization.ts）

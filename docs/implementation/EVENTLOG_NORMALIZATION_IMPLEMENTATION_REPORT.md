@@ -330,7 +330,7 @@ if (existingTag) {
    - UI 组件传递原始格式（Slate JSON 字符串或 HTML）
    - EventService 自动转换为 EventLog 对象
 
-❌ (已移除) LightSlateEditor 的格式判断
+❌ (已移除) ModalSlate 的格式判断
 ❌ (已移除) EventEditModal 的 HTML 转换
 ❌ (已移除) PlanSlate 的 eventlog 解析
 ```

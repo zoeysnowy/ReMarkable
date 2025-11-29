@@ -32,9 +32,9 @@ import { SimpleCalendarDropdown } from './EventEditModalV2Demo/SimpleCalendarDro
 import { SyncModeDropdown } from './EventEditModalV2Demo/SyncModeDropdown';
 import { getAvailableCalendarsForSettings, getCalendarGroupColor } from '../utils/calendarUtils';
 // TimeLog 相关导入
-import { LightSlateEditor } from './LightSlateEditor';
-// import { insertTag, insertEmoji, insertDateMention } from './UnifiedSlateEditor/helpers';
-// import { parseExternalHtml, slateNodesToRichHtml } from './UnifiedSlateEditor/serialization';
+import { ModalSlate } from './ModalSlate';
+// import { insertTag, insertEmoji, insertDateMention } from './PlanSlate/helpers';
+// import { parseExternalHtml, slateNodesToRichHtml } from './PlanSlate/serialization';
 import { formatTimeForStorage } from '../utils/timeUtils';
 import './EventEditModalV2Demo.css';
 
@@ -573,7 +573,7 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
   // ==================== TimeLog 处理函数 ====================
   
   /**
-   * TimeLog 内容变化处理（LightSlateEditor）
+   * TimeLog 内容变化处理（ModalSlate）
    */
   const handleTimelogChange = (htmlContent: string) => {
     setFormData({
@@ -594,7 +594,7 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
    * FloatingToolbar 表情选择 - 暂时禁用
    */
   const handleEmojiSelect = (emoji: any) => {
-    // TODO: 重新实现 LightSlateEditor 的 emoji 插入
+    // TODO: 重新实现 ModalSlate 的 emoji 插入
     // if (slateEditorRef.current) {
     //   insertEmoji(slateEditorRef.current, emoji.native);
     // }
@@ -605,7 +605,7 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
    * FloatingToolbar 标签选择 - 暂时禁用
    */
   const handleTagSelect = (tagId: string) => {
-    // TODO: 重新实现 LightSlateEditor 的 tag 插入
+    // TODO: 重新实现 ModalSlate 的 tag 插入
     // if (slateEditorRef.current) {
     //   const tag = TagService.getTagById(tagId);
     //   if (tag) {
@@ -626,7 +626,7 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
    * FloatingToolbar 日期范围选择
    */
   const handleDateRangeSelect = (startDate: string, endDate?: string) => {
-    // TODO: 重新实现 LightSlateEditor 的 date mention 插入
+    // TODO: 重新实现 ModalSlate 的 date mention 插入
     // if (slateEditorRef.current) {
     //   insertDateMention(
     //     slateEditorRef.current,
@@ -1339,7 +1339,7 @@ export const EventEditModalV2Demo: React.FC<EventEditModalV2DemoProps> = ({
 
                   {/* TimeLog 编辑区 */}
                   <div ref={rightPanelRef} style={{ flex: 1, background: 'white', display: 'flex', flexDirection: 'column' }}>
-                    <LightSlateEditor
+                    <ModalSlate
                       content={timelogContent}
                       parentEventId={formData.id || 'new-event'}
                       enableTimestamp={true}

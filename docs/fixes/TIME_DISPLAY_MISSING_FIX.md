@@ -36,7 +36,7 @@ if (hasStartTime && !hasEndTime) {
 ```
 
 #### 2. Slate 序列化问题 (已修复 ✅)
-**文件**: `src/components/UnifiedSlateEditor/serialization.ts` (lines 398-427)
+**文件**: `src/components/PlanSlate/serialization.ts` (lines 398-427)
 
 **原因**: 从 DateMention node 读取过时数据,而不是从 TimeHub 读取最新数据
 
@@ -255,7 +255,7 @@ if (hasStartTime && !hasEndTime) {
 }
 ```
 
-### 文件 2: `src/components/UnifiedSlateEditor/serialization.ts`
+### 文件 2: `src/components/PlanSlate/serialization.ts`
 ```typescript
 // Line 18: 添加 TimeHub 导入
 import { TimeHub } from '../../services/TimeHub';
@@ -309,7 +309,7 @@ const eventItem: Event = {
 - [TIME_PICKER_AND_DISPLAY_PRD.md](../PRD/TIME_PICKER_AND_DISPLAY_PRD.md) - Appendix B: 交互链路文档
 - [TIME_ARCHITECTURE.md](../TIME_ARCHITECTURE.md) - TimeHub 架构说明
 - [eventValidation.ts](../../src/utils/eventValidation.ts) - 验证规则
-- [serialization.ts](../../src/components/UnifiedSlateEditor/serialization.ts) - Slate 序列化逻辑
+- [serialization.ts](../../src/components/PlanSlate/serialization.ts) - Slate 序列化逻辑
 
 ## 修复日期
 2025-01-XX

@@ -4,21 +4,21 @@
 
 ### 当前循环路径
 ```
-UnifiedSlateEditor onChange 
+PlanSlate onChange 
 → PlanManager.onSave 
 → EventService.updateEvent 
 → eventsUpdated广播 
 → PlanManager监听并setItems 
 → items prop变化 
 → enhancedValue重新计算 
-→ UnifiedSlateEditor重新渲染
+→ PlanSlate重新渲染
 → 可能再次触发onChange (循环开始)
 ```
 
 ### 新增ID分配问题
 ```
 用户激活新行
-→ UnifiedSlateEditor.onFocus 
+→ PlanSlate.onFocus 
 → PlanManager创建pendingEmptyItems
 → 用户输入内容
 → onChange触发
@@ -135,10 +135,10 @@ useEffect(() => {
 }, []);
 ```
 
-#### 1.3 UnifiedSlateEditor的对应改进
+#### 1.3 PlanSlate的对应改进
 
 ```typescript
-// UnifiedSlateEditor.tsx - 增强的来源检测
+// PlanSlate.tsx - 增强的来源检测
 useEffect(() => {
   const handleEventUpdated = (e: any) => {
     const { eventId, isLocalUpdate, originComponent, updateId } = e.detail || {};
@@ -187,7 +187,7 @@ interface EditorState {
   lastSyncTimestamp: number;
 }
 
-const UnifiedSlateEditor = ({ initialItems, onSave, onEditorReady }) => {
+const PlanSlate = ({ initialItems, onSave, onEditorReady }) => {
   // ❌ 移除：实时响应items变化
   // const enhancedValue = useMemo(() => planItemsToSlateNodes(items), [items]);
   
@@ -299,7 +299,7 @@ class EventService {
 ### 阶段1: 快速修复 (1-2天) ✅ 已完成
 实施**方案1**的基础版本：
 - EventService添加updateId和来源标记
-- PlanManager和UnifiedSlateEditor添加来源检查
+- PlanManager和PlanSlate添加来源检查
 - 保持现有架构不变
 
 ### 阶段1.5: ID分配优化 (1天) ✅ 已完成
@@ -363,10 +363,10 @@ const testCircularUpdate = () => {
 - [ ] 方案1: 更新来源标记机制
   - [ ] EventService添加updateId和来源跟踪
   - [ ] PlanManager添加来源检查逻辑  
-  - [ ] UnifiedSlateEditor添加来源检查逻辑
+  - [ ] PlanSlate添加来源检查逻辑
   - [ ] 测试循环更新防护
 - [ ] 方案2: 数据流重构 
-  - [ ] 重构UnifiedSlateEditor状态管理
+  - [ ] 重构PlanSlate状态管理
   - [ ] 实现增量更新API
   - [ ] 移除enhancedValue实时依赖
 - [ ] 方案3: BroadcastChannel改进

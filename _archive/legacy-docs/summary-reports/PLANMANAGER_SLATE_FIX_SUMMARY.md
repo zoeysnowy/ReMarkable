@@ -2,7 +2,7 @@
 
 **修复日期**: 2025-11-08  
 **架构版本**: v1.5 → v1.6  
-**修复范围**: PlanManager ↔ UnifiedSlateEditor 数据流 + EventHub 架构规范
+**修复范围**: PlanManager ↔ PlanSlate 数据流 + EventHub 架构规范
 
 ---
 
@@ -12,7 +12,7 @@
 
 #### 1. 数据流循环更新 ✅ 已修复
 
-**问题**: UnifiedSlateEditor 的 useEffect 自动同步导致无限渲染循环。
+**问题**: PlanSlate 的 useEffect 自动同步导致无限渲染循环。
 
 **修复方案**:
 - ✅ 移除 `useEffect` 中的自动同步逻辑
@@ -21,7 +21,7 @@
 - ✅ 暴露 `syncFromExternal()` 方法供外部显式同步
 
 **修改文件**:
-- `src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx`
+- `src/components/PlanSlate/PlanSlate.tsx`
 
 **代码变更**:
 ```typescript
@@ -255,8 +255,8 @@ const updatedTime = await setEventTime(item.id, {
 - ✅ 更新 `slateNodesToPlanItems` 还原完整 metadata
 
 **修改文件**:
-- `src/components/UnifiedSlateEditor/types.ts`
-- `src/components/UnifiedSlateEditor/serialization.ts`
+- `src/components/PlanSlate/types.ts`
+- `src/components/PlanSlate/serialization.ts`
 
 **新增字段**:
 ```typescript
@@ -291,11 +291,11 @@ export interface EventMetadata {
 - ✅ 实现 `deleteItems()` 统一删除接口
 - ✅ 更新 `executeBatchUpdate` 使用统一接口
 - ✅ 更新 `EventEditModal` 使用统一接口
-- ✅ 添加 `onDeleteRequest` 回调，UnifiedSlateEditor 通知外部删除
+- ✅ 添加 `onDeleteRequest` 回调，PlanSlate 通知外部删除
 
 **修改文件**:
 - `src/components/PlanManager.tsx`
-- `src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx`
+- `src/components/PlanSlate/PlanSlate.tsx`
 
 **代码变更**:
 ```typescript
@@ -389,10 +389,10 @@ deleteItems([eventId], 'user-manual-delete');
 it('should not trigger onChange on internal updates', () => {
   const onChange = jest.fn();
   const { rerender } = render(
-    <UnifiedSlateEditor items={items} onChange={onChange} />
+    <PlanSlate items={items} onChange={onChange} />
   );
   
-  rerender(<UnifiedSlateEditor items={updatedItems} onChange={onChange} />);
+  rerender(<PlanSlate items={updatedItems} onChange={onChange} />);
   
   expect(onChange).not.toHaveBeenCalled();
 });
@@ -428,16 +428,16 @@ it('should delete items only once', () => {
 
 ### 修改文件（5个）
 
-1. ✅ `src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx`
+1. ✅ `src/components/PlanSlate/PlanSlate.tsx`
    - 移除自动同步逻辑
    - 添加 isInternalUpdateRef
    - 添加 onDeleteRequest 回调
    - 暴露 syncFromExternal 方法
 
-2. ✅ `src/components/UnifiedSlateEditor/types.ts`
+2. ✅ `src/components/PlanSlate/types.ts`
    - 扩展 EventMetadata 接口（20+ 字段）
 
-3. ✅ `src/components/UnifiedSlateEditor/serialization.ts`
+3. ✅ `src/components/PlanSlate/serialization.ts`
    - 完整透传 metadata
 
 4. ✅ `src/components/PlanManager.tsx`
@@ -515,7 +515,7 @@ window.DEBUG_TAGS = 'delete';
 
 ⚠️ **API 变更**:
 - `onEditorReady` 现在接收一个对象 `{ syncFromExternal, getEditor }` 而不是 Editor 实例
-- 如果有其他组件使用 UnifiedSlateEditor，需要更新调用方式
+- 如果有其他组件使用 PlanSlate，需要更新调用方式
 
 **迁移指南**:
 ```typescript

@@ -10,7 +10,7 @@ import { ConflictDetectionService, ConflictInfo } from '../services/ConflictDete
 import { ContactService } from '../services/ContactService';
 import './EventEditModal.css';
 import { useEventTime } from '../hooks/useEventTime';
-import { LightSlateEditor } from './LightSlateEditor';
+import { ModalSlate } from './ModalSlate';
 
 /**
  * 简单的防抖函数实现
@@ -1051,11 +1051,11 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
             />
           </div>
 
-          {/* 描述（TimeLog - 使用 LightSlateEditor 支持 timestamp 插入） */}
+          {/* 描述（TimeLog - 使用 ModalSlate 支持 timestamp 插入） */}
           <div className="form-group form-group-inline form-group-description">
             <label>TimeLog</label>
             <div className="slate-editor-wrapper">
-              <LightSlateEditor
+              <ModalSlate
                 content={formData.description}
                 parentEventId={event?.id || 'new-event'}
                 enableTimestamp={true}

@@ -170,7 +170,7 @@
       console.log('normalizeNode:', editor.normalizeNode);
     } else {
       console.warn('编辑器实例未暴露到 window.__SLATE_EDITOR__');
-      console.log('提示：在 UnifiedSlateEditor.tsx 中添加 window.__SLATE_EDITOR__ = editor');
+      console.log('提示：在 PlanSlate.tsx 中添加 window.__SLATE_EDITOR__ = editor');
     }
 
     console.groupEnd();

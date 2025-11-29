@@ -4,7 +4,7 @@
 
 ### 🎯 修复摘要
 
-**问题**: PlanManager 和 UnifiedSlateEditor 双向数据绑定导致无限循环更新
+**问题**: PlanManager 和 PlanSlate 双向数据绑定导致无限循环更新
 **解决方案**: 实现 Method 1 - 更新源追踪和多层循环防护
 **状态**: ✅ 已修复并通过测试验证
 
@@ -19,8 +19,8 @@ Event (EventService/localStorage)
     ↓ [转换1: PlanManager lines 1256-1340]
 FreeFormLine<Event>[] (editorLines)
     ↓ [转换2: PlanManager lines 1774-1810]  
-UnifiedSlateEditor items (包含 mode, startTime, endTime 等)
-    ↓ [转换3: UnifiedSlateEditor 内部]
+PlanSlate items (包含 mode, startTime, endTime 等)
+    ↓ [转换3: PlanSlate 内部]
 Slate Document (EventLineNode + ParagraphNode)
 ```
 
@@ -65,10 +65,10 @@ items={useMemo(() => editorLines.map(line => {
 - `content` 和 `title` 数据重复
 - 维护成本高：每次 Event 添加字段都要改 3 个地方
 
-#### 3. **UnifiedSlateEditor 已支持直接接收 Event**
+#### 3. **PlanSlate 已支持直接接收 Event**
 ```typescript
-// UnifiedSlateEditor.tsx line 109
-export interface UnifiedSlateEditorProps {
+// PlanSlate.tsx line 109
+export interface PlanSlateProps {
   items: any[];  // ✅ 实际上就是 Event[]
   onChange: (items: any[]) => void;
   // ...
@@ -76,7 +76,7 @@ export interface UnifiedSlateEditorProps {
 ```
 
 **关键发现**:
-- `UnifiedSlateEditor` 内部会将 `items` 转换为 Slate 文档
+- `PlanSlate` 内部会将 `items` 转换为 Slate 文档
 - 它根本不关心 `FreeFormLine` 这个结构
 - `items` 只需要包含 Event 的必要字段即可
 
@@ -89,8 +89,8 @@ export interface UnifiedSlateEditorProps {
 ```
 Event (EventService/localStorage)
     ↓ [直接传递]
-UnifiedSlateEditor items (Event[])
-    ↓ [转换: UnifiedSlateEditor 内部]
+PlanSlate items (Event[])
+    ↓ [转换: PlanSlate 内部]
 Slate Document (EventLineNode + ParagraphNode)
 ```
 
@@ -136,12 +136,12 @@ renderLinePrefix={(line) => {
 
 **结论**: 
 - `editorLines` 的核心作用是**展开 Title + Description 成多行**
-- UnifiedSlateEditor 内部**已经支持这个功能**！
+- PlanSlate 内部**已经支持这个功能**！
 
-#### Step 2: 检查 UnifiedSlateEditor 内部实现
+#### Step 2: 检查 PlanSlate 内部实现
 
 ```typescript
-// UnifiedSlateEditor.tsx 内部已经处理了 Title + Description 分离
+// PlanSlate.tsx 内部已经处理了 Title + Description 分离
 // serialization.ts: planItemsToSlateNodes
 export function planItemsToSlateNodes(items: any[]): Descendant[] {
   return items.flatMap((item) => {
@@ -167,7 +167,7 @@ export function planItemsToSlateNodes(items: any[]): Descendant[] {
 ```
 
 **关键发现**:
-- UnifiedSlateEditor 内部的 `planItemsToSlateNodes` **已经处理了 Title/Description 分离**
+- PlanSlate 内部的 `planItemsToSlateNodes` **已经处理了 Title/Description 分离**
 - `editorLines` 的逻辑**完全重复**了这个功能！
 
 ---
@@ -197,7 +197,7 @@ const editorItems = useMemo(() => {
 }, [items, pendingEmptyItems]);
 
 // ✅ 直接传递
-<UnifiedSlateEditor
+<PlanSlate
   items={editorItems}
   onChange={debouncedOnChange}
   // ...
@@ -228,7 +228,7 @@ renderLineSuffix={(element) => {
 
 **优势**:
 - 移除 500+ 行冗余代码
-- 数据流清晰：Event → UnifiedSlateEditor → Slate
+- 数据流清晰：Event → PlanSlate → Slate
 - 字段不会丢失（通过 metadata 透传）
 - 修复当前的 mode 字段问题
 
@@ -242,7 +242,7 @@ function PlanManager() {
   const [events, setEvents] = useState<Event[]>([]);
   
   return (
-    <UnifiedSlateEditor
+    <PlanSlate
       items={events}
       onChange={setEvents}
       // 其他业务配置
@@ -251,7 +251,7 @@ function PlanManager() {
 }
 ```
 
-**UnifiedSlateEditor 负责**:
+**PlanSlate 负责**:
 - Event ↔ Slate 转换
 - Title/Description 分离
 - 缩进处理
@@ -284,8 +284,8 @@ function PlanManager() {
 ### 长期重构（1天）
 1. 将 PlanManager 拆分为：
    - `PlanManager` (业务逻辑)
-   - `PlanEditor` (基于 UnifiedSlateEditor 的高级组件)
-2. 统一数据流：EventService → PlanManager → UnifiedSlateEditor
+   - `PlanEditor` (基于 PlanSlate 的高级组件)
+2. 统一数据流：EventService → PlanManager → PlanSlate
 
 ---
 
@@ -300,8 +300,8 @@ function PlanManager() {
 **双向数据绑定循环**:
 ```
 PlanManager onChange → App.handleSavePlanItem → EventService.updateEvent
-→ TimeHub.emit → PlanManager.handleEventUpdated → UnifiedSlateEditor.eventsUpdated
-→ UnifiedSlateEditor onChange → 循环开始
+→ TimeHub.emit → PlanManager.handleEventUpdated → PlanSlate.eventsUpdated
+→ PlanSlate onChange → 循环开始
 ```
 
 ### 修复方案 - Method 1: 更新源追踪
@@ -339,9 +339,9 @@ const handleEventUpdated = (updatedEventId: string, originInfo?: any) => {
 };
 ```
 
-#### 3. UnifiedSlateEditor 层面
+#### 3. PlanSlate 层面
 ```typescript
-// UnifiedSlateEditor.tsx - 多层循环检测
+// PlanSlate.tsx - 多层循环检测
 const handleEventUpdated = (eventId: string, isDeleted?: boolean, isNewEvent?: boolean) => {
   // 检测1: 更新ID验证
   if (isLocalOrigin(eventId)) return;
@@ -350,7 +350,7 @@ const handleEventUpdated = (eventId: string, isDeleted?: boolean, isNewEvent?: b
   if (isRecentUpdate(eventId)) return;
   
   // 检测3: 来源组件验证
-  if (originComponent === 'UnifiedSlateEditor') return;
+  if (originComponent === 'PlanSlate') return;
   
   // 安全处理逻辑...
 };

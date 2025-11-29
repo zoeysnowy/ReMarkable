@@ -2,7 +2,7 @@
 
 > **创建时间**: 2025-11-06  
 > **问题来源**: PlanManager ↔ Slate 交互机制优化讨论  
-> **关联文档**: [PLANMANAGER_MODULE_PRD § 16](./PRD/PLANMANAGER_MODULE_PRD.md#16-planmanager--unifiedslateeditor-交互机制)
+> **关联文档**: [PLANMANAGER_MODULE_PRD § 16](./PRD/PLANMANAGER_MODULE_PRD.md#16-planmanager--PlanSlate-交互机制)
 
 ---
 

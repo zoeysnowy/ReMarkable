@@ -17,7 +17,7 @@
 
 5. **你应该立即看到**：
    ```
-   🚀 UnifiedSlateEditor mounted with DEBUG LOGGING ENABLED  (绿色背景)
+   🚀 PlanSlate mounted with DEBUG LOGGING ENABLED  (绿色背景)
    📊 Initial items count: X  (蓝色文字)
    🚀 PlanManager mounted with DEBUG LOGGING ENABLED  (橙色背景)
    📊 Initial items count: X  (红色文字)

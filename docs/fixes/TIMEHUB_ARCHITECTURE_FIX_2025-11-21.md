@@ -260,7 +260,7 @@ window.dispatchEvent('eventsUpdated', { eventId })
 所有订阅者收到通知:
   - PlanItemTimeDisplay (通过 useEventTime)
   - DateMentionElement (通过 useEventTime)
-  - UnifiedSlateEditor (监听 eventsUpdated 事件)
+  - PlanSlate (监听 eventsUpdated 事件)
   ↓
 UI 自动更新
 ```

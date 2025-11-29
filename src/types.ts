@@ -198,7 +198,7 @@ export interface Contact {
 
 /**
  * 标题三层架构 (v2.14)
- * - fullTitle: Slate JSON 格式（UnifiedSlateEditor 专用，包含标签/元素）
+ * - fullTitle: Slate JSON 格式（PlanSlate 专用，包含标签/元素）
  * - colorTitle: HTML 格式（UpcomingPanel/EditModal/Timer，保留颜色/格式）
  * - simpleTitle: 纯文本（TimeCalendar/Outlook 同步）
  */

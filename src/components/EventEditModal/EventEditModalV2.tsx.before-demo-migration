@@ -15,7 +15,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Event } from '../../types';
 import { formatTimeForStorage } from '../../utils/timeUtils';
 import { LocationInput } from '../common/LocationInput';
-import { LightSlateEditor } from '../LightSlateEditor';
+import { ModalSlate } from '../ModalSlate';
 import './EventEditModalV2.css';
 
 interface EventEditModalV2Props {
@@ -227,9 +227,9 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
               </div>
             )}
 
-            {/* Slate 编辑区 - 使用 LightSlateEditor */}
+            {/* Slate 编辑区 - 使用 ModalSlate */}
             <div className="event-log-editor">
-              <LightSlateEditor
+              <ModalSlate
                 content={formData.eventlog}
                 parentEventId={event?.id || 'new-event'}
                 enableTimestamp={true}

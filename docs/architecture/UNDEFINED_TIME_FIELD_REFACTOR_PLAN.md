@@ -15,7 +15,7 @@
 |------|------|----------|
 | **v1.0** | 2025-11-14 | 初始版本，定义 undefined 字段重构方案 |
 | **v1.1** | 2025-11-14 | 🔥 移除 clearEventTime() 方法，统一使用 setEventTime({ start: undefined }) |
-| **v1.2** | 2025-11-14 | 🆕 补充 PlanManager syncToUnifiedTimeline 和 UnifiedSlateEditor 序列化逻辑 |
+| **v1.2** | 2025-11-14 | 🆕 补充 PlanManager syncToUnifiedTimeline 和 PlanSlate 序列化逻辑 |
 | **v1.3** | 2025-11-14 | 🗑️ 移除数据清洗工具，改为清空 localStorage 缓存 |
 | **v1.4** | 2025-11-14 | ✅ 实施完成，所有 TODO 已完成 |
 
@@ -509,7 +509,7 @@ async function syncToMicrosoftTodo(event: Event): Promise<void> {
 
 **优先级**: 🟡 P1 - 用户体验  
 **预计工时**: 4-6 小时  
-**影响范围**: PlanManager, EventEditModal, TimeCalendar, UnifiedSlateEditor, TimeDisplay 组件
+**影响范围**: PlanManager, EventEditModal, TimeCalendar, PlanSlate, TimeDisplay 组件
 
 #### 4.1 更新时间显示工具
 
@@ -728,9 +728,9 @@ const TimePickerSection = ({ event, onUpdate }: Props) => {
 };
 ```
 
-#### 4.4 🆕 更新 UnifiedSlateEditor 序列化逻辑
+#### 4.4 🆕 更新 PlanSlate 序列化逻辑
 
-**文件**: `src/components/UnifiedSlateEditor/serialization.ts`
+**文件**: `src/components/PlanSlate/serialization.ts`
 
 **问题**: 序列化时使用了 `?? null`，可能导致空字符串
 
@@ -972,7 +972,7 @@ await TimeHub.setEventTime('event-123', {
 4. ✅ **TODO 3**: 同步逻辑更新 - 路由到 Calendar 或 To Do
 
 ### 阶段 3：用户体验（优化，1-2 天）
-5. ✅ **TODO 4**: UI 组件适配 - 处理 undefined 时间显示（PlanManager, EventEditModal, UnifiedSlateEditor）
+5. ✅ **TODO 4**: UI 组件适配 - 处理 undefined 时间显示（PlanManager, EventEditModal, PlanSlate）
 
 ### 阶段 4：文档维护（维护，半天）
 6. ✅ **TODO 6**: 文档更新 - 补充架构变更说明
@@ -1091,7 +1091,7 @@ describe('validateEventTime', () => {
 3. 清空 Task 时间 → TimeHub.setEventTime({ start: undefined, end: undefined })
 4. 创建 Calendar 事件 → 验证时间必需
 5. PlanManager syncToUnifiedTimeline → 不会传递空字符串
-6. UnifiedSlateEditor 序列化/反序列化 → 保持 undefined
+6. PlanSlate 序列化/反序列化 → 保持 undefined
 
 ### 手动测试清单
 
@@ -1101,7 +1101,7 @@ describe('validateEventTime', () => {
 - [x] **TODO 3**: 创建 `syncRouter.ts` 同步路由工具 ✅
 - [x] **TODO 3**: EventService 集成同步路由逻辑 ✅
 - [x] **TODO 4**: PlanManager `syncToUnifiedTimeline` 修复空字符串转 undefined ✅
-- [x] **TODO 4**: UnifiedSlateEditor 序列化/反序列化移除 `?? null` ✅
+- [x] **TODO 4**: PlanSlate 序列化/反序列化移除 `?? null` ✅
 - [x] **TODO 4**: EventEditModal 已使用 TimeHub（无需修改）✅
 - [x] **TODO 5**: TimeHub.setEventTime 已支持 undefined ✅
 - [ ] **集成测试**: PlanManager 创建 Task，不设置时间
@@ -1145,7 +1145,7 @@ describe('validateEventTime', () => {
    - **PlanManager.tsx**：
      - `syncToUnifiedTimeline()` 修复空字符串转 undefined
      - 变更：`startTime: finalStartTime || undefined`
-   - **UnifiedSlateEditor/serialization.ts**：
+   - **PlanSlate/serialization.ts**：
      - 移除序列化时的 `?? null` 转换
      - 移除反序列化时的 `?? undefined` 默认值
      - 保留原始 undefined 值
@@ -1189,7 +1189,7 @@ localStorage.removeItem('remarkable-timehub-cache');
 **变更记录**:
 - v1.0 (2025-11-14): 初始版本
 - v1.1 (2025-11-14): 移除 `clearEventTime()` 方法，统一使用 `setEventTime({ start: undefined })`
-- v1.2 (2025-11-14): 补充 PlanManager 和 UnifiedSlateEditor 实施方案
+- v1.2 (2025-11-14): 补充 PlanManager 和 PlanSlate 实施方案
 - v1.3 (2025-11-14): 移除数据清洗工具，简化为清空缓存
 - v1.4 (2025-11-14): **实施完成**，所有 TODO 已完成，添加实施总结
 - v1.3 (2025-11-14): 🗑️ 移除数据清洗工具（TODO 7），改为清空 localStorage 缓存的简单方案

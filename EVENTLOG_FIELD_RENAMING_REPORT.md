@@ -30,7 +30,7 @@
 | `src/types.ts` | L98-110: EventLog 接口定义<br/>L290-305: 注释示例代码 | ✅ 完成 |
 | `src/services/EventService.ts` | L507: 日志输出<br/>L605: 描述提取<br/>L620: EventLog 构建 | ✅ 完成 |
 | `src/services/ActionBasedSyncManager.ts` | L2076: CREATE 动作<br/>L2404: MIGRATE 动作<br/>L2473: UPDATE 动作<br/>L2576: RECREATE 动作 | ✅ 完成 |
-| `src/components/UnifiedSlateEditor/serialization.ts` | L36: html/slateJson fallback<br/>L61: html/plainText fallback<br/>L162: html/plainText fallback | ✅ 完成 |
+| `src/components/PlanSlate/serialization.ts` | L36: html/slateJson fallback<br/>L61: html/plainText fallback<br/>L162: html/plainText fallback | ✅ 完成 |
 | `src/utils/calendarUtils.ts` | L310-324: plainText/html 字段引用 | ✅ 完成 |
 | `src/components/PlanManager.tsx` | L316: html/slateJson fallback<br/>L373: 调试日志输出 | ✅ 完成 |
 | `src/components/EventEditModal/EventEditModalV2.tsx` | L246-252: initialSlateNodes 初始化<br/>L872-878: actualSlateNodes 初始化 | ✅ 完成 |
@@ -67,7 +67,7 @@ grep -r "eventlog\.(content|descriptionHtml|descriptionPlainText)" src/**/*.{ts,
 - ✅ 无 EventLog 相关 TypeScript 编译错误
 - ℹ️ 其他文件的编译错误（与本次重构无关）：
   - `PlanManager.tsx`: title 字段类型错误（已存在）
-  - `UnifiedSlateEditor.tsx`: Slate 类型错误（已存在）
+  - `PlanSlate.tsx`: Slate 类型错误（已存在）
   - `App.tsx`: 变量命名错误（已存在）
 
 ### 向后兼容性
@@ -90,7 +90,7 @@ grep -r "eventlog\.(content|descriptionHtml|descriptionPlainText)" src/**/*.{ts,
 - **MicrosoftCalendarService**: 无修改（API 字段不受影响）
 
 ### 组件层
-- **UnifiedSlateEditor**: Slate 节点序列化/反序列化
+- **PlanSlate**: Slate 节点序列化/反序列化
 - **EventEditModalV2**: EventLog 初始化逻辑
 - **PlanManager**: 调试日志输出
 - **calendarUtils**: 日历工具函数

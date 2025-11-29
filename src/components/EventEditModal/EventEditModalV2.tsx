@@ -6,7 +6,7 @@
  * 2. Timer 计时按钮交互
  * 3. 计划安排编辑（时间、地点、参会人）
  * 4. 实际进展显示
- * 5. Event Log 富文本编辑（LightSlateEditor）
+ * 5. Event Log 富文本编辑（ModalSlate）
  * 
  * ==================== 架构集成 ====================
  * 
@@ -54,7 +54,7 @@
  * eventlog 字段格式兼容：
  * - 旧格式: 字符串（HTML）
  * - 新格式: EventLog 对象 { content: Slate JSON, descriptionPlainText, ... }
- * - LightSlateEditor 需要: Slate JSON 字符串
+ * - ModalSlate 需要: Slate JSON 字符串
  * 
  * ==================== 性能优化 ====================
  * 
@@ -93,12 +93,12 @@ import { SimpleCalendarDropdown } from '../EventEditModalV2Demo/SimpleCalendarDr
 import { SyncModeDropdown } from '../EventEditModalV2Demo/SyncModeDropdown';
 import { getAvailableCalendarsForSettings, getCalendarGroupColor } from '../../utils/calendarUtils';
 // TimeLog 相关导入
-import { LightSlateEditor } from '../LightSlateEditor';
-import { jsonToSlateNodes, slateNodesToHtml, slateNodesToJson } from '../LightSlateEditor/serialization';
+import { ModalSlate } from '../ModalSlate';
+import { jsonToSlateNodes, slateNodesToHtml, slateNodesToJson } from '../ModalSlate/serialization';
 import { HeadlessFloatingToolbar } from '../FloatingToolbar/HeadlessFloatingToolbar';
 import { useFloatingToolbar } from '../FloatingToolbar/useFloatingToolbar';
-import { insertTag, insertEmoji, insertDateMention, applyTextFormat } from '../UnifiedSlateEditor/helpers';
-// import { parseExternalHtml, slateNodesToRichHtml } from '../UnifiedSlateEditor/serialization';
+import { insertTag, insertEmoji, insertDateMention, applyTextFormat } from '../PlanSlate/helpers';
+// import { parseExternalHtml, slateNodesToRichHtml } from '../PlanSlate/serialization';
 import { formatTimeForStorage } from '../../utils/timeUtils';
 import './EventEditModalV2.css';
 
@@ -229,7 +229,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
    * eventlog 字段处理：
    * - 旧格式：字符串（HTML）
    * - 新格式：EventLog 对象 { content: Slate JSON, ... }
-   * - LightSlateEditor 需要 Slate JSON 字符串
+   * - ModalSlate 需要 Slate JSON 字符串
    * 
    * 架构分层：
    * - EventEditModal：UI层，负责用户输入和展示
@@ -1694,8 +1694,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   // ==================== TimeLog 处理函数 ====================
   
   /**
-   * TimeLog 内容变化处理（LightSlateEditor）
-   * @param slateJson - Slate JSON 字符串（从 LightSlateEditor 的 onChange 回调接收）
+   * TimeLog 内容变化处理（ModalSlate）
+   * @param slateJson - Slate JSON 字符串（从 ModalSlate 的 onChange 回调接收）
    */
   const handleTimelogChange = (slateJson: string) => {
     // 🔧 将 JSON 字符串转换为对象（EventService 需要 Descendant[] 数组）
@@ -2837,7 +2837,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                     className={`event-log-editor-wrapper ${showTopShadow ? 'show-top-shadow' : ''}`}
                     ref={rightPanelRef}
                   >
-                    <LightSlateEditor
+                    <ModalSlate
                       ref={slateEditorRef}
                       key={`editor-${formData.id}`}
                       content={timelogContent}
@@ -2871,10 +2871,10 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                       onTextFormat={(command, value) => {
                         console.log('[EventEditModalV2] onTextFormat called:', { command, value, hasRef: !!slateEditorRef.current });
                         
-                        // 🔧 对于 bullet 相关命令，使用 LightSlateEditor 的内部方法
+                        // 🔧 对于 bullet 相关命令，使用 ModalSlate 的内部方法
                         if (command === 'toggleBulletList' || command === 'increaseBulletLevel' || command === 'decreaseBulletLevel') {
                           if (slateEditorRef.current?.applyTextFormat) {
-                            console.log('[EventEditModalV2] 调用 LightSlateEditor.applyTextFormat');
+                            console.log('[EventEditModalV2] 调用 ModalSlate.applyTextFormat');
                             slateEditorRef.current.applyTextFormat(command);
                           } else {
                             console.error('[EventEditModalV2] slateEditorRef.current.applyTextFormat 不存在');

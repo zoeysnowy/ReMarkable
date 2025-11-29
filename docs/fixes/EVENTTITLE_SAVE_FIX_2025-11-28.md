@@ -40,7 +40,7 @@
 
 #### 原因 1：序列化层的空节点过滤逻辑错误
 
-**位置**：`src/components/UnifiedSlateEditor/serialization.ts` L569-575
+**位置**：`src/components/PlanSlate/serialization.ts` L569-575
 
 ```typescript
 // ❌ 错误代码
@@ -121,14 +121,14 @@ JSON.stringify(old) !== JSON.stringify(new)  // false（内容相同）
 // ❌ 原代码
 if (start === null || end === null) {
   setDateRange(null as any);  // 立即清空 dateRange
-  // UnifiedSlateEditor key 变化 → 编辑器重装
+  // PlanSlate key 变化 → 编辑器重装
   // pendingUpdatedItemsRef 中的数据可能丢失
   return;
 }
 ```
 
 **问题**：
-- UnifiedSlateEditor 的 key 依赖 `dateRange`
+- PlanSlate 的 key 依赖 `dateRange`
 - `dateRange` 变化 → key 变化 → 编辑器重装
 - 待保存的编辑（300ms 防抖）还未提交就被丢弃
 
@@ -138,7 +138,7 @@ if (start === null || end === null) {
 
 ### 修复 1：序列化层 - 检查所有 title 字段
 
-**文件**：`src/components/UnifiedSlateEditor/serialization.ts` L567-577
+**文件**：`src/components/PlanSlate/serialization.ts` L567-577
 
 ```typescript
 // ✅ 修复后
@@ -377,7 +377,7 @@ if (start === null || end === null) {
 ## 相关文档
 
 - [EventHub & TimeHub Architecture](../architecture/EVENTHUB_TIMEHUB_ARCHITECTURE.md) - v2.14 EventTitle 三层架构
-- [Slate Editor PRD](../PRD/SLATE_EDITOR_PRD.md) - UnifiedSlateEditor 序列化规范
+- [Slate Editor PRD](../PRD/SLATE_EDITOR_PRD.md) - PlanSlate 序列化规范
 - [PlanManager PRD](../PRD/PLANMANAGER_MODULE_PRD.md) - 事件保存流程
 
 ---

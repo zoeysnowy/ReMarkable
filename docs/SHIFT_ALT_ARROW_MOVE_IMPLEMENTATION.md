@@ -2,7 +2,7 @@
 
 > **版本**: v1.0  
 > **创建时间**: 2025-11-28  
-> **目标组件**: LightSlateEditor, UnifiedSlateEditor  
+> **目标组件**: ModalSlate, PlanSlate  
 > **参考实现**: TagManager.tsx, Microsoft Word/OneNote
 
 ---
@@ -11,7 +11,7 @@
 
 ### 功能描述
 
-在 LightSlateEditor 和 UnifiedSlateEditor 中实现 `Shift+Alt+↑/↓` 快捷键，用于调整当前段落/行/bulletpoint 的上下位置。
+在 ModalSlate 和 PlanSlate 中实现 `Shift+Alt+↑/↓` 快捷键，用于调整当前段落/行/bulletpoint 的上下位置。
 
 ### 用户场景
 
@@ -91,7 +91,7 @@ Transforms.insertNodes(editor, nodes, { at: targetPath });
 **实现代码**:
 
 ```typescript
-// LightSlateEditor.tsx
+// ModalSlate.tsx
 
 /**
  * 向上移动当前段落
@@ -415,7 +415,7 @@ const moveParagraphsUp = useCallback(() => {
 
 ## 📊 实现步骤
 
-### Phase 1: LightSlateEditor (核心实现)
+### Phase 1: ModalSlate (核心实现)
 
 #### Step 1: 添加移动函数 (2h)
 - [ ] 实现 `moveParagraphUp` 函数
@@ -432,15 +432,15 @@ const moveParagraphsUp = useCallback(() => {
 - [ ] 测试跨越 timestamp 的场景
 - [ ] 测试边界情况（第一行/最后一行）
 
-### Phase 2: UnifiedSlateEditor (扩展实现)
+### Phase 2: PlanSlate (扩展实现)
 
 #### Step 1: 代码复用 (1h)
 - [ ] 将移动逻辑提取为独立工具函数 `moveParagraph(editor, direction)`
-- [ ] 放置在 `src/components/UnifiedSlateEditor/helpers.ts`
+- [ ] 放置在 `src/components/PlanSlate/helpers.ts`
 
-#### Step 2: 集成到 UnifiedSlateEditor (1h)
-- [ ] 在 UnifiedSlateEditor 的 `handleKeyDown` 中调用移动函数
-- [ ] 测试与 LightSlateEditor 行为一致性
+#### Step 2: 集成到 PlanSlate (1h)
+- [ ] 在 PlanSlate 的 `handleKeyDown` 中调用移动函数
+- [ ] 测试与 ModalSlate 行为一致性
 
 ### Phase 3: 高级功能 (可选)
 
@@ -498,18 +498,18 @@ const moveParagraphsUp = useCallback(() => {
 
 ### 修改文件
 
-1. **src/components/LightSlateEditor/LightSlateEditor.tsx**
+1. **src/components/ModalSlate/ModalSlate.tsx**
    - 添加 `moveParagraphUp` 函数 (~50 行)
    - 添加 `moveParagraphDown` 函数 (~50 行)
    - 修改 `handleKeyDown` 添加快捷键 (~10 行)
    - 总计: ~110 行
 
-2. **src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx**
+2. **src/components/PlanSlate/PlanSlate.tsx**
    - 调用共享的移动函数 (~5 行)
    - 修改 `handleKeyDown` 添加快捷键 (~10 行)
    - 总计: ~15 行
 
-3. **src/components/UnifiedSlateEditor/helpers.ts** (新增)
+3. **src/components/PlanSlate/helpers.ts** (新增)
    - 提取共享的 `moveParagraph` 工具函数 (~80 行)
 
 ### 文档更新
@@ -529,8 +529,8 @@ const moveParagraphsUp = useCallback(() => {
 ## 🎯 成功标准
 
 ### 功能完整性
-- ✅ LightSlateEditor 支持 `Shift+Alt+↑/↓` 移动段落
-- ✅ UnifiedSlateEditor 支持 `Shift+Alt+↑/↓` 移动段落
+- ✅ ModalSlate 支持 `Shift+Alt+↑/↓` 移动段落
+- ✅ PlanSlate 支持 `Shift+Alt+↑/↓` 移动段落
 - ✅ 自动跳过 void 节点（timestamp）
 - ✅ Bullet 层级自动调整
 - ✅ 边界检查（第一行/最后一行）
@@ -569,12 +569,12 @@ const moveParagraphsUp = useCallback(() => {
 ## 🚀 下一步行动
 
 ### 立即开始 (今天)
-1. ✅ 在 LightSlateEditor 中实现 `moveParagraphUp` 和 `moveParagraphDown`
+1. ✅ 在 ModalSlate 中实现 `moveParagraphUp` 和 `moveParagraphDown`
 2. ✅ 测试基础功能（普通段落移动）
 3. ✅ 测试 Timestamp 跳过逻辑
 
 ### 本周完成
-1. ✅ 完成 UnifiedSlateEditor 集成（双模式移动）
+1. ✅ 完成 PlanSlate 集成（双模式移动）
 2. ⏳ 完成所有测试用例
 3. ✅ 更新相关文档
 
@@ -585,11 +585,11 @@ const moveParagraphsUp = useCallback(() => {
 
 ---
 
-## 🎯 UnifiedSlateEditor 特殊实现
+## 🎯 PlanSlate 特殊实现
 
 ### 节点结构差异
 
-UnifiedSlateEditor 使用 `EventLineNode`，包含两种模式：
+PlanSlate 使用 `EventLineNode`，包含两种模式：
 
 ```typescript
 interface EventLineNode {
@@ -689,7 +689,7 @@ if (event.shiftKey && event.altKey && (event.key === 'ArrowUp' || event.key === 
 | EventLog 行 | Shift+Alt+↑/↓ | 只移动当前段落 | 重新组织日志内容 |
 | 边界保护 | 任意移动 | 自动检测并阻止非法操作 | 防止破坏文档结构 |
 
-### 测试用例（UnifiedSlateEditor 特有）
+### 测试用例（PlanSlate 特有）
 
 ```typescript
 // TC-15: 标题移动带动 eventlog
@@ -727,12 +727,12 @@ const expectedValue = [
 **风险评估**: 低（Slate API 成熟，有 TagManager 参考实现）
 
 **实现状态**:
-- ✅ LightSlateEditor - 已完成（2025-11-28）
+- ✅ ModalSlate - 已完成（2025-11-28）
   - moveParagraphUp/Down 函数
   - Shift+Alt+↑/↓ 快捷键
   - Timestamp 自动跳过
   - 边界保护
-- ✅ UnifiedSlateEditor - 已完成（2025-11-28）
+- ✅ PlanSlate - 已完成（2025-11-28）
   - moveTitleWithEventlogs 函数
   - moveEventlogParagraph 函数
   - 双模式移动逻辑

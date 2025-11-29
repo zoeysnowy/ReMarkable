@@ -15,7 +15,7 @@
 | **EventService** | SYNC_MECHANISM_PRD | ✅ 实现完整 | ✅ 一致 | ✅ 循环更新防护已实现 |
 | **EventHub/TimeHub** | EVENTHUB_TIMEHUB_ARCHITECTURE | ✅ 实现完整 | ✅ 一致 | ✅ v1.5 循环防护增强 |
 | **PlanManager** | PLANMANAGER_MODULE_PRD | ✅ 实现完整 | ✅ 一致 | ✅ v2.0 循环防护机制 |
-| **UnifiedSlateEditor** | SLATE_EDITOR_PRD | ✅ 实现完整 | ✅ 一致 | ✅ v2.11 多层防护机制 |
+| **PlanSlate** | SLATE_EDITOR_PRD | ✅ 实现完整 | ✅ 一致 | ✅ v2.11 多层防护机制 |
 | **Timer** | TIMER_MODULE_PRD | ✅ 实现完整 | ✅ 一致 | ✅ local-only + 防护机制 |
 | **TimeCalendar** | TIMECALENDAR_MODULE_PRD | ✅ 实现完整 | ✅ 一致 | EventHub 集成 + 防护 |
 | **EventEditModal** | EVENTEDITMODAL_V2_PRD | ✅ 实现完整 | ✅ 一致 | EventHub 集成 + 防护 |
@@ -29,8 +29,8 @@
 
 ### 重大架构更新
 
-**问题解决**: 彻底修复PlanManager + UnifiedSlateEditor双向数据绑定导致的无限循环更新
-**影响模块**: EventService, PlanManager, UnifiedSlateEditor, 测试基础设施
+**问题解决**: 彻底修复PlanManager + PlanSlate双向数据绑定导致的无限循环更新
+**影响模块**: EventService, PlanManager, PlanSlate, 测试基础设施
 **修复状态**: ✅ 已完成并通过全面测试验证
 
 #### 新增文档
@@ -216,7 +216,7 @@ const eventTime = useEventTime(item.id);
 
 **✅ Slate 编辑器集成**：
 ```typescript
-// 文档: Section 16 - PlanManager ↔ UnifiedSlateEditor 交互机制
+// 文档: Section 16 - PlanManager ↔ PlanSlate 交互机制
 // 代码: src/components/PlanManager.tsx
 // ✅ 已实现 onChange 回调处理 Slate 更新
 // ✅ 已实现增量更新逻辑（只更新变化字段）
@@ -331,7 +331,7 @@ import('../services/EventHub').then(async ({ EventHub }) => {
 ### 代码实现验证
 
 **✅ Slate 编辑器集成**：
-- ✅ 使用 UnifiedSlateEditor
+- ✅ 使用 PlanSlate
 - ✅ 支持拖拽排序
 - ✅ 支持层级缩进
 - ✅ 支持 Emoji 选择器
@@ -569,16 +569,16 @@ const handleEventUpdated = (updatedEventId: string, originInfo?: any) => {
 };
 ```
 
-**✅ UnifiedSlateEditor 多层防护**：
+**✅ PlanSlate 多层防护**：
 ```typescript
-// src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx - 三重检测
+// src/components/PlanSlate/PlanSlate.tsx - 三重检测
 const handleEventUpdated = (eventId: string, isDeleted?: boolean, isNewEvent?: boolean) => {
   // 检测1: 更新ID验证
   if (EventService.isLocalUpdate(eventId, lastUpdateId.current)) return;
   // 检测2: 短时间重复更新防护 (100ms)
   if (isRecentUpdate(eventId)) return;
   // 检测3: 来源组件验证
-  if (originComponent === 'UnifiedSlateEditor') return;
+  if (originComponent === 'PlanSlate') return;
   // 安全处理...
 };
 ```

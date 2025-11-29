@@ -71,7 +71,7 @@ if (updatedItems.length === 0 && items.length > 0) {
 
 ---
 
-### 2. UnifiedSlateEditor.tsx
+### 2. PlanSlate.tsx
 
 #### ✅ 初始化诊断（L619-648）
 ```typescript
@@ -286,10 +286,10 @@ if (!hasRealContent && value.some(node => node.eventId !== '__placeholder__')) {
 调用栈: [
   "Error",
   "    at handleEditorChange (PlanManager.tsx:918)",
-  "    at handleEditorChange (UnifiedSlateEditor.tsx:1065)",
-  "    at onChange (UnifiedSlateEditor.tsx:916)",
-  "    at flushPendingChanges (UnifiedSlateEditor.tsx:1122)",
-  "    at handleKeyDown (UnifiedSlateEditor.tsx:1675)",
+  "    at handleEditorChange (PlanSlate.tsx:1065)",
+  "    at onChange (PlanSlate.tsx:916)",
+  "    at flushPendingChanges (PlanSlate.tsx:1122)",
+  "    at handleKeyDown (PlanSlate.tsx:1675)",
   ...
 ]
 ```

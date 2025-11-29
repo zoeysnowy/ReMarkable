@@ -10,7 +10,7 @@
 
 ### ✅ 已实现的核心功能
 1. ✅ 基础事件编辑（标题、标签、时间、地点、描述）
-2. ✅ LightSlateEditor 集成（Event Log 富文本编辑）
+2. ✅ ModalSlate 集成（Event Log 富文本编辑）
 3. ✅ Timer 计时按钮集成
 4. ✅ EventHub 架构集成（create/updateFields）
 5. ✅ 任务勾选功能 (isTask)

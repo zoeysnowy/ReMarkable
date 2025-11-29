@@ -64,7 +64,7 @@
   - `removeFormat` 命令同时移除颜色标记
 
 #### 4. 渲染逻辑
-- `UnifiedSlateEditor.tsx` / `renderLeaf`:
+- `PlanSlate.tsx` / `renderLeaf`:
   - 同时渲染 `color` 和 `backgroundColor`
   - 合并到单个 `<span style={...}>` 标签
 

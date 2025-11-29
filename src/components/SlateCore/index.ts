@@ -2,7 +2,7 @@
  * SlateCore - 统一导出
  * 
  * 共享的 Slate 编辑器核心功能层
- * 提供给 PlanSlateEditor 和 LightSlateEditor 使用
+ * 提供给 PlanSlateEditor 和 ModalSlate 使用
  * 
  * @version 1.0.0
  * @date 2025-11-29

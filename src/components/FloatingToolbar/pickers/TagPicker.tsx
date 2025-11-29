@@ -6,7 +6,7 @@
 import React, { useRef, useCallback } from 'react';
 import { Editor } from 'slate';
 import { HierarchicalTagPicker, HierarchicalTag } from '../../shared';
-import { insertTag } from '../../UnifiedSlateEditor/helpers';
+import { insertTag } from '../../PlanSlate/helpers';
 import { TagService } from '../../../services/TagService';
 
 interface TagPickerProps {
@@ -113,7 +113,7 @@ export const TagPicker: React.FC<TagPickerProps> = ({
     console.log('[TagPicker] insertTag 结果', { success });
     
     if (success) {
-      // Slate 会自动触发 onChange → UnifiedSlateEditor.onChange → PlanManager.onChange
+      // Slate 会自动触发 onChange → PlanSlate.onChange → PlanManager.onChange
       // 无需手动调用 onSelect
       onClose(); // 关闭 Picker
     }

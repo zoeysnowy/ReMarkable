@@ -34,7 +34,7 @@
 
 ```mermaid
 graph TB
-    A[用户编辑内容] --> B[UnifiedSlateEditor onChange]
+    A[用户编辑内容] --> B[PlanSlate onChange]
     B --> C[executeBatchUpdate]
     C --> D[构建 eventItem 对象]
     D --> E[actions.save.push]

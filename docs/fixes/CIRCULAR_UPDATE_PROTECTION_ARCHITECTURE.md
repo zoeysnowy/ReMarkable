@@ -3,7 +3,7 @@
 > **文档版本**: v1.0  
 > **创建时间**: 2025-11-19  
 > **修复状态**: ✅ 已完成并通过验证  
-> **影响模块**: EventService, PlanManager, UnifiedSlateEditor, 测试基础设施  
+> **影响模块**: EventService, PlanManager, PlanSlate, 测试基础设施  
 > **文档类型**: 修复架构文档
 
 ---
@@ -25,8 +25,8 @@ graph LR
     B --> C[EventService.updateEvent]
     C --> D[TimeHub.emit]
     D --> E[PlanManager.handleEventUpdated]
-    E --> F[UnifiedSlateEditor.eventsUpdated]
-    F --> G[UnifiedSlateEditor onChange]
+    E --> F[PlanSlate.eventsUpdated]
+    F --> G[PlanSlate onChange]
     G --> A
 ```
 
@@ -183,10 +183,10 @@ const handleEventUpdated = useCallback((updatedEventId: string, originInfo?: any
 }, []);
 ```
 
-#### 4. UnifiedSlateEditor 多层防护
+#### 4. PlanSlate 多层防护
 
 ```typescript
-// UnifiedSlateEditor.tsx - eventsUpdated 处理器
+// PlanSlate.tsx - eventsUpdated 处理器
 const handleEventUpdated = useCallback((eventId: string, isDeleted?: boolean, isNewEvent?: boolean) => {
   console.log('[📡 eventsUpdated] 收到事件', {
     eventId: eventId.slice(-10),
@@ -210,7 +210,7 @@ const handleEventUpdated = useCallback((eventId: string, isDeleted?: boolean, is
   
   // 🛡️ 检测3: 来源组件验证
   const originComponent = EventService.getLastUpdateOrigin?.(eventId);
-  if (originComponent === 'UnifiedSlateEditor') {
+  if (originComponent === 'PlanSlate') {
     console.log('[🛡️ 自源更新跳过]', { eventId: eventId.slice(-10), originComponent });
     return;
   }
@@ -240,10 +240,10 @@ const handleEventUpdated = useCallback((eventId: string, isDeleted?: boolean, is
 #### 5. onChange 来源标记
 
 ```typescript
-// UnifiedSlateEditor.tsx - onChange 增强
+// PlanSlate.tsx - onChange 增强
 const onChange = useCallback((newValue: any[]) => {
   // 🔧 标记本次更新的来源和ID
-  setLastUpdateSource('UnifiedSlateEditor');
+  setLastUpdateSource('PlanSlate');
   lastUpdateId.current = EventService.generateUpdateId();
   
   // 记录本次更新到EventService（用于循环检测）
@@ -255,7 +255,7 @@ const onChange = useCallback((newValue: any[]) => {
   console.log('[📝 onChange] 本地修改', {
     updateId: lastUpdateId.current,
     eventCount: eventIds.length,
-    source: 'UnifiedSlateEditor'
+    source: 'PlanSlate'
   });
   
   // 执行保存逻辑
@@ -263,7 +263,7 @@ const onChange = useCallback((newValue: any[]) => {
   
   if (result.hasChanges && onSave) {
     onSave(result.updatedItems, {
-      originComponent: 'UnifiedSlateEditor',
+      originComponent: 'PlanSlate',
       updateId: lastUpdateId.current,
       source: 'user-edit'
     });

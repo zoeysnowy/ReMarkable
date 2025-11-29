@@ -2,7 +2,7 @@
 
 ## 版本：v2.8.3
 **日期**：2025-01-XX  
-**功能**：在 UnifiedSlateEditor 中添加 @ 提及时间输入功能
+**功能**：在 PlanSlate 中添加 @ 提及时间输入功能
 
 ---
 
@@ -35,16 +35,16 @@
 
 ### 新增文件
 1. **MentionPreview.tsx**
-   - 路径：`src/components/UnifiedSlateEditor/MentionPreview.tsx`
+   - 路径：`src/components/PlanSlate/MentionPreview.tsx`
    - 功能：@提及预览浮窗组件
    - 显示解析结果和快捷键提示
 
 2. **MentionPreview.css**
-   - 路径：`src/components/UnifiedSlateEditor/MentionPreview.css`
+   - 路径：`src/components/PlanSlate/MentionPreview.css`
    - 功能：预览浮窗样式
 
 ### 修改文件
-1. **UnifiedSlateEditor.tsx**
+1. **PlanSlate.tsx**
    - 新增 `mentionState` 状态管理
    - 新增 `handleMentionConfirm` / `handleMentionCancel` 回调
    - 在 `handleEditorChange` 中添加 @ 检测逻辑

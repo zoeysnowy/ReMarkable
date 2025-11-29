@@ -313,7 +313,7 @@ Placeholder for deadline countdown (e.g., "还有 3 天")
 
 ### Phase 3: Slate Editor Integration ⏳ TODO
 
-- [ ] Import UnifiedSlateEditor
+- [ ] Import PlanSlate
 - [ ] Replace textarea with Slate editor in Event Log
 - [ ] Integrate FloatingBar
 - [ ] Handle Slate content serialization/deserialization
@@ -394,7 +394,7 @@ function App() {
 - ContactService (for organizer/attendees picker)
 - TagService (for tag selector)
 - CalendarSyncService (for sync settings)
-- UnifiedSlateEditor (for eventlog field)
+- PlanSlate (for eventlog field)
 - FloatingBar (for Slate toolbar)
 - EmojiPicker (professional component)
 
@@ -414,7 +414,7 @@ function App() {
    - **TODO**: Integrate TagSearchQuery and hierarchical tree UI
 
 4. **Slate Editor**: Placeholder textarea
-   - **TODO**: Replace with UnifiedSlateEditor + FloatingBar
+   - **TODO**: Replace with PlanSlate + FloatingBar
 
 5. **Timer Display**: No real-time elapsed time counter
    - **TODO**: Add `useInterval` hook to update display every second
@@ -436,7 +436,7 @@ function App() {
 
 ### Overview
 
-Implemented automatic timestamp insertion with visual preline (vertical timeline) for EventLog editor using LightSlateEditor.
+Implemented automatic timestamp insertion with visual preline (vertical timeline) for EventLog editor using ModalSlate.
 
 **Status**: ✅ Complete (2025-11-24)
 
@@ -460,10 +460,10 @@ Implemented automatic timestamp insertion with visual preline (vertical timeline
 ### Implementation Details
 
 **Files Modified**:
-- `src/components/LightSlateEditor/LightSlateEditor.tsx` - Editor component with timestamp logic
-- `src/components/LightSlateEditor/LightSlateEditor.css` - Editor styling
-- `src/components/UnifiedSlateEditor/timestampService.ts` - 5-minute interval checking
-- `src/components/UnifiedSlateEditor/elements/TimestampDividerElement.tsx` - Timestamp rendering
+- `src/components/ModalSlate/ModalSlate.tsx` - Editor component with timestamp logic
+- `src/components/ModalSlate/ModalSlate.css` - Editor styling
+- `src/components/PlanSlate/timestampService.ts` - 5-minute interval checking
+- `src/components/PlanSlate/elements/TimestampDividerElement.tsx` - Timestamp rendering
 
 **Key Logic**:
 
@@ -564,7 +564,7 @@ const needsPreline = (() => {
   - Detail View: https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=201-630
   - Compact View: https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=208-968
 - **Related Components**:
-  - `src/components/UnifiedSlateEditor/`
+  - `src/components/PlanSlate/`
   - `src/components/FloatingBar/`
   - `src/services/ContactService.ts`
   - `src/services/TagService.ts`
@@ -585,7 +585,7 @@ const needsPreline = (() => {
    - Add proper search and filtering
 
 3. **Add Slate Editor**:
-   - Replace textarea with UnifiedSlateEditor
+   - Replace textarea with PlanSlate
    - Add FloatingBar integration
    - Test eventlog serialization
 

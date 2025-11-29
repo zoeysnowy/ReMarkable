@@ -28,7 +28,7 @@
 
 ### 2. normalizeNode 路径计算修复
 
-**文件**: `src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx` (L136-234)
+**文件**: `src/components/PlanSlate/PlanSlate.tsx` (L136-234)
 
 ```typescript
 // ❌ 修复前：使用 Path.next()（错误）

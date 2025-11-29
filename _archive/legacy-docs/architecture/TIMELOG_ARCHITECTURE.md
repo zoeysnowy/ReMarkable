@@ -48,7 +48,7 @@ planItemsToSlateNodes() 反序列化
     ↓
 htmlToSlateFragment() 解析 HTML 为 Slate 节点
     ↓
-渲染到 UnifiedSlateEditor（富文本显示）
+渲染到 PlanSlate（富文本显示）
 ```
 
 ## 示例
@@ -139,7 +139,7 @@ if (descriptionContent) {
 ## 相关文件
 
 - `src/types.ts` - Event 接口定义
-- `src/components/UnifiedSlateEditor/serialization.ts` - 序列化/反序列化逻辑
+- `src/components/PlanSlate/serialization.ts` - 序列化/反序列化逻辑
 - `src/services/ActionBasedSyncManager.ts` - Outlook 同步（需确保 `timelog` 不被同步）
 
 ## 版本历史

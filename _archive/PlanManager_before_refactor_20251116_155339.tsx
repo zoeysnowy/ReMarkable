@@ -4,8 +4,8 @@ import data from '@emoji-mart/data';
 import Tippy from '@tippyjs/react';
 import 'tippy.js/dist/tippy.css';
 import type { Event } from '../types';
-import { UnifiedSlateEditor } from './UnifiedSlateEditor/UnifiedSlateEditor';
-import { insertTag, insertEmoji, insertDateMention, applyTextFormat, extractTagsFromLine } from './UnifiedSlateEditor/helpers';
+import { PlanSlate } from './PlanSlate/PlanSlate';
+import { insertTag, insertEmoji, insertDateMention, applyTextFormat, extractTagsFromLine } from './PlanSlate/helpers';
 import { useFloatingToolbar } from './FloatingToolbar/useFloatingToolbar';
 import { HeadlessFloatingToolbar } from './FloatingToolbar/HeadlessFloatingToolbar';
 import { ToolbarConfig } from './FloatingToolbar/types';
@@ -698,7 +698,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   
   // 避免重复插入同一标签的防抖标记（同一行同一标签在短时间内仅插入一次）
   const lastTagInsertRef = useRef<{ lineId: string; tagId: string; time: number } | null>(null);
-  // 🆕 UnifiedSlateEditor 的单个编辑器实例
+  // 🆕 PlanSlate 的单个编辑器实例
   const unifiedEditorRef = useRef<any>(null);
   // 注册每一行的 Tiptap 编辑器实例（用于精准插入到光标位置）
   const editorRegistryRef = useRef<Map<string, any>>(new Map());
@@ -843,7 +843,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
 
   // 将文本格式命令路由到当前 Slate 编辑器
   const handleTextFormat = useCallback((command: string) => {
-    // 🆕 使用 UnifiedSlateEditor 的 applyTextFormat 函数
+    // 🆕 使用 PlanSlate 的 applyTextFormat 函数
     const editor = unifiedEditorRef.current;
     if (!editor) {
       console.warn('[handleTextFormat] Editor not ready');
@@ -1770,7 +1770,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       </div>
 
       <div className="plan-list-scroll-container" ref={editorContainerRef}>
-        <UnifiedSlateEditor
+        <PlanSlate
           items={useMemo(() => editorLines.map(line => {
             // 🔧 v1.8: 使用 editorLines（包含 pendingEmptyItems），确保新行立即显示勾选框
             const item = line.data;
@@ -1827,7 +1827,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             }
           }}
           onEditorReady={(editorApi) => {
-            // 🆕 保存 UnifiedSlateEditor 的编辑器实例
+            // 🆕 保存 PlanSlate 的编辑器实例
             unifiedEditorRef.current = editorApi.getEditor();
           }}
           onDeleteRequest={(lineId) => {
@@ -2024,7 +2024,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         }}
         onTextFormat={handleTextFormat}
         onTagSelect={(tagIds: string[]) => {
-          // 🆕 使用 UnifiedSlateEditor 的 helper 函数
+          // 🆕 使用 PlanSlate 的 helper 函数
           const editor = unifiedEditorRef.current;
           if (!editor || !currentFocusedLineId) return;
           
@@ -2082,22 +2082,22 @@ const PlanManager: React.FC<PlanManagerProps> = ({
               }
             }
             // 注意：焦点恢复已由 insertTag() 函数在 helpers.ts 中统一处理
-            // 注意：UnifiedSlateEditor 的 onChange 会自动保存
+            // 注意：PlanSlate 的 onChange 会自动保存
           }
         }}
         onEmojiSelect={(emoji: string) => {
-          // 🆕 使用 UnifiedSlateEditor 的 helper 函数
+          // 🆕 使用 PlanSlate 的 helper 函数
           const editor = unifiedEditorRef.current;
           if (!editor || !currentFocusedLineId) return;
           
           const success = insertEmoji(editor, emoji);
           if (success) {
             console.log(`[✅ Emoji 插入成功] ${emoji}`);
-            // 注意：UnifiedSlateEditor 的 onChange 会自动保存
+            // 注意：PlanSlate 的 onChange 会自动保存
           }
         }}
         onDateRangeSelect={(start: Date, end: Date) => {
-          // 🆕 使用 UnifiedSlateEditor 的 helper 函数插入 DateMention
+          // 🆕 使用 PlanSlate 的 helper 函数插入 DateMention
           const editor = unifiedEditorRef.current;
           if (!editor || !currentFocusedLineId) {
             console.warn('[onDateRangeSelect] 没有编辑器或焦点行');
@@ -2126,7 +2126,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           
           if (success) {
             console.log(`[✅ DateMention 插入成功] ${item.id}`);
-            // 注意：UnifiedSlateEditor 的 onChange 会自动保存（延迟2秒或Enter/失焦时立即保存）
+            // 注意：PlanSlate 的 onChange 会自动保存（延迟2秒或Enter/失焦时立即保存）
           }
         }}
         onPrioritySelect={(priority: 'low' | 'medium' | 'high' | 'urgent') => {

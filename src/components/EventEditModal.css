@@ -146,7 +146,7 @@
   font-size: 13px;
 }
 
-/* LightSlateEditor 样式 - TimeLog 编辑器 */
+/* ModalSlate 样式 - TimeLog 编辑器 */
 .slate-editor-wrapper {
   flex: 1;
   border: 1px solid #ddd;

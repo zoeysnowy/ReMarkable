@@ -135,7 +135,7 @@ localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
 
 ### ✅ 5. 显示层处理
 
-**位置**: `src/components/UnifiedSlateEditor/EventLineSuffix.tsx` L38-48
+**位置**: `src/components/PlanSlate/EventLineSuffix.tsx` L38-48
 
 ```typescript
 // 从 TimeHub 或 metadata 读取时间

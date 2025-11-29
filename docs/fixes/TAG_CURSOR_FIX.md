@@ -3,7 +3,7 @@
 **问题**: 无法将光标定位在 Tag 元素后面  
 **版本**: v1.9.2  
 **修复日期**: 2025-11-11  
-**影响模块**: UnifiedSlateEditor, TagElement
+**影响模块**: PlanSlate, TagElement
 
 ---
 
@@ -53,7 +53,7 @@ return (
 
 #### 原因 2: normalizeNode 路径计算错误 ❌
 
-**问题代码**（`UnifiedSlateEditor.tsx` 修复前）：
+**问题代码**（`PlanSlate.tsx` 修复前）：
 
 ```typescript
 editor.normalizeNode = entry => {
@@ -136,7 +136,7 @@ return (
 
 ### 修复 2: normalizeNode 正确获取兄弟节点
 
-**修复代码**（`src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx` L136-234）：
+**修复代码**（`src/components/PlanSlate/PlanSlate.tsx` L136-234）：
 
 ```typescript
 editor.normalizeNode = entry => {
@@ -317,7 +317,7 @@ window.testCursorAfterTag()      // 测试光标定位
 
 ### 调试日志
 
-打开 UnifiedSlateEditor 的调试日志（包含 normalizeNode 日志）：
+打开 PlanSlate 的调试日志（包含 normalizeNode 日志）：
 
 ```javascript
 window.SLATE_DEBUG = true;
@@ -419,7 +419,7 @@ location.reload();
 | 文件 | 修改内容 | 行号 |
 |------|---------|------|
 | `src/components/SlateEditor/elements/TagElement.tsx` | 重构 DOM 结构，children 不再隐藏 | 全文 |
-| `src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx` | 修复 normalizeNode 兄弟节点获取逻辑 | L136-234 |
+| `src/components/PlanSlate/PlanSlate.tsx` | 修复 normalizeNode 兄弟节点获取逻辑 | L136-234 |
 | `diagnose-tag-cursor.js` | 新增诊断工具 | - |
 | `test-tag-cursor-fix.js` | 新增测试指南 | - |
 

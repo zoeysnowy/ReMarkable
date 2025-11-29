@@ -2,7 +2,7 @@
 
 > **修复日期**: 2025-11-17  
 > **问题**: @ 提及时用户继续输入的文本丢失  
-> **影响组件**: UnifiedSlateEditor, UnifiedDateTimePicker
+> **影响组件**: PlanSlate, UnifiedDateTimePicker
 
 ---
 
@@ -14,8 +14,8 @@
 3. ❌ 第二次 Enter → DateMention 没有插入
 
 **根本原因**:
-1. UnifiedDateTimePicker 的 `searchInput` 状态与 UnifiedSlateEditor 的 `mentionText` 状态隔离
-2. UnifiedSlateEditor 没有传递 `useTimeHub=true`，导致使用了错误的回调（`onSelect` 而非 `onApplied`）
+1. UnifiedDateTimePicker 的 `searchInput` 状态与 PlanSlate 的 `mentionText` 状态隔离
+2. PlanSlate 没有传递 `useTimeHub=true`，导致使用了错误的回调（`onSelect` 而非 `onApplied`）
 3. 没有 `initialText` prop 传递初始文本
 4. 没有 `onSearchChange` 回调实时更新解析结果
 
@@ -87,9 +87,9 @@ const handleApply = () => {
 }
 ```
 
-### 4. UnifiedSlateEditor 集成
+### 4. PlanSlate 集成
 
-**文件**: `UnifiedSlateEditor.tsx`
+**文件**: `PlanSlate.tsx`
 
 ```tsx
 // 🆕 实时更新解析结果
@@ -126,7 +126,7 @@ const handleMentionSelect = useCallback(async (startStr: string, endStr?: string
 ```
 用户输入 @明天
   ↓
-UnifiedSlateEditor 检测 @ → parseNaturalLanguage("明天")
+PlanSlate 检测 @ → parseNaturalLanguage("明天")
   ↓
 弹出 UnifiedDateTimePicker
   - useTimeHub=true ✅
@@ -142,7 +142,7 @@ onChange → parseNaturalLanguage("明天下午3点")
   ↓
 onSearchChange(text, { start: Date(明天 15:00), end: undefined })
   ↓
-UnifiedSlateEditor 更新 mentionText 和 mentionInitialStart ✅
+PlanSlate 更新 mentionText 和 mentionInitialStart ✅
   ↓
 第一次 Enter → blur → 显示预览
   ↓
@@ -203,7 +203,7 @@ handleMentionSelect 使用 userInputText ✅
    - `onChange` 时实时解析并调用 `onSearchChange`
    - `handleApply` 时传递 `searchInput`
 
-2. ✅ `src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx`
+2. ✅ `src/components/PlanSlate/PlanSlate.tsx`
    - 添加 `handleMentionSearchChange` 回调
    - 修改 `handleMentionSelect` 签名，接收第四个参数 `userInputText`
    - 添加 `useTimeHub={true}` 到 UnifiedDateTimePicker

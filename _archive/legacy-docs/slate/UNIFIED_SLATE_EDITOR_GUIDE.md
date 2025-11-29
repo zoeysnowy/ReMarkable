@@ -1,8 +1,8 @@
-# UnifiedSlateEditor - 使用指南
+# PlanSlate - 使用指南
 
 ## 概述
 
-**UnifiedSlateEditor** 是一个基于 Slate.js 的单实例富文本编辑器，专为 ReMarkable 应用的 Plan 页面设计。
+**PlanSlate** 是一个基于 Slate.js 的单实例富文本编辑器，专为 ReMarkable 应用的 Plan 页面设计。
 
 ### 核心特性
 
@@ -20,13 +20,13 @@
 ### 1. 基础使用
 
 ```typescript
-import { UnifiedSlateEditor } from './components/UnifiedSlateEditor';
+import { PlanSlate } from './components/PlanSlate';
 
 function MyComponent() {
   const [items, setItems] = useState<PlanItem[]>([]);
   
   return (
-    <UnifiedSlateEditor
+    <PlanSlate
       items={items}
       onChange={(updatedItems) => setItems(updatedItems)}
       placeholder="开始输入..."
@@ -38,7 +38,7 @@ function MyComponent() {
 ### 2. 带装饰的使用
 
 ```typescript
-<UnifiedSlateEditor
+<PlanSlate
   items={items}
   onChange={handleChange}
   renderLinePrefix={(line) => (
@@ -146,7 +146,7 @@ interface EventLineNode {
 ### 使用辅助函数
 
 ```typescript
-import { insertTag, insertEmoji, insertDateMention } from './components/UnifiedSlateEditor/helpers';
+import { insertTag, insertEmoji, insertDateMention } from './components/PlanSlate/helpers';
 
 // 插入 Tag
 const success = insertTag(
@@ -176,8 +176,8 @@ insertDateMention(
 
 ```typescript
 // 在 PlanManager 中替换 SlateFreeFormEditor
-import { UnifiedSlateEditor } from './UnifiedSlateEditor';
-import { insertTag, insertEmoji, insertDateMention } from './UnifiedSlateEditor/helpers';
+import { PlanSlate } from './PlanSlate';
+import { insertTag, insertEmoji, insertDateMention } from './PlanSlate/helpers';
 
 function PlanManager({ items, onSave }: PlanManagerProps) {
   const editorRef = useRef<Editor | null>(null);
@@ -201,7 +201,7 @@ function PlanManager({ items, onSave }: PlanManagerProps) {
   
   return (
     <>
-      <UnifiedSlateEditor
+      <PlanSlate
         items={items}
         onChange={onSave}
         onEditorReady={handleEditorReady}
@@ -261,7 +261,7 @@ function PlanManager({ items, onSave }: PlanManagerProps) {
 
 **新代码：**
 ```typescript
-<UnifiedSlateEditor
+<PlanSlate
   items={items}  // PlanItem[] 而不是 FreeFormLine[]
   onChange={setItems}
   onEditorReady={(editor) => {
@@ -282,7 +282,7 @@ function PlanManager({ items, onSave }: PlanManagerProps) {
 ## 故障排除
 
 ### Q: 无法跨行选择文字？
-**A:** 确保使用的是 `UnifiedSlateEditor` 而不是旧的 `SlateFreeFormEditor`。
+**A:** 确保使用的是 `PlanSlate` 而不是旧的 `SlateFreeFormEditor`。
 
 ### Q: 复制时格式丢失？
 **A:** 检查 `handleCopy` 是否正确设置了 `text/html` 数据。
@@ -297,7 +297,7 @@ function PlanManager({ items, onSave }: PlanManagerProps) {
 
 ## 完整示例
 
-见 `src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx` 的实现。
+见 `src/components/PlanSlate/PlanSlate.tsx` 的实现。
 
 ---
 

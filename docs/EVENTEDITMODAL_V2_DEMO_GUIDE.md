@@ -131,7 +131,7 @@ import { HierarchicalTagPicker } from '../HierarchicalTagPicker';
 参考 PRD 中的 Timer 状态机实现
 
 ### 优先级 3: Slate 编辑器集成
-参考 `src/components/UnifiedSlateEditor/`
+参考 `src/components/PlanSlate/`
 
 ## 参考文件
 

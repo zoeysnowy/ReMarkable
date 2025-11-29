@@ -2,7 +2,7 @@
 
 **诊断时间**: 2025-11-08  
 **架构版本**: v1.5 (透传架构 + 防抖优化)  
-**诊断范围**: PlanManager ↔ UnifiedSlateEditor 数据流
+**诊断范围**: PlanManager ↔ PlanSlate 数据流
 
 ---
 
@@ -30,10 +30,10 @@
 **严重程度**: 🔴 严重（阻塞）
 
 **问题描述**:
-`UnifiedSlateEditor` 的 `useEffect` 同步逻辑会导致循环更新：
+`PlanSlate` 的 `useEffect` 同步逻辑会导致循环更新：
 
 ```typescript
-// UnifiedSlateEditor.tsx L223-L276
+// PlanSlate.tsx L223-L276
 useEffect(() => {
   // 比较 items 的 ID 列表，只有结构变化时才同步
   const currentIds = value.map(node => node.lineId.replace('-desc', '')).filter(...);
@@ -56,13 +56,13 @@ useEffect(() => {
 ```
 1. 用户输入 
    ↓
-2. UnifiedSlateEditor.onChange 触发 
+2. PlanSlate.onChange 触发 
    ↓
 3. slateNodesToPlanItems 转换 
    ↓
 4. PlanManager.debouncedOnChange 更新 items 
    ↓
-5. items 变化触发 UnifiedSlateEditor.useEffect 
+5. items 变化触发 PlanSlate.useEffect 
    ↓
 6. planItemsToSlateNodes 转换 
    ↓
@@ -80,7 +80,7 @@ useEffect(() => {
 
 **方案 A（推荐）: 单向数据流**
 ```typescript
-// UnifiedSlateEditor.tsx
+// PlanSlate.tsx
 useEffect(() => {
   // ❌ 移除自动同步逻辑
   // ✅ 改为仅在外部显式调用时同步
@@ -105,7 +105,7 @@ useEffect(() => {
 
 **方案 B（临时修复）: 防御性比较**
 ```typescript
-// UnifiedSlateEditor.tsx
+// PlanSlate.tsx
 useEffect(() => {
   // ✅ 添加深度内容比较，避免不必要的更新
   const contentChanged = items.some((item, index) => {
@@ -145,7 +145,7 @@ const onTimeApplied = (startIso, endIso) => {
   dbg('picker', '📌 TimeHub 已更新', { start: startIso, end: endIso });
   
   // ❌ 问题：没有更新 item 的 startTime/endTime
-  // ❌ 问题：没有通知 UnifiedSlateEditor 同步 metadata
+  // ❌ 问题：没有通知 PlanSlate 同步 metadata
   // ❌ 问题：没有保存到 EventService
 };
 
@@ -173,7 +173,7 @@ TimeHub.setTime('18:00')  ✅ TimeHub: 18:00
   ↓
 （没有更新 item）
   ↓
-UnifiedSlateEditor 的 metadata ❌ 仍然是空
+PlanSlate 的 metadata ❌ 仍然是空
   ↓
 syncToUnifiedTimeline 读取 ❌ fallback 到旧 item.startTime
   ↓
@@ -259,7 +259,7 @@ const debouncedOnChange = useCallback((updatedItems: any[]) => {
 **原因**:
 1. `executeBatchUpdate` 会调用 `onSave(item)`
 2. `onSave` 更新 `items` 状态
-3. `items` 更新触发 `UnifiedSlateEditor` 重新渲染
+3. `items` 更新触发 `PlanSlate` 重新渲染
 4. 重新渲染触发 `onChange`（在防抖前）
 
 **性能数据**（估算）:
@@ -294,7 +294,7 @@ const executeBatchUpdate = useCallback((updatedItems) => {
   }, 0);
 }, [onSave]);
 
-// UnifiedSlateEditor.tsx
+// PlanSlate.tsx
 const handleEditorChange = useCallback((newValue) => {
   // ✅ 跳过内部更新触发的 onChange
   if (isInternalUpdateRef.current) {
@@ -425,7 +425,7 @@ items.set(baseId, {
 
 1. **PlanManager.handleLinesChange** L748-L765 - 跨行删除检测
 2. **PlanManager.executeBatchUpdate** L530-L570 - 空白删除 + 批量删除
-3. **UnifiedSlateEditor.handleKeyDown** L640-L690 - Backspace 删除空行
+3. **PlanSlate.handleKeyDown** L640-L690 - Backspace 删除空行
 4. **EventEditModal.onDelete** L1294 - 手动删除
 
 **冲突场景**:
@@ -472,7 +472,7 @@ const deleteItems = useCallback((itemIds: string[], reason: string) => {
 }, [onDelete]);
 
 // 各处调用统一接口
-// UnifiedSlateEditor
+// PlanSlate
 const handleKeyDown = (event) => {
   if (shouldDeleteLine) {
     // ✅ 通知 PlanManager 删除
@@ -481,7 +481,7 @@ const handleKeyDown = (event) => {
 };
 
 // PlanManager
-<UnifiedSlateEditor
+<PlanSlate
   onDeleteRequest={(lineId) => deleteItems([lineId], 'user-backspace')}
 />
 
@@ -501,7 +501,7 @@ const handleKeyDown = (event) => {
 
 **问题**:
 ```typescript
-// UnifiedSlateEditor.tsx L185-L210
+// PlanSlate.tsx L185-L210
 const shouldShowGrayText = useMemo(() => {
   // 情况1: 没有任何节点
   if (!value || value.length === 0) return true;
@@ -555,7 +555,7 @@ const isEmptyEventLine = (line: EventLineNode): boolean => {
 **问题**:
 ```typescript
 // PlanManager.tsx 有 13 处 console.log
-// UnifiedSlateEditor.tsx 有大量调试日志
+// PlanSlate.tsx 有大量调试日志
 
 // ❌ 即使关闭 SLATE_DEBUG，仍有强制日志
 console.log('%c[🔴 SYNC] syncToUnifiedTimeline 被调用', ...);
@@ -637,7 +637,7 @@ dispatchPending({ type: 'REMOVE', id });
 ### 第 1 阶段（立即修复）- 阻塞问题
 
 1. **修复循环更新** (问题 1)
-   - 移除 UnifiedSlateEditor 的自动同步逻辑
+   - 移除 PlanSlate 的自动同步逻辑
    - 采用单向数据流：PlanManager → Slate（单向）
    - **预计工作量**: 2-3 小时
 
@@ -679,16 +679,16 @@ dispatchPending({ type: 'REMOVE', id });
 ### 单元测试
 
 ```typescript
-// UnifiedSlateEditor.test.tsx
-describe('UnifiedSlateEditor', () => {
+// PlanSlate.test.tsx
+describe('PlanSlate', () => {
   it('should not trigger onChange on internal updates', () => {
     const onChange = jest.fn();
     const { rerender } = render(
-      <UnifiedSlateEditor items={items} onChange={onChange} />
+      <PlanSlate items={items} onChange={onChange} />
     );
     
     // 更新 items（模拟 PlanManager 保存）
-    rerender(<UnifiedSlateEditor items={updatedItems} onChange={onChange} />);
+    rerender(<PlanSlate items={updatedItems} onChange={onChange} />);
     
     // ✅ 不应触发 onChange
     expect(onChange).not.toHaveBeenCalled();

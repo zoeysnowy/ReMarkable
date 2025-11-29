@@ -24,7 +24,7 @@ console.log('');
 console.log('%c2. normalizeNode 逻辑优化', 'color: #FF9800; font-weight: bold;');
 console.log('   ❌ 修复前: 使用 Path.next() 可能定位错误的路径');
 console.log('   ✅ 修复后: 正确获取兄弟节点，插入空格文本节点');
-console.log('   📍 文件: src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx L136-234');
+console.log('   📍 文件: src/components/PlanSlate/PlanSlate.tsx L136-234');
 console.log('');
 
 console.log('%c【测试步骤】', 'color: #4CAF50; font-weight: bold; font-size: 14px;');
@@ -76,7 +76,7 @@ console.log('');
 
 console.log('%c【调试日志】', 'color: #4CAF50; font-weight: bold; font-size: 14px;');
 console.log('');
-console.log('打开 UnifiedSlateEditor 的调试日志（已包含 normalizeNode 日志）：');
+console.log('打开 PlanSlate 的调试日志（已包含 normalizeNode 日志）：');
 console.log('  window.SLATE_DEBUG = true;');
 console.log('  localStorage.setItem("SLATE_DEBUG", "true");');
 console.log('  location.reload();');

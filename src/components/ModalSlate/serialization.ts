@@ -1,5 +1,5 @@
 /**
- * LightSlateEditor 序列化工具
+ * ModalSlate 序列化工具
  * 简化版本，专用于单内容编辑场景
  */
 
@@ -10,7 +10,7 @@ import {
   TimestampDividerElement,
   TagNode,
   DateMentionNode
-} from '../UnifiedSlateEditor/types';
+} from '../PlanSlate/types';
 
 /**
  * 将 Slate JSON（字符串或对象）转换为 Slate nodes
@@ -28,7 +28,7 @@ export function jsonToSlateNodes(slateJson: string | any[] | undefined): Descend
   
   // 处理空值或空字符串
   if (!slateJson || (typeof slateJson === 'string' && !slateJson.trim())) {
-    console.log('[LightSlateEditor] 空内容，返回默认段落');
+    console.log('[ModalSlate] 空内容，返回默认段落');
     return [{
       type: 'paragraph',
       children: [{ text: '' }]
@@ -38,14 +38,14 @@ export function jsonToSlateNodes(slateJson: string | any[] | undefined): Descend
   try {
     // 尝试解析 JSON 字符串
     const parsed = JSON.parse(slateJson as string);
-    console.log('[jsonToSlateNodes] 解析成功:', parsed);
-    console.log('[jsonToSlateNodes] 是否为数组:', Array.isArray(parsed));
+    // console.log('[jsonToSlateNodes] 解析成功:', parsed);
+    // console.log('[jsonToSlateNodes] 是否为数组:', Array.isArray(parsed));
     
     // 如果是数组
     if (Array.isArray(parsed)) {
       // 验证数组内容，确保每个节点都有有效的结构
       if (parsed.length === 0) {
-        console.log('[LightSlateEditor] 空数组，返回默认段落');
+        // console.log('[ModalSlate] 空数组，返回默认段落');
         return [{
           type: 'paragraph',
           children: [{ text: '' }]
@@ -55,7 +55,7 @@ export function jsonToSlateNodes(slateJson: string | any[] | undefined): Descend
       // 验证并修复每个节点
       const validatedNodes = parsed.map((node, index) => {
         if (typeof node !== 'object' || node === null) {
-          console.warn(`[LightSlateEditor] 节点 ${index} 无效，转换为段落:`, node);
+          console.warn(`[ModalSlate] 节点 ${index} 无效，转换为段落:`, node);
           return {
             type: 'paragraph',
             children: [{ text: String(node) }]
@@ -79,7 +79,7 @@ export function jsonToSlateNodes(slateJson: string | any[] | undefined): Descend
         return node;
       });
       
-      console.log('[LightSlateEditor] 解析 JSON 成功，节点数量:', validatedNodes.length);
+      console.log('[ModalSlate] 解析 JSON 成功，节点数量:', validatedNodes.length);
       return validatedNodes as Descendant[];
     }
     
@@ -95,20 +95,20 @@ export function jsonToSlateNodes(slateJson: string | any[] | undefined): Descend
         node.children = [{ text: '' }];
       }
       
-      console.log('[LightSlateEditor] 单个对象转换为节点数组');
+      console.log('[ModalSlate] 单个对象转换为节点数组');
       return [node] as Descendant[];
     }
     
     // 其他情况，作为纯文本处理
-    console.log('[LightSlateEditor] 非对象类型，转换为文本段落:', typeof parsed);
+    console.log('[ModalSlate] 非对象类型，转换为文本段落:', typeof parsed);
     return [{
       type: 'paragraph',
       children: [{ text: String(parsed) }]
     } as ParagraphNode];
     
   } catch (error) {
-    console.error('[LightSlateEditor] JSON 解析失败，返回空段落。错误:', error);
-    console.error('[LightSlateEditor] 原始内容:', slateJson);
+    console.error('[ModalSlate] JSON 解析失败，返回空段落。错误:', error);
+    console.error('[ModalSlate] 原始内容:', slateJson);
     
     // JSON 解析失败，返回空段落而不是显示原始 JSON
     return [{
@@ -126,7 +126,7 @@ export function slateNodesToJson(nodes: Descendant[]): string {
   try {
     return JSON.stringify(nodes, null, 0); // 紧凑格式
   } catch (error) {
-    console.error('[LightSlateEditor] Slate nodes 序列化失败:', error);
+    console.error('[ModalSlate] Slate nodes 序列化失败:', error);
     return '[]'; // 返回空数组的 JSON
   }
 }

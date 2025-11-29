@@ -4,8 +4,8 @@ import data from '@emoji-mart/data';
 import Tippy from '@tippyjs/react';
 import 'tippy.js/dist/tippy.css';
 import type { Event } from '../types';
-import { UnifiedSlateEditor } from './UnifiedSlateEditor/UnifiedSlateEditor';
-import { insertTag, insertEmoji, insertDateMention, applyTextFormat, extractTagsFromLine } from './UnifiedSlateEditor/helpers';
+import { PlanSlate } from './PlanSlate/PlanSlate';
+import { insertTag, insertEmoji, insertDateMention, applyTextFormat, extractTagsFromLine } from './PlanSlate/helpers';
 import { StatusLineContainer, StatusLineSegment } from './StatusLineContainer';
 import { useFloatingToolbar } from './FloatingToolbar/useFloatingToolbar';
 import { HeadlessFloatingToolbar } from './FloatingToolbar/HeadlessFloatingToolbar';
@@ -650,7 +650,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   
   // 避免重复插入同一标签的防抖标记（同一行同一标签在短时间内仅插入一次）
   const lastTagInsertRef = useRef<{ lineId: string; tagId: string; time: number } | null>(null);
-  // 🆕 UnifiedSlateEditor 的单个编辑器实例
+  // 🆕 PlanSlate 的单个编辑器实例
   const unifiedEditorRef = useRef<any>(null);
   // 注册每一行的 Tiptap 编辑器实例（用于精准插入到光标位置）
   const editorRegistryRef = useRef<Map<string, any>>(new Map());
@@ -913,7 +913,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
 
   // 将文本格式命令路由到当前 Slate 编辑器
   const handleTextFormat = useCallback((command: string, value?: string) => {
-    // 🆕 使用 UnifiedSlateEditor 的 applyTextFormat 函数
+    // 🆕 使用 PlanSlate 的 applyTextFormat 函数
     const editor = unifiedEditorRef.current;
     if (!editor) {
       console.warn('[handleTextFormat] Editor not ready');
@@ -1499,7 +1499,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   }, [items, pendingEmptyItems, hiddenTags, dateRange, searchQuery]);
   
   // 将 Event[] 转换为 FreeFormLine<Event>[]
-  // ✅ 重构: 直接准备 Event[] 给 UnifiedSlateEditor，移除 FreeFormLine 中间层
+  // ✅ 重构: 直接准备 Event[] 给 PlanSlate，移除 FreeFormLine 中间层
   // 🆕 Snapshot 模式：添加已删除的事件
   const editorItems = useMemo(() => {
     let allItems = filteredItems;
@@ -2278,7 +2278,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     return ''; // 无时间
   };
 
-  // 🔄 v2.8.3: 渲染逻辑已迁移到 UnifiedSlateEditor 内部
+  // 🔄 v2.8.3: 渲染逻辑已迁移到 PlanSlate 内部
   // PlanManager 不再直接渲染 Checkbox、Emoji、TimeDisplay 等
   // 这些渲染由 EventLinePrefix 和 EventLineSuffix 组件处理
 
@@ -2385,7 +2385,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           lineHeight={32}
           totalLines={editorItems.length}
         >
-          <UnifiedSlateEditor
+          <PlanSlate
             key={dateRange ? `snapshot-${dateRange.start.getTime()}-${dateRange.end.getTime()}` : 'normal'}
             items={editorItems}
             onChange={debouncedOnChange}
@@ -2440,7 +2440,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             }
           }}
           onEditorReady={(editorApi) => {
-            // 🆕 保存完整的 UnifiedSlateEditor API
+            // 🆕 保存完整的 PlanSlate API
             (unifiedEditorRef as any).editorApi = editorApi;
             unifiedEditorRef.current = editorApi.getEditor();
           }}
@@ -2678,7 +2678,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           setCurrentSelectedTags(tagIds);
         }}
         onEmojiSelect={(emoji: string) => {
-          // 🆕 使用 UnifiedSlateEditor 的 helper 函数
+          // 🆕 使用 PlanSlate 的 helper 函数
           const editor = unifiedEditorRef.current;
           const editorApi = (unifiedEditorRef as any).editorApi;
           if (!editor || !editorApi || !currentFocusedLineId) return;
@@ -2691,7 +2691,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           }
         }}
         onDateRangeSelect={(start: Date, end: Date) => {
-          // 🆕 使用 UnifiedSlateEditor 的 helper 函数插入 DateMention
+          // 🆕 使用 PlanSlate 的 helper 函数插入 DateMention
           const editor = unifiedEditorRef.current;
           const editorApi = (unifiedEditorRef as any).editorApi;
           if (!editor || !editorApi || !currentFocusedLineId) {

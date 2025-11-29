@@ -28,7 +28,7 @@
 
 ### 1. 🔴 初始化竞态条件（最可能）
 
-**位置**: `UnifiedSlateEditor.tsx` L619-627
+**位置**: `PlanSlate.tsx` L619-627
 
 ```typescript
 const isInitializedRef = React.useRef(false);
@@ -206,19 +206,19 @@ if (filtered.length === 0 && allEvents.length > 0) {
 return filtered;
 ```
 
-#### 2. UnifiedSlateEditor.tsx
+#### 2. PlanSlate.tsx
 
 ```typescript
 // L625 初始化后
 setValue(enhancedValue);
-console.log('[UnifiedSlateEditor] 初始化完成:', {
+console.log('[PlanSlate] 初始化完成:', {
   enhancedValue长度: enhancedValue.length,
   items长度: items.length,
   ⚠️警告: enhancedValue.length === 0 ? 'enhancedValue 为空！' : undefined,
 });
 
 if (enhancedValue.length === 0 && items.length > 0) {
-  console.error('🔴 [UnifiedSlateEditor] 警告：items 有数据但 enhancedValue 为空！', {
+  console.error('🔴 [PlanSlate] 警告：items 有数据但 enhancedValue 为空！', {
     items: items.slice(0, 5),
   });
 }
@@ -227,17 +227,17 @@ if (enhancedValue.length === 0 && items.length > 0) {
 #### 3. onChange 回调
 
 ```typescript
-// UnifiedSlateEditor.tsx L1064
+// PlanSlate.tsx L1064
 const planItems = slateNodesToPlanItems(filteredNodes);
 
-console.log('[UnifiedSlateEditor] onChange 保存:', {
+console.log('[PlanSlate] onChange 保存:', {
   filteredNodes长度: filteredNodes.length,
   planItems长度: planItems.length,
   ⚠️警告: planItems.length === 0 ? '转换后为空数组！' : undefined,
 });
 
 if (planItems.length === 0 && filteredNodes.length > 0) {
-  console.error('🔴 [UnifiedSlateEditor] 警告：filteredNodes 有数据但 planItems 为空！', {
+  console.error('🔴 [PlanSlate] 警告：filteredNodes 有数据但 planItems 为空！', {
     filteredNodes: filteredNodes.slice(0, 3),
   });
 }
@@ -256,7 +256,7 @@ onChange(planItems);
 **修复代码**:
 
 ```typescript
-// UnifiedSlateEditor.tsx L619-627
+// PlanSlate.tsx L619-627
 
 // ❌ 旧版本
 const isInitializedRef = React.useRef(false);
@@ -341,11 +341,11 @@ const handleLinesChange = (newLines: FreeFormLine<Event>[]) => {
 #### 3. setValue 调用
 
 ```typescript
-// UnifiedSlateEditor.tsx L625
+// PlanSlate.tsx L625
 if (!isInitializedRef.current && items.length > 0) {
   // 🆕 防御性检查
   if (enhancedValue.length === 0 || enhancedValue.length === 1) {
-    console.error('🔴 [UnifiedSlateEditor] enhancedValue 异常，跳过初始化');
+    console.error('🔴 [PlanSlate] enhancedValue 异常，跳过初始化');
     return;
   }
   
@@ -366,7 +366,7 @@ if (!isInitializedRef.current && items.length > 0) {
 **引入"上一次有效状态"缓存**
 
 ```typescript
-// UnifiedSlateEditor.tsx
+// PlanSlate.tsx
 
 // 🆕 缓存上一次有效的 value
 const lastValidValueRef = useRef<EventLineNode[]>([]);
@@ -380,7 +380,7 @@ const handleEditorChange = useCallback((newValue: Descendant[]) => {
   );
   
   if (!hasContent && lastValidValueRef.current.length > 0) {
-    console.error('🔴 [UnifiedSlateEditor] 检测到异常清空，恢复上一次有效状态');
+    console.error('🔴 [PlanSlate] 检测到异常清空，恢复上一次有效状态');
     setValue(lastValidValueRef.current);
     return;
   }
@@ -409,7 +409,7 @@ const handleEditorChange = useCallback((newValue: Descendant[]) => {
 
 在 3 个关键位置添加警告日志：
 1. PlanManager 过滤后
-2. UnifiedSlateEditor 初始化
+2. PlanSlate 初始化
 3. onChange 回调
 
 **目的**: 捕获下一次空数组出现的具体位置

@@ -1,5 +1,5 @@
 /**
- * UnifiedSlateEditor - 节点类型定义
+ * PlanSlate - 节点类型定义
  * 
  * 基于 Event 的单实例 Slate 编辑器
  * 支持跨行选择、富文本复制粘贴、缩进管理
@@ -165,7 +165,7 @@ export interface EventLineData {
 /**
  * 编辑器配置
  */
-export interface UnifiedSlateEditorConfig {
+export interface PlanSlateConfig {
   placeholder?: string;
   readOnly?: boolean;
   autoFocus?: boolean;

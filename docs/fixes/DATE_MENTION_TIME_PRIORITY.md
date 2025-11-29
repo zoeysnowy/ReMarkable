@@ -71,7 +71,7 @@ items.set(baseId, {
 修改 `slateNodesToPlanItems` 函数，在处理 title 模式的节点时，检测 DateMention 并提取时间。
 
 #### 修改位置
-`src/components/UnifiedSlateEditor/serialization.ts` - `slateNodesToPlanItems` 函数
+`src/components/PlanSlate/serialization.ts` - `slateNodesToPlanItems` 函数
 
 #### 修改代码
 
@@ -240,11 +240,11 @@ if (dateMention) {
 ## 🎯 影响范围
 
 ### 修改的文件
-- ✅ `src/components/UnifiedSlateEditor/serialization.ts`
+- ✅ `src/components/PlanSlate/serialization.ts`
 
 ### 不需要修改的文件
-- ✅ `src/components/UnifiedSlateEditor/UnifiedSlateEditor.tsx` - 现有逻辑已正确
-- ✅ `src/components/UnifiedSlateEditor/helpers.ts` - DateMention 插入逻辑正确
+- ✅ `src/components/PlanSlate/PlanSlate.tsx` - 现有逻辑已正确
+- ✅ `src/components/PlanSlate/helpers.ts` - DateMention 插入逻辑正确
 - ✅ `src/services/TimeHub.ts` - TimeHub 逻辑正确
 - ✅ `src/components/PlanManager.tsx` - TimeDisplay 订阅逻辑正确
 

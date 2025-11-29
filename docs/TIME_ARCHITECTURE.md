@@ -2,9 +2,9 @@
 
 **最后更新**: 2025-11-06
 
-> **重要更新**: PlanManager 迁移到 UnifiedSlateEditor 后，优化了时间管理逻辑：
+> **重要更新**: PlanManager 迁移到 PlanSlate 后，优化了时间管理逻辑：
 > 1. 只有有时间字段的事件才同步到 Calendar
-> 2. FloatingBar onTimeApplied 简化，UnifiedSlateEditor 自动保存内容
+> 2. FloatingBar onTimeApplied 简化，PlanSlate 自动保存内容
 
 本文档说明应用中的统一时间模型和集成策略。核心目标：**任何组件修改一个事件的时间时,所有关联组件自动同步更新，同时保留用户的原始意图（如"下周"）**。This document outlines the unified time model and integration strategy used across the app. The goal is: any component that changes one event's time immediately updates all others consistently, while preserving the original user intent (e.g., "下周").
 
@@ -248,13 +248,13 @@ onSave(updatedItem);
 syncToUnifiedTimeline(updatedItem);
 ```
 
-**现在**: UnifiedSlateEditor 自动保存，只需同步 EventService
+**现在**: PlanSlate 自动保存，只需同步 EventService
 
 ```typescript
-// ✅ 新代码 (UnifiedSlateEditor)
+// ✅ 新代码 (PlanSlate)
 onTimeApplied={async (timeSpec: TimeSpec) => {
   // TimeHub 已更新 timeSpec
-  // UnifiedSlateEditor 的 onChange 会自动保存内容
+  // PlanSlate 的 onChange 会自动保存内容
   
   // 只需同步 EventService（TimeHub 已处理 timeSpec → startTime/endTime 派生）
   if (item.id) {
@@ -269,7 +269,7 @@ onTimeApplied={async (timeSpec: TimeSpec) => {
 
 **架构优势**:
 - ✅ 代码更简洁：不再需要手动 `editor.getHTML()`
-- ✅ 职责清晰：UnifiedSlateEditor 负责内容保存，TimeHub 负责时间管理
+- ✅ 职责清晰：PlanSlate 负责内容保存，TimeHub 负责时间管理
 - ✅ 避免状态不一致：单一数据源，自动同步
 
 ### 优化 3: 时间字段检查逻辑
@@ -360,7 +360,7 @@ if (hasTime) {
 
 - ✅ 减少 EventService 调用：跳过无时间事件
 - ✅ 减少网络请求：避免不必要的 API 调用
-- ✅ 减少状态更新：UnifiedSlateEditor 自动保存，无需手动触发
+- ✅ 减少状态更新：PlanSlate 自动保存，无需手动触发
 
 ### 兼容性
 
@@ -378,11 +378,11 @@ if (hasTime) {
 2. **自动同步**: 任何组件修改时间，所有关联组件自动更新
 3. **保留意图**: TimeSpec 保存用户原始输入（如"下周"）
 4. **智能同步**: 只有有时间的事件才同步到 Calendar（2025-11-06 新增）
-5. **简化集成**: UnifiedSlateEditor 自动保存，无需手动获取 HTML（2025-11-06 新增）
+5. **简化集成**: PlanSlate 自动保存，无需手动获取 HTML（2025-11-06 新增）
 
 **最佳实践**:
 - 使用 `useEventTime` hook 读取时间
 - 使用 `TimeHub.setEventTime` / `setFuzzy` 写入时间
 - 使用 `hasAnyTime` 检查是否需要同步 Calendar
-- 让 UnifiedSlateEditor 自动处理内容保存
+- 让 PlanSlate 自动处理内容保存
 

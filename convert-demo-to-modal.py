@@ -38,7 +38,7 @@ content = content.replace("from './HierarchicalTagPicker/", "from '../Hierarchic
 content = content.replace("from './FloatingToolbar/", "from '../FloatingToolbar/")
 content = content.replace("from './common/", "from '../common/")
 content = content.replace("from './EventEditModalV2Demo/", "from '../EventEditModalV2Demo/")
-content = content.replace("from './LightSlateEditor'", "from '../LightSlateEditor'")
+content = content.replace("from './ModalSlate'", "from '../ModalSlate'")
 
 # 5. 修改接口名称
 content = content.replace('interface MockEvent {', 'interface FormData {')

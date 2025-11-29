@@ -229,7 +229,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
             {/* Slate 编辑区（占位） */}
             <div className="event-log-editor">
               <p className="placeholder-text">
-                📝 Slate 编辑器区域（待集成 UnifiedSlateEditor）
+                📝 Slate 编辑器区域（待集成 PlanSlate）
               </p>
               <textarea
                 className="temp-editor"

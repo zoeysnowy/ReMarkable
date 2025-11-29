@@ -9,7 +9,7 @@ ReMarkable 提供两套浮动 UI 组件，用于增强文本编辑和快速操�
 1. **FloatingToolbar** - 文本选中工具栏（类似 Notion/Tiptap）
 2. **FloatingButton** - 浮动操作按钮（固定位置的快捷入口）
 
-**✅ 重要更新 (2025-11-06)**: FloatingBar 已与 UnifiedSlateEditor 完成集成，使用全新的 helper 函数架构。
+**✅ 重要更新 (2025-11-06)**: FloatingBar 已与 PlanSlate 完成集成，使用全新的 helper 函数架构。
 
 ---
 
@@ -572,7 +572,7 @@ ReMarkable 的浮动组件体系提供了两套互补的 UI 方案：
 
 ---
 
-## 🆕 UnifiedSlateEditor 集成 (2025-11-06)
+## 🆕 PlanSlate 集成 (2025-11-06)
 
 ### 架构变更
 
@@ -590,11 +590,11 @@ onTagSelect={(tagId) => {
 **现在**: 使用单个 Slate editor 实例 + helper 函数
 ```typescript
 // ✅ 新架构
-import { insertTag, insertEmoji, insertDateMention } from '@/components/UnifiedSlateEditor/helpers';
+import { insertTag, insertEmoji, insertDateMention } from '@/components/PlanSlate/helpers';
 
 const unifiedEditorRef = useRef<Editor>(null);
 
-<UnifiedSlateEditor
+<PlanSlate
   onEditorReady={(editor) => {
     unifiedEditorRef.current = editor;
   }}
@@ -604,14 +604,14 @@ onTagSelect={(tagIds) => {
   const editor = unifiedEditorRef.current;
   const tag = TagService.getTagById(tagIds[0]);
   insertTag(editor, tag.id, tag.name, tag.color, tag.emoji);
-  // ✅ UnifiedSlateEditor 的 onChange 会自动保存
+  // ✅ PlanSlate 的 onChange 会自动保存
 }}
 ```
 
 ### 新增 Helper 函数
 
 ```typescript
-// src/components/UnifiedSlateEditor/helpers.ts
+// src/components/PlanSlate/helpers.ts
 
 /**
  * 插入 Tag 元素
@@ -691,12 +691,12 @@ const updatedItem = { ...item, content: updatedHTML };
 onSave(updatedItem);
 ```
 
-**现在**: UnifiedSlateEditor 自动保存，只需同步 EventService
+**现在**: PlanSlate 自动保存，只需同步 EventService
 ```typescript
 // ✅ 新代码
 onTimeApplied={(startIso, endIso) => {
   // TimeHub 已更新时间
-  // UnifiedSlateEditor 的 onChange 会自动保存内容
+  // PlanSlate 的 onChange 会自动保存内容
   
   // 只需同步 EventService
   if (item.id) {

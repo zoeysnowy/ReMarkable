@@ -259,7 +259,7 @@ console.log('[DEBUG] ReactEditor state:', {
 ```
 
 3. **监听 Slate onChange：**
-在 UnifiedSlateEditor 的 onChange 中添加日志，查看 marks 变化
+在 PlanSlate 的 onChange 中添加日志，查看 marks 变化
 
 4. **使用 Slate DevTools：**
 安装 `slate-devtools` 插件可视化查看 Slate 状态

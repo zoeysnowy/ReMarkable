@@ -128,7 +128,7 @@ const EventLinePrefixComponent: React.FC<EventLinePrefixProps> = ({ element, onS
             // 🔧 EventService.checkIn/uncheck 会：
             // 1. 更新 localStorage
             // 2. 触发 eventsUpdated 事件  
-            // 3. UnifiedSlateEditor 的监听器收到事件
+            // 3. PlanSlate 的监听器收到事件
             // 4. 更新 Slate metadata（含 checked/unchecked 数组）
             // 5. 调用 setValue() 强制 React 重新渲染
             // 6. EventLinePrefix 读取新的 metadata 并显示正确状态

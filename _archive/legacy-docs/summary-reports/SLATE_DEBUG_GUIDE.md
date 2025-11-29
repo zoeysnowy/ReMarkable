@@ -342,7 +342,7 @@ A:
 
 - [Slate 编辑器开发指南](./SLATE_DEVELOPMENT_GUIDE.md)
 - [Plan Manager 模块 PRD](./PRD/PLANMANAGER_MODULE_PRD.md)
-- [调试日志系统实现](../src/components/UnifiedSlateEditor/debugLogger.ts)
+- [调试日志系统实现](../src/components/PlanSlate/debugLogger.ts)
 
 ---
 

@@ -17,7 +17,7 @@
 
 **用户影响**:
 - UpcomingEventsPanel 每 20 秒刷新 1016 次
-- UnifiedSlateEditor 每 20 秒检查 1016 个事件节点
+- PlanSlate 每 20 秒检查 1016 个事件节点
 - 浏览器卡顿，资源浪费
 
 ### 解决方案
@@ -109,7 +109,7 @@ Ctrl + Shift + R  （清除缓存并重新加载）
 - 应该只看到 1-5 条 `[UpcomingEventsPanel] 收到 eventsUpdated 事件` 日志
 - 不再是 1016 条
 
-**UnifiedSlateEditor**:
+**PlanSlate**:
 - 应该只看到 1-5 条 `[📡 eventsUpdated] 收到事件` 日志
 - 不再是 1016 条
 
@@ -118,12 +118,12 @@ Ctrl + Shift + R  （清除缓存并重新加载）
 **修复前**:
 - 每 20 秒处理 1016 个事件
 - UpcomingEventsPanel 刷新 1016 次
-- UnifiedSlateEditor 查找节点 1016 次
+- PlanSlate 查找节点 1016 次
 
 **修复后**:
 - 每 20 秒处理 5-10 个事件（实际有变化的）
 - UpcomingEventsPanel 刷新 5-10 次
-- UnifiedSlateEditor 查找节点 5-10 次
+- PlanSlate 查找节点 5-10 次
 
 **性能提升**: 约 **99%**
 

@@ -15,7 +15,7 @@
 从代码分析，当前 Slate 编辑器确实存在**全量渲染**的情况：
 
 ```typescript
-// UnifiedSlateEditor.tsx L530-556
+// PlanSlate.tsx L530-556
 const enhancedValue = useMemo(() => {
   const baseNodes = planItemsToSlateNodes(items);  // 🔴 每次 items 变化都全量转换
   
@@ -36,7 +36,7 @@ const [value, setValue] = useState<EventLineNode[]>(() => enhancedValue);
 代码中已经有增量更新的逻辑，但**仅限于外部同步事件**：
 
 ```typescript
-// UnifiedSlateEditor.tsx L633-707
+// PlanSlate.tsx L633-707
 useEffect(() => {
   const handleEventUpdated = (e: any) => {
     const { eventId, isDeleted, isNewEvent } = e.detail;
@@ -102,7 +102,7 @@ useEffect(() => {
 **Step 1: 引入 items 变化追踪**
 
 ```typescript
-// UnifiedSlateEditor.tsx
+// PlanSlate.tsx
 
 // 🆕 追踪上一次的 items
 const prevItemsRef = useRef<any[]>([]);
@@ -429,7 +429,7 @@ describe('Slate 编辑器性能测试', () => {
 
 ### 第一步：添加性能监控
 
-在 `UnifiedSlateEditor.tsx` 中添加：
+在 `PlanSlate.tsx` 中添加：
 
 ```typescript
 // 🔍 性能监控
