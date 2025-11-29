@@ -2420,9 +2420,18 @@ export class EventService {
       eventLogger.log('🌐 [EventService] Creating event from remote sync:', event.id);
 
       // ⚠️ 注意：event 已经过 convertRemoteEventToLocal 中的 normalizeEvent 处理
-      // 这里不需要再次规范化，直接使用传入的事件对象
+      // 但如果 eventlog 为空或是空数组，需要从 description 重新生成
+      let finalEventLog = event.eventlog;
+      
+      if (!finalEventLog || 
+          (typeof finalEventLog === 'object' && finalEventLog.slateJson === '[]')) {
+        eventLogger.log('🔧 [EventService] Remote event eventlog 为空，从 description 重新生成');
+        finalEventLog = this.normalizeEventLog(undefined, event.description);
+      }
+      
       const finalEvent: Event = {
         ...event,
+        eventlog: finalEventLog,
         // 确保 sync 相关字段正确
         syncStatus: event.syncStatus || 'synced',
       };
