@@ -766,11 +766,10 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
         console.log('%c[⚠️ 修正] value 为空，使用 enhancedValue', 'background: #FF9800; color: white;');
         setValue(enhancedValue);
       }
-      return;
+      return; // ✅ 首次初始化完成，直接返回，不再同步
     }
     
-    // 后续更新：检查用户是否正在编辑
-    if (!isInitializedRef.current) return;
+    // 🔥 后续更新：检查用户是否正在编辑
     
     const hasSelection = !!editor.selection;
     const hasPendingChanges = !!pendingChangesRef.current;
@@ -790,8 +789,17 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
         }))
       });
       
-      // 🔧 安全检查：确保 enhancedValue 不为空
+      // 🔧 安全检查：确保 enhancedValue 不为空，且与当前 value 不同
       if (enhancedValue.length > 0) {
+        // 🔍 对比 enhancedValue 和 value 是否真的不同
+        const isDifferent = enhancedValue.length !== value.length || 
+          !enhancedValue.every((node, i) => node.eventId === value[i]?.eventId);
+        
+        if (!isDifferent) {
+          console.log('%c[⏭️ 同步跳过] enhancedValue 与 value 相同，无需更新', 'background: #2196F3; color: white; padding: 2px 6px;');
+          return;
+        }
+        
         skipNextOnChangeRef.current = true;
         
         // 🔥 使用 Slate Transforms API 直接更新内容（而不是重新挂载编辑器）
