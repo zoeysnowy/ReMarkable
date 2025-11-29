@@ -1402,7 +1402,28 @@ export class EventService {
     // 情况1: 已经是 EventLog 对象
     if (typeof eventlogInput === 'object' && eventlogInput !== null && 'slateJson' in eventlogInput) {
       console.log('[EventService] eventlog 已是标准对象');
-      return eventlogInput as EventLog;
+      const eventLog = eventlogInput as EventLog;
+      
+      // 🔧 确保所有必需字段都存在（从 slateJson 生成缺失的字段）
+      if (!eventLog.html || !eventLog.plainText) {
+        console.log('[EventService] EventLog 缺少 html/plainText，从 slateJson 生成');
+        try {
+          const slateNodes = jsonToSlateNodes(eventLog.slateJson);
+          const html = slateNodesToHtml(slateNodes);
+          const plainText = html.replace(/<[^>]*>/g, '');
+          
+          return {
+            ...eventLog,
+            html: eventLog.html || html,
+            plainText: eventLog.plainText || plainText,
+          };
+        } catch (error) {
+          console.error('[EventService] 从 slateJson 生成 html/plainText 失败:', error);
+          return eventLog; // 失败时返回原对象
+        }
+      }
+      
+      return eventLog;
     }
     
     // 情况2: undefined 或 null
