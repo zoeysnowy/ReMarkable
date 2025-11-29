@@ -662,29 +662,17 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
             currentEventlogJson = slateNodesToJson(editorContent); // ✅ 保持为 JSON 字符串
           } catch (error) {
             console.error('❌ [EventEditModalV2] 读取编辑器内容失败，使用 formData:', error);
-            // 降级：如果 formData.eventlog 是数组，转为字符串
-            if (Array.isArray(formData.eventlog)) {
-              currentEventlogJson = JSON.stringify(formData.eventlog);
-            } else if (typeof formData.eventlog === 'string') {
-              currentEventlogJson = formData.eventlog;
-            }
+            // 降级：formData.eventlog 已经是 Descendant[] 数组，直接序列化
+            currentEventlogJson = JSON.stringify(formData.eventlog || []);
           }
         } else {
           console.log('📝 [EventEditModalV2] 编辑器无焦点，使用 formData（已通过失焦或自动保存更新）');
-          // ✅ 将 formData.eventlog 转换为 JSON 字符串
-          if (Array.isArray(formData.eventlog)) {
-            currentEventlogJson = JSON.stringify(formData.eventlog);
-          } else if (typeof formData.eventlog === 'string') {
-            currentEventlogJson = formData.eventlog;
-          }
+          // ✅ formData.eventlog 已经是 Descendant[] 数组，直接序列化
+          currentEventlogJson = JSON.stringify(formData.eventlog || []);
         }
       } else {
-        // 无编辑器，使用 formData
-        if (Array.isArray(formData.eventlog)) {
-          currentEventlogJson = JSON.stringify(formData.eventlog);
-        } else if (typeof formData.eventlog === 'string') {
-          currentEventlogJson = formData.eventlog;
-        }
+        // 无编辑器，使用 formData - formData.eventlog 已经是 Descendant[] 数组
+        currentEventlogJson = JSON.stringify(formData.eventlog || []);
       }
       
       // 🔧 Step 1: 确定最终标题

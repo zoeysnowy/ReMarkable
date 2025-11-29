@@ -2669,13 +2669,6 @@ export const PlanSlate: React.FC<PlanSlateProps> = ({
         const para = element as any;
         if (para.bullet) {
           const level = para.bulletLevel || 0;
-          // 🔍 调试日志：确认渲染 bullet paragraph
-          console.log('[renderElement] 🎯 渲染 Bullet paragraph:', {
-            bullet: para.bullet,
-            bulletLevel: level,
-            hasBulletProp: 'bullet' in para,
-            paraKeys: Object.keys(para)
-          });
           // Bullet paragraph rendering
           return (
             <div className="slate-bullet-paragraph" data-level={level} {...props.attributes}>
