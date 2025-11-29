@@ -316,41 +316,25 @@ export class EventService {
         eventLogger.warn('⚠️ [EventService] Event has no title and no tags:', event.id);
       }
 
-      // 🆕 v1.8.1: 初始化 eventlog 为新格式（如果未提供）
-      const now = formatTimeForStorage(new Date());
-      let eventlogField: string | EventLog | undefined = event.eventlog;
+      // 🔥 v2.15.3: 中枢化架构 - 使用 normalizeEvent 统一处理所有字段
+      const normalizedEvent = this.normalizeEvent(event);
       
-      if (!eventlogField && event.description) {
-        // 从 description 初始化 eventlog（简化版 Slate JSON）
-        const initialEventLog: EventLog = {
-          content: JSON.stringify([{ type: 'paragraph', children: [{ text: event.description }] }]),
-          descriptionHtml: event.description,
-          descriptionPlainText: event.description,
-          attachments: [],
-          versions: [],
-          syncState: {
-            status: 'pending',
-            contentHash: this.hashContent(event.description),
-          },
-          createdAt: now,
-          updatedAt: now,
-        };
-        eventlogField = initialEventLog;
-      }
-      
-      // 🆕 v2.14: 标题三层架构自动规范化
-      const normalizedTitle = this.normalizeTitle(event.title);
+      eventLogger.log('🔥 [EventService] createEvent 规范化完成:', {
+        eventId: normalizedEvent.id,
+        titleType: typeof normalizedEvent.title,
+        hasSimpleTitle: !!normalizedEvent.title?.simpleTitle,
+        hasEventLog: !!normalizedEvent.eventlog,
+        eventlogHasSlateJson: !!normalizedEvent.eventlog?.slateJson,
+        hasDescription: !!normalizedEvent.description,
+      });
       
       // 确保必要字段
       // 🔧 [BUG FIX] skipSync=true时，强制设置syncStatus='local-only'，忽略event.syncStatus
       const finalEvent: Event = {
-        ...event,
-        title: normalizedTitle, // 🆕 v2.14: 使用规范化后的标题对象
+        ...normalizedEvent,
         remarkableSource: true,
         syncStatus: skipSync ? 'local-only' : (event.syncStatus || 'pending'), // skipSync优先级最高
-        createdAt: event.createdAt || now,
-        updatedAt: now,
-        eventlog: eventlogField, // 🆕 使用新格式 eventlog
+        // normalizedEvent 已经包含完整的 title/eventlog/description/createdAt/updatedAt
       };
       
       // 🔍 [DEBUG] 验证最终的syncStatus
@@ -538,8 +522,7 @@ export class EventService {
       if ((updates as any).title !== undefined) {
         const titleUpdate = (updates as any).title;
         
-        // ✅ 修复：传入新 title 时，直接用 normalizeTitle 重新生成三个字段
-        // 不再与旧值 merge，确保三个字段完全同步
+        // 🔥 使用增强版 normalizeTitle（支持字符串输入）
         const normalizedTitle = this.normalizeTitle(titleUpdate);
         
         (updatesWithSync as any).title = normalizedTitle;
@@ -555,44 +538,51 @@ export class EventService {
         });
       }
       
-      // ========== Description 双向同步 ==========
-      // 场景1: description 有变化 → 同步到 eventlog
-      if (updates.description !== undefined && updates.description !== originalEvent.description) {
-        if ((updates as any).eventlog === undefined) {
-          // 判断 originalEvent.eventlog 类型
-          const isNewFormat = typeof (originalEvent as any).eventlog === 'object' && (originalEvent as any).eventlog !== null;
-          
-          if (isNewFormat) {
-            // 新格式：更新 EventLog 对象
-            const existingEventLog = (originalEvent as any).eventlog as EventLog;
-            const newEventLog: EventLog = {
-              ...existingEventLog,
-              content: JSON.stringify([{ type: 'paragraph', children: [{ text: updates.description }] }]),
-              descriptionHtml: updates.description,
-              descriptionPlainText: this.stripHtml(updates.description),
-              syncState: {
-                ...existingEventLog.syncState,
-                contentHash: this.hashContent(updates.description),
-                status: 'pending',
-              },
-              updatedAt: formatTimeForStorage(new Date()),
-            };
-            (updatesWithSync as any).eventlog = newEventLog;
-          } else {
-            // 旧格式：直接赋值字符串
-            (updatesWithSync as any).eventlog = updates.description;
-          }
-          
-          console.log('[EventService] description 增量更新 → 同步到 eventlog:', {
-            eventId,
-            isNewFormat,
-            description: updates.description.substring(0, 50),
-          });
+      // ========== EventLog 和 Description 双向同步 ==========
+      // 🔥 使用 normalizeEventLog 统一处理（支持从 description 生成）
+      
+      // 场景1: eventlog 有变化 → 规范化并同步到 description
+      if ((updates as any).eventlog !== undefined) {
+        const normalizedEventLog = this.normalizeEventLog((updates as any).eventlog);
+        (updatesWithSync as any).eventlog = normalizedEventLog;
+        
+        // 同步到 description
+        if (updatesWithSync.description === undefined) {
+          updatesWithSync.description = normalizedEventLog.plainText || '';
         }
+        
+        console.log('[EventService] eventlog 更新 → 规范化并同步到 description:', {
+          eventId,
+          hasSlateJson: !!normalizedEventLog.slateJson,
+          hasHtml: !!normalizedEventLog.html,
+          hasPlainText: !!normalizedEventLog.plainText
+        });
       }
       
-      // 场景2: eventlog 有变化 → 自动转换为 EventLog 对象并同步到 description
-      if ((updates as any).eventlog !== undefined && (updates as any).eventlog !== (originalEvent as any).eventlog) {
+      // 场景2: description 有变化但 eventlog 没变 → 从 description 生成 eventlog
+      else if (updates.description !== undefined && updates.description !== originalEvent.description) {
+        const normalizedEventLog = this.normalizeEventLog(updates.description);
+        (updatesWithSync as any).eventlog = normalizedEventLog;
+        
+        console.log('[EventService] description 更新 → 生成 eventlog:', {
+          eventId,
+          description: updates.description.substring(0, 50)
+        });
+      }
+      
+      // 场景3: 都没变，但原始事件缺少 eventlog → 从 description 补全
+      else if (!(originalEvent as any).eventlog && originalEvent.description) {
+        const normalizedEventLog = this.normalizeEventLog(originalEvent.description);
+        (updatesWithSync as any).eventlog = normalizedEventLog;
+        
+        console.log('[EventService] 补全缺失的 eventlog（从 description）:', {
+          eventId
+        });
+      }
+      
+      // 🔍 临时保留旧代码用于兼容性检查（可在后续版本移除）
+      const __legacy_check = false;
+      if (__legacy_check) {
         const newEventlog = (updates as any).eventlog;
         const isEventLogObject = typeof newEventlog === 'object' && newEventlog !== null && 'slateJson' in newEventlog;
         const isSlateJsonString = typeof newEventlog === 'string' && newEventlog.trim().startsWith('[');
@@ -1311,11 +1301,13 @@ export class EventService {
 
   /**
    * 规范化标题对象：自动填充缺失的层级
-   * @param titleInput - 部分标题数据（可能只有 fullTitle/colorTitle/simpleTitle 之一），或者旧格式的字符串
+   * @param titleInput - 部分标题数据（可能只有 fullTitle/colorTitle/simpleTitle 之一），或者字符串（远程同步场景）
    * @returns 完整的 EventTitle 对象（包含三层）
    * 
+   * 🔥 中枢化架构：统一处理所有 title 输入格式
+   * 
    * 规则：
-   * 0. 如果是字符串（旧格式） → 转换为 simpleTitle，然后升级为三层
+   * 0. 如果是字符串（Outlook/Timer/旧数据） → 转换为 simpleTitle，然后升级为三层
    * 1. 有 fullTitle → 降级生成 colorTitle 和 simpleTitle
    * 2. 有 colorTitle → 升级生成 fullTitle，降级生成 simpleTitle
    * 3. 有 simpleTitle → 升级生成 colorTitle 和 fullTitle
@@ -1398,7 +1390,15 @@ export class EventService {
    *   5. undefined/null → 返回空 EventLog
    * @returns 标准化的 EventLog 对象
    */
-  private static normalizeEventLog(eventlogInput: any): EventLog {
+  /**
+   * 🔥 中枢化架构：规范化 EventLog 对象
+   * 支持多种输入格式，统一转换为完整的 EventLog 对象
+   * 
+   * @param eventlogInput - 可能是 EventLog 对象、Slate JSON 字符串、HTML、纯文本、或 undefined
+   * @param fallbackDescription - 回退用的 description 字符串（用于远程同步场景）
+   * @returns 完整的 EventLog 对象
+   */
+  private static normalizeEventLog(eventlogInput: any, fallbackDescription?: string): EventLog {
     // 情况1: 已经是 EventLog 对象
     if (typeof eventlogInput === 'object' && eventlogInput !== null && 'slateJson' in eventlogInput) {
       console.log('[EventService] eventlog 已是标准对象');
@@ -1426,9 +1426,16 @@ export class EventService {
       return eventLog;
     }
     
-    // 情况2: undefined 或 null
+    // 情况2: undefined 或 null - 尝试从 fallbackDescription 生成
     if (eventlogInput === undefined || eventlogInput === null) {
-      console.log('[EventService] eventlog 为空，返回空对象');
+      if (fallbackDescription && fallbackDescription.trim()) {
+        console.log('[EventService] eventlog 为空，从 fallbackDescription 生成:', fallbackDescription.substring(0, 50));
+        return this.convertSlateJsonToEventLog(JSON.stringify([{
+          type: 'paragraph',
+          children: [{ text: fallbackDescription }]
+        }]));
+      }
+      console.log('[EventService] eventlog 和 fallbackDescription 均为空，返回空对象');
       return this.convertSlateJsonToEventLog('[]');
     }
     
@@ -1464,11 +1471,110 @@ export class EventService {
       return this.convertSlateJsonToEventLog(slateJson);
     }
     
+    // 🆕 情况6: 从 description 字符串生成（用于远程同步回退）
+    // 注意：这个分支通常不会被直接调用，因为上面的"纯文本字符串"分支已覆盖
+    // 但保留作为明确的文档说明
+    
     // 未知格式 - 降级为空
     console.warn('[EventService] 未知 eventlog 格式:', typeof eventlogInput);
     return this.convertSlateJsonToEventLog('[]');
   }
   
+  /**
+   * 🔥 中枢化架构：统一的事件数据规范化入口
+   * 所有事件在存储前必须经过此方法处理，确保数据完整性和一致性
+   * 
+   * @param event - 部分事件数据（可能来自 UI、远程同步、或旧数据）
+   * @returns 完整且规范化的 Event 对象
+   * 
+   * 处理内容：
+   * - title: 字符串 → EventTitle 对象（三层架构）
+   * - eventlog: 从 eventlog 或 description 生成完整 EventLog 对象
+   * - description: 从 eventlog 提取或使用原值
+   * - 其他字段: 填充默认值和时间戳
+   */
+  private static normalizeEvent(event: Partial<Event>): Event {
+    const now = formatTimeForStorage(new Date());
+    
+    // 🔥 Title 规范化（支持字符串或对象输入）
+    const normalizedTitle = this.normalizeTitle(event.title);
+    
+    // 🔥 EventLog 规范化（优先从 eventlog，回退到 description）
+    const normalizedEventLog = this.normalizeEventLog(
+      event.eventlog, 
+      event.description  // 回退用的 description
+    );
+    
+    // 🔥 Description 规范化（从 eventlog 提取或使用原值）
+    const normalizedDescription = normalizedEventLog.plainText || event.description || '';
+    
+    return {
+      // 基础标识
+      id: event.id || generateEventId(),
+      
+      // 规范化字段
+      title: normalizedTitle,
+      eventlog: normalizedEventLog,
+      description: normalizedDescription,
+      
+      // 时间字段
+      startTime: event.startTime,
+      endTime: event.endTime,
+      isAllDay: event.isAllDay || false,
+      dueDate: event.dueDate,
+      
+      // 分类字段
+      tags: event.tags || [],
+      calendarId: event.calendarId,
+      priority: event.priority,
+      
+      // 协作字段
+      organizer: event.organizer,
+      attendees: event.attendees || [],
+      location: event.location || '',
+      
+      // 来源标识
+      remarkableSource: event.remarkableSource,
+      microsoftEventId: event.microsoftEventId,
+      isPlan: event.isPlan,
+      isTimeCalendar: event.isTimeCalendar,
+      isTimer: event.isTimer,
+      isDeadline: event.isDeadline,
+      
+      // 任务模式
+      isTask: event.isTask,
+      isCompleted: event.isCompleted,
+      parentTaskId: event.parentTaskId,
+      childTaskCount: event.childTaskCount,
+      childTaskCompletedCount: event.childTaskCompletedCount,
+      
+      // Timer 关联
+      parentEventId: event.parentEventId,
+      timerLogs: event.timerLogs,
+      
+      // 日历同步配置
+      calendarIds: event.calendarIds || [],
+      syncMode: event.syncMode,
+      subEventConfig: event.subEventConfig,
+      syncedEventId: event.syncedEventId,
+      
+      // 签到字段
+      checked: event.checked || [],
+      unchecked: event.unchecked || [],
+      
+      // 外部同步
+      externalId: event.externalId,
+      source: event.source,
+      
+      // 时间戳
+      createdAt: event.createdAt || now,
+      updatedAt: now,
+      lastLocalChange: now,
+      localVersion: (event.localVersion || 0) + 1,
+      syncStatus: event.syncStatus || 'pending',
+    } as Event;
+  }
+
   /**
    * 将 Slate JSON 字符串转换为完整的 EventLog 对象
    * （由 normalizeEventLog 调用）

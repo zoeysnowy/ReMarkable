@@ -397,10 +397,18 @@ export function convertToCalendarEvent(
  * @param originalEvent 原始事件（用于保留某些字段）
  * @returns ReMarkable 事件对象
  */
+/**
+ * 🔥 简化版：只做字段映射，不做复杂转换
+ * 所有数据规范化交给 EventService.normalizeEvent() 统一处理
+ * 
+ * @param calendarEvent - TUI Calendar 事件对象
+ * @param originalEvent - 原始 Event 对象（用于继承同步信息）
+ * @returns 部分 Event 数据（等待 EventService 规范化）
+ */
 export function convertFromCalendarEvent(
   calendarEvent: any, 
   originalEvent?: Event
-): Event {
+): Partial<Event> {
   const now = new Date();
   const nowStr = formatTimeForStorage(now);
   
@@ -408,22 +416,23 @@ export function convertFromCalendarEvent(
   if (calendarEvent.raw?.remarkableEvent) {
     return {
       ...calendarEvent.raw.remarkableEvent,
-      // 更新可能被修改的字段
-      title: calendarEvent.title ? { simpleTitle: calendarEvent.title, colorTitle: undefined, fullTitle: undefined } : calendarEvent.raw.remarkableEvent.title,
-      description: calendarEvent.body || calendarEvent.raw.remarkableEvent.description,
+      // ✅ 只更新被修改的字段，传递原始字符串（让 EventService 规范化）
+      title: calendarEvent.title,  // ✅ 简单字符串，EventService 会转换为 EventTitle
+      description: calendarEvent.body,  // ✅ 简单字符串，EventService 会生成 EventLog
       startTime: formatTimeForStorage(calendarEvent.start),
       endTime: formatTimeForStorage(calendarEvent.end),
       isAllDay: calendarEvent.isAllday || false,
-      location: calendarEvent.location || calendarEvent.raw.remarkableEvent.location,
+      location: calendarEvent.location,
       updatedAt: nowStr
     };
   }
   
-  // 创建新事件
+  // ✅ 创建新事件：只传原始数据，不做复杂转换
   return {
     id: calendarEvent.id || generateEventId(),
-    title: { simpleTitle: calendarEvent.title || '(无标题)' }, // ✅ 只传 simpleTitle
-    description: calendarEvent.body || '',
+    title: calendarEvent.title || '(无标题)',  // ✅ 简单字符串
+    description: calendarEvent.body || '',      // ✅ 简单字符串
+    // ❌ 不再自己创建 eventlog，交给 EventService.normalizeEvent()
     // 🔧 修复时区问题：使用 dayjs 格式化避免 UTC 转换
     startTime: dayjs(calendarEvent.start).format('YYYY-MM-DD HH:mm:ss'),
     endTime: dayjs(calendarEvent.end).format('YYYY-MM-DD HH:mm:ss'),

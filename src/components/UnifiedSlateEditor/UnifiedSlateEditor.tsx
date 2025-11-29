@@ -734,52 +734,31 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
     return () => observer.disconnect();
   }, []);
   
-  // 🔧 仅在初始化时同步一次
+  // 🔧 不需要单独的初始化逻辑，直接通过 useState 和后续的 enhancedValue useEffect 处理
   const isInitializedRef = React.useRef(false);
-  useEffect(() => {
-    // 🚨 DIAGNOSIS: 记录初始化过程
-    vlog('🔍 [诊断] 初始化 useEffect 执行:', {
-      isInitialized: isInitializedRef.current,
-      items数量: items.length,
-      enhancedValue数量: enhancedValue.length,
-      value数量: value.length,
-      时间戳: new Date().toISOString()
-    });
-    
-    // 🔥 修复：确保 enhancedValue 有实际内容（不只是 placeholder）才初始化
-    const hasRealContent = enhancedValue.length > 1 || 
-                          (enhancedValue.length === 1 && enhancedValue[0].eventId !== '__placeholder__');
-    
-    if (!isInitializedRef.current && items.length > 0 && hasRealContent) {
-      logOperation('初始化编辑器内容', { itemCount: items.length });
-      
-      setValue(enhancedValue);
-      isInitializedRef.current = true;
-      
-      console.log('✅ [诊断] 初始化完成:', {
-        设置的value数量: enhancedValue.length
-      });
-    } else if (!isInitializedRef.current && items.length > 0 && !hasRealContent) {
-      vlog('🔴 [诊断] enhancedValue 异常为空，等待下次更新！', {
-        items数量: items.length,
-        enhancedValue数量: enhancedValue.length,
-        items示例: items.slice(0, 3).map(i => ({ id: i.id, title: i.title?.simpleTitle?.substring(0, 20) || '' }))
-      });
-    }
-  }, [items.length, enhancedValue]); // 🔥 依赖 items.length 和 enhancedValue，确保有内容时初始化
   
   // 🔥 智能增量更新：逐个比较 items，只更新变化的 Events
   
-  // 🆕 监听 enhancedValue 变化，同步更新 value（绕过 eventsUpdated 去重检查）
+  // 🆕 监听 enhancedValue 变化，同步更新 value
   useEffect(() => {
     console.log('%c[🔍 enhancedValue useEffect 触发]', 'background: #E91E63; color: white; padding: 2px 6px;', {
       isInitialized: isInitializedRef.current,
       enhancedValueLength: enhancedValue.length
     });
     
+    // 🔥 首次初始化：直接更新 value，无需等待
+    if (!isInitializedRef.current && enhancedValue.length > 0) {
+      console.log('%c[🎉 首次初始化] 设置 value', 'background: #4CAF50; color: white; padding: 2px 6px;', {
+        enhancedValueLength: enhancedValue.length
+      });
+      setValue(enhancedValue);
+      isInitializedRef.current = true;
+      return;
+    }
+    
+    // 后续更新：检查用户是否正在编辑
     if (!isInitializedRef.current) return;
     
-    // 🔍 检查用户是否正在编辑
     const hasSelection = !!editor.selection;
     const hasPendingChanges = !!pendingChangesRef.current;
     
