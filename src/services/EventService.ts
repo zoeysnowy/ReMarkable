@@ -2406,6 +2406,75 @@ export class EventService {
       remoteEventCount: calculateRemoteEventCount(event)
     };
   }
+
+  /**
+   * 从远程同步创建事件（内部方法，供 ActionBasedSyncManager 使用）
+   * - 规范化事件数据
+   * - 直接保存到 localStorage（不触发 sync）
+   * - 记录到 EventHistoryService
+   * 
+   * @param event - 事件对象（已经过 convertRemoteEventToLocal 处理）
+   * @returns 创建的事件对象
+   */
+  static createEventFromRemoteSync(event: Event): Event {
+    try {
+      eventLogger.log('🌐 [EventService] Creating event from remote sync:', event.id);
+
+      // 🔥 规范化事件数据（统一处理 title/eventlog/description）
+      const normalizedEvent = this.normalizeEvent(event);
+      
+      // 确保必要字段
+      const finalEvent: Event = {
+        ...normalizedEvent,
+        // 保留 remote sync 的标识字段
+        remarkableSource: event.remarkableSource,
+        externalId: event.externalId,
+        syncStatus: event.syncStatus || 'synced',
+        syncedPlanCalendars: event.syncedPlanCalendars,
+        syncedActualCalendars: event.syncedActualCalendars,
+      };
+
+      // 读取现有事件
+      const existingEvents = this.getAllEvents();
+
+      // 检查是否已存在（理论上不应该存在，但做防御性检查）
+      const existingIndex = existingEvents.findIndex(e => e.id === event.id);
+      if (existingIndex !== -1) {
+        eventLogger.warn('⚠️ [EventService] Remote event already exists, replacing:', event.id);
+        existingEvents[existingIndex] = finalEvent;
+      } else {
+        // 添加新事件
+        existingEvents.push(finalEvent);
+      }
+
+      // 保存到 localStorage
+      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
+      
+      // 🆕 记录到事件历史（使用 outlook-sync 作为来源）
+      EventHistoryService.logCreate(finalEvent, 'outlook-sync');
+      
+      eventLogger.log('✅ [EventService] Remote event created:', {
+        eventId: finalEvent.id,
+        title: finalEvent.title,
+        hasEventlog: typeof finalEvent.eventlog === 'object' && !!finalEvent.eventlog?.slateJson,
+        总事件数: existingEvents.length
+      });
+
+      // 触发全局更新事件
+      this.dispatchEventUpdate(finalEvent.id, { 
+        isNewEvent: true, 
+        tags: finalEvent.tags, 
+        event: finalEvent,
+        source: 'external-sync',
+        isLocalUpdate: false
+      });
+
+      return finalEvent;
+    } catch (error) {
+      eventLogger.error('❌ [EventService] Failed to create event from remote sync:', error);
+      throw error; // 抛出错误让调用方处理
+    }
+  }
 }
 
 // 暴露到全局用于调试

@@ -3036,18 +3036,33 @@ private getUserSettings(): any {
         }
         
         if (!existingEvent) {
-          // 🆕 真正的新事件，添加到列表
-          events.push(newEvent);
-          
-          // 🔧 [IndexMap 优化] 使用统一的增量更新方法
-          this.updateEventInIndex(newEvent);
-          
-          // 🚀 只在非批量模式下立即保存，使用增量更新
-          if (!isBatchMode) {
-            this.saveLocalEvents(events, false); // rebuildIndex=false
-          }
-          if (triggerUI) {
-            this.triggerUIUpdate('create', newEvent);
+          // 🆕 真正的新事件，使用 EventService 创建（会记录 EventHistory）
+          try {
+            const createdEvent = EventService.createEventFromRemoteSync(newEvent);
+            
+            // EventService 已经保存到 localStorage 并记录了 EventHistory
+            // 这里只需要更新 IndexMap 和触发 UI
+            this.updateEventInIndex(createdEvent);
+            
+            // 重新加载 events 数组（因为 EventService 已经保存了）
+            if (!isBatchMode) {
+              events = EventService.getAllEvents();
+            }
+            
+            if (triggerUI) {
+              this.triggerUIUpdate('create', createdEvent);
+            }
+          } catch (error) {
+            console.error('[ActionBasedSyncManager] Failed to create remote event via EventService:', error);
+            // Fallback: 使用原来的直接 push 方式
+            events.push(newEvent);
+            this.updateEventInIndex(newEvent);
+            if (!isBatchMode) {
+              this.saveLocalEvents(events, false);
+            }
+            if (triggerUI) {
+              this.triggerUIUpdate('create', newEvent);
+            }
           }
         } else {
           // ✅ 找到现有事件（如 Timer 事件），更新而不是创建

@@ -37,6 +37,7 @@ interface TaskNode {
   title: string;
   tag: string;
   color: string;
+  level?: number; // ✅ 标签层级，用于缩进显示
   children?: TaskNode[];
   stats?: {
     completed: number;
@@ -109,6 +110,7 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
         color: tag.color || '#6b7280',
         isExpanded: !isHidden,
         isHidden,
+        level: tag.level || 0, // ✅ 添加 level 字段用于缩进
         stats: {
           completed: snapshot?.details?.filter((log: any) => 
             log.operation === 'update' && 
@@ -277,15 +279,16 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
     );
   };
 
-  const renderTaskNode = (node: TaskNode, depth: number = 0) => {
+  const renderTaskNode = (node: TaskNode) => {
     const hasChildren = node.children && node.children.length > 0;
-    const baseIndent = -8; // 向左偏移，因为hide/unhide按钮平时不显示
-    const indent = baseIndent + (depth * 16); // 每级增加16px缩进
+    // ✅ 使用标签的 level 字段计算缩进（仅针对标签文本，不影响统计元素）
+    const level = node.level || 0;
+    const indent = level * 16; // 每级增加16px缩进
     
     return (
-      <div key={node.id} className={`task-node task-node-depth-${depth}`}>
-        <div className="task-node-row" style={{ marginLeft: `${indent}px` }}>
-          {/* 可见性图标 */}
+      <div key={node.id} className={`task-node task-node-depth-${level}`}>
+        <div className="task-node-row">
+          {/* 可见性图标 - 不受缩进影响 */}
           <div className="task-visibility-container">
             {node.isHidden ? (
               <button 
@@ -321,12 +324,12 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
             <span className="task-icon task-icon-favorite">⭐</span>
           )}
           
-          {/* 任务标题 */}
-          <div className="task-title" style={{ color: node.color }}>
+          {/* 任务标题 - ✅ 添加左边距实现缩进 */}
+          <div className="task-title" style={{ color: node.color, marginLeft: `${indent}px` }}>
             {node.title}
           </div>
           
-          {/* 统计信息 */}
+          {/* 统计信息 - 不受缩进影响 */}
           {node.stats && (
             <div className="task-stats">
               <div className="task-stats-top">
@@ -360,7 +363,7 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
         {/* 子任务 */}
         {node.isExpanded && hasChildren && (
           <div className="task-children">
-            {node.children?.map((child) => renderTaskNode(child, depth + 1))}
+            {node.children?.map((child) => renderTaskNode(child))}
           </div>
         )}
       </div>
