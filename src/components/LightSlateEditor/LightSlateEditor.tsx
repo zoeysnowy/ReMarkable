@@ -797,14 +797,34 @@ export const LightSlateEditor = forwardRef<LightSlateEditorRef, LightSlateEditor
   const handleChange = useCallback((newValue: Descendant[]) => {
     console.log('[LightSlateEditor] 内容变化:', newValue);
     
-    // 如果有等待的 timestamp，用户开始输入了，清除标记并更新最后编辑时间
+    // 如果有等待的 timestamp，检查用户是否真正输入了内容
     if (pendingTimestamp) {
-      setPendingTimestamp(false);
+      // 查找最后一个 timestamp 后是否有实际内容
+      let lastTimestampIndex = -1;
+      for (let i = newValue.length - 1; i >= 0; i--) {
+        const node = newValue[i] as any;
+        if (node.type === 'timestamp-divider') {
+          lastTimestampIndex = i;
+          break;
+        }
+      }
       
-      // 用户开始输入，确认这个 timestamp，更新最后编辑时间
-      if (enableTimestamp && timestampServiceRef.current && parentEventId) {
-        timestampServiceRef.current.updateLastEditTime(parentEventId);
-        console.log('[LightSlateEditor] 用户输入确认 timestamp，更新最后编辑时间');
+      // 检查 timestamp 后是否有内容
+      if (lastTimestampIndex !== -1) {
+        const hasContentAfterTimestamp = newValue.slice(lastTimestampIndex + 1).some((node: any) => {
+          return node.type === 'paragraph' && node.children?.[0]?.text?.trim();
+        });
+        
+        // 只有当用户真正输入了内容时，才清除 pendingTimestamp
+        if (hasContentAfterTimestamp) {
+          setPendingTimestamp(false);
+          
+          // 用户开始输入，确认这个 timestamp，更新最后编辑时间
+          if (enableTimestamp && timestampServiceRef.current && parentEventId) {
+            timestampServiceRef.current.updateLastEditTime(parentEventId);
+            console.log('[LightSlateEditor] 用户输入确认 timestamp，更新最后编辑时间');
+          }
+        }
       }
     }
     
