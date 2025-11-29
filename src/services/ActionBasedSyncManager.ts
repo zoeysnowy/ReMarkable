@@ -2867,12 +2867,9 @@ private getUserSettings(): any {
         return formatTimeForStorage(new Date()); // 🔧 使用本地时间格式化
       }
       
-      // 如果已经是正确格式，直接返回
-      if (typeof dateInput === 'string' && dateInput.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/)) {
-        return dateInput;
-      }
-      
-      // 🔧 使用formatTimeForStorage避免时区转换问题
+      // 🔧 [Time Architecture] 所有时间都必须转换为 'YYYY-MM-DD HH:mm:ss' 格式（空格分隔）
+      // 即使 dateInput 已经是 ISO 格式（T分隔），也要转换为本地格式
+      // 原因：EventService validation 和整个系统都依赖这个格式
       return formatTimeForStorage(dateInput);
       
     } catch (error) {
