@@ -1477,21 +1477,45 @@ export class EventService {
     
     // 情况7: 未知对象格式 - 尝试智能提取
     if (typeof eventlogInput === 'object' && eventlogInput !== null) {
-      console.warn('[EventService] 未知 eventlog 对象格式，尝试提取字段:', Object.keys(eventlogInput));
+      // 🔧 检查是否有 content 字段（包含 Slate JSON）
+      if (eventlogInput.content && typeof eventlogInput.content === 'string') {
+        // content 字段可能是 Slate JSON 字符串
+        try {
+          const parsed = JSON.parse(eventlogInput.content);
+          if (Array.isArray(parsed)) {
+            // ✅ 是有效的 Slate JSON，直接使用
+            return this.convertSlateJsonToEventLog(eventlogInput.content);
+          }
+        } catch (e) {
+          // 不是 JSON，当作纯文本处理
+        }
+      }
       
-      // 尝试提取常见字段
-      const possibleText = eventlogInput.plainText || 
+      // 🔧 尝试提取其他常见字段
+      const possibleText = eventlogInput.content || 
+                          eventlogInput.plainText || 
+                          eventlogInput.descriptionPlainText ||
                           eventlogInput.text || 
-                          eventlogInput.description || 
-                          JSON.stringify(eventlogInput);
+                          eventlogInput.description;
       
       if (typeof possibleText === 'string' && possibleText.trim()) {
-        console.log('[EventService] 从未知对象提取文本:', possibleText.substring(0, 50));
+        // 只在首次遇到时打印一次日志
+        if (!(eventlogInput as any)._loggedOnce) {
+          console.log('[EventService] 从未知对象提取字段:', Object.keys(eventlogInput).slice(0, 3).join(', '));
+          (eventlogInput as any)._loggedOnce = true;
+        }
         return this.convertSlateJsonToEventLog(JSON.stringify([{
           type: 'paragraph',
           children: [{ text: possibleText }]
         }]));
       }
+      
+      // 最后的回退：JSON.stringify 整个对象
+      console.warn('[EventService] 无法从对象提取文本，使用 JSON.stringify:', Object.keys(eventlogInput));
+      return this.convertSlateJsonToEventLog(JSON.stringify([{
+        type: 'paragraph',
+        children: [{ text: JSON.stringify(eventlogInput) }]
+      }]));
     }
     
     // 未知格式 - 降级为空
