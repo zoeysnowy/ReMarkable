@@ -1,11 +1,103 @@
 # EventHub & TimeHub 统一架构文档
 
-> **文档版本**: v2.15.2  
+> **文档版本**: v2.15.3  
 > **创建时间**: 2025-11-06  
-> **最后更新**: 2025-11-27  
+> **最后更新**: 2025-11-29  
 > **关联模块**: EventHub, TimeHub, EventService, EventHistoryService, TimeParsingService, PlanManager, UpcomingEventsPanel, EventEditModal V2, ActionBasedSyncManager, syncRouter  
 > **文档类型**: 核心架构文档
-> **新增关联**: EventTitle 三层架构、EventHistoryService 时间快照查询、Snapshot 功能优化、checkType 与 checkbox 关联、父-子事件单一配置架构（subEventConfig）、**syncMode 同步控制（已实现）**、**EventService 生命周期管理（HMR 修复）**
+> **新增关联**: EventTitle 三层架构、EventHistoryService 时间快照查询、Snapshot 功能优化、checkType 与 checkbox 关联、父-子事件单一配置架构（subEventConfig）、**syncMode 同步控制（已实现）**、**EventService 生命周期管理（HMR 修复）**、**null 时间字段支持与 createdAt fallback（v2.15.3）**
+
+---
+
+## 🎉 v2.15.3 null 时间字段支持与 createdAt Fallback (2025-11-29)
+
+### 核心变更
+
+**背景**: Task-type 事件（无时间的待办事项）使用 `startTime: null` 和 `endTime: null`，部分模块未正确处理 null 值导致崩溃  
+**解决方案**: 全局审查并修复所有时间字段访问，使用 `createdAt` 作为 fallback 用于事件定位和排序  
+**状态**: ✅ 已完成 Critical 和 High Priority 修复（详见 [NULL_TIME_FIELD_AUDIT_REPORT.md](../audits/NULL_TIME_FIELD_AUDIT_REPORT.md)）
+
+### 架构改进
+
+#### 1. null 时间字段规范
+
+**时间字段类型定义**:
+```typescript
+interface Event {
+  startTime?: string | null;  // ✅ 使用 null（不是 undefined）
+  endTime?: string | null;    // ✅ 使用 null（不是 undefined）
+  createdAt: string;          // 必需字段，用于 fallback
+}
+```
+
+**为什么使用 null？**
+- `JSON.stringify()` 会保留 `null` 但忽略 `undefined`
+- `null` 表示"明确没有时间"，`undefined` 表示"未定义"
+- 与 SQL NULL 语义一致
+
+#### 2. createdAt Fallback 策略
+
+**Task-type 事件定位规则**:
+```typescript
+// ✅ 优先级：startTime > endTime > createdAt
+const effectiveTime = event.startTime || event.endTime || event.createdAt;
+
+// ✅ 用于排序
+events.sort((a, b) => {
+  const timeA = new Date(
+    (a.startTime != null && a.startTime !== '') ? a.startTime : a.createdAt
+  ).getTime();
+  const timeB = new Date(
+    (b.startTime != null && b.startTime !== '') ? b.startTime : b.createdAt
+  ).getTime();
+  return timeB - timeA;
+});
+```
+
+**应用场景**:
+- **TimeCalendar 视图**: Task 按创建时间定位在时间线上
+- **联系人搜索**: 无时间事件按创建时间排序显示
+- **事件过滤**: 范围查询使用 createdAt 作为备选
+
+#### 3. 核心修复列表
+
+**Critical P0 修复**:
+1. **EventService.getEventsByRange()** (L256-268)
+   - 添加 null 检查和 createdAt fallback
+   - 修复 TimeCalendar 视图崩溃问题
+
+2. **EventService.getRecentEventsByContact()** (L2230-2231)
+   - 使用 `!= null` 显式检查替代 `||` 运算符
+   - 修复联系人搜索功能
+
+**High P1 修复**:
+3. **PlanManager.tsx** (L498, L603, L629)
+   - TimeCalendar 过期检测添加空字符串检查
+   - 事件通知逻辑添加显式 null 检查
+
+4. **serialization.ts** (L498-499, L511-512)
+   - 统一使用 `null` 替代 `undefined`
+   - 符合 TIME_PICKER_AND_DISPLAY_PRD 规范
+
+#### 4. null 检查最佳实践
+
+```typescript
+// ✅ 推荐：明确的 null/undefined 检查
+if (event.startTime != null && event.startTime !== '') {
+  const time = new Date(event.startTime);
+  // ... 安全操作
+}
+
+// ⚠️ 可接受：truthy 检查（仅当 100% 确定不会有空字符串）
+if (event.startTime) {
+  const time = new Date(event.startTime);
+}
+
+// ❌ 错误：直接访问
+const time = new Date(event.startTime);  // 可能导致 Invalid Date
+```
+
+**详细文档**: [NULL_TIME_FIELD_AUDIT_REPORT.md](../audits/NULL_TIME_FIELD_AUDIT_REPORT.md)
 
 ---
 
@@ -2615,130 +2707,6 @@ items.filter(item =>
 // ✅ TimeCalendar 显示
 <span>{event.title?.simpleTitle}</span>
 ```
-
-#### 🏷️ Tag 元素标准化机制（v2.15.3）
-
-**背景**: PlanManager 使用 fulltitle（富文本，包含 Tag 元素），其他页面使用 colorTitle/simpleTitle（纯文本或 HTML）。需要在不同格式之间正确转换 Tag 元素。
-
-**双向转换设计**:
-
-```
-方向 1: fulltitle → colorTitle/simpleTitle（剥离 Tag 元素）
-  fulltitle: [Tag(work), Text(" meeting")]
-      ↓ fullTitleToColorTitle()
-  colorTitle: " meeting" (Tag 被剥离)
-      ↓ colorTitleToSimpleTitle()
-  simpleTitle: " meeting"
-
-方向 2: simpleTitle → fulltitle（解析 #hashtag 创建 Tag 节点）
-  simpleTitle: "#work meeting"
-      ↓ simpleTitleToFullTitle() + parseHashtagsToNodes()
-  fulltitle: [Tag(work), Text(" meeting")]
-```
-
-**核心实现** (EventService.ts L1310-1409):
-
-```typescript
-// 1. simpleTitleToFullTitle() - 支持 #hashtag 解析
-private static simpleTitleToFullTitle(simpleTitle: string): string {
-  if (!simpleTitle) return JSON.stringify([{ type: 'paragraph', children: [{ text: '' }] }]);
-  
-  // 检测 #hashtag
-  const hashtagPattern = /#(\w+)/g;
-  const hasHashtags = hashtagPattern.test(simpleTitle);
-  
-  if (!hasHashtags) {
-    // 快速路径：无 hashtag
-    return JSON.stringify([
-      { type: 'paragraph', children: [{ text: simpleTitle }] }
-    ]);
-  }
-  
-  // 解析 hashtags 并创建 Tag 节点
-  const children = this.parseHashtagsToNodes(simpleTitle);
-  return JSON.stringify([{ type: 'paragraph', children }]);
-}
-
-// 2. parseHashtagsToNodes() - 核心解析器
-private static parseHashtagsToNodes(text: string): any[] {
-  const hashtagPattern = /#(\w+)/g;
-  const children: any[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  
-  while ((match = hashtagPattern.exec(text)) !== null) {
-    const matchIndex = match.index;
-    const tagName = match[1];
-    
-    // 添加 hashtag 之前的文本
-    if (matchIndex > lastIndex) {
-      const beforeText = text.substring(lastIndex, matchIndex);
-      if (beforeText) children.push({ text: beforeText });
-    }
-    
-    // 添加 Tag 节点
-    children.push({
-      type: 'tag',
-      tagId: `tag-${tagName.toLowerCase()}-${Date.now()}`,
-      tagName: tagName,
-      tagColor: '#3B82F6', // 默认蓝色
-      children: [{ text: '' }]
-    });
-    
-    lastIndex = matchIndex + match[0].length;
-  }
-  
-  // 添加剩余文本
-  if (lastIndex < text.length) {
-    const remainingText = text.substring(lastIndex);
-    if (remainingText) children.push({ text: remainingText });
-  }
-  
-  return children.length > 0 ? children : [{ text: text }];
-}
-
-// 3. fullTitleToColorTitle() - 已有实现，剥离 Tag 元素
-private static fullTitleToColorTitle(fullTitle: string): string {
-  // ...
-  if (node.type === 'tag' || node.type === 'dateMention') {
-    return ''; // 跳过 Tag 和 DateMention 节点
-  }
-  // ...
-}
-```
-
-**使用场景**:
-
-```typescript
-// 场景 1: TimeCalendar 创建带 hashtag 的事件
-EventService.createEvent({
-  title: { simpleTitle: '#work 周会' }
-});
-// → normalizeTitle() 自动生成:
-// {
-//   fullTitle: '[{"type":"paragraph","children":[{"type":"tag","tagName":"work",...},{"text":" 周会"}]}]',
-//   colorTitle: ' 周会',
-//   simpleTitle: '#work 周会'
-// }
-
-// 场景 2: PlanManager 显示带 Tag 的 fulltitle
-// fulltitle 包含 Tag 节点 → PlanSlate 渲染为蓝色标签 "work" + 文本 " 周会"
-
-// 场景 3: UpcomingPanel 显示（Tag 被剥离）
-// colorTitle: " 周会" → 只显示文本，不显示 Tag
-```
-
-**性能优化**:
-- ✅ 快速路径：无 #hashtag 时直接返回（<0.1ms）
-- ✅ 内存友好：逐个匹配 hashtag，避免一次性创建大量对象
-- ✅ 正则优化：使用 `exec()` 而非 `match()`，适合长文本
-
-**已知限制**:
-- ⚠️ 当前正则 `/#(\w+)/g` 不支持中文 hashtag（如 `#工作`）
-- ⚠️ Tag ID 为临时生成，不持久化
-- ⚠️ Tag 颜色默认蓝色，未集成 TagService
-
-**详细文档**: [TITLE_TAG_NORMALIZATION_IMPLEMENTATION.md](../features/TITLE_TAG_NORMALIZATION_IMPLEMENTATION.md)
 
 #### ⚠️ 迁移注意事项
 

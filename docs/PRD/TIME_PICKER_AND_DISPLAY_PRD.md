@@ -198,6 +198,50 @@ const updated = { ...event, ...{ endTime: undefined } };
 EventService.updateEvent(eventId, { endTime: null });
 const updated = { ...event, ...{ endTime: null } };
 // → JSON.stringify(updated) = '{"startTime":"...","endTime":null}'
+// → endTime 字段正确清除
+
+### createdAt Fallback 策略（v2.15.3）
+
+**背景**: Task-type 事件（无时间的待办事项）使用 `startTime: null` 和 `endTime: null`，需要 fallback 机制用于定位和排序
+
+**Fallback 优先级**:
+```typescript
+// ✅ 用于事件定位（TimeCalendar 视图、范围查询）
+const effectiveStartTime = event.startTime || event.createdAt;
+const effectiveEndTime = event.endTime || event.createdAt;
+
+// ✅ 用于事件排序（联系人搜索、历史记录）
+events.sort((a, b) => {
+  const timeA = new Date(
+    (a.startTime != null && a.startTime !== '') ? a.startTime : a.createdAt
+  ).getTime();
+  const timeB = new Date(
+    (b.startTime != null && b.startTime !== '') ? b.startTime : b.createdAt
+  ).getTime();
+  return timeB - timeA;  // 降序
+});
+
+// ✅ 三层 fallback（优先级：startTime > endTime > createdAt）
+const effectiveTime = event.startTime || event.endTime || event.createdAt;
+```
+
+**应用场景**:
+- **TimeCalendar 视图**: Task 按创建时间定位在时间线上
+- **联系人搜索**: `getRecentEventsByContact()` 使用 createdAt 排序无时间事件
+- **事件过滤**: `getEventsByRange()` 使用 createdAt 判断 Task 是否在范围内
+- **统计分析**: 过期检测、活跃度分析使用 createdAt 作为备选
+
+**注意事项**:
+- `createdAt` 是必需字段（EventService 自动生成）
+- 空字符串 `''` 也需要 fallback，使用 `!= null && !== ''` 检查
+- 不要使用 `||` 运算符（会错误处理空字符串），使用三元表达式
+
+**详细文档**: [NULL_TIME_FIELD_AUDIT_REPORT.md](../audits/NULL_TIME_FIELD_AUDIT_REPORT.md)
+
+// ✅ 正确：使用 null
+EventService.updateEvent(eventId, { endTime: null });
+const updated = { ...event, ...{ endTime: null } };
+// → JSON.stringify(updated) = '{"startTime":"...","endTime":null}'
 // → endTime 正确设置为 null
 ```
 

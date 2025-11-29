@@ -56,19 +56,14 @@
   user-select: none;
 }
 
-.unified-slate-editor .gray-text-placeholder:hover {
-  color: #6b7280;
-  /* hover 背景色已移除 */
-}
+/* .unified-slate-editor .gray-text-placeholder:hover - hover效果已完全移除 */
 
 /* 🆕 Placeholder 行样式 */
 .unified-event-line.placeholder-line {
   cursor: text;
 }
 
-.unified-event-line.placeholder-line:hover {
-  /* hover 背景色已移除 */
-}
+/* .unified-event-line.placeholder-line:hover - hover效果已完全移除 */
 
 .unified-event-line.placeholder-line .event-line-content {
   pointer-events: all;

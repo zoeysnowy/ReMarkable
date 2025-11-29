@@ -495,7 +495,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         })),
         有parentEventId的: allEvents.filter(e => e.parentEventId).length,
         TimeCalendar事件: allEvents.filter(e => e.isTimeCalendar).length,
-        TimeCalendar已过期: allEvents.filter(e => e.isTimeCalendar && e.endTime && new Date(e.endTime) <= now).length,
+        TimeCalendar已过期: allEvents.filter(e => e.isTimeCalendar && e.endTime != null && e.endTime !== '' && new Date(e.endTime) <= now).length,
         示例事件: allEvents.slice(0, 3).map(e => ({
           id: e.id?.substring(0, 20),
           title: e.title?.simpleTitle?.substring(0, 20) || '',
@@ -600,7 +600,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           } else if (latestAction.metadata?.action === 'uncheck') {
             // 取消签到后，需要进一步判断事件状态
             const event = EventService.getEventById(eventId);
-            if (event && event.startTime) {
+            if (event && event.startTime != null && event.startTime !== '') {
               const eventTime = new Date(event.startTime);
               const now = new Date();
               if (eventTime < now) {
@@ -626,7 +626,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             }
             
             // 检查是否有计划时间但未完成（missed）
-            if (event.startTime) {
+            if (event.startTime != null && event.startTime !== '') {
               const eventTime = new Date(event.startTime);
               const now = new Date();
               if (eventTime < now && !checkInStatus.isChecked) {

@@ -257,15 +257,23 @@ export class EventService {
           return true;
         }
         
+        // 检查时间字段，使用 createdAt 作为 fallback（用于 Task-type 事件定位）
+        const effectiveStartTime = event.startTime || event.createdAt;
+        const effectiveEndTime = event.endTime || event.createdAt;
+        
+        if (!effectiveStartTime || !effectiveEndTime) {
+          return false;  // 连 createdAt 都没有，跳过
+        }
+        
         // AllDay 事件：检查日期部分
         if (event.isAllDay) {
-          const eventDate = new Date(event.startTime).setHours(0, 0, 0, 0);
+          const eventDate = new Date(effectiveStartTime).setHours(0, 0, 0, 0);
           return eventDate >= rangeStart && eventDate <= rangeEnd;
         }
         
         // 普通事件：检查时间范围是否有重叠
-        const eventStart = new Date(event.startTime).getTime();
-        const eventEnd = new Date(event.endTime).getTime();
+        const eventStart = new Date(effectiveStartTime).getTime();
+        const eventEnd = new Date(effectiveEndTime).getTime();
         
         // 事件与视图范围有任何重叠
         return (eventStart <= rangeEnd && eventEnd >= rangeStart);
@@ -2227,8 +2235,12 @@ export class EventService {
     // 按时间倒序排列，返回最近的 N 个
     return relatedEvents
       .sort((a, b) => {
-        const timeA = new Date(a.startTime || a.createdAt).getTime();
-        const timeB = new Date(b.startTime || b.createdAt).getTime();
+        const timeA = new Date(
+          (a.startTime != null && a.startTime !== '') ? a.startTime : a.createdAt
+        ).getTime();
+        const timeB = new Date(
+          (b.startTime != null && b.startTime !== '') ? b.startTime : b.createdAt
+        ).getTime();
         return timeB - timeA;
       })
       .slice(0, limit);

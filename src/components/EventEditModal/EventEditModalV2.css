@@ -255,11 +255,15 @@
   flex-direction: column;
   padding: 24px 48px 24px 48px;
   overflow-y: visible;
+  box-sizing: border-box; /* padding不会增加总宽度 */
+  overflow-x: hidden; /* 防止横向溢出 */
 }
 
 .compact-view .event-overview {
   width: 100%;
   padding: 24px 36px 0 36px;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 /* Section Identity */
@@ -268,7 +272,9 @@
   flex-direction: column;
   gap: 8px;
   padding: 12px 20px;
-  align-items: center;
+  align-items: center; /* 让子元素水平居中 */
+  width: 100%; /* 确保容器占满父元素 */
+  box-sizing: border-box; /* padding不会增加总宽度 */
 }
 
 .emoji-large {
@@ -286,20 +292,22 @@
 }
 
 .title-checkbox-row {
-  display: inline-flex;
-  align-items: center;
+  display: inline-flex; /* 改为inline-flex，宽度由内容决定 */
+  align-items: flex-start; /* 顶部对齐，checkbox通过margin-top和第一行文字对齐 */
   gap: 6px;
-  max-width: 100%; /* 最大不超过父容器 */
+  max-width: 100%;
 }
 
 .custom-checkbox {
   width: 20px;
   height: 20px;
   min-width: 20px;
+  flex-shrink: 0; /* 防止checkbox被压缩 */
   border: 2px solid #d1d5db;
   border-radius: 50%;
   cursor: pointer;
   transition: all 0.2s;
+  margin-top: 3.5px; /* (18px font-size × 1.5 line-height = 27px，27px / 2 - 20px / 2 = 3.5px) */
 }
 
 .custom-checkbox:hover {
@@ -331,8 +339,17 @@
   padding: 0;
   color: #1f2937;
   line-height: 1.5;
-  text-align: left;
-  width: auto; /* 自动宽度 */
+  text-align: center; /* 文字居中 */
+  flex: 0 0 auto; /* 不自动伸缩，使用动态计算的宽度 */
+  height: auto; /* 高度由 JS 动态控制 */
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap; /* 保留空格和换行 */
+  resize: none; /* 禁止手动调整大小 */
+  overflow: hidden; /* 隐藏滚动条，由 JS 控制高度 */
+  font-family: inherit; /* 继承父元素字体 */
+  box-sizing: border-box;
 }
 
 .title-input::placeholder {

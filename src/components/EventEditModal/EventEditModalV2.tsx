@@ -1275,7 +1275,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   }, [isDetailView]); // 当视图切换时重新绑定
 
   // Ref for title input
-  const titleInputRef = useRef<HTMLInputElement>(null);
+  const titleInputRef = useRef<HTMLTextAreaElement>(null);
   const tagPickerRef = useRef<HTMLDivElement>(null);
   const tagRowRef = useRef<HTMLDivElement>(null);
   const tagPickerDropdownRef = useRef<HTMLDivElement>(null);
@@ -1284,25 +1284,48 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   const syncCalendarRef = useRef<HTMLDivElement>(null);
   const syncSyncModeRef = useRef<HTMLDivElement>(null);
 
-  // 动态调整标题输入框宽度
-  const autoResizeInput = useCallback((input: HTMLInputElement | null) => {
-    if (!input) return;
+  // 动态调整textarea宽度和高度
+  const autoResizeTextarea = useCallback((textarea: HTMLTextAreaElement | null) => {
+    if (!textarea) return;
     
+    const text = textarea.value || textarea.placeholder || '';
+    if (!text) {
+      textarea.style.width = '50px';
+      textarea.style.height = 'auto';
+      textarea.style.height = textarea.scrollHeight + 'px';
+      return;
+    }
+    
+    const maxWidth = 240;
+    
+    // 用隐藏 span 测量文本不换行时的宽度
     const span = document.createElement('span');
     span.style.visibility = 'hidden';
     span.style.position = 'absolute';
-    span.style.whiteSpace = 'pre';
-    span.style.font = window.getComputedStyle(input).font;
-    span.textContent = input.value || input.placeholder || '';
+    span.style.whiteSpace = 'pre'; // 不换行
+    span.style.font = window.getComputedStyle(textarea).font;
+    span.style.fontSize = window.getComputedStyle(textarea).fontSize;
+    span.style.fontWeight = window.getComputedStyle(textarea).fontWeight;
+    span.textContent = text;
     document.body.appendChild(span);
-    input.style.width = (span.offsetWidth + 10) + 'px';
+    const textWidth = span.offsetWidth;
     document.body.removeChild(span);
+    
+    // 如果文本宽度 <= 最大宽度，使用实际宽度；否则使用最大宽度
+    const finalWidth = textWidth <= maxWidth ? textWidth + 10 : maxWidth;
+    
+    // 先设置宽度，让文本按这个宽度换行
+    textarea.style.width = finalWidth + 'px';
+    
+    // 重置高度并重新计算
+    textarea.style.height = 'auto';
+    textarea.style.height = textarea.scrollHeight + 'px';
   }, []);
 
-  // 监听标题变化并自动调整宽度
+  // 监听标题变化并自动调整宽度和高度
   useEffect(() => {
-    autoResizeInput(titleInputRef.current);
-  }, [formData.title, autoResizeInput]);
+    autoResizeTextarea(titleInputRef.current);
+  }, [formData.title, autoResizeTextarea]);
 
   // 点击外部关闭各种选择器
   useEffect(() => {
@@ -1807,19 +1830,13 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                       className={`custom-checkbox ${formData.isTask ? 'checked' : ''}`}
                       onClick={() => handleTaskCheckboxChange(!formData.isTask)}
                     />
-                    <input
+                    <textarea
                       ref={titleInputRef}
-                      type="text"
                       className="title-input"
                       value={removeEmojiFromTitle(formData.title)}
                       placeholder={getTitlePlaceholder(formData.tags)}
                       onChange={(e) => handleTitleChange(e.target.value)}
-                      style={{ 
-                        width: `${Math.max(
-                          (removeEmojiFromTitle(formData.title) || getTitlePlaceholder(formData.tags)).length * 10 + 20,
-                          120
-                        )}px` 
-                      }}
+                      rows={1}
                     />
                   </div>
 

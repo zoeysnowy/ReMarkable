@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>标题溢出修复测试</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Microsoft YaHei', Arial;
+      background: #f3f4f6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+      gap: 20px;
+    }
+
+    .test-container {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      max-width: 600px;
+      width: 100%;
+    }
+
+    h1 {
+      color: #1f2937;
+      margin-bottom: 20px;
+      font-size: 24px;
+    }
+
+    .description {
+      color: #6b7280;
+      margin-bottom: 30px;
+      line-height: 1.6;
+    }
+
+    /* 模拟 EventEditModal 的容器结构 */
+    .event-overview {
+      width: 400px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 24px 48px 24px 48px;
+      overflow-y: visible;
+      box-sizing: border-box;
+      overflow-x: hidden;
+      border: 2px solid #e5e7eb;
+      border-radius: 16px;
+      background: white;
+      margin-bottom: 20px;
+    }
+
+    .section-identity {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px 20px;
+      align-items: center;
+      width: 100%;
+      box-sizing: border-box;
+      background: #f9fafb;
+      border-radius: 8px;
+    }
+
+    .emoji-large {
+      font-size: 42px;
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 8px;
+      transition: background 0.2s;
+      text-align: center;
+      user-select: none;
+    }
+
+    .title-checkbox-row {
+      display: inline-flex; /* 改为inline-flex，宽度由内容决定 */
+      align-items: flex-start; /* 顶部对齐，checkbox通过margin-top和第一行文字对齐 */
+      gap: 6px;
+      max-width: 100%;
+    }
+
+    .custom-checkbox {
+      width: 20px;
+      height: 20px;
+      min-width: 20px;
+      flex-shrink: 0; /* 防止checkbox被压缩 */
+      border: 2px solid #d1d5db;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 3.5px; /* (18px font-size × 1.5 line-height = 27px，27px / 2 - 20px / 2 = 3.5px) */
+    }
+
+    .custom-checkbox:hover {
+      border-color: #3b82f6;
+    }
+
+    .title-input {
+      font-size: 18px;
+      font-weight: 400;
+      border: none;
+      outline: none;
+      padding: 0;
+      color: #1f2937;
+      line-height: 1.5;
+      text-align: center; /* 文字居中 */
+      flex: 0 0 auto; /* 不自动伸缩，使用动态计算的宽度 */
+      min-height: 27px; /* 设置最小高度为单行高度 */
+      word-wrap: break-word;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      white-space: normal;
+      resize: none;
+      overflow-y: auto;
+      font-family: inherit;
+      max-height: 200px;
+    }
+
+    .title-input::placeholder {
+      color: #d1d5db;
+    }
+
+    .test-cases {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.2s;
+    }
+
+    .btn:hover {
+      background: #2563eb;
+    }
+
+    .status {
+      margin-top: 30px;
+      padding: 16px;
+      background: #e0f2fe;
+      border-left: 4px solid #0284c7;
+      border-radius: 4px;
+    }
+
+    .status h3 {
+      color: #0c4a6e;
+      margin-bottom: 8px;
+      font-size: 16px;
+    }
+
+    .status ul {
+      color: #075985;
+      margin-left: 20px;
+      line-height: 1.8;
+    }
+
+    .compact-view .event-overview {
+      width: 383px;
+      padding: 24px 36px 0 36px;
+    }
+  </style>
+</head>
+<body>
+  <div class="test-container">
+    <h1>🎯 标题溢出修复测试</h1>
+    <div class="description">
+      <p><strong>问题描述：</strong>EditModal的标题溢出、无法居中、checkbox未对齐</p>
+      <p><strong>修复方案：</strong>将input改为textarea，动态计算宽度，超过最大值自动换行，文字居中，checkbox跟随标题并与第一行垂直居中对齐</p>
+    </div>
+
+    <h2 style="font-size: 18px; color: #374151; margin-bottom: 16px;">详情视图 (400px 宽)</h2>
+    <div class="event-overview">
+      <div class="section-identity">
+        <div class="emoji-large">📝</div>
+        <div class="title-checkbox-row">
+          <div class="custom-checkbox"></div>
+          <textarea
+            class="title-input"
+            placeholder="请输入标题..."
+            rows="1"
+            oninput="autoResize(this)"
+          >这是一个非常非常非常非常非常长的标题用来测试自动换行功能是否正常工作</textarea>
+        </div>
+      </div>
+    </div>
+
+    <h2 style="font-size: 18px; color: #374151; margin-bottom: 16px;">紧凑视图 (383px 宽)</h2>
+    <div class="event-overview compact-view">
+      <div class="section-identity">
+        <div class="emoji-large">✅</div>
+        <div class="title-checkbox-row">
+          <div class="custom-checkbox"></div>
+          <textarea
+            class="title-input"
+            placeholder="请输入标题..."
+            rows="1"
+            oninput="autoResize(this)"
+          >超级超级超级超级超级超级超级超级超级长的标题测试紧凑视图换行</textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="test-cases">
+      <h3 style="font-size: 16px; color: #374151; margin-bottom: 8px;">测试用例：</h3>
+      <button class="btn" onclick="setTitle(0, '短标题')">短标题</button>
+      <button class="btn" onclick="setTitle(0, '这是一个中等长度的标题用来测试换行')">中等长度标题</button>
+      <button class="btn" onclick="setTitle(0, '这是一个非常非常非常非常非常非常非常非常非常非常非常非常非常非常长的标题用来充分测试自动换行功能是否能够正确处理超长文本的情况')">超长标题</button>
+      <button class="btn" onclick="setTitle(0, 'ThisIsAVeryLongWordWithoutSpacesToTestWordBreakFunctionalityInCSSStyles')">无空格长单词</button>
+    </div>
+
+    <div class="status">
+      <h3>✅ 修复内容：</h3>
+      <ul>
+        <li>将 <code>input</code> 改为 <code>textarea</code> 支持多行文本</li>
+        <li>为 <code>.title-checkbox-row</code> 改用 <code>inline-flex</code>，宽度由内容决定</li>
+        <li>为 <code>.title-checkbox-row</code> 添加 <code>align-items: center</code> 让checkbox与文字垂直居中</li>
+        <li>为 <code>.title-input</code> 添加 <code>text-align: center</code> 让文字居中对齐</li>
+        <li>为 <code>.section-identity</code> 的 <code>align-items: center</code> 让整个标题行居中</li>
+        <li>实现动态宽度计算：使用隐藏span测量文本实际宽度</li>
+        <li>宽度逻辑：短文本自适应宽度，超过280px时固定最大宽度并自动换行</li>
+        <li>checkbox跟随标题位置，始终与第一行文字垂直居中对齐</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    function autoResize(textarea) {
+      const text = textarea.value || textarea.placeholder || '';
+      if (!text) {
+        textarea.style.width = '50px';
+        textarea.style.height = 'auto';
+        textarea.style.height = textarea.scrollHeight + 'px';
+        return;
+      }
+      
+      const maxWidth = 240;
+      
+      // 用隐藏 span 测量文本不换行时的宽度
+      const span = document.createElement('span');
+      span.style.visibility = 'hidden';
+      span.style.position = 'absolute';
+      span.style.whiteSpace = 'pre'; // 不换行
+      span.style.font = window.getComputedStyle(textarea).font;
+      span.style.fontSize = window.getComputedStyle(textarea).fontSize;
+      span.style.fontWeight = window.getComputedStyle(textarea).fontWeight;
+      span.textContent = text;
+      document.body.appendChild(span);
+      const textWidth = span.offsetWidth;
+      document.body.removeChild(span);
+      
+      // 如果文本宽度 <= 最大宽度，使用实际宽度；否则使用最大宽度
+      const finalWidth = textWidth <= maxWidth ? textWidth + 10 : maxWidth;
+      
+      // 先设置宽度，让文本按这个宽度换行
+      textarea.style.width = finalWidth + 'px';
+      
+      // 重置高度并重新计算
+      textarea.style.height = 'auto';
+      textarea.style.height = textarea.scrollHeight + 'px';
+    }
+
+    function setTitle(index, text) {
+      const textareas = document.querySelectorAll('.title-input');
+      if (textareas[index]) {
+        textareas[index].value = text;
+        autoResize(textareas[index]);
+      }
+    }
+
+    // 初始化所有 textarea 高度和宽度
+    window.addEventListener('load', () => {
+      document.querySelectorAll('.title-input').forEach(textarea => {
+        autoResize(textarea);
+      });
+    });
+  </script>
+</body>
+</html>

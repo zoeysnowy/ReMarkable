@@ -809,12 +809,27 @@ export const EventEditModal: React.FC<EventEditModalProps> = ({
           {/* 标题 */}
           <div className="form-group form-group-inline">
             <label>标题</label>
-            <input
-              type="text"
+            <textarea
+              className="title-input"
               value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              onChange={(e) => {
+                setFormData({ ...formData, title: e.target.value });
+                // 自动调整高度
+                const target = e.target as HTMLTextAreaElement;
+                setTimeout(() => {
+                  target.style.height = 'auto';
+                  target.style.height = target.scrollHeight + 'px';
+                }, 0);
+              }}
               placeholder=""
               required
+              ref={(el) => {
+                if (el) {
+                  // 初始加载时调整高度
+                  el.style.height = 'auto';
+                  el.style.height = el.scrollHeight + 'px';
+                }
+              }}
             />
           </div>
 

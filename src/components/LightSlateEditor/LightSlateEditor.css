@@ -37,10 +37,7 @@
   min-height: 200px; /* 最小高度与父容器一致 */
 }
 
-.light-slate-editor .slate-editable:focus {
-  background-color: transparent;
-  /* hover 背景色已移除 */
-}
+/* .light-slate-editor .slate-editable:focus - focus效果已完全移除 */
 
 /* 段落样式 */
 .light-slate-editor .slate-paragraph {
