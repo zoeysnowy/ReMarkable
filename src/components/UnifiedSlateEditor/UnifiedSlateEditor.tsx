@@ -800,15 +800,24 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       // 🔧 安全检查：确保 enhancedValue 不为空
       if (enhancedValue.length > 0) {
         skipNextOnChangeRef.current = true;
+        
+        // 🔥 使用 Slate Transforms API 直接更新内容（而不是重新挂载编辑器）
+        Editor.withoutNormalizing(editor, () => {
+          // 删除所有旧内容
+          editor.children.splice(0, editor.children.length);
+          // 插入新内容
+          editor.children.push(...enhancedValue);
+          // 触发编辑器更新
+          editor.onChange();
+        });
+        
+        // 同时更新 React state（保持一致性）
         setValue(enhancedValue);
         
-        // 🔥 强制 Slate 编辑器重新渲染（通过 key 变化）
-        setEditorKey(prev => prev + 1);
-        
-        console.log('%c[✅ 同步完成] setValue + editorKey 已调用', 'background: #4CAF50; color: white; padding: 2px 6px;', {
+        console.log('%c[✅ 同步完成] Transforms.replace 已调用', 'background: #4CAF50; color: white; padding: 2px 6px;', {
           newLength: enhancedValue.length,
           skipNextOnChange: skipNextOnChangeRef.current,
-          editorKeyIncremented: true
+          method: 'Transforms API (高性能)'
         });
       } else {
         console.warn('%c[⚠️ 同步跳过] enhancedValue 为空，保持当前 value', 'background: #FF9800; color: white;');
@@ -821,7 +830,7 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
         hasPendingChanges
       });
     }
-  }, [enhancedValue]); // 依赖 enhancedValue，items 变化时重新计算
+  }, [enhancedValue, editor]); // 依赖 enhancedValue，items 变化时重新计算
   
   // 🔥 订阅 window.eventsUpdated 事件，接收增量更新通知
   useEffect(() => {
