@@ -2464,6 +2464,8 @@ export class EventService {
       
       // 提取所有 timestamp-divider 节点
       const timestamps: Date[] = [];
+      
+      // 🔍 方案1: 查找 timestamp-divider 节点（标准 ReMarkable 格式）
       for (const node of slateNodes) {
         if (node.type === 'timestamp-divider' && node.timestamp) {
           try {
@@ -2477,8 +2479,43 @@ export class EventService {
         }
       }
       
+      // 🔍 方案2: 如果没找到 timestamp-divider，尝试从 paragraph 文本中提取时间字符串
+      // 用于处理从 Outlook 同步回来的事件（timestamp 被转换成纯文本）
       if (timestamps.length === 0) {
-        eventLogger.log('📋 [EventService] No timestamps found in eventlog, skip backfill:', eventId);
+        eventLogger.log('📋 [EventService] No timestamp-divider found, try extracting from text content');
+        
+        // 正则匹配 YYYY-MM-DD HH:mm:ss 格式的时间字符串
+        const timePattern = /(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/g;
+        
+        for (const node of slateNodes) {
+          if (node.type === 'paragraph' && node.children) {
+            // 遍历 paragraph 的所有文本节点
+            for (const child of node.children) {
+              if (child.text) {
+                const matches = child.text.matchAll(timePattern);
+                for (const match of matches) {
+                  try {
+                    const timeStr = match[1];
+                    // 转换为 ISO 格式（空格 → T）然后解析
+                    const isoStr = timeStr.replace(' ', 'T');
+                    const timestampDate = new Date(isoStr);
+                    
+                    if (!isNaN(timestampDate.getTime())) {
+                      timestamps.push(timestampDate);
+                      eventLogger.log('✅ [EventService] Extracted timestamp from text:', timeStr);
+                    }
+                  } catch (error) {
+                    eventLogger.warn('⚠️ [EventService] Failed to parse time string:', match[1]);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      if (timestamps.length === 0) {
+        eventLogger.log('📋 [EventService] No timestamps found in eventlog (neither nodes nor text), skip backfill:', eventId);
         return 0;
       }
       

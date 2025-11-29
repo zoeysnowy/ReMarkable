@@ -484,6 +484,32 @@ export const ModalSlate = forwardRef<ModalSlateRef, ModalSlateProps>((
                 limit: 1
               });
               createLog = retryLogs[0];
+            } else {
+              // 🔧 补录失败（eventlog 中没有 timestamp 节点），使用 event.createdAt 作为 fallback
+              console.log('[ModalSlate] 补录失败，使用 event.createdAt 作为 fallback');
+              if (event.createdAt) {
+                // 创建一个临时的 createLog 对象
+                createLog = {
+                  id: 'fallback-' + parentEventId,
+                  eventId: parentEventId,
+                  operation: 'create',
+                  timestamp: event.createdAt,
+                  source: 'fallback-createdAt',
+                  changes: []
+                } as any;
+                console.log('[ModalSlate] 使用 event.createdAt:', event.createdAt);
+              } else if (event.updatedAt) {
+                // 如果连 createdAt 都没有，使用 updatedAt
+                createLog = {
+                  id: 'fallback-' + parentEventId,
+                  eventId: parentEventId,
+                  operation: 'create',
+                  timestamp: event.updatedAt,
+                  source: 'fallback-updatedAt',
+                  changes: []
+                } as any;
+                console.log('[ModalSlate] 使用 event.updatedAt:', event.updatedAt);
+              }
             }
           }
         }
