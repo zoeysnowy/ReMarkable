@@ -746,17 +746,12 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       时间戳: new Date().toISOString()
     });
     
-    if (!isInitializedRef.current && items.length > 0) {
+    // 🔥 修复：确保 enhancedValue 有实际内容（不只是 placeholder）才初始化
+    const hasRealContent = enhancedValue.length > 1 || 
+                          (enhancedValue.length === 1 && enhancedValue[0].eventId !== '__placeholder__');
+    
+    if (!isInitializedRef.current && items.length > 0 && hasRealContent) {
       logOperation('初始化编辑器内容', { itemCount: items.length });
-      
-      // 🚨 DIAGNOSIS: 检测 enhancedValue 异常
-      if (enhancedValue.length === 0 || (enhancedValue.length === 1 && enhancedValue[0].eventId === '__placeholder__')) {
-        vlog('🔴 [诊断] enhancedValue 异常为空！', {
-          items数量: items.length,
-          enhancedValue: enhancedValue,
-          items示例: items.slice(0, 3).map(i => ({ id: i.id, title: i.title?.simpleTitle?.substring(0, 20) || '' }))
-        });
-      }
       
       setValue(enhancedValue);
       isInitializedRef.current = true;
@@ -764,8 +759,14 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       console.log('✅ [诊断] 初始化完成:', {
         设置的value数量: enhancedValue.length
       });
+    } else if (!isInitializedRef.current && items.length > 0 && !hasRealContent) {
+      vlog('🔴 [诊断] enhancedValue 异常为空，等待下次更新！', {
+        items数量: items.length,
+        enhancedValue数量: enhancedValue.length,
+        items示例: items.slice(0, 3).map(i => ({ id: i.id, title: i.title?.simpleTitle?.substring(0, 20) || '' }))
+      });
     }
-  }, []); // ✅ 空依赖，只执行一次
+  }, [items.length, enhancedValue]); // 🔥 依赖 items.length 和 enhancedValue，确保有内容时初始化
   
   // 🔥 智能增量更新：逐个比较 items，只更新变化的 Events
   
