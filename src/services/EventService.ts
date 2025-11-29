@@ -1401,8 +1401,18 @@ export class EventService {
   private static normalizeEventLog(eventlogInput: any, fallbackDescription?: string): EventLog {
     // 情况1: 已经是 EventLog 对象
     if (typeof eventlogInput === 'object' && eventlogInput !== null && 'slateJson' in eventlogInput) {
-      console.log('[EventService] eventlog 已是标准对象');
       const eventLog = eventlogInput as EventLog;
+      
+      // 🔧 检查 eventlog 是否为空（slateJson 是空数组）
+      if (eventLog.slateJson === '[]' && fallbackDescription && fallbackDescription.trim()) {
+        console.log('[EventService] ⚠️ eventlog.slateJson 为空数组，从 fallbackDescription 生成');
+        return this.convertSlateJsonToEventLog(JSON.stringify([{
+          type: 'paragraph',
+          children: [{ text: fallbackDescription }]
+        }]));
+      }
+      
+      console.log('[EventService] eventlog 已是标准对象');
       
       // 🔧 确保所有必需字段都存在（从 slateJson 生成缺失的字段）
       if (!eventLog.html || !eventLog.plainText) {
