@@ -283,7 +283,7 @@ const ContentSelectionPanel: React.FC<ContentSelectionPanelProps> = ({
     const hasChildren = node.children && node.children.length > 0;
     // ✅ 使用标签的 level 字段计算缩进（仅针对标签文本，不影响统计元素）
     const level = node.level || 0;
-    const indent = level * 16; // 每级增加16px缩进
+    const indent = level * 8; // 每级增加8px缩进
     
     return (
       <div key={node.id} className={`task-node task-node-depth-${level}`}>

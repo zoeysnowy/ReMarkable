@@ -176,6 +176,7 @@ export class EventService {
   /**
    * 根据ID获取事件
    * 🔧 性能优化：只规范化目标事件的 title 和 eventlog，避免全量处理
+   * 🔧 自动修复：如果检测到空 eventlog，生成并更新回 localStorage
    */
   static getEventById(eventId: string): Event | null {
     try {
@@ -187,12 +188,28 @@ export class EventService {
       
       if (!event) return null;
       
+      // 检查 eventlog 是否为空或空数组
+      const needsEventLogFix = !event.eventlog || 
+                               (typeof event.eventlog === 'object' && event.eventlog.slateJson === '[]');
+      
       // 规范化 title 和 eventlog（传递 description 作为 fallback）
-      return {
+      const normalizedEvent = {
         ...event,
         title: this.normalizeTitle(event.title),
         eventlog: this.normalizeEventLog(event.eventlog, event.description)
       };
+      
+      // 🔧 如果 eventlog 被修复了（从空变成有内容），更新回 localStorage
+      if (needsEventLogFix && normalizedEvent.eventlog.slateJson !== '[]') {
+        eventLogger.log('🔧 [EventService] 自动修复空 eventlog，更新到 localStorage:', eventId);
+        const eventIndex = events.findIndex(e => e.id === eventId);
+        if (eventIndex !== -1) {
+          events[eventIndex] = { ...events[eventIndex], eventlog: normalizedEvent.eventlog };
+          localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+        }
+      }
+      
+      return normalizedEvent;
     } catch (error) {
       eventLogger.error('❌ [EventService] Failed to get event by ID:', error);
       return null;
