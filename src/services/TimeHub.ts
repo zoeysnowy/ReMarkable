@@ -133,7 +133,8 @@ class TimeHubImpl {
       const timeFieldState = (ev as any).timeFieldState as [number, number, number, number] | undefined; // 🆕 v2.6
       const isFuzzyTime = (ev as any).isFuzzyTime as boolean | undefined; // 🆕 v2.7
       const fuzzyTimeName = (ev as any).fuzzyTimeName as string | undefined; // 🆕 v2.7
-      return { timeSpec, start, end, isFuzzyDate, timeFieldState, isFuzzyTime, fuzzyTimeName };
+      const title = ev.title; // 🆕 v2.15.4: 包含标题信息
+      return { timeSpec, start, end, isFuzzyDate, timeFieldState, isFuzzyTime, fuzzyTimeName, title };
     } catch {
       return {};
     }

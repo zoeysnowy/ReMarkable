@@ -341,15 +341,44 @@
   line-height: 1.5;
   text-align: center; /* 文字居中 */
   flex: 0 0 auto; /* 不自动伸缩，使用动态计算的宽度 */
-  height: auto; /* 高度由 JS 动态控制 */
+  min-height: 27px; /* 最小高度（一行） */
+  max-height: 81px; /* 最大3行高度 (27px * 3) */
+  height: auto; /* 高度自适应内容 */
   word-wrap: break-word;
   word-break: break-word;
   overflow-wrap: break-word;
-  white-space: pre-wrap; /* 保留空格和换行 */
-  resize: none; /* 禁止手动调整大小 */
-  overflow: hidden; /* 隐藏滚动条，由 JS 控制高度 */
+  white-space: normal; /* 允许正常换行，支持 HTML 富文本 */
+  overflow-y: auto; /* 超出时滚动 */
+  overflow-x: hidden; /* 隐藏横向滚动 */
   font-family: inherit; /* 继承父元素字体 */
   box-sizing: border-box;
+}
+
+/* 富文本样式保留 */
+.title-input * {
+  white-space: normal;
+  display: inline; /* 所有子元素默认行内显示 */
+  line-height: inherit;
+  font-size: inherit;
+}
+
+/* 段落标签转为行内 */
+.title-input p {
+  display: inline;
+  margin: 0;
+  padding: 0;
+}
+
+/* 保持富文本样式效果 */
+.title-input span[style*="color"],
+.title-input span[style*="background"] {
+  display: inline;
+}
+
+/* contentEditable placeholder 支持 */
+.title-input:empty:before {
+  content: attr(data-placeholder);
+  color: #d1d5db;
 }
 
 .title-input::placeholder {

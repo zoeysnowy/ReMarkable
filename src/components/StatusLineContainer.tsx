@@ -1,10 +1,16 @@
 /**
- * StatusLineContainer - 竖线状态容器（多线并行版本）
+ * StatusLineContainer - 竖线状态容器（矩阵算法版本）
  * 
  * 功能：
  * 1. 支持多条并行竖线（每行可能有多个不同状态的竖线）
  * 2. 自适应缩进（根据实际竖线数量动态调整内容缩进）
  * 3. 智能标签定位（每个状态只显示一次，优先放在最左侧位置）
+ * 4. 增量更新优化（只重新计算变化的segments）
+ * 
+ * 算法：矩阵 + 俄罗斯方块合并
+ * - 时间复杂度：O(n×m) where n=events, m=status types
+ * - 空间复杂度：O(n×m)
+ * - 自动连续性：纵向扫描天然合并连续segment
  * 
  * 设计规则：
  * - 竖线宽度：2px（Figma规范）
@@ -42,6 +48,11 @@ export const StatusLineContainer: React.FC<StatusLineContainerProps> = ({
   lineHeight = 32,
   totalLines = 0 
 }) => {
+  // 🚀 增量更新缓存：避免segments完全相同时重新计算
+  const segmentsHash = useMemo(() => {
+    return segments.map(s => `${s.startIndex}-${s.endIndex}-${s.status}`).join('|');
+  }, [segments]);
+  
   // 计算每一行的竖线列表（从左到右排序）
   const lineConfigs = useMemo(() => {
     const configs: Map<number, StatusLineSegment[]> = new Map();
@@ -56,7 +67,7 @@ export const StatusLineContainer: React.FC<StatusLineContainerProps> = ({
     });
     
     return configs;
-  }, [segments]);
+  }, [segmentsHash]); // 🔧 使用hash而不是segments，避免引用变化导致重新计算
 
   // 计算全局最大竖线数量（决定最大缩进）
   const maxLinesCount = useMemo(() => {
@@ -67,66 +78,106 @@ export const StatusLineContainer: React.FC<StatusLineContainerProps> = ({
     return max;
   }, [lineConfigs]);
 
-  // 为每个segment分配列位置（column index）
-  // ✅ 优化：相同状态的连续segment使用相同列，实现竖线连续性
+  // 🎯 矩阵算法：为每个segment分配列位置（column index）
+  // 优势：O(n×m) 复杂度，自动合并连续segment，无冲突，支持增量更新
   const segmentColumns = useMemo(() => {
+    const startTime = performance.now();
     const columnMap = new Map<StatusLineSegment, number>();
     
-    // 按开始位置排序segments
-    const sortedSegments = [...segments].sort((a, b) => a.startIndex - b.startIndex);
+    if (segments.length === 0) return columnMap;
     
-    // 记录每个status在每一行的列位置：Map<lineIndex, Map<status, column>>
-    const statusColumnsAtLine = new Map<number, Map<string, number>>();
+    // 步骤1: 构建状态矩阵 matrix[eventIndex][status] = segment
+    const matrix = new Map<number, Map<string, StatusLineSegment>>();
+    const maxEventIndex = Math.max(...segments.map(s => s.startIndex));
     
-    sortedSegments.forEach(segment => {
-      const { startIndex, status } = segment;
+    segments.forEach(segment => {
+      if (!matrix.has(segment.startIndex)) {
+        matrix.set(segment.startIndex, new Map());
+      }
+      matrix.get(segment.startIndex)!.set(segment.status, segment);
+    });
+    
+    console.log(`[StatusLineContainer] 🎯 矩阵算法: ${segments.length}个segments, ${maxEventIndex + 1}行, ${new Set(segments.map(s => s.status)).size}种状态`);
+    
+    // 步骤2: 纵向扫描，合并连续的相同状态（俄罗斯方块算法）
+    const statusTypes = ['new', 'updated', 'deleted', 'done', 'missed'] as const;
+    const statusGroups: Array<{
+      status: string;
+      segments: StatusLineSegment[];
+    }> = [];
+    
+    statusTypes.forEach(status => {
+      const continuousSegments: StatusLineSegment[] = [];
+      let currentGroup: StatusLineSegment[] = [];
       
-      // 检查上一行（startIndex - 1）是否有相同的status
-      const prevLineColumns = statusColumnsAtLine.get(startIndex - 1);
-      let column: number | undefined;
-      
-      if (prevLineColumns && prevLineColumns.has(status)) {
-        // ✅ 上一行有相同status，继承相同列
-        column = prevLineColumns.get(status)!;
-        console.log(`[StatusLineContainer] 🔗 Status "${status}" at line ${startIndex}: 继承上一行的列 ${column}`);
-      } else {
-        // 找到当前行所有已占用的列
-        const occupiedColumns = new Set<number>();
+      // 纵向扫描所有事件
+      for (let i = 0; i <= maxEventIndex; i++) {
+        const segment = matrix.get(i)?.get(status);
         
-        // 查找与当前segment重叠的其他segments占用的列
-        sortedSegments.forEach(other => {
-          if (other === segment) return;
-          if (columnMap.has(other)) {
-            // 检查是否重叠
-            const overlaps = !(other.endIndex < segment.startIndex || other.startIndex > segment.endIndex);
-            if (overlaps) {
-              occupiedColumns.add(columnMap.get(other)!);
-            }
-          }
-        });
-        
-        // 找到第一个未被占用的列
-        column = 0;
-        while (occupiedColumns.has(column)) {
-          column++;
+        if (segment) {
+          currentGroup.push(segment);
+        } else if (currentGroup.length > 0) {
+          // 遇到断点，保存当前组
+          continuousSegments.push(...currentGroup);
+          currentGroup = [];
         }
-        
-        console.log(`[StatusLineContainer] 🆕 Status "${status}" at line ${startIndex}: 分配新列 ${column}`);
       }
       
-      columnMap.set(segment, column);
+      // 处理最后一组
+      if (currentGroup.length > 0) {
+        continuousSegments.push(...currentGroup);
+      }
       
-      // 记录这个segment所有行的status→column映射
-      for (let lineIndex = segment.startIndex; lineIndex <= segment.endIndex; lineIndex++) {
-        if (!statusColumnsAtLine.has(lineIndex)) {
-          statusColumnsAtLine.set(lineIndex, new Map());
-        }
-        statusColumnsAtLine.get(lineIndex)!.set(status, column);
+      if (continuousSegments.length > 0) {
+        statusGroups.push({ status, segments: continuousSegments });
       }
     });
     
+    // 步骤3: 智能列分配 - 检查垂直方向是否有重叠，无重叠则合并到同一列
+    const columns: StatusLineSegment[][] = [];
+    
+    statusGroups.forEach(group => {
+      // 尝试找到可以放置这组segments的列（垂直方向无重叠）
+      let targetColumnIndex = -1;
+      
+      for (let colIndex = 0; colIndex < columns.length; colIndex++) {
+        const columnSegments = columns[colIndex];
+        
+        // 检查这组segments是否与当前列的所有segments在垂直方向无重叠
+        const hasOverlap = group.segments.some(newSeg => 
+          columnSegments.some(existingSeg => 
+            !(newSeg.endIndex < existingSeg.startIndex || newSeg.startIndex > existingSeg.endIndex)
+          )
+        );
+        
+        if (!hasOverlap) {
+          targetColumnIndex = colIndex;
+          break;
+        }
+      }
+      
+      // 如果找到了可用列，加入该列；否则创建新列
+      if (targetColumnIndex !== -1) {
+        columns[targetColumnIndex].push(...group.segments);
+        console.log(`[StatusLineContainer] 🔗 状态[${group.status}]合并到列${targetColumnIndex}: ${group.segments.length}个segments`);
+      } else {
+        columns.push([...group.segments]);
+        console.log(`[StatusLineContainer] 📊 状态[${group.status}]新建列${columns.length - 1}: ${group.segments.length}个segments`);
+      }
+    });
+    
+    // 分配列号
+    columns.forEach((columnSegments, columnIndex) => {
+      columnSegments.forEach(segment => {
+        columnMap.set(segment, columnIndex);
+      });
+    });
+    
+    const elapsed = performance.now() - startTime;
+    console.log(`[StatusLineContainer] ✅ 列分配完成: ${columns.length}列, ${columnMap.size}个segments, 耗时 ${elapsed.toFixed(2)}ms`);
+    
     return columnMap;
-  }, [segments]);
+  }, [segmentsHash]); // 🚀 使用hash触发，支持增量更新
 
   // 计算标签的最大宽度
   const maxLabelWidth = useMemo(() => {
@@ -134,7 +185,7 @@ export const StatusLineContainer: React.FC<StatusLineContainerProps> = ({
     // 估算每个标签的宽度（每个字符约7px，斜体加点额外空间）
     const labelWidths = segments.map(seg => seg.label.length * 7 + 4);
     return Math.max(...labelWidths);
-  }, [segments]);
+  }, [segmentsHash]); // 🚀 使用hash触发
 
   // 使用state存储计算后的segment位置
   const [renderedSegments, setRenderedSegments] = useState<Array<{
@@ -164,7 +215,7 @@ export const StatusLineContainer: React.FC<StatusLineContainerProps> = ({
         height: (segment.endIndex - segment.startIndex + 1) * lineHeight // 初始估算值
       };
     });
-  }, [segments, segmentColumns, maxLabelWidth, lineHeight]);
+  }, [segmentsHash, segmentColumns, maxLabelWidth, lineHeight]); // 🚀 使用hash触发
 
   // 在DOM渲染后，使用实际DOM位置更新segment
   useEffect(() => {
@@ -259,7 +310,7 @@ export const StatusLineContainer: React.FC<StatusLineContainerProps> = ({
     return () => {
       resizeObserver.disconnect();
     };
-  }, [baseSegments, segments.length, editorItems]);
+  }, [baseSegments, segmentsHash, editorItems]); // 🚀 使用hash触发
 
   // 计算智能标签位置
   const smartLabels = useMemo(() => {

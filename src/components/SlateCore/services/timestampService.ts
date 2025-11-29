@@ -115,9 +115,12 @@ export class EventLogTimestampService {
       ? formatDateTime(now) // "2025-10-19 10:21:18"
       : `${formatDateTime(now)} | ${formatRelativeTime(minutesSinceLast!)}`; // "2025-10-19 10:35:18 | 16min later"
     
+    // ✅ 使用 Time Architecture 规范格式："YYYY-MM-DD HH:mm:ss"
+    const timestamp = formatDateTime(now);
+    
     return {
       type: 'timestamp-divider',
-      timestamp: now.toISOString(),
+      timestamp,  // ✅ 不再使用 toISOString()
       isFirstOfDay,
       minutesSinceLast,
       displayText,

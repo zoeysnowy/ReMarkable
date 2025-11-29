@@ -320,12 +320,15 @@ export const ModalSlate = forwardRef<ModalSlateRef, ModalSlateProps>((
           const createTime = new Date(createLog.timestamp);
           console.log('[ModalSlate] 在 initialValue 中添加 timestamp:', createTime);
           
+          // ✅ 使用 Time Architecture 规范格式
+          const timestampStr = formatDateTime(createTime);
+          
           // 在开头插入 timestamp（不插入 preline，由 renderElement 动态绘制）
           nodes = [
             {
               type: 'timestamp-divider',
-              timestamp: createTime.toISOString(),
-              displayText: formatDateTime(createTime),
+              timestamp: timestampStr,  // ✅ 不再使用 toISOString()
+              displayText: timestampStr,
               isFirstOfDay: true,
               children: [{ text: '' }]
             },

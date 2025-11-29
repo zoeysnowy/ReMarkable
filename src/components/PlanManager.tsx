@@ -545,10 +545,14 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   const eventStatusCacheRef = useRef<Map<string, { status: 'new' | 'updated' | 'done' | 'missed' | 'deleted' | undefined, timestamp: number }>>(new Map());
   
   // 🆕 事件状态计算函数 (带缓存)
-  const getEventStatus = useCallback((eventId: string): 'new' | 'updated' | 'done' | 'missed' | 'deleted' | undefined => {
+  const getEventStatus = useCallback((eventId: string, metadata?: any): 'new' | 'updated' | 'done' | 'missed' | 'deleted' | undefined => {
     if (!dateRange) return undefined;
     
     // 🔧 首先检查是否是 ghost 事件（Snapshot 模式下显示为已删除）
+    // 优先从 metadata 检查（更准确），否则从 items 查找
+    if (metadata?._isDeleted) {
+      return 'deleted';
+    }
     const ghostEvent = items.find((item: any) => item.id === eventId && item._isDeleted);
     if (ghostEvent) {
       return 'deleted';
@@ -1532,10 +1536,6 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         起点存在事件数: existingAtStart.size
       });
       
-      // 2️⃣ 筛选出起点时存在的事件（未删除的）
-      allItems = filteredItems.filter(item => existingAtStart.has(item.id));
-      console.log('[PlanManager] ✅ 起点存在且未删除:', allItems.length, '个');
-      
       // 3️⃣ 查询时间范围内的所有操作
       const operations = EventHistoryService.queryHistory({
         startTime,
@@ -1543,18 +1543,55 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       });
       console.log('[PlanManager] 📝 时间范围内操作:', operations.length, '条');
       
-      // 4️⃣ 添加范围内删除的事件为 ghost
-      const deleteOpsInRange = operations.filter(op => op.operation === 'delete' && op.before && op.eventId);
-      console.log('[PlanManager] 🗑️ 范围内删除操作:', deleteOpsInRange.length, '条');
-      
-      // ✅ 修改逻辑：显示"在起点存在 OR 在范围内创建"并且"在范围内被删除"的事件
-      // 查找范围内创建的事件
+      // 4️⃣ 查找范围内创建的事件
       const createdInRange = new Set(
         operations
           .filter(op => op.operation === 'create' && op.eventId)
           .map(op => op.eventId)
       );
       console.log('[PlanManager] 🆕 范围内创建:', createdInRange.size, '个');
+      
+      // 2️⃣ 筛选出应该显示的事件：在起点存在 OR 在范围内创建
+      allItems = filteredItems.filter(item => {
+        // 检查是否在时间范围内
+        const inRange = existingAtStart.has(item.id) || createdInRange.has(item.id);
+        if (!inRange) return false;
+        
+        // 🆕 额外检查：过滤掉空白事件（标题和 eventlog 都为空）
+        const titleObj = item.title;
+        const hasTitle = item.content || 
+                        (typeof titleObj === 'string' ? titleObj : 
+                         (titleObj && (titleObj.simpleTitle || titleObj.fullTitle || titleObj.colorTitle)));
+        
+        const eventlogField = (item as any).eventlog;
+        let hasEventlog = false;
+        
+        if (eventlogField) {
+          if (typeof eventlogField === 'string') {
+            hasEventlog = eventlogField.trim().length > 0;
+          } else if (typeof eventlogField === 'object' && eventlogField !== null) {
+            const slateContent = eventlogField.slateJson || '';
+            const htmlContent = eventlogField.html || '';
+            const plainContent = eventlogField.plainText || '';
+            hasEventlog = slateContent.trim().length > 0 || 
+                         htmlContent.trim().length > 0 || 
+                         plainContent.trim().length > 0;
+          }
+        }
+        
+        // 标题和 eventlog 都为空时过滤掉
+        if (!hasTitle && !hasEventlog) {
+          console.log('[PlanManager] ⏭️ Snapshot 模式跳过空白事件:', item.id.slice(-8));
+          return false;
+        }
+        
+        return true;
+      });
+      console.log('[PlanManager] ✅ 应显示事件数（起点存在+范围内创建，已过滤空白）:', allItems.length, '个');
+      
+      // 5️⃣ 添加范围内删除的事件为 ghost
+      const deleteOpsInRange = operations.filter(op => op.operation === 'delete' && op.before && op.eventId);
+      console.log('[PlanManager] 🗑️ 范围内删除操作:', deleteOpsInRange.length, '条');
       
       // 过滤：在起点存在 OR 在范围内创建
       const deletedInRange = deleteOpsInRange.filter(op => 
@@ -1617,6 +1654,15 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           return;
         }
         
+        // 🎯 步骤 4: 标签过滤（应用 hiddenTags）
+        if (hiddenTags.size > 0) {
+          const itemTags = log.before.tags || [];
+          if (itemTags.some(tag => hiddenTags.has(tag))) {
+            console.log('[PlanManager] ⏭️ 跳过隐藏标签的 ghost:', log.eventId.slice(-8), 'tags:', itemTags);
+            return;
+          }
+        }
+        
         console.log('[PlanManager] 👻 添加 ghost:', {
           eventId: log.eventId.slice(-8),
           title: log.before.title,
@@ -1665,7 +1711,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     }
     
     return result;
-  }, [items, pendingEmptyItems, dateRange]);
+  }, [filteredItems, dateRange, hiddenTags]);
 
   // 🆕 状态配置映射函数
   const getStatusConfig = useCallback((status?: string) => {
@@ -1691,9 +1737,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
     
     try {
       // 🔧 首先检查是否是 ghost 事件（Snapshot 模式下显示为已删除）
-      const ghostEvent = items.find((item: any) => item.id === eventId && item._isDeleted);
-      if (ghostEvent) {
-        return ['deleted'];
+      // 必须从 editorItems 查找，因为 ghost 事件只存在于 editorItems 中
+      const ghostEvent = editorItems.find((item: any) => item.id === eventId && item._isDeleted);
+      const isGhost = !!ghostEvent;
+      
+      if (isGhost) {
+        console.log(`[getEventStatuses] 👻 ${eventId.slice(-8)}: Ghost事件，将添加deleted状态（同时查询其他状态）`);
       }
       
       const startTime = formatTimeForStorage(dateRange.start);
@@ -1736,13 +1785,19 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         }))
       });
       
-      if (!history || history.length === 0) {
-        console.log(`[getEventStatuses] ❌ ${eventTitle}: 无历史记录`);
-        return [];
-      }
-      
       // 收集所有独特的状态
       const statuses = new Set<'new' | 'updated' | 'done' | 'missed' | 'deleted'>();
+      
+      // 🆕 如果是 Ghost 事件，先添加 deleted 状态（即使没有历史记录）
+      if (isGhost) {
+        statuses.add('deleted');
+        console.log(`[getEventStatuses]   ✅ ${eventTitle}: 添加 DELETED 状态（Ghost事件，优先添加）`);
+      }
+      
+      if (!history || history.length === 0) {
+        console.log(`[getEventStatuses] ❌ ${eventTitle}: 无历史记录${isGhost ? '（但已添加deleted状态）' : ''}`);
+        return Array.from(statuses); // 返回已有的状态（可能包含 deleted）
+      }
       const rangeStart = new Date(startTime);
       const rangeEnd = new Date(endTime);
       
@@ -1791,6 +1846,12 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         console.log(`[getEventStatuses]   ✅ ${eventTitle}: 添加 DONE 状态（当前已勾选）`);
       } else {
         console.log(`[getEventStatuses]   ⏭️ ${eventTitle}: 不添加 DONE（当前未勾选）`);
+      }
+      
+      // 🆕 Ghost 事件确保有 deleted 状态（再次确认，防止遗漏）
+      if (isGhost && !statuses.has('deleted')) {
+        statuses.add('deleted');
+        console.log(`[getEventStatuses]   ✅ ${eventTitle}: 补充添加 DELETED 状态（Ghost事件）`);
       }
       
       // 🔧 判断 "missed" 状态：事件时间已过（取当前时间和范围结束时间的较早者），且在范围内没有完成

@@ -73,7 +73,7 @@ import {
   startPerformanceMark,
   endPerformanceMark,
 } from './debugLogger';
-import './PlanSlate.css';
+import '../PlanSlate/PlanSlate.css';
 
 // 🔍 初始化调试系统
 initDebug();
@@ -139,7 +139,7 @@ export interface PlanSlateProps {
   onSave?: (eventId: string, updates: any) => void;  // 🆕 保存事件回调
   onTimeClick?: (eventId: string, anchor: HTMLElement) => void;  // 🆕 时间点击回调
   onMoreClick?: (eventId: string) => void;  // 🆕 More 图标点击回调
-  getEventStatus?: (eventId: string, metadata?: any) => 'new' | 'updated' | 'done' | 'missed' | 'deleted' | undefined; // 🆕 获取事件状态
+  getEventStatus?: (eventId: string) => 'new' | 'updated' | 'done' | 'missed' | 'deleted' | undefined; // 🆕 获取事件状态
   eventId?: string;  // 🆕 当前编辑的事件ID（用于 timestamp 功能）
   enableTimestamp?: boolean;  // 🆕 是否启用 timestamp 自动插入
   className?: string;
@@ -2653,9 +2653,7 @@ export const PlanSlate: React.FC<PlanSlateProps> = ({
     switch (element.type) {
       case 'event-line':
         const eventLineElement = element as EventLineNode;
-        const eventStatus = getEventStatus && eventLineElement.eventId 
-          ? getEventStatus(eventLineElement.eventId, eventLineElement.metadata) 
-          : undefined;
+        const eventStatus = getEventStatus && eventLineElement.eventId ? getEventStatus(eventLineElement.eventId) : undefined;
         return (
           <EventLineElement
             {...props}

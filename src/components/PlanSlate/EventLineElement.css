@@ -5,12 +5,9 @@
 .unified-event-line {
   position: relative;
   padding: 4px 0; /* Title 模式的默认间距 */
-  transition: background-color 0.15s;
 }
 
-.unified-event-line:hover {
-  background-color: rgba(0, 0, 0, 0.02);
-}
+/* .unified-event-line:hover - hover效果已完全移除 */
 
 .unified-event-line.eventlog-mode {
   color: #666;

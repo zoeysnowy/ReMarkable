@@ -1961,7 +1961,7 @@ private getUserSettings(): any {
           endTime: remoteEnd,
           location: action.data.location?.displayName || '',
           isAllDay: action.data.isAllDay || false,
-          lastSyncTime: new Date(),
+          lastSyncTime: formatTimeForStorage(new Date()),
           syncStatus: 'synced'
         };
         
@@ -2291,8 +2291,8 @@ private getUserSettings(): any {
               const updatedEvent = {
                 ...priorityLocalEvents[eventIndex],
                 ...action.data,
-                updatedAt: new Date(),
-                lastLocalEdit: new Date(),
+                updatedAt: formatTimeForStorage(new Date()),
+                lastLocalEdit: formatTimeForStorage(new Date()),
                 syncStatus: 'pending' // 🔧 [Unified] 统一使用 'pending'，不再区分 update
               };
               
@@ -3216,8 +3216,8 @@ private getUserSettings(): any {
             endTime: this.safeFormatDateTime(action.data.end?.dateTime || action.data.end),
             location: action.data.location?.displayName || '',
             isAllDay: action.data.isAllDay || false,
-            updatedAt: new Date(),
-            lastSyncTime: new Date(),
+            updatedAt: formatTimeForStorage(new Date()),
+            lastSyncTime: formatTimeForStorage(new Date()),
             syncStatus: 'synced'
             // 🔧 不覆盖 source, calendarId, externalId, eventlog 等字段
           };

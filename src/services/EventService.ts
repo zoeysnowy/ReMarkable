@@ -25,7 +25,7 @@ const eventLogger = logger.module('EventService');
 let syncManagerInstance: any = null;
 
 // 🔍 模块加载时的调试
-console.log('🔍 [EventService] 模块加载，syncManagerInstance 初始化为 null');
+// EventService 模块初始化
 
 // 跨标签页广播通道
 let broadcastChannel: BroadcastChannel | null = null;
@@ -307,24 +307,7 @@ export class EventService {
     }
   ): Promise<{ success: boolean; event?: Event; error?: string }> {
     try {
-      // 🔍 [DEBUG] 记录调用栈
-      const stack = new Error().stack;
-      const caller = stack?.split('\n')[2]?.trim();
-      
-      eventLogger.log('🆕 [EventService] Creating new event...');
-      eventLogger.log('🔍 [DEBUG-TIMER] 调用来源:', caller);
-      eventLogger.log('🔍 [DEBUG-TIMER] skipSync:', skipSync);
-      eventLogger.log('🔍 [DEBUG-TIMER] syncStatus:', event.syncStatus);
-      eventLogger.log('🔍 [DEBUG-TIMER] isTimer:', event.isTimer);
-      eventLogger.log('📋 [EventService] 创建参数:', {
-        id: event.id,
-        title: event.title,
-        startTime: event.startTime,
-        endTime: event.endTime,
-        isAllDay: event.isAllDay,
-        tags: event.tags,
-        description: event.description?.substring(0, 50) + '...'
-      });
+      eventLogger.log('🆕 [EventService] Creating new event:', event.id);
 
       // ✅ v1.8: 验证时间字段（区分 Task 和 Calendar 事件）
       const validation = validateEventTime(event);
@@ -353,30 +336,13 @@ export class EventService {
       // 🔥 v2.15.3: 中枢化架构 - 使用 normalizeEvent 统一处理所有字段
       const normalizedEvent = this.normalizeEvent(event);
       
-      eventLogger.log('🔥 [EventService] createEvent 规范化完成:', {
-        eventId: normalizedEvent.id,
-        titleType: typeof normalizedEvent.title,
-        hasSimpleTitle: !!normalizedEvent.title?.simpleTitle,
-        hasEventLog: !!normalizedEvent.eventlog,
-        eventlogHasSlateJson: !!normalizedEvent.eventlog?.slateJson,
-        hasDescription: !!normalizedEvent.description,
-      });
-      
       // 确保必要字段
       // 🔧 [BUG FIX] skipSync=true时，强制设置syncStatus='local-only'，忽略event.syncStatus
       const finalEvent: Event = {
         ...normalizedEvent,
         remarkableSource: true,
-        syncStatus: skipSync ? 'local-only' : (event.syncStatus || 'pending'), // skipSync优先级最高
-        // normalizedEvent 已经包含完整的 title/eventlog/description/createdAt/updatedAt
+        syncStatus: skipSync ? 'local-only' : (event.syncStatus || 'pending'),
       };
-      
-      // 🔍 [DEBUG] 验证最终的syncStatus
-      eventLogger.log('🔍 [EventService] Final syncStatus:', {
-        skipSync,
-        'event.syncStatus': event.syncStatus,
-        'finalEvent.syncStatus': finalEvent.syncStatus
-      });
 
       // 读取现有事件
       const existingEvents = this.getAllEvents();
@@ -506,32 +472,6 @@ export class EventService {
     }
   ): Promise<{ success: boolean; event?: Event; error?: string }> {
     try {
-      // 🔍 诊断：记录调用栈
-      const stack = new Error().stack;
-      const caller = stack?.split('\n')[2]?.trim(); // 第2行是调用者
-      
-      eventLogger.log('✏️ [EventService] Updating event:', eventId);
-      eventLogger.log('� [DEBUG-TIMER] 调用来源:', caller);
-      eventLogger.log('🔍 [DEBUG-TIMER] skipSync:', skipSync);
-      eventLogger.log('🔍 [DEBUG-TIMER] updates.syncStatus:', (updates as any).syncStatus);
-      eventLogger.log('📋 [EventService] 更新字段:', {
-        eventId,
-        更新的字段: Object.keys(updates),
-        startTime: updates.startTime,
-        endTime: updates.endTime,
-        title: updates.title,
-        isAllDay: updates.isAllDay,
-        description: (updates.description || '').substring(0, 50),
-        eventlog: (() => {
-          const log = (updates as any).eventlog;
-          if (!log) return '';
-          if (typeof log === 'string') return log.substring(0, 50);
-          if (typeof log === 'object') return `[EventLog对象: ${log.plainText?.substring(0, 30) || '无内容'}]`;
-          return '[未知格式]';
-        })(), // 🆕 v1.8: 兼容新旧格式
-        calendarIds: (updates as any).calendarIds, // 🔍 检查 calendarIds
-        todoListIds: (updates as any).todoListIds  // 🔍 检查 todoListIds
-      });
 
       const existingEvents = this.getAllEvents();
       const eventIndex = existingEvents.findIndex(e => e.id === eventId);
@@ -553,11 +493,21 @@ export class EventService {
       const updatesWithSync = { ...updates };
       
       // ========== Title 三层架构同步 (v2.14) ==========
-      if ((updates as any).title !== undefined) {
-        const titleUpdate = (updates as any).title;
+      // 🆕 v2.15.4: 自动同步 tags 到 fullTitle
+      if ((updates as any).title !== undefined || (updates as any).tags !== undefined) {
+        const titleUpdate = (updates as any).title !== undefined 
+          ? (updates as any).title 
+          : originalEvent.title;
+        const currentTags = (updates as any).tags !== undefined 
+          ? (updates as any).tags 
+          : originalEvent.tags;
         
-        // 🔥 使用增强版 normalizeTitle（支持字符串输入）
-        const normalizedTitle = this.normalizeTitle(titleUpdate);
+        // 🔥 使用增强版 normalizeTitle（支持字符串输入 + tags 同步）
+        const normalizedTitle = this.normalizeTitle(
+          titleUpdate,
+          currentTags,
+          originalEvent.tags
+        );
         
         (updatesWithSync as any).title = normalizedTitle;
         
@@ -642,7 +592,7 @@ export class EventService {
             updatesWithSync.description = eventLogObj.html || eventLogObj.plainText || '';
           }
           
-          console.log('[EventService] eventlog 已是对象格式，直接使用');
+
         } else if (isSlateJsonString) {
           // 格式2: Slate JSON 字符串 - 自动转换为 EventLog 对象
           try {
@@ -694,11 +644,11 @@ export class EventService {
               updatesWithSync.description = plainText;
             }
             
-            console.log('[EventService] eventlog 旧格式，提取纯文本');
+
           } else {
             // 🔧 非字符串格式，直接保存
             (updatesWithSync as any).eventlog = newEventlog;
-            console.log('[EventService] eventlog 未知格式，直接保存');
+
           }
         }
       }
@@ -726,16 +676,18 @@ export class EventService {
         });
       }
       
-      // ✅ v1.8: 验证合并后的事件（在过滤前）
+      // ✅ v1.8: 验证合并后的事件（在过滤前，但要过滤掉 undefined 的时间字段）
       const mergedEvent = { ...originalEvent, ...updatesWithSync };
-      const validation = validateEventTime(mergedEvent);
+      // 🔧 过滤掉 undefined 的时间字段，避免验证失败
+      const eventToValidate = {
+        ...mergedEvent,
+        startTime: mergedEvent.startTime === undefined ? originalEvent.startTime : mergedEvent.startTime,
+        endTime: mergedEvent.endTime === undefined ? originalEvent.endTime : mergedEvent.endTime,
+      };
+      const validation = validateEventTime(eventToValidate);
       if (!validation.valid) {
         eventLogger.error('❌ [EventService] Update validation failed:', validation.error);
         return { success: false, error: validation.error };
-      }
-      
-      if (validation.warnings && validation.warnings.length > 0) {
-        eventLogger.warn('⚠️ [EventService] Update warnings:', validation.warnings);
       }
       
       // 🆕 v1.8: 只合并非 undefined 的字段，避免覆盖已有数据
@@ -754,7 +706,7 @@ export class EventService {
         } else if (Object.prototype.hasOwnProperty.call(updatesWithSync, key)) {
           // 显式设置为 undefined（用于清除字段）
           filteredUpdates[typedKey] = undefined as any;
-          console.log(`[EventService] 📝 显式清除字段: ${key}`);
+
         }
       });
       
@@ -1334,11 +1286,13 @@ export class EventService {
   }
 
   /**
-   * 规范化标题对象：自动填充缺失的层级
+   * 规范化标题对象：自动填充缺失的层级 + 同步 tags
    * @param titleInput - 部分标题数据（可能只有 fullTitle/colorTitle/simpleTitle 之一），或者字符串（远程同步场景）
-   * @returns 完整的 EventTitle 对象（包含三层）
+   * @param tags - 事件的 tags 数组（用于自动注入 tag 元素到 fullTitle）
+   * @param originalTags - 原始的 tags 数组（用于检测 tag 增删）
+   * @returns 完整的 EventTitle 对象（包含三层，fullTitle 已同步 tag 元素）
    * 
-   * 🔥 中枢化架构：统一处理所有 title 输入格式
+   * 🔥 中枢化架构：统一处理所有 title 输入格式 + tags 同步
    * 
    * 规则：
    * 0. 如果是字符串（Outlook/Timer/旧数据） → 转换为 simpleTitle，然后升级为三层
@@ -1346,8 +1300,13 @@ export class EventService {
    * 2. 有 colorTitle → 升级生成 fullTitle，降级生成 simpleTitle
    * 3. 有 simpleTitle → 升级生成 colorTitle 和 fullTitle
    * 4. 多个字段都有 → 保持原样，不覆盖
+   * 5. 同步 tags：自动将 tags 注入/更新/删除到 fullTitle 的 tag 元素
    */
-  private static normalizeTitle(titleInput: Partial<import('../types').EventTitle> | string | undefined): import('../types').EventTitle {
+  private static normalizeTitle(
+    titleInput: Partial<import('../types').EventTitle> | string | undefined,
+    tags?: string[],
+    originalTags?: string[]
+  ): import('../types').EventTitle {
     const result: import('../types').EventTitle = {};
     
     // 🔧 场景 0: 兼容旧格式 - 字符串 title（来自 Timer、Outlook 同步等）
@@ -1409,7 +1368,95 @@ export class EventService {
       result.simpleTitle = simpleTitle ?? (colorTitle ? this.colorTitleToSimpleTitle(colorTitle) : '');
     }
     
+    // 🆕 场景 5: 同步 tags 到 fullTitle（自动注入/更新/删除 tag 元素）
+    if (tags !== undefined && result.fullTitle) {
+      result.fullTitle = this.syncTagsToFullTitle(result.fullTitle, tags, originalTags);
+      // 同步后需要重新生成 colorTitle 和 simpleTitle
+      result.colorTitle = this.fullTitleToColorTitle(result.fullTitle);
+      result.simpleTitle = this.colorTitleToSimpleTitle(result.colorTitle);
+    }
+    
     return result;
+  }
+
+  /**
+   * 同步 tags 到 fullTitle：自动添加/删除 tag 元素
+   * @param fullTitle - Slate JSON 字符串
+   * @param tags - 当前的 tags 数组
+   * @param originalTags - 原始的 tags 数组（用于检测删除）
+   * @returns 更新后的 fullTitle
+   */
+  private static syncTagsToFullTitle(
+    fullTitle: string,
+    tags: string[],
+    originalTags?: string[]
+  ): string {
+    try {
+      const nodes = JSON.parse(fullTitle);
+      if (!Array.isArray(nodes) || nodes.length === 0) return fullTitle;
+      
+      // 只处理第一个 paragraph（title 行）
+      const paragraph = nodes[0];
+      if (paragraph.type !== 'paragraph' || !Array.isArray(paragraph.children)) {
+        return fullTitle;
+      }
+      
+      // 提取现有的 tag 元素
+      const existingTags = new Set<string>();
+      paragraph.children.forEach((child: any) => {
+        if (child.type === 'tag' && child.tagName) {
+          existingTags.add(child.tagName);
+        }
+      });
+      
+      // 计算需要添加和删除的 tags
+      const tagsToAdd = tags.filter(tag => !existingTags.has(tag));
+      const tagsToRemove = originalTags 
+        ? Array.from(existingTags).filter(tag => !tags.includes(tag))
+        : [];
+      
+      // 如果没有变化，直接返回
+      if (tagsToAdd.length === 0 && tagsToRemove.length === 0) {
+        return fullTitle;
+      }
+      
+      // 删除不需要的 tag 元素
+      if (tagsToRemove.length > 0) {
+        paragraph.children = paragraph.children.filter((child: any) => {
+          if (child.type === 'tag' && tagsToRemove.includes(child.tagName)) {
+            return false;
+          }
+          return true;
+        });
+      }
+      
+      // 添加新的 tag 元素（插入到文本内容之前）
+      if (tagsToAdd.length > 0) {
+        const newTagElements = tagsToAdd.map(tag => ({
+          type: 'tag',
+          tagName: tag,
+          children: [{ text: '' }]
+        }));
+        
+        // 找到第一个非 tag 元素的位置
+        let insertIndex = 0;
+        for (let i = 0; i < paragraph.children.length; i++) {
+          if (paragraph.children[i].type !== 'tag') {
+            insertIndex = i;
+            break;
+          }
+        }
+        
+        // 插入新 tag 元素
+        paragraph.children.splice(insertIndex, 0, ...newTagElements);
+      }
+      
+      // 返回更新后的 fullTitle
+      return JSON.stringify(nodes);
+    } catch (error) {
+      console.error('[EventService] syncTagsToFullTitle 失败:', error);
+      return fullTitle; // 失败时返回原值
+    }
   }
 
   /**
@@ -1626,8 +1673,8 @@ export class EventService {
   private static normalizeEvent(event: Partial<Event>): Event {
     const now = formatTimeForStorage(new Date());
     
-    // 🔥 Title 规范化（支持字符串或对象输入）
-    const normalizedTitle = this.normalizeTitle(event.title);
+    // 🔥 Title 规范化（支持字符串或对象输入 + tags 同步）
+    const normalizedTitle = this.normalizeTitle(event.title, event.tags);
     
     // 🔥 EventLog 规范化（优先从 eventlog，回退到 description）
     const normalizedEventLog = this.normalizeEventLog(

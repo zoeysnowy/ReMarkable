@@ -26,55 +26,7 @@ import { TimeHub } from '../../services/TimeHub';  // 🆕 导入 TimeHub
 export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
   const nodes: EventLineNode[] = [];
   
-  // 🔍 DEBUG: 检查加载时是否包含 eventlog
-  if (items.length > 0) {
-    console.log('[planItemsToSlateNodes] 加载事件:', {
-      总数: items.length,
-      示例: items.slice(0, 3).map(item => {
-        const eventlogType = typeof item.eventlog;
-        const eventlogContent = eventlogType === 'object' && item.eventlog !== null
-          ? item.eventlog.html || item.eventlog.slateJson || ''
-          : item.eventlog || '';
-        
-        return {
-          id: item.id?.substring(0, 30),
-          title: item.title?.simpleTitle?.substring(0, 20) || '',
-          eventlogType,
-          hasEventlog: !!item.eventlog,
-          hasDescription: !!item.description,
-          eventlogContentLength: eventlogContent.length,
-          descriptionLength: (item.description || '').length,
-        };
-      })
-    });
-    
-    // 🔍 详细检查前10个事件的 eventlog 和 description
-    const checkCount = Math.min(10, items.length);
-    console.log(`[planItemsToSlateNodes] 🔎 前${checkCount}个事件详情:`);
-    for (let i = 0; i < checkCount; i++) {
-      const item = items[i];
-      const eventlogType = typeof item.eventlog;
-      let eventlogContent = '';
-      
-      if (item.eventlog) {
-        if (eventlogType === 'object' && item.eventlog !== null) {
-          eventlogContent = item.eventlog.html || item.eventlog.plainText || '';
-        } else {
-          eventlogContent = item.eventlog;
-        }
-      }
-      
-      console.log(`  [${i}] ${item.title?.simpleTitle?.substring(0, 30) || ''}`, {
-        hasEventlog: !!item.eventlog,
-        eventlogType,
-        eventlogLength: eventlogContent.length,
-        eventlogPreview: eventlogContent.substring(0, 50),
-        hasDescription: !!item.description,
-        descriptionLength: (item.description || '').length,
-        descriptionPreview: (item.description || '').substring(0, 50)
-      });
-    }
-  }
+  // 加载事件到 Slate 节点
   
   items.forEach(item => {
     // 🆕 v1.6: 提取完整元数据（透传所有业务字段）
@@ -95,15 +47,7 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
       isCompleted: item.isCompleted,
       isTask: item.isTask,
       type: item.type,
-      checkType: (() => {
-        const finalCheckType = item.checkType || 'once';
-        console.log('🔍 [planItemsToSlateNodes] Map checkType:', {
-          eventId: item.id?.slice(-10),
-          itemCheckType: item.checkType,
-          finalCheckType
-        });
-        return finalCheckType;
-      })(), // 🆕 签到类型（默认有checkbox）
+      checkType: item.checkType || 'once', // 🆕 签到类型（默认有checkbox）
       
       // ✅ v2.14: Checkbox 状态数组（用于 EventLinePrefix 计算 isCompleted）
       checked: item.checked || [],
@@ -484,10 +428,10 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
       
       // ✅ v2.14: 保存到 title 对象（三层架构）
       // fullTitle 保存 Slate JSON（JSON.stringify），EventService 会自动生成 colorTitle 和 simpleTitle
+      // 🔥 FIX: 只传 fullTitle，不要传 colorTitle/simpleTitle（即使是 undefined）
+      //         这样 normalizeTitle 的场景1判断 (!colorTitle && !simpleTitle) 才能正确触发
       item.title = {
-        fullTitle: fragment ? JSON.stringify(fragment) : '', // Slate fragment JSON
-        colorTitle: undefined, // 让 EventService 自动生成
-        simpleTitle: undefined // 让 EventService 自动生成
+        fullTitle: fragment ? JSON.stringify(fragment) : '' // 只传 fullTitle
       };
       item.tags = fragment ? extractTags(fragment) : '';
       
@@ -495,13 +439,8 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
       const timeSnapshot = TimeHub.getSnapshot(baseId);
       if (timeSnapshot.start || timeSnapshot.end !== undefined) {
         // TimeHub 有数据，使用 TimeHub 的时间（最新）
-        item.startTime = timeSnapshot.start || undefined;
-        item.endTime = timeSnapshot.end !== undefined ? timeSnapshot.end : undefined;  // 🔧 保留空字符串
-        console.log('[🔄 时间优先级] TimeHub 提供时间:', {
-          eventId: baseId.slice(-10),
-          startTime: timeSnapshot.start,
-          endTime: timeSnapshot.end,
-        });
+        item.startTime = timeSnapshot.start || null;
+        item.endTime = timeSnapshot.end !== undefined ? timeSnapshot.end : null;  // 🔧 使用 null 而非 undefined
       } else if (fragment) {
         // TimeHub 无数据，尝试从 DateMention 读取（向后兼容）
         const dateMention = fragment.find((n): n is DateMentionNode => 
@@ -509,12 +448,7 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
         );
         if (dateMention) {
           item.startTime = dateMention.startDate;
-          item.endTime = dateMention.endDate || undefined;
-          console.log('[🔄 时间优先级] DateMention 提供时间:', {
-            eventId: baseId.slice(-10),
-            startTime: dateMention.startDate,
-            endTime: dateMention.endDate,
-          });
+          item.endTime = dateMention.endDate || null;
         }
       }
     } else {
@@ -528,13 +462,6 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
         const bulletLevel = (para as any).bulletLevel || 0;
         // 🔥 使用 bulletLevel 作为 level（它们应该同步）
         const level = bullet ? bulletLevel : (node.level || 0);
-        
-        console.log('[保存 HTML] bullet paragraph:', { 
-          bullet, 
-          bulletLevel, 
-          nodeLevel: node.level, 
-          finalLevel: level 
-        });
         
         if (bullet) {
           return `<p data-bullet="true" data-bullet-level="${bulletLevel}" data-level="${level}">${html}</p>`;
@@ -552,15 +479,6 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
       // 🔥 累积所有 eventlog 行的内容（不要覆盖）
       item.eventlog = (item.eventlog || '') + lineHtml;
       item.description = (item.description || '') + (item.description ? '\n' : '') + linePlainText;
-      
-      // 🔍 调试日志
-      console.log('[slateNodesToPlanItems] Eventlog 累积保存:', {
-        eventId: baseId,
-        lineId: node.lineId,
-        paragraphsCount: paragraphs.length,
-        lineHtml,
-        totalEventlogLength: item.eventlog.length,
-      });
     }
   });
   
@@ -577,16 +495,6 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
                    (!item.tags || item.tags.length === 0);
     return !isEmpty;  // 只保留非空节点
   });
-  
-  // 🔍 v1.8: 调试返回的 items
-  console.log('[slateNodesToPlanItems] 返回结果:', result.map(item => ({
-    id: item.id,
-    title: item.title?.simpleTitle?.substring(0, 20) || '',
-    hasEventlog: !!item.eventlog,
-    hasDescription: !!item.description,
-    eventlogLength: item.eventlog?.length || 0,
-    descriptionLength: item.description?.length || 0
-  })));
   
   return result;
 }

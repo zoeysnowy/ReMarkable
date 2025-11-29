@@ -634,27 +634,156 @@ function getDisplayTitle(event: Event): string {
   }
   return event.title;
 }
+
+// 🆕 v2.15.4: 从 EventTitle 对象提取显示内容
+// 优先使用 colorTitle（富文本HTML），保留用户的高亮、颜色等格式
+let titleText = '';
+if (event.title) {
+  if (typeof event.title === 'string') {
+    titleText = event.title;
+  } else {
+    // 优先使用 colorTitle（富文本HTML），fallback 到 simpleTitle 或 fullTitle
+    titleText = event.title.colorTitle || event.title.simpleTitle || event.title.fullTitle || '';
+  }
+}
 ```
 
-**显示逻辑**:
+**UI 实现** (v2.15.4 更新):
 ```typescript
-<input
-  type="text"
-  value={formData.title}
-  placeholder={getTitlePlaceholder(formData.tags)}
-  onChange={(e) => handleTitleChange(e.target.value)}
+// ✅ 使用 contentEditable div 替代 textarea，支持富文本显示和编辑
+<div
+  ref={titleInputRef}
+  className="title-input"
+  contentEditable
+  suppressContentEditableWarning
+  data-placeholder={getTitlePlaceholder(formData.tags)}
+  onInput={(e) => {
+    const html = e.currentTarget.innerHTML;
+    handleTitleChange(html);
+  }}
+  onKeyDown={(e) => {
+    // 阻止回车换行（标题保持单行）
+    if (e.key === 'Enter') {
+      e.preventDefault();
+    }
+  }}
+  dangerouslySetInnerHTML={{ __html: removeEmojiFromTitle(formData.title) }}
 />
 
 function getTitlePlaceholder(tags: string[]): string {
   if (tags.length === 0) return '事件标题';
   const firstTag = getTagById(tags[0]);
-  return firstTag?.name ? `${firstTag.name}事项` : '事件标题';
+  return firstTag?.name || '事件标题';
 }
+
+// 🆕 从标题中移除 emoji，去除块级标签（p/div），保留富文本格式
+function removeEmojiFromTitle(title: string): string {
+  if (!title) return '';
+  
+  // 解析 HTML
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = title;
+  
+  // 移除所有 p、div 等块级标签，只保留行内内容
+  const blockTags = tempDiv.querySelectorAll('p, div, br');
+  blockTags.forEach(tag => {
+    const parent = tag.parentNode;
+    while (tag.firstChild) {
+      parent?.insertBefore(tag.firstChild, tag);
+    }
+    tag.remove();
+  });
+  
+  // 移除 emoji
+  let cleanHtml = tempDiv.innerHTML.trim();
+  const plainText = tempDiv.textContent || '';
+  const emoji = extractFirstEmoji(plainText);
+  if (emoji) {
+    cleanHtml = cleanHtml.replace(emoji, '').trim();
+  }
+  
+  return cleanHtml;
+}
+```
+
+**CSS 样式** (v2.15.4 更新):
+```css
+.title-input {
+  font-size: 18px;
+  font-weight: 400;
+  border: none;
+  outline: none;
+  color: #1f2937;
+  line-height: 1.5;
+  text-align: center;
+  min-height: 27px;      /* 最小一行高度 */
+  max-height: 81px;      /* 最大3行 (27px × 3) */
+  height: auto;          /* 高度自适应内容 */
+  width: 50px-240px;     /* 宽度自适应（JS 控制）*/
+  word-wrap: break-word;
+  white-space: normal;   /* 允许正常换行 */
+  overflow-y: auto;      /* 超出3行显示滚动条 */
+  overflow-x: hidden;
+}
+
+/* 富文本样式保留 */
+.title-input * {
+  white-space: normal;
+  display: inline;       /* 所有子元素行内显示 */
+  line-height: inherit;
+}
+
+/* 段落标签转为行内 */
+.title-input p {
+  display: inline;
+  margin: 0;
+  padding: 0;
+}
+
+/* contentEditable placeholder 支持 */
+.title-input:empty:before {
+  content: attr(data-placeholder);
+  color: #d1d5db;
+}
+```
+
+**宽度自适应逻辑** (v2.15.4 更新):
+```typescript
+// 动态调整 contentEditable 宽度（高度由 CSS 自适应）
+const autoResizeTextarea = useCallback((element: HTMLElement | null) => {
+  if (!element) return;
+  
+  // 清除可能存在的内联高度样式
+  element.style.removeProperty('height');
+  
+  const text = element.textContent || '';
+  if (!text) {
+    element.style.width = '50px';
+    return;
+  }
+  
+  const maxWidth = 240;
+  
+  // 用隐藏 div 测量文本不换行时的宽度（支持 HTML）
+  const testDiv = document.createElement('div');
+  testDiv.style.visibility = 'hidden';
+  testDiv.style.position = 'absolute';
+  testDiv.style.whiteSpace = 'nowrap';
+  testDiv.style.font = window.getComputedStyle(element).font;
+  testDiv.innerHTML = element.innerHTML || text;
+  document.body.appendChild(testDiv);
+  const textWidth = testDiv.offsetWidth;
+  document.body.removeChild(testDiv);
+  
+  // 宽度 = 实际宽度（+10px padding）或最大240px
+  const finalWidth = textWidth <= maxWidth ? textWidth + 10 : maxWidth;
+  element.style.width = finalWidth + 'px';
+}, []);
 ```
 
 **数据保存**（子事件情况）:
 ```typescript
-const handleTitleChange = async (newTitle: string) => {
+const handleTitleChange = async (html: string) => {
   // 🔍 如果当前是子事件（Timer/TimeLog/OutsideApp），保存到父事件
   const isSubEvent = event.isTimer || event.isTimeLog || event.isOutsideApp;
   
@@ -662,28 +791,38 @@ const handleTitleChange = async (newTitle: string) => {
     const parentEvent = EventService.getEventById(event.parentEventId);
     if (!parentEvent) return;
     
-    // ✅ 直接更新父事件的标题
+    // ✅ 直接更新父事件的标题（传入 HTML 富文本）
     await EventService.update(parentEvent.id, {
-      title: newTitle
+      title: { colorTitle: html }  // 传 colorTitle，让 EventService.normalizeTitle 处理
     });
     
-    setFormData({ ...formData, title: newTitle });
+    setFormData({ ...formData, title: html });
     return;
   }
   
-  // ✅ 非 Timer 子事件，正常保存到自己
-  setFormData({ ...formData, title: newTitle });
+  // ✅ 非子事件，正常保存到自己
+  setFormData({ ...formData, title: html });
 };
 ```
+
+**关键特性** (v2.15.4):
+- ✅ **富文本支持**: 保留 Plan 页面设置的文字颜色、高亮等格式
+- ✅ **contentEditable**: 替代 textarea，原生支持 HTML 渲染和编辑
+- ✅ **高度自适应**: 1-3行自动调整，超出显示滚动条（27px-81px）
+- ✅ **宽度自适应**: 根据内容动态调整宽度（50px-240px）
+- ✅ **块级标签清理**: 自动移除 `<p>`, `<div>` 等，避免异常换行
+- ✅ **Emoji 分离显示**: 标题输入框不显示 emoji，emoji 显示在左侧圆形区域
 
 **用户体验说明**:
 - ✅ 所有计时记录共享同一个标题（用户视角：这就是同一个事件）
 - ✅ 修改标题时，如果是 Timer 子事件，自动同步到父事件
 - ✅ TimeCalendar 上所有相关色块的标题会同步更新
+- ✅ 用户在 Plan 页面添加的高亮、颜色效果在 EditModal 中保留显示
 
 **验证规则**:
 - 必填字段（除非选择了标签，则可用标签名称代替）
 - 最大长度 200 字符
+- 单行输入（禁止回车换行）
 
 ---
 

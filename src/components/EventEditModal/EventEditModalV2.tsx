@@ -239,9 +239,20 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
    */
   const [formData, setFormData] = useState<MockEvent>(() => {
     if (event) {
+      // 保留 colorTitle HTML 格式以支持富文本显示
+      let titleText = '';
+      if (event.title) {
+        if (typeof event.title === 'string') {
+          titleText = event.title;
+        } else {
+          // 优先使用 colorTitle（富文本HTML），fallback 到 simpleTitle 或 fullTitle
+          titleText = event.title.colorTitle || event.title.simpleTitle || event.title.fullTitle || '';
+        }
+      }
+      
       return {
         id: event.id,
-        title: event.title?.simpleTitle || event.title?.colorTitle || '',
+        title: titleText,
         tags: event.tags || [],
         isTask: event.isTask || false,
         isTimer: event.isTimer || false,
@@ -1284,47 +1295,64 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   const syncCalendarRef = useRef<HTMLDivElement>(null);
   const syncSyncModeRef = useRef<HTMLDivElement>(null);
 
-  // 动态调整textarea宽度和高度
-  const autoResizeTextarea = useCallback((textarea: HTMLTextAreaElement | null) => {
-    if (!textarea) return;
+  // 输入法状态跟踪
+  const isComposingRef = useRef(false);
+  const resizeTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 动态调整 contentEditable 宽度（高度由 CSS 自适应）
+  const autoResizeTextarea = useCallback((element: HTMLElement | null, immediate = false) => {
+    if (!element) return;
     
-    const text = textarea.value || textarea.placeholder || '';
+    // 清除可能存在的内联高度样式
+    element.style.removeProperty('height');
+    
+    // 获取纯文本内容
+    const text = element.textContent || element.getAttribute('data-placeholder') || '';
     if (!text) {
-      textarea.style.width = '50px';
-      textarea.style.height = 'auto';
-      textarea.style.height = textarea.scrollHeight + 'px';
+      element.style.width = '50px';
       return;
     }
     
     const maxWidth = 240;
     
-    // 用隐藏 span 测量文本不换行时的宽度
-    const span = document.createElement('span');
-    span.style.visibility = 'hidden';
-    span.style.position = 'absolute';
-    span.style.whiteSpace = 'pre'; // 不换行
-    span.style.font = window.getComputedStyle(textarea).font;
-    span.style.fontSize = window.getComputedStyle(textarea).fontSize;
-    span.style.fontWeight = window.getComputedStyle(textarea).fontWeight;
-    span.textContent = text;
-    document.body.appendChild(span);
-    const textWidth = span.offsetWidth;
-    document.body.removeChild(span);
+    // 用隐藏 div 测量文本不换行时的宽度（支持 HTML）
+    const testDiv = document.createElement('div');
+    testDiv.style.visibility = 'hidden';
+    testDiv.style.position = 'absolute';
+    testDiv.style.whiteSpace = 'nowrap'; // 不换行
+    testDiv.style.font = window.getComputedStyle(element).font;
+    testDiv.style.fontSize = window.getComputedStyle(element).fontSize;
+    testDiv.style.fontWeight = window.getComputedStyle(element).fontWeight;
+    testDiv.innerHTML = element.innerHTML || text;
+    document.body.appendChild(testDiv);
+    const textWidth = testDiv.offsetWidth;
+    document.body.removeChild(testDiv);
     
     // 如果文本宽度 <= 最大宽度，使用实际宽度；否则使用最大宽度
     const finalWidth = textWidth <= maxWidth ? textWidth + 10 : maxWidth;
     
-    // 先设置宽度，让文本按这个宽度换行
-    textarea.style.width = finalWidth + 'px';
-    
-    // 重置高度并重新计算
-    textarea.style.height = 'auto';
-    textarea.style.height = textarea.scrollHeight + 'px';
+    // 只设置宽度，高度由内容自适应
+    element.style.width = finalWidth + 'px';
   }, []);
+
+  // 防抖的调整函数
+  const debouncedResize = useCallback(() => {
+    if (resizeTimerRef.current) {
+      clearTimeout(resizeTimerRef.current);
+    }
+    
+    // 如果正在输入法输入，延迟更长时间
+    const delay = isComposingRef.current ? 300 : 100;
+    
+    resizeTimerRef.current = setTimeout(() => {
+      autoResizeTextarea(titleInputRef.current as HTMLElement, true);
+    }, delay);
+  }, [autoResizeTextarea]);
 
   // 监听标题变化并自动调整宽度和高度
   useEffect(() => {
-    autoResizeTextarea(titleInputRef.current);
+    // 首次渲染立即调整
+    autoResizeTextarea(titleInputRef.current as HTMLElement, true);
   }, [formData.title, autoResizeTextarea]);
 
   // 点击外部关闭各种选择器
@@ -1452,14 +1480,37 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   // ==================== 标题处理函数 ====================
   
   /**
-   * 从标题中移除emoji，用于显示
+   * 从标题中移除emoji，用于显示（支持 HTML 格式，去除块级标签）
    */
   const removeEmojiFromTitle = (title: string): string => {
-    const emoji = extractFirstEmoji(title);
+    if (!title) return '';
+    
+    // 解析 HTML
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = title;
+    
+    // 移除所有 p、div 等块级标签，只保留行内内容
+    const blockTags = tempDiv.querySelectorAll('p, div, br');
+    blockTags.forEach(tag => {
+      // 将块级标签的内容提取出来
+      const parent = tag.parentNode;
+      while (tag.firstChild) {
+        parent?.insertBefore(tag.firstChild, tag);
+      }
+      tag.remove();
+    });
+    
+    // 获取处理后的 HTML
+    let cleanHtml = tempDiv.innerHTML.trim();
+    const plainText = tempDiv.textContent || tempDiv.innerText || '';
+    
+    // 移除 emoji
+    const emoji = extractFirstEmoji(plainText);
     if (emoji) {
-      return title.replace(emoji, '').trim();
+      cleanHtml = cleanHtml.replace(emoji, '').trim();
     }
-    return title;
+    
+    return cleanHtml;
   };
 
   const getTitlePlaceholder = (tags: string[]): string => {
@@ -1470,16 +1521,25 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     return firstTag?.name || '事件标题';
   };
 
-  const handleTitleChange = (newTitle: string) => {
-    // 如果已有emoji，保留它；如果输入了新emoji，也保留
-    const existingEmoji = extractFirstEmoji(formData.title);
-    const newEmoji = extractFirstEmoji(newTitle);
+  const handleTitleChange = (html: string) => {
+    // 提取纯文本来检测 emoji
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    const plainText = tempDiv.textContent || tempDiv.innerText || '';
     
-    let finalTitle = newTitle;
+    // 获取原有标题的纯文本
+    const existingTempDiv = document.createElement('div');
+    existingTempDiv.innerHTML = formData.title;
+    const existingPlainText = existingTempDiv.textContent || existingTempDiv.innerText || '';
+    
+    const existingEmoji = extractFirstEmoji(existingPlainText);
+    const newEmoji = extractFirstEmoji(plainText);
+    
+    let finalTitle = html;
     
     // 如果新输入中没有emoji，但原来有emoji，则保留原emoji
     if (!newEmoji && existingEmoji) {
-      finalTitle = `${existingEmoji} ${newTitle}`;
+      finalTitle = `${existingEmoji} ${html}`;
     }
     
     setFormData({ ...formData, title: finalTitle });
@@ -1830,13 +1890,39 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                       className={`custom-checkbox ${formData.isTask ? 'checked' : ''}`}
                       onClick={() => handleTaskCheckboxChange(!formData.isTask)}
                     />
-                    <textarea
-                      ref={titleInputRef}
+                    <div
+                      ref={titleInputRef as any}
                       className="title-input"
-                      value={removeEmojiFromTitle(formData.title)}
-                      placeholder={getTitlePlaceholder(formData.tags)}
-                      onChange={(e) => handleTitleChange(e.target.value)}
-                      rows={1}
+                      contentEditable
+                      suppressContentEditableWarning
+                      data-placeholder={getTitlePlaceholder(formData.tags)}
+                      onInput={(e) => {
+                        const html = e.currentTarget.innerHTML;
+                        handleTitleChange(html);
+                        // 实时调整宽度
+                        if (!isComposingRef.current) {
+                          debouncedResize();
+                        }
+                      }}
+                      onCompositionStart={() => {
+                        isComposingRef.current = true;
+                      }}
+                      onCompositionEnd={() => {
+                        isComposingRef.current = false;
+                      }}
+                      onKeyDown={(e) => {
+                        // 阻止回车换行
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                        }
+                      }}
+                      onFocus={(e) => {
+                        // 聚焦时，如果是空的，确保光标在正确位置
+                        if (e.currentTarget.textContent?.trim() === '') {
+                          e.currentTarget.innerHTML = '';
+                        }
+                      }}
+                      dangerouslySetInnerHTML={{ __html: removeEmojiFromTitle(formData.title) }}
                     />
                   </div>
 
