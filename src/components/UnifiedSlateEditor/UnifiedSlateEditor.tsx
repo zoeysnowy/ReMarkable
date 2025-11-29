@@ -671,7 +671,13 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   }, [itemsHash]); // 使用itemsHash代替items直接依赖
   
   // 初始化内容
-  const [value, setValue] = useState<EventLineNode[]>(() => enhancedValue);
+  const [value, setValue] = useState<EventLineNode[]>(() => {
+    console.log('%c[🎯 useState 初始化] 使用 enhancedValue', 'background: #4CAF50; color: white; padding: 2px 6px;', {
+      enhancedValueLength: enhancedValue.length,
+      hasPlaceholder: enhancedValue.some(n => n.eventId === '__placeholder__')
+    });
+    return enhancedValue;
+  });
   
   // 🆕 生成编辑器 key，用于强制重新渲染
   const [editorKey, setEditorKey] = useState(0);
@@ -743,16 +749,23 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
   useEffect(() => {
     console.log('%c[🔍 enhancedValue useEffect 触发]', 'background: #E91E63; color: white; padding: 2px 6px;', {
       isInitialized: isInitializedRef.current,
-      enhancedValueLength: enhancedValue.length
+      enhancedValueLength: enhancedValue.length,
+      valueLength: value.length
     });
     
-    // 🔥 首次初始化：直接更新 value，无需等待
-    if (!isInitializedRef.current && enhancedValue.length > 0) {
-      console.log('%c[🎉 首次初始化] 设置 value', 'background: #4CAF50; color: white; padding: 2px 6px;', {
-        enhancedValueLength: enhancedValue.length
+    // 🔥 首次初始化：标记为已初始化（value 已在 useState 时设置）
+    if (!isInitializedRef.current) {
+      console.log('%c[🎉 首次初始化] 标记为已初始化', 'background: #4CAF50; color: white; padding: 2px 6px;', {
+        enhancedValueLength: enhancedValue.length,
+        valueLength: value.length
       });
-      setValue(enhancedValue);
       isInitializedRef.current = true;
+      
+      // 🔧 如果 enhancedValue 有内容但 value 为空，同步一次
+      if (enhancedValue.length > 0 && value.length === 0) {
+        console.log('%c[⚠️ 修正] value 为空，使用 enhancedValue', 'background: #FF9800; color: white;');
+        setValue(enhancedValue);
+      }
       return;
     }
     
@@ -2756,8 +2769,8 @@ export const UnifiedSlateEditor: React.FC<UnifiedSlateEditorProps> = ({
       >
         {/* 🔧 v1.8: 移除绝对定位的 placeholder，改用最后一行的 renderLinePrefix */}
         
-        {/* 🔧 确保编辑器始终有内容 */}
-        {value && value.length > 0 ? (
+        {/* 🔧 始终渲染编辑器（至少有 placeholder） */}
+        {value.length > 0 ? (
           <Slate 
             key={editorKey} 
             editor={editor} 
