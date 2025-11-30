@@ -10,7 +10,7 @@ export * from './types';
 // 服务
 export { StorageManager, storageManager } from './StorageManager';
 export { IndexedDBService, indexedDBService } from './IndexedDBService';
+export { SQLiteService, sqliteService } from './SQLiteService';
 
 // TODO: 添加其他服务导出
-// export { SQLiteService, sqliteService } from './SQLiteService';
 // export { FileSystemService, fileSystemService } from './FileSystemService';

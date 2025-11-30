@@ -150,20 +150,26 @@ export class StorageManager {
     console.log('[StorageManager] Initializing storage services...');
 
     try {
-      // TODO: 动态导入存储服务（避免循环依赖）
-      // const { IndexedDBService } = await import('./IndexedDBService');
-      // const { SQLiteService } = await import('./SQLiteService');
-      // const { FileSystemService } = await import('./FileSystemService');
+      // 动态导入存储服务（避免循环依赖）
+      const { indexedDBService } = await import('./IndexedDBService');
+      const { sqliteService } = await import('./SQLiteService');
+      // const { fileSystemService } = await import('./FileSystemService');
       
-      // this.indexedDBService = new IndexedDBService();
-      // this.sqliteService = new SQLiteService();
-      // this.fileSystemService = new FileSystemService();
+      this.indexedDBService = indexedDBService;
+      this.sqliteService = sqliteService;
+      // this.fileSystemService = fileSystemService;
       
-      // await Promise.all([
-      //   this.indexedDBService.initialize(),
-      //   this.sqliteService.initialize(),
-      //   this.fileSystemService.initialize()
-      // ]);
+      // 初始化 IndexedDB（浏览器环境必需）
+      await this.indexedDBService.initialize();
+      
+      // 初始化 SQLite（仅在 Electron 环境）
+      if (typeof window !== 'undefined' && (window as any).electron) {
+        await this.sqliteService.initialize();
+        console.log('[StorageManager] ✅ SQLite enabled (Electron)');
+      } else {
+        console.log('[StorageManager] ℹ️  SQLite skipped (Web only)');
+        this.sqliteService = null;
+      }
 
       this.initialized = true;
       console.log('[StorageManager] ✅ Initialization complete');
@@ -193,7 +199,7 @@ export class StorageManager {
   }
 
   /**
-   * 创建事件（双写）
+   * 创建事件（双写：IndexedDB + SQLite）
    */
   async createEvent(event: StorageEvent): Promise<StorageEvent> {
     await this.ensureInitialized();
@@ -202,11 +208,11 @@ export class StorageManager {
 
     try {
       // 双写策略：同步写入 IndexedDB 和 SQLite
-      // TODO: 实现事务逻辑
-      // const results = await Promise.all([
-      //   this.indexedDBService.createEvent(event),
-      //   this.sqliteService.createEvent(event)
-      // ]);
+      await this.indexedDBService.createEvent(event);
+      
+      if (this.sqliteService) {
+        await this.sqliteService.createEvent(event);
+      }
 
       // 写入缓存
       this.eventCache.set(event.id, event);
@@ -220,7 +226,7 @@ export class StorageManager {
   }
 
   /**
-   * 更新事件（双写）
+   * 更新事件（双写：IndexedDB + SQLite）
    */
   async updateEvent(id: string, updates: Partial<StorageEvent>): Promise<StorageEvent> {
     await this.ensureInitialized();
@@ -228,19 +234,25 @@ export class StorageManager {
     console.log('[StorageManager] Updating event:', id);
 
     try {
-      // TODO: 实现更新逻辑
-      // 1. 从缓存或存储获取当前事件
-      // 2. 合并更新
-      // 3. 双写到 IndexedDB 和 SQLite
-      // 4. 更新缓存
-
-      const cachedEvent = this.eventCache.get(id);
-      if (!cachedEvent) {
-        throw new Error(`Event not found: ${id}`);
+      // 1. 双写到 IndexedDB 和 SQLite
+      await this.indexedDBService.updateEvent(id, updates);
+      
+      if (this.sqliteService) {
+        await this.sqliteService.updateEvent(id, updates);
       }
 
-      const updatedEvent = { ...cachedEvent, ...updates };
-      this.eventCache.set(id, updatedEvent);
+      // 2. 更新缓存
+      const cachedEvent = this.eventCache.get(id);
+      if (cachedEvent) {
+        const updatedEvent = { ...cachedEvent, ...updates };
+        this.eventCache.set(id, updatedEvent);
+      }
+
+      // 3. 获取最新数据
+      const updatedEvent = await this.indexedDBService.getEvent(id);
+      if (!updatedEvent) {
+        throw new Error(`Event not found: ${id}`);
+      }
 
       console.log('[StorageManager] ✅ Event updated:', id);
       return updatedEvent;
@@ -251,7 +263,7 @@ export class StorageManager {
   }
 
   /**
-   * 删除事件（双写）
+   * 删除事件（双写：IndexedDB + SQLite）
    */
   async deleteEvent(id: string): Promise<void> {
     await this.ensureInitialized();
@@ -259,12 +271,14 @@ export class StorageManager {
     console.log('[StorageManager] Deleting event:', id);
 
     try {
-      // TODO: 实现删除逻辑
-      // await Promise.all([
-      //   this.indexedDBService.deleteEvent(id),
-      //   this.sqliteService.deleteEvent(id)
-      // ]);
+      // 双写删除
+      await this.indexedDBService.deleteEvent(id);
+      
+      if (this.sqliteService) {
+        await this.sqliteService.deleteEvent(id);
+      }
 
+      // 从缓存移除
       this.eventCache.delete(id);
 
       console.log('[StorageManager] ✅ Event deleted:', id);
