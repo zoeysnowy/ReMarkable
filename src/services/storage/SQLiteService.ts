@@ -64,27 +64,38 @@ export class SQLiteService {
     try {
       // 0. 获取 better-sqlite3（从 Electron preload 暴露）
       if (!Database) {
+        console.log('🔍 [SQLiteService] Checking for Electron environment...');
+        
         // 检查 Electron 环境
         if (typeof window === 'undefined' || !(window as any).electronAPI) {
+          console.error('❌ [SQLiteService] Not in Electron environment');
           throw new Error('SQLiteService requires Electron environment');
         }
         
         const electronAPI = (window as any).electronAPI;
+        console.log('✅ [SQLiteService] electronAPI found');
+        console.log('   electronAPI.sqlite:', electronAPI.sqlite);
+        console.log('   electronAPI.sqlite?.available:', electronAPI.sqlite?.available);
         
         // 检查 SQLite 支持
         if (!electronAPI.sqlite || !electronAPI.sqlite.available) {
+          console.error('❌ [SQLiteService] SQLite not available');
+          console.error('   electronAPI.sqlite exists:', !!electronAPI.sqlite);
+          console.error('   electronAPI.sqlite?.available:', electronAPI.sqlite?.available);
           throw new Error('SQLite not available in this Electron build');
         }
         
         // 获取 Database 构造函数
         Database = electronAPI.sqlite.Database;
+        console.log('✅ [SQLiteService] Database constructor obtained:', typeof Database);
         
         // 验证是否是构造函数
         if (typeof Database !== 'function') {
+          console.error('❌ [SQLiteService] Invalid Database type:', typeof Database);
           throw new Error('Invalid better-sqlite3 module: not a constructor');
         }
         
-        console.log('✅ better-sqlite3 loaded from Electron preload');
+        console.log('✅ [SQLiteService] better-sqlite3 loaded from Electron preload');
       }
 
       // 1. 创建数据库连接

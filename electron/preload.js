@@ -3,10 +3,14 @@ const { contextBridge, ipcRenderer } = require('electron');
 // 🗄️ 引入 better-sqlite3（Node.js 原生模块）
 let BetterSqlite3;
 try {
+  console.log('🔍 [Preload] Attempting to load better-sqlite3...');
   BetterSqlite3 = require('better-sqlite3');
-  console.log('✅ better-sqlite3 loaded in preload');
+  console.log('✅ [Preload] better-sqlite3 loaded successfully:', typeof BetterSqlite3);
+  console.log('✅ [Preload] BetterSqlite3 is constructor:', typeof BetterSqlite3 === 'function');
 } catch (error) {
-  console.warn('⚠️  better-sqlite3 not available:', error.message);
+  console.error('❌ [Preload] Failed to load better-sqlite3:');
+  console.error('   Error:', error.message);
+  console.error('   Stack:', error.stack);
   BetterSqlite3 = null;
 }
 
