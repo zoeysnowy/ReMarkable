@@ -10,8 +10,15 @@ function ignoreBetterSqlite3() {
     name: 'ignore-better-sqlite3',
     resolveId(id: string) {
       if (id === 'better-sqlite3') {
-        // 返回 false 表示这是外部依赖，不要尝试解析
-        return false;
+        // 返回特殊的外部模块标记
+        return '\0virtual:better-sqlite3';
+      }
+      return null;
+    },
+    load(id: string) {
+      if (id === '\0virtual:better-sqlite3') {
+        // 返回空的模块导出（在 Web 环境下不会被使用）
+        return 'export default {};';
       }
       return null;
     },
