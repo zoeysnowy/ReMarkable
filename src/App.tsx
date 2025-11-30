@@ -32,6 +32,9 @@ import TimeLog from './pages/TimeLog';
 
 import { logger } from './utils/logger';
 
+// 🧪 导入存储测试模块（开发环境）
+import './tests/test-storage';
+
 const AppLogger = logger.module('App');
 // 🚀 性能优化：生产环境禁用 AppLogger.log
 if (process.env.NODE_ENV === 'production') {
@@ -41,7 +44,7 @@ if (process.env.NODE_ENV === 'production') {
   // 保留 warn 和 error
 }
 
-// 暴露时间:工具函数到全局，供控制台调试使用
+// 暴露时间工具函数到全局，供控制台调试使用
 if (typeof window !== 'undefined') {
   (window as any).formatTimeForStorage = formatTimeForStorage;
 }
