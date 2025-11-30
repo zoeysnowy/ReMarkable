@@ -34,6 +34,7 @@ import { logger } from './utils/logger';
 
 // 🧪 导入存储测试模块（开发环境）
 import './tests/test-storage';
+import './tests/debug-storage-env';
 
 const AppLogger = logger.module('App');
 // 🚀 性能优化：生产环境禁用 AppLogger.log
