@@ -459,10 +459,17 @@ ipcMain.handle('sqlite:create-database', (event, dbPath, options) => {
     if (!Database) {
       throw new Error('better-sqlite3 not available');
     }
-    const db = new Database(dbPath, options || {});
+    
+    // 合并选项，在开发环境自动启用 verbose
+    const finalOptions = {
+      ...(options || {}),
+      verbose: isDev ? console.log : undefined
+    };
+    
+    const db = new Database(dbPath, finalOptions);
     const dbId = `db_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     sqliteConnections.set(dbId, db);
-    console.log(`✅ [SQLite] Database created: ${dbId}`);
+    console.log(`✅ [SQLite] Database created: ${dbId} at ${dbPath}`);
     return { success: true, dbId };
   } catch (error) {
     console.error('❌ [SQLite] Failed to create database:', error);

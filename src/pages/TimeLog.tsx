@@ -232,18 +232,25 @@ const TimeLog: React.FC = () => {
                 {/* 左侧独立时间轴 */}
                 <div className="timeline-axis">
                   <div className="timeline-line"></div>
-                  <div className="timeline-dot"></div>
+                  {/* 使用图标替代圆点 */}
+                  <div className="timeline-icon-wrapper">
+                    {/* 优先显示 Timer 图标，或者根据业务逻辑显示 */}
+                    {/* 这里简单逻辑：如果有 startTime 显示 Plan，否则显示 Timer (示例) */}
+                    {/* 实际逻辑可能是：如果是 Timer 记录显示 Timer，如果是计划显示 Plan */}
+                    {/* 为了演示效果，我们交替显示或者根据 mock 数据 */}
+                    <img 
+                      src={index % 2 === 0 ? PlanIconSvg : TimerIconSvg} 
+                      className="timeline-status-icon" 
+                      alt="status" 
+                    />
+                  </div>
                 </div>
 
                 {/* 右侧事件内容 (无卡片样式) */}
                 <div className="event-content">
                   {/* Row 1: Time Info & Status */}
                   <div className="event-row event-time-row">
-                    <div className="time-status-icons">
-                      {event.startTime && <img src={PlanIconSvg} className="status-icon" alt="plan" />}
-                      {/* 示例：如果有计时记录显示 Timer 图标 */}
-                      <img src={TimerIconSvg} className="status-icon" alt="timer" />
-                    </div>
+                    {/* 图标已移至时间轴，此处移除 time-status-icons */}
                     
                     <span className="time-text start-time">{event.startTime && formatTime(event.startTime)}</span>
                     <span className="time-duration-arrow">
@@ -307,11 +314,7 @@ const TimeLog: React.FC = () => {
                     </div>
                   )}
                   
-                  {/* 底部同步状态 */}
-                  <div className="event-sync-status">
-                    <img src={OutlookIconSvg} alt="sync" />
-                    <span>同步至 Outlook</span>
-                  </div>
+                  {/* 底部同步状态 - 已移除，合并至标题行 */}
                 </div>
               </div>
             ))

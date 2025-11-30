@@ -75,8 +75,9 @@ export class SQLiteService {
       console.log('✅ [SQLiteService] Creating database connection via IPC...');
       
       // 1. 创建数据库连接（通过 IPC 包装类）
+      // 注意：不能传递 verbose: console.log，因为函数无法通过 IPC 序列化
       this.db = new SQLiteDatabaseWrapper(this.dbPath, {
-        verbose: process.env.NODE_ENV === 'development' ? console.log : undefined
+        // verbose 选项由主进程决定，不在此处配置
       });
       
       await this.db.initialize();
