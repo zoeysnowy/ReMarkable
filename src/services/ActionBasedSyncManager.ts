@@ -2968,7 +2968,7 @@ private getUserSettings(): any {
 
     // 🚀 批量模式：如果传入了localEvents，说明是批量处理，不立即保存
     const isBatchMode = !!localEvents;
-    const events = localEvents || this.getLocalEvents();
+    let events = localEvents || this.getLocalEvents();
     
     // 🆕 v2.0.6 SyncMode 接收逻辑检查
     if (action.type === 'create' || action.type === 'update') {
