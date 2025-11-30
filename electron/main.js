@@ -4,6 +4,16 @@ const http = require('http');
 const url = require('url');
 const { spawn } = require('child_process');
 
+// 🗄️ 加载 better-sqlite3（在主进程中）
+let Database;
+try {
+  Database = require('better-sqlite3');
+  console.log('✅ [Main] better-sqlite3 loaded successfully');
+} catch (error) {
+  console.error('❌ [Main] Failed to load better-sqlite3:', error.message);
+  Database = null;
+}
+
 // 本地时间格式化函数
 const formatTimeForStorage = (date) => {
   const y = date.getFullYear();

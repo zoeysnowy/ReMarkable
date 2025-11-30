@@ -4,7 +4,14 @@ const { contextBridge, ipcRenderer } = require('electron');
 let BetterSqlite3;
 try {
   console.log('🔍 [Preload] Attempting to load better-sqlite3...');
-  BetterSqlite3 = require('better-sqlite3');
+  console.log('   __dirname:', __dirname);
+  console.log('   process.cwd():', process.cwd());
+  
+  // 使用绝对路径加载
+  const sqlite3Path = require('path').join(__dirname, 'node_modules', 'better-sqlite3');
+  console.log('   Trying path:', sqlite3Path);
+  
+  BetterSqlite3 = require(sqlite3Path);
   console.log('✅ [Preload] better-sqlite3 loaded successfully:', typeof BetterSqlite3);
   console.log('✅ [Preload] BetterSqlite3 is constructor:', typeof BetterSqlite3 === 'function');
 } catch (error) {
