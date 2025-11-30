@@ -62,7 +62,7 @@ export class SQLiteService {
       // 0. 动态导入 better-sqlite3（仅在 Electron 环境）
       if (!Database) {
         try {
-          Database = (await import('better-sqlite3')).default;
+          Database = (await import(/* @vite-ignore */ 'better-sqlite3')).default;
         } catch (error) {
           throw new Error('better-sqlite3 not available. SQLite requires Electron environment.');
         }
