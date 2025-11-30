@@ -4,14 +4,58 @@
 ## 核心交互功能
 
 ### 1. 自动检测与转换
-```javascript
-// 检测bulletpoint触发字符
-const BULLET_TRIGGERS = ['* ', '- ', '• ', '➢ '];
-function detectBulletInput(text, cursorPosition) {
-    const lastTwoChars = text.substring(cursorPosition - 2, cursorPosition);
-    return BULLET_TRIGGERS.includes(lastTwoChars);
+
+**✅ 已实现 (2025-11-30)**
+
+```typescript
+// SlateCore/operations/bulletOperations.ts
+export const BULLET_TRIGGERS = ['* ', '- ', '• ', '➢ ', '· '] as const;
+
+// 检测光标前两个字符是否为触发字符
+export function detectBulletTrigger(editor: Editor): string | null {
+  const { selection } = editor;
+  if (!selection || !Range.isCollapsed(selection)) return null;
+
+  const { anchor } = selection;
+  const beforePoint = Editor.before(editor, anchor, { unit: 'character', distance: 2 });
+  if (!beforePoint) return null;
+
+  const beforeText = Editor.string(editor, { anchor: beforePoint, focus: anchor });
+  
+  for (const trigger of BULLET_TRIGGERS) {
+    if (beforeText === trigger) return trigger;
+  }
+  return null;
+}
+
+// 应用自动转换（删除触发字符，设置 bullet 属性）
+export function applyBulletAutoConvert(editor: Editor, trigger: string): boolean {
+  // 1. 删除触发字符
+  // 2. 设置当前段落为 bullet: true, bulletLevel: 0
+  // 详见实现
 }
 ```
+
+**触发时机** (关键修复):
+```typescript
+// ModalSlate.tsx / PlanSlate.tsx - handleKeyDown
+if (event.key === ' ') {
+  // ⚠️ 使用 setTimeout(0) 确保空格已插入到编辑器后再检测
+  setTimeout(() => {
+    const trigger = detectBulletTrigger(editor);
+    if (trigger) {
+      console.log('🎯 检测到 Bullet 触发字符:', trigger);
+      applyBulletAutoConvert(editor, trigger);
+    }
+  }, 0);
+}
+```
+
+**为什么使用 setTimeout(0)?**
+- ✅ 确保空格字符已经插入到 Slate 编辑器
+- ✅ 让 Slate 的 onChange 事件先完成
+- ✅ 然后再读取光标前的文本内容
+- ❌ 如果直接在 onKeyDown 中检测，空格还未插入，检测失败
 
 ### 2. 多级缩进系统
 ```javascript

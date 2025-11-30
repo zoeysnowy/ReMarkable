@@ -11,19 +11,93 @@
   flex-direction: column;
 }
 
-/* Bullet Point 样式 */
+/* ==================== Bullet Point 样式 ==================== */
+
+/* Bullet 段落容器 */
 .light-slate-editor .bullet-paragraph {
   position: relative;
   display: flex;
   align-items: flex-start;
+  line-height: 1.6;
+  min-height: 1.6em;
 }
 
+/* Bullet 符号 */
 .light-slate-editor .bullet-symbol {
   position: absolute;
   user-select: none;
-  color: #666;
+  color: #6b7280;
   font-weight: bold;
   pointer-events: none;
+  width: 18px;
+  text-align: center;
+  line-height: 1.6;
+}
+
+/* 层级缩进 (0-4 级) */
+.light-slate-editor .bullet-level-0 { margin-left: 0; }
+.light-slate-editor .bullet-level-1 { margin-left: 24px; }
+.light-slate-editor .bullet-level-2 { margin-left: 48px; }
+.light-slate-editor .bullet-level-3 { margin-left: 72px; }
+.light-slate-editor .bullet-level-4 { margin-left: 96px; }
+
+/* Bullet 悬停效果 */
+.light-slate-editor .bullet-paragraph:hover .bullet-symbol {
+  color: #374151;
+}
+
+/* 选中状态的 Bullet */
+.light-slate-editor .bullet-paragraph[data-slate-selected="true"] .bullet-symbol {
+  color: #2563eb;
+}
+
+/* ==================== 响应式适配 ==================== */
+
+/* 移动端 - 减小缩进 */
+@media (max-width: 768px) {
+  .light-slate-editor .bullet-level-1 { margin-left: 16px; }
+  .light-slate-editor .bullet-level-2 { margin-left: 32px; }
+  .light-slate-editor .bullet-level-3 { margin-left: 48px; }
+  .light-slate-editor .bullet-level-4 { margin-left: 64px; }
+  
+  .light-slate-editor .bullet-symbol {
+    width: 14px;
+    font-size: 13px;
+  }
+}
+
+/* 微信环境 - 简化层级 (仅保留 2 级) */
+@media (max-width: 480px) {
+  .light-slate-editor .bullet-level-2,
+  .light-slate-editor .bullet-level-3,
+  .light-slate-editor .bullet-level-4 {
+    margin-left: 32px !important; /* 所有高层级统一为 level-2 */
+  }
+}
+
+/* ==================== 格式兼容性 ==================== */
+
+/* Microsoft Office 复制时的样式保留 */
+.light-slate-editor .bullet-paragraph[data-list-style="office"] {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* 富文本粘贴后的格式清理 */
+.light-slate-editor .bullet-paragraph * {
+  margin: 0;
+  padding: 0;
+}
+
+/* ==================== 打印样式 ==================== */
+
+@media print {
+  .light-slate-editor .bullet-symbol {
+    color: #000 !important;
+  }
+  
+  .light-slate-editor .bullet-paragraph {
+    page-break-inside: avoid;
+  }
 }
 
 .light-slate-editor .slate-editable {

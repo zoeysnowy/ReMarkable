@@ -1624,28 +1624,22 @@ export class MicrosoftCalendarService {
       // 🔧 强化时间字段处理和验证
       if (startDateTime && endDateTime) {
         try {
-          const startFormatted = typeof startDateTime === 'string' ? startDateTime : formatTimeForStorage(startDateTime);
-          const endFormatted = typeof endDateTime === 'string' ? endDateTime : formatTimeForStorage(endDateTime);
+          // ✅ 转换为 Date 对象
+          const startDate = typeof startDateTime === 'string' ? new Date(startDateTime) : startDateTime;
+          const endDate = typeof endDateTime === 'string' ? new Date(endDateTime) : endDateTime;
           
-          // 验证时间格式
-          if (!startFormatted || !endFormatted) {
-            throw new Error('Invalid time format detected');
-          }
-          
-          // 确保时间格式正确
-          const startDate = new Date(startFormatted);
-          const endDate = new Date(endFormatted);
-          
+          // 验证时间有效性
           if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
             throw new Error('Invalid date values detected');
           }
           
+          // ✅ 使用 formatTimeForOutlook 生成 ISO 8601 格式（T分隔）
           outlookEventData.start = {
-            dateTime: startFormatted,
+            dateTime: this.formatTimeForOutlook(startDate),
             timeZone: 'Asia/Shanghai'
           };
           outlookEventData.end = {
-            dateTime: endFormatted,
+            dateTime: this.formatTimeForOutlook(endDate),
             timeZone: 'Asia/Shanghai'
           };
           
@@ -1748,11 +1742,11 @@ export class MicrosoftCalendarService {
         subject: eventData.subject || eventData.title?.simpleTitle || 'Untitled Event',
         body: eventData.body || { contentType: 'Text', content: eventData.description || '' },
         start: {
-          dateTime: typeof startDateTime === 'string' ? startDateTime : formatTimeForStorage(startDateTime),
+          dateTime: this.formatTimeForOutlook(typeof startDateTime === 'string' ? new Date(startDateTime) : startDateTime),
           timeZone: 'Asia/Shanghai'
         },
         end: {
-          dateTime: typeof endDateTime === 'string' ? endDateTime : formatTimeForStorage(endDateTime),
+          dateTime: this.formatTimeForOutlook(typeof endDateTime === 'string' ? new Date(endDateTime) : endDateTime),
           timeZone: 'Asia/Shanghai'
         },
         location: eventData.location ? { displayName: eventData.location } : undefined,

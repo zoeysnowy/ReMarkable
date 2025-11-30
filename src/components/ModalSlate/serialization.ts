@@ -141,6 +141,12 @@ export function slateNodesToHtml(nodes: Descendant[]): string {
         switch (node.type) {
           case 'paragraph':
             const text = extractTextFromNode(node);
+            // 🆕 保留 bullet 属性
+            const paraNode = node as any;
+            if (paraNode.bullet && paraNode.bulletLevel !== undefined) {
+              const attrs = `data-bullet="true" data-bullet-level="${paraNode.bulletLevel}"`;
+              return `<p ${attrs}>${text}</p>`;
+            }
             return text ? `<p>${text}</p>` : '';
           
           case 'timestamp-divider':

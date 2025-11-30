@@ -310,9 +310,9 @@ export interface Event {
    */
   eventlog?: string | EventLog;
   
-  // 🆕 Issue #12: Timer ↔ Plan 集成
-  parentEventId?: string;   // 父事件 ID（用于 Timer 子事件关联）
-  timerLogs?: string[];     // 计时日志（子 Timer 事件 ID 列表）
+  // 🆕 Issue #12: EventTree 父子事件关联
+  parentEventId?: string;      // 父事件 ID（所有类型子事件都用此字段）
+  childEventIds?: string[];    // 子事件 ID 列表（包括 Timer、用户子任务、外部同步事件等）
   
   // 🆕 签到功能：用于任务管理和定时打卡
   checked?: string[];       // 签到时间戳数组（ISO格式）

@@ -3,12 +3,109 @@
  * 
  * 提供 Bullet List 的增删改查功能
  * 支持多层级 bullet (0-4)，OneNote 风格删除机制
+ * 支持自动检测触发字符（* - • ➢）
  * 
- * @version 1.0.0
- * @date 2025-11-29
+ * @version 2.0.0
+ * @date 2025-11-30
  */
 
-import { Editor, Transforms, Element, Path } from 'slate';
+import { Editor, Transforms, Element, Path, Range, Point, Node as SlateNode } from 'slate';
+
+// 🎯 Bullet 触发字符配置
+export const BULLET_TRIGGERS = ['* ', '- ', '• ', '➢ ', '· '] as const;
+
+// 🎨 Bullet 符号映射（5级）
+export const BULLET_CHARS = ['●', '○', '–', '□', '▸'] as const;
+
+/**
+ * 获取指定层级的 Bullet 符号
+ */
+export function getBulletChar(level: number): string {
+  return BULLET_CHARS[Math.min(level, BULLET_CHARS.length - 1)];
+}
+
+/**
+ * 检测输入是否触发 Bullet 自动转换
+ * @returns 触发的字符串（如 "* "），或 null
+ */
+export function detectBulletTrigger(editor: Editor): string | null {
+  const { selection } = editor;
+  if (!selection || !Range.isCollapsed(selection)) {
+    console.log('[detectBulletTrigger] ❌ 无选区或选区非折叠状态');
+    return null;
+  }
+
+  try {
+    // 获取光标前的两个字符
+    const { anchor } = selection;
+    const beforePoint = Editor.before(editor, anchor, { unit: 'character', distance: 2 });
+    
+    if (!beforePoint) {
+      console.log('[detectBulletTrigger] ❌ 无法获取光标前的位置');
+      return null;
+    }
+
+    const beforeRange = { anchor: beforePoint, focus: anchor };
+    const beforeText = Editor.string(editor, beforeRange);
+    
+    console.log('[detectBulletTrigger] 🔍 光标前文本:', JSON.stringify(beforeText), '长度:', beforeText.length);
+
+    // 检查是否匹配触发字符
+    for (const trigger of BULLET_TRIGGERS) {
+      console.log('[detectBulletTrigger] 🔍 比对触发字符:', JSON.stringify(trigger), '匹配:', beforeText === trigger);
+      if (beforeText === trigger) {
+        return trigger;
+      }
+    }
+
+    return null;
+  } catch (err) {
+    console.error('[SlateCore.detectBulletTrigger] Failed:', err);
+    return null;
+  }
+}
+
+/**
+ * 应用 Bullet 自动转换（删除触发字符，设置 bullet 属性）
+ * @param trigger 触发字符（如 "* "）
+ */
+export function applyBulletAutoConvert(editor: Editor, trigger: string): boolean {
+  try {
+    const { selection } = editor;
+    if (!selection) return false;
+
+    // 1. 删除触发字符（向后删除两个字符）
+    const beforePoint = Editor.before(editor, selection.anchor, { 
+      unit: 'character', 
+      distance: trigger.length 
+    });
+    
+    if (!beforePoint) return false;
+
+    Editor.withoutNormalizing(editor, () => {
+      // 删除触发字符
+      Transforms.delete(editor, {
+        at: { anchor: beforePoint, focus: selection.anchor },
+      });
+
+      // 2. 设置当前段落为 bullet level 0
+      const [paraMatch] = Editor.nodes(editor, {
+        match: (n: any) => !Editor.isEditor(n) && Element.isElement(n) && n.type === 'paragraph',
+      });
+
+      if (paraMatch) {
+        const [, nodePath] = paraMatch;
+        Transforms.setNodes(editor, { bullet: true, bulletLevel: 0 } as any, { at: nodePath });
+        console.log('[SlateCore.applyBulletAutoConvert] ✅ 触发自动转换:', trigger);
+      }
+    });
+
+    return true;
+  } catch (err) {
+    console.error('[SlateCore.applyBulletAutoConvert] Failed:', err);
+    return false;
+  }
+}
 
 /**
  * 增加 Bullet 层级

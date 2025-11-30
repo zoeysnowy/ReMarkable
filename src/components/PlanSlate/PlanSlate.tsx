@@ -44,7 +44,17 @@ import {
 import {
   handleBulletBackspace,
   handleBulletEnter,
+  detectBulletTrigger,
+  applyBulletAutoConvert,
+  getBulletChar,
 } from '../SlateCore/operations/bulletOperations';
+
+import {
+  extractBulletItems,
+  generateClipboardData,
+  parsePlainTextBullets,
+  parseHTMLBullets,
+} from '../SlateCore/operations/clipboardHelpers';
 
 import UnifiedDateTimePicker from '../FloatingToolbar/pickers/UnifiedDateTimePicker';
 import { SlateErrorBoundary } from './ErrorBoundary';
@@ -2014,6 +2024,17 @@ export const PlanSlate: React.FC<PlanSlateProps> = ({
     // IME 组字中，不处理快捷键
     if (event.nativeEvent?.isComposing) return;
     
+    // 🎯 空格键触发 Bullet 自动检测
+    if (event.key === ' ') {
+      setTimeout(() => {
+        const trigger = detectBulletTrigger(editor);
+        if (trigger) {
+          console.log('[PlanSlate] 🎯 检测到 Bullet 触发字符:', trigger);
+          applyBulletAutoConvert(editor, trigger);
+        }
+      }, 0);
+    }
+    
     // 🆕 @提及激活时，拦截 Enter 和 Escape 键
     console.log('[@ Mention DEBUG] handleKeyDown:', { 
       key: event.key, 
@@ -2590,11 +2611,21 @@ export const PlanSlate: React.FC<PlanSlateProps> = ({
     
     // 获取选中的节点
     const fragment = Editor.fragment(editor, selection);
-    const richHtml = slateNodesToRichHtml(fragment as unknown as EventLineNode[]);
     
-    // 设置富文本和纯文本
-    event.clipboardData.setData('text/html', richHtml);
-    event.clipboardData.setData('text/plain', Editor.string(editor, selection));
+    // 🆕 使用 SlateCore 的 Bullet 剪贴板增强
+    const bulletItems = extractBulletItems(editor, fragment);
+    if (bulletItems.length > 0) {
+      // 如果包含 Bullet 项，使用增强的剪贴板数据
+      const clipboardData = generateClipboardData(bulletItems);
+      event.clipboardData.setData('text/html', clipboardData.html);
+      event.clipboardData.setData('text/plain', clipboardData.plain);
+      console.log('📋 复制 Bullet 列表:', bulletItems.length, '个项目');
+    } else {
+      // 回退到原有逻辑（EventLine 富文本）
+      const richHtml = slateNodesToRichHtml(fragment as unknown as EventLineNode[]);
+      event.clipboardData.setData('text/html', richHtml);
+      event.clipboardData.setData('text/plain', Editor.string(editor, selection));
+    }
   }, [editor]);
   
   const handlePaste = useCallback((event: React.ClipboardEvent) => {
@@ -2603,11 +2634,32 @@ export const PlanSlate: React.FC<PlanSlateProps> = ({
     const html = event.clipboardData.getData('text/html');
     const text = event.clipboardData.getData('text/plain');
     
+    // 🆕 优先尝试解析 Bullet 格式
+    let bulletItems = null;
     if (html) {
-      // 解析 HTML，智能创建 EventLine
-      const nodes = parseExternalHtml(html);
+      bulletItems = parseHTMLBullets(html);
+    }
+    if (!bulletItems && text) {
+      bulletItems = parsePlainTextBullets(text);
+    }
+    
+    if (bulletItems && bulletItems.length > 0) {
+      // 插入 Bullet 节点
+      const bulletNodes = bulletItems.map(item => ({
+        type: 'paragraph',
+        bullet: true,
+        bulletLevel: item.level,
+        children: [{ text: item.text, ...item.marks }],
+      }));
       
-      // 插入解析的节点
+      const { selection } = editor;
+      if (selection) {
+        Transforms.insertNodes(editor, bulletNodes as any);
+        console.log('📋 粘贴 Bullet 列表:', bulletItems.length, '个项目');
+      }
+    } else if (html) {
+      // 回退到原有逻辑（EventLine HTML）
+      const nodes = parseExternalHtml(html);
       const { selection } = editor;
       if (selection) {
         Transforms.insertNodes(editor, nodes as unknown as Node);
@@ -2671,7 +2723,7 @@ export const PlanSlate: React.FC<PlanSlateProps> = ({
         const para = element as any;
         if (para.bullet) {
           const level = para.bulletLevel || 0;
-          // Bullet paragraph rendering
+          // Bullet paragraph rendering - 使用 CSS ::before 伪元素渲染符号
           return (
             <div className="slate-bullet-paragraph" data-level={level} {...props.attributes}>
               {props.children}

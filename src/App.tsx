@@ -28,6 +28,7 @@ import TagManager from './components/TagManager';
 import TimeCalendar from './features/Calendar/TimeCalendar';
 import PlanManager from './components/PlanManager';
 import { AIDemo } from './components/AIDemo';
+import TimeLog from './pages/TimeLog';
 
 import { logger } from './utils/logger';
 
@@ -1695,17 +1696,8 @@ function App() {
 
       case 'log':
         content = (
-          <PageContainer title="日志" subtitle="系统日志与操作记录">
-            <div className="log-section">
-              <div className="section-header">
-                <div className="title-indicator"></div>
-                <h3>系统日志</h3>
-              </div>
-              <div className="log-placeholder">
-                <p>📋 系统操作日志将在这里显示</p>
-                <p>包括同步记录、错误日志、操作历史等</p>
-              </div>
-            </div>
+          <PageContainer title="时光日志" subtitle="事件回顾与日志记录" className="timelog-page-container">
+            <TimeLog />
           </PageContainer>
         );
         break;

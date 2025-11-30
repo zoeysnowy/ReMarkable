@@ -350,9 +350,498 @@ Event.eventlog = Event 内部的字段
 
 ## 2. TimeLog 页面设计
 
+### 2.0 UI 布局详细设计（基于 Figma 486-2661）
+
+**Figma 设计稿**: [日志页面完整设计](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=486-2661&m=dev)
+
+#### 2.0.1 三栏布局结构
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ TimeLog 页面 (100vw × 100vh, bg: #FAFAFA)                                    │
+├────────────┬──────────────────────────────────────────┬───────────────────────┤
+│ 左侧控制区  │ 中间时光日志区                              │ 右侧按钮区            │
+│ (280px)    │ (flex: 1, min-width: 600px)              │ (60px)              │
+│            │                                          │                     │
+│ [复用Plan  │ ┌──────────────────────────────────────┐ │ ┌─────────────────┐ │
+│  的Section │ │ 时光日志标题区                          │ │ │  [图标按钮]     │ │
+│  选择器]   │ │ - 日期显示: "11月12日 | 周二"           │ │ │  垂直排列        │ │
+│            │ │ - 字体: 24px, #1F2937                  │ │ │  间距: 16px     │ │
+│            │ └──────────────────────────────────────┘ │ │                 │ │
+│            │                                          │ │  • 导出          │ │
+│            │ ┌──────────────────────────────────────┐ │ │  • 链接          │ │
+│            │ │ Event 卡片 1                          │ │ │  • 更多          │ │
+│            │ │ - 白色背景, 圆角12px                   │ │ │                 │ │
+│            │ │ - 阴影: 0 1px 3px rgba(0,0,0,0.1)     │ │ │                 │ │
+│            │ │ - 间距: 16px                          │ │ └─────────────────┘ │
+│            │ └──────────────────────────────────────┘ │                     │
+│            │                                          │                     │
+│            │ ┌──────────────────────────────────────┐ │                     │
+│            │ │ Event 卡片 2                          │ │                     │
+│            │ └──────────────────────────────────────┘ │                     │
+│            │                                          │                     │
+│            │ [滚动区域...]                             │                     │
+└────────────┴──────────────────────────────────────────┴───────────────────────┘
+```
+
+**布局样式：**
+```css
+/* 主容器 */
+.timelog-page {
+  display: flex;
+  height: 100vh;
+  background: #FAFAFA;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* 左侧控制区（复用 Plan 页面的 Section 选择器）*/
+.timelog-sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  background: white;
+  border-right: 1px solid #E5E7EB;
+  overflow-y: auto;
+}
+
+/* 中间时光日志区 */
+.timelog-content {
+  flex: 1;
+  min-width: 600px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 32px 24px;
+}
+
+/* 右侧按钮区 */
+.timelog-actions {
+  width: 60px;
+  flex-shrink: 0;
+  background: white;
+  border-left: 1px solid #E5E7EB;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 0;
+  gap: 16px;
+}
+```
+
+#### 2.0.2 时光日志标题区
+
+```tsx
+{/* 标题区 - 日期显示 */}
+<div className="timelog-header">
+  <h1 className="timelog-date">
+    11月12日 | 周二
+  </h1>
+</div>
+```
+
+**样式细节：**
+```css
+.timelog-header {
+  margin-bottom: 24px;
+}
+
+.timelog-date {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1F2937;
+  line-height: 32px;
+  margin: 0;
+}
+```
+
+#### 2.0.3 Event 卡片详细设计
+
+**完整卡片结构：**
+```tsx
+<div className="event-card">
+  {/* 1. 顶部状态行 */}
+  <div className="event-status-row">
+    <div className="event-icons">
+      <img src={CalendarIcon} alt="计划" /> {/* 📅 计划时间 */}
+      <img src={TimerIcon} alt="实际" />     {/* ⏰ 实际时间 */}
+    </div>
+    <div className="event-time">14:00 - 16:00</div>
+    <button className="event-expand">
+      <img src={RightArrowIcon} alt="展开" />
+    </button>
+  </div>
+
+  {/* 2. 标题行 */}
+  <div className="event-title-row">
+    <span className="event-emoji">🎯</span>
+    <h3 className="event-title">准备演讲稿</h3>
+  </div>
+
+  {/* 3. 标签行 */}
+  <div className="event-tags">
+    <span className="tag">#工作</span>
+    <span className="tag">#文档编辑</span>
+  </div>
+
+  {/* 4. 元信息行 */}
+  <div className="event-metadata">
+    <span className="metadata-item">创建于12h前</span>
+    <span className="metadata-item">距ddl还有2h30min</span>
+  </div>
+
+  {/* 5. 关联任务（如有）*/}
+  <div className="event-relations">
+    <span className="relation-link">上级任务：Project Ace (5/7)</span>
+  </div>
+
+  {/* 6. 日志内容预览 */}
+  <div className="event-log-section">
+    {/* 时间戳折叠按钮 + 时间 */}
+    <div className="timestamp-row">
+      <button className="timestamp-toggle">▸</button>
+      <span className="timestamp-time">2025-10-19 10:21:18</span>
+      <button className="timestamp-options">⊙</button>
+    </div>
+    
+    {/* 日志文本内容 */}
+    <div className="log-content">
+      处理完了一些出差的logistics，还有一些材料要收集...
+    </div>
+
+    {/* 下一个时间戳 */}
+    <div className="timestamp-row">
+      <button className="timestamp-toggle">▸</button>
+      <span className="timestamp-time">16min later</span>
+      <button className="timestamp-options">⊙</button>
+    </div>
+    
+    <div className="log-content">
+      太强了！居然直接成稿了，让GPT帮我polish了一下...
+    </div>
+  </div>
+
+  {/* 7. 底部同步状态 */}
+  <div className="event-sync-status">
+    <img src={OutlookIcon} alt="Outlook" />
+    <span>同步至 Outlook</span>
+  </div>
+</div>
+```
+
+**Event 卡片样式细节：**
+```css
+/* Event 卡片容器 */
+.event-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.2s ease;
+}
+
+.event-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* 1. 顶部状态行 */
+.event-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.event-icons {
+  display: flex;
+  gap: 4px;
+}
+
+.event-icons img {
+  width: 16px;
+  height: 16px;
+}
+
+.event-time {
+  font-size: 14px;
+  font-weight: 500;
+  color: #4B5563;
+}
+
+.event-expand {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.event-expand:hover {
+  opacity: 1;
+}
+
+.event-expand img {
+  width: 20px;
+  height: 20px;
+}
+
+/* 2. 标题行 */
+.event-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.event-emoji {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.event-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1F2937;
+  margin: 0;
+  line-height: 24px;
+}
+
+/* 3. 标签行 */
+.event-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tag {
+  font-size: 13px;
+  color: #3B82F6;
+  background: rgba(59, 130, 246, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+/* 4. 元信息行 */
+.event-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #6B7280;
+}
+
+.metadata-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 5. 关联任务 */
+.event-relations {
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.relation-link {
+  color: #3B82F6;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.relation-link:hover {
+  text-decoration: underline;
+}
+
+/* 6. 日志内容区 */
+.event-log-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #F3F4F6;
+}
+
+.timestamp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.timestamp-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: #9CA3AF;
+  padding: 0;
+  width: 16px;
+  text-align: center;
+}
+
+.timestamp-time {
+  font-size: 12px;
+  color: #6B7280;
+  font-weight: 500;
+}
+
+.timestamp-options {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: #D1D5DB;
+  padding: 0;
+  margin-left: auto;
+}
+
+.timestamp-options:hover {
+  color: #9CA3AF;
+}
+
+.log-content {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #374151;
+  margin-left: 24px;
+  margin-bottom: 12px;
+  
+  /* 最多显示3行，超出省略 */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 7. 同步状态 */
+.event-sync-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #F3F4F6;
+  font-size: 12px;
+  color: #6B7280;
+}
+
+.event-sync-status img {
+  width: 16px;
+  height: 16px;
+}
+```
+
+#### 2.0.4 右侧按钮区设计
+
+**按钮列表：**
+```tsx
+<div className="timelog-actions">
+  {/* 1. 导出按钮 */}
+  <button className="action-button" title="导出">
+    <img src="/assets/icons/export.svg" alt="导出" />
+  </button>
+
+  {/* 2. 链接按钮 */}
+  <button className="action-button" title="复制链接">
+    <img src="/assets/icons/link_gray.svg" alt="链接" />
+  </button>
+
+  {/* 3. 更多按钮 */}
+  <button className="action-button" title="更多选项">
+    <img src="/assets/icons/more.svg" alt="更多" />
+  </button>
+</div>
+```
+
+**按钮样式：**
+```css
+.action-button {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+
+.action-button:hover {
+  background: #F3F4F6;
+}
+
+.action-button img {
+  width: 20px;
+  height: 20px;
+  opacity: 0.6;
+}
+
+.action-button:hover img {
+  opacity: 1;
+}
+```
+
+#### 2.0.5 可用图标资源
+
+**从 `src/assets/icons/` 目录：**
+- **日历/时间**: `Time.svg`, `datetime.svg`
+- **任务状态**: `task_check.svg`, `task_color.svg`, `task_gray.svg`
+- **计时器**: `timer_start.svg`, `timer_check.svg`, `timer_color.svg`
+- **DDL**: `ddl_add.svg`, `ddl_checked.svg`, `ddl_warn.svg`
+- **同步**: `Sync.svg`, `Outlook.svg`, `Google_Calendar.svg`, `iCloud.svg`
+- **操作按钮**: `export.svg`, `link_gray.svg`, `link_color.svg`, `more.svg`
+- **展开/折叠**: `right.svg`, `down.svg`, `Arrow_blue.svg`
+- **标签**: `Tag.svg`, `tag#.svg`
+- **收藏**: `favorite.svg`, `collect.svg`
+- **编辑**: `Edit.svg`, `Removestyle.svg`
+- **媒体**: `add_pic.svg`, `add_media.svg`, `video.svg`, `voice.svg`
+
+#### 2.0.6 响应式断点
+
+```css
+/* 平板尺寸 (≤1024px) */
+@media (max-width: 1024px) {
+  .timelog-sidebar {
+    width: 240px;
+  }
+  
+  .timelog-content {
+    min-width: 500px;
+  }
+}
+
+/* 移动端 (≤768px) */
+@media (max-width: 768px) {
+  .timelog-page {
+    flex-direction: column;
+  }
+  
+  .timelog-sidebar {
+    width: 100%;
+    height: 200px;
+    border-right: none;
+    border-bottom: 1px solid #E5E7EB;
+  }
+  
+  .timelog-actions {
+    width: 100%;
+    height: 60px;
+    flex-direction: row;
+    border-left: none;
+    border-top: 1px solid #E5E7EB;
+  }
+}
+```
+
+---
+
 ### 2.1 整体布局
 
-**Figma 设计稿**: [TimeLog 页面](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=333-1178&m=dev)
+**Figma 设计稿**: [TimeLog 页面（旧版参考）](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=333-1178&m=dev)
 
 **布局结构：**
 ```tsx
@@ -518,6 +1007,661 @@ const EventCard: React.FC<EventCardProps> = ({ event, onExpand }) => {
   color: #3b82f6;
 }
 ```
+
+---
+
+### 2.2.5 "Smart Zipper" 时间轴交互设计 ⭐
+
+> **设计目标**: 平衡页面紧凑性与事件创建便捷性  
+> **灵感来源**: [ReMarkable Time Axis Interaction Specification.md](../features/ReMarkable%20Time%20Axis%20Interaction%20Specification.md)  
+> **Figma 参考**: Node ID 486-2661（事件卡片间的空白区域）
+
+#### 核心矛盾与解决方案
+
+**矛盾需求：**
+1. ✅ **紧凑性**：希望页面尽可能紧凑，略去没有内容的时间（两天空白、一天只有3个event）
+2. ✅ **便捷性**：希望用户插入事件的交互尽可能简单（直接点击时间点即可创建）
+
+**解决方案：Smart Zipper（智能拉链）**
+- **折叠空白时间**：事件之间的空白时间折叠为固定高度（48px），无论实际间隔多长
+- **Hover 显示交互**：鼠标悬停在空白区域时，显示"+ Add Event"按钮
+- **智能时间推断**：点击位置决定新事件的开始时间
+
+#### 组件结构
+
+**时间轴容器（Timeline Container）**
+
+```tsx
+// src/pages/TimeLog/components/TimelineView.tsx
+import React from 'react';
+import { EventCard } from './EventCard';
+import { TimeGap } from './TimeGap';
+import { Event } from '@/types/Event';
+
+interface TimelineViewProps {
+  events: Event[];
+  date: string; // ISO date string
+  onCreateEvent: (suggestedStartTime: Date) => void;
+}
+
+export const TimelineView: React.FC<TimelineViewProps> = ({ 
+  events, 
+  date,
+  onCreateEvent 
+}) => {
+  // 按时间排序事件
+  const sortedEvents = [...events].sort((a, b) => 
+    new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+  );
+
+  // 构建时间轴元素数组（Event + TimeGap 交替）
+  const timelineElements: React.ReactNode[] = [];
+  
+  sortedEvents.forEach((event, index) => {
+    // 添加事件卡片
+    timelineElements.push(
+      <EventCard key={`event-${event.id}`} event={event} />
+    );
+
+    // 检查是否需要添加 TimeGap
+    const nextEvent = sortedEvents[index + 1];
+    if (nextEvent) {
+      const currentEnd = new Date(event.endTime || event.startTime);
+      const nextStart = new Date(nextEvent.startTime);
+      const gapMinutes = (nextStart.getTime() - currentEnd.getTime()) / (1000 * 60);
+
+      // 如果间隔 > 15 分钟，插入 TimeGap
+      if (gapMinutes > 15) {
+        timelineElements.push(
+          <TimeGap
+            key={`gap-${event.id}-${nextEvent.id}`}
+            prevEventEndTime={currentEnd}
+            nextEventStartTime={nextStart}
+            gapDuration={gapMinutes}
+            onCreateEvent={onCreateEvent}
+          />
+        );
+      }
+    }
+  });
+
+  return (
+    <div className="timeline-view">
+      <h2 className="timeline-date">{formatDate(date)}</h2>
+      <div className="timeline-container">
+        {timelineElements}
+      </div>
+    </div>
+  );
+};
+```
+
+**TimeGap 组件（核心交互组件）**
+
+```tsx
+// src/pages/TimeLog/components/TimeGap.tsx
+import React, { useState, useCallback } from 'react';
+import { formatDuration, addMinutes, subMinutes } from 'date-fns';
+
+interface TimeGapProps {
+  prevEventEndTime: Date;
+  nextEventStartTime: Date;
+  gapDuration: number; // minutes
+  onCreateEvent: (suggestedStartTime: Date) => void;
+}
+
+export const TimeGap: React.FC<TimeGapProps> = ({
+  prevEventEndTime,
+  nextEventStartTime,
+  gapDuration,
+  onCreateEvent,
+}) => {
+  const [isHovered, setIsHovered] = useState(false);
+  const [hoverY, setHoverY] = useState<number | null>(null);
+
+  // 处理点击创建事件
+  const handleSmartClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const percentage = y / rect.height;
+
+    // 智能时间推断逻辑
+    let suggestedStart: Date;
+    
+    if (percentage < 0.5) {
+      // 点击上半部分：从前一事件结束时开始
+      suggestedStart = prevEventEndTime;
+    } else {
+      // 点击下半部分：反推 30 分钟（或事件默认时长）
+      const defaultDuration = Math.min(30, gapDuration / 2);
+      suggestedStart = subMinutes(nextEventStartTime, defaultDuration);
+    }
+
+    onCreateEvent(suggestedStart);
+  }, [prevEventEndTime, nextEventStartTime, gapDuration, onCreateEvent]);
+
+  // 鼠标移动时计算时间
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isHovered) return;
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const percentage = Math.max(0, Math.min(1, y / rect.height));
+    
+    setHoverY(percentage);
+  }, [isHovered]);
+
+  // 计算鼠标位置对应的时间
+  const calculateHoverTime = useCallback(() => {
+    if (hoverY === null) return null;
+    
+    const timeOffset = gapDuration * hoverY;
+    return addMinutes(prevEventEndTime, timeOffset);
+  }, [hoverY, gapDuration, prevEventEndTime]);
+
+  const hoverTime = calculateHoverTime();
+
+  // 格式化时间间隔显示
+  const formatGapDuration = (minutes: number): string => {
+    if (minutes < 60) {
+      return `${Math.round(minutes)}min`;
+    } else if (minutes < 24 * 60) {
+      const hours = Math.floor(minutes / 60);
+      const mins = Math.round(minutes % 60);
+      return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+    } else {
+      const days = Math.floor(minutes / (24 * 60));
+      const hours = Math.floor((minutes % (24 * 60)) / 60);
+      return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+    }
+  };
+
+  // 根据时长调整高度和样式
+  const getGapHeight = (): number => {
+    if (gapDuration < 30) return 32; // 小间隔
+    if (gapDuration < 120) return 48; // 标准间隔
+    return 48; // 大间隔（保持紧凑，不随时长增长）
+  };
+
+  const gapHeight = getGapHeight();
+  const isSmallGap = gapDuration < 30;
+  const isOvernightGap = gapDuration >= 8 * 60; // 8 小时以上
+
+  return (
+    <div
+      className={`time-gap ${isHovered ? 'hovered' : ''} ${isSmallGap ? 'small' : ''}`}
+      style={{ height: `${gapHeight}px` }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        setHoverY(null);
+      }}
+      onMouseMove={handleMouseMove}
+      onClick={handleSmartClick}
+    >
+      {/* 左侧时间轴线 */}
+      <div className={`time-gap-axis ${isHovered ? 'active' : ''}`} />
+
+      {/* 中间内容区域 */}
+      <div className="time-gap-content">
+        {isHovered ? (
+          <>
+            {/* Hover 状态：显示创建按钮 */}
+            <button className="time-gap-add-btn">
+              {isSmallGap ? '+' : '+ Add Event'}
+            </button>
+            
+            {/* 显示鼠标悬停位置的时间 */}
+            {hoverTime && !isSmallGap && (
+              <div className="time-gap-tooltip">
+                Create at {hoverTime.toLocaleTimeString('zh-CN', { 
+                  hour: '2-digit', 
+                  minute: '2-digit' 
+                })}
+              </div>
+            )}
+          </>
+        ) : (
+          /* 默认状态：显示时间间隔 */
+          <span className="time-gap-duration">
+            {formatGapDuration(gapDuration)} 
+            {isOvernightGap && ' (Overnight)'}
+            {' Free'}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+```
+
+#### 样式规格
+
+```css
+/* src/pages/TimeLog/components/TimeGap.css */
+
+/* === 时间间隙容器 === */
+.time-gap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  margin: 4px 0; /* 事件卡片之间的小间距 */
+}
+
+.time-gap:hover {
+  background-color: rgba(59, 130, 246, 0.05); /* 浅蓝色背景 */
+}
+
+/* 小间隙样式 */
+.time-gap.small {
+  height: 32px !important;
+}
+
+/* === 左侧时间轴线（Zipper）=== */
+.time-gap-axis {
+  position: absolute;
+  left: 20px; /* 与事件卡片左侧图标对齐 */
+  height: 100%;
+  width: 2px;
+  border-left: 2px dashed #CBD5E1; /* 虚线：默认状态 */
+  opacity: 0.6;
+  transition: all 0.2s ease;
+}
+
+.time-gap-axis.active {
+  border-left-style: solid;
+  border-left-color: #3B82F6; /* 蓝色：Hover 状态 */
+  opacity: 1;
+}
+
+/* === 中间内容区域 === */
+.time-gap-content {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding-left: 40px; /* 为左侧轴线留出空间 */
+  z-index: 10;
+}
+
+/* === 默认状态：时间间隔文字 === */
+.time-gap-duration {
+  font-size: 12px;
+  color: #9CA3AF;
+  background: white;
+  padding: 4px 12px;
+  border-radius: 12px;
+  white-space: nowrap;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.time-gap.hovered .time-gap-duration {
+  opacity: 0;
+  transform: translateY(-5px);
+  pointer-events: none;
+}
+
+/* === Hover 状态：添加按钮 === */
+.time-gap-add-btn {
+  opacity: 0;
+  pointer-events: none;
+  padding: 6px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: white;
+  background: linear-gradient(to right, #a855f7, #3b82f6); /* 紫蓝渐变 */
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+  transform: scale(0.9);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); /* ease-out-expo */
+}
+
+.time-gap.hovered .time-gap-add-btn {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1);
+}
+
+.time-gap-add-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
+.time-gap-add-btn:active {
+  transform: scale(0.98);
+}
+
+/* 小间隙的按钮样式 */
+.time-gap.small .time-gap-add-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* === Hover 时的时间提示 === */
+.time-gap-tooltip {
+  position: absolute;
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: #6B7280;
+  background: white;
+  padding: 4px 8px;
+  border-radius: 6px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: fade-in 0.2s ease;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+
+/* === 响应式：移动端优化 === */
+@media (max-width: 768px) {
+  .time-gap {
+    height: 40px !important;
+  }
+  
+  .time-gap.small {
+    height: 28px !important;
+  }
+  
+  .time-gap-axis {
+    left: 12px;
+  }
+  
+  .time-gap-content {
+    padding-left: 28px;
+  }
+  
+  .time-gap-tooltip {
+    display: none; /* 移动端隐藏时间提示 */
+  }
+}
+```
+
+#### 交互状态机
+
+| 状态 | 触发条件 | 视觉反馈 | 行为 |
+|-----|---------|---------|------|
+| **DEFAULT (Idle)** | 页面初始化 | • 虚线轴线（灰色）<br>• 显示时间间隔文字<br>• 高度固定（48px 或 32px） | 无交互 |
+| **HOVER (Mouse Enter)** | 鼠标进入 TimeGap 区域 | • 实线轴线（蓝色）<br>• 淡蓝色背景<br>• 文字消失，按钮出现<br>• 右侧显示时间提示 | 准备创建事件 |
+| **ACTIVE (Clicked)** | 点击 TimeGap 区域 | • 按钮按下动画（scale 0.98）<br>• 打开 EventEditModal | 触发 `onCreateEvent`<br>智能推断开始时间 |
+
+#### 智能时间推断逻辑
+
+**规则矩阵：**
+
+| 点击位置 | 间隔时长 | 推断开始时间 | 推断结束时间 | 说明 |
+|---------|---------|------------|------------|------|
+| 上半部分 (0-50%) | 任意 | `prevEventEndTime` | `prevEventEndTime + 1h` | 从前一事件结束时立即开始 |
+| 下半部分 (50-100%) | < 1h | `prevEventEndTime + (gap / 2)` | `nextEventStartTime` | 居中插入 |
+| 下半部分 (50-100%) | 1h - 4h | `nextEventStartTime - 30min` | `nextEventStartTime` | 反推 30 分钟 |
+| 下半部分 (50-100%) | > 4h | `nextEventStartTime - 1h` | `nextEventStartTime` | 反推 1 小时 |
+
+**代码实现：**
+
+```typescript
+const calculateSuggestedTime = (
+  clickPercentage: number,
+  prevEnd: Date,
+  nextStart: Date,
+  gapMinutes: number
+): { start: Date; end: Date } => {
+  let start: Date;
+  let end: Date;
+
+  if (clickPercentage < 0.5) {
+    // 上半部分：从前一事件结束时开始
+    start = prevEnd;
+    end = addMinutes(start, Math.min(60, gapMinutes)); // 默认 1 小时或剩余时间
+  } else {
+    // 下半部分：智能反推
+    if (gapMinutes < 60) {
+      // 小间隔：居中插入
+      const offsetMinutes = gapMinutes / 2;
+      start = addMinutes(prevEnd, offsetMinutes);
+      end = nextStart;
+    } else if (gapMinutes < 240) {
+      // 中等间隔：反推 30 分钟
+      start = subMinutes(nextStart, 30);
+      end = nextStart;
+    } else {
+      // 大间隔：反推 1 小时
+      start = subMinutes(nextStart, 60);
+      end = nextStart;
+    }
+  }
+
+  return { start, end };
+};
+```
+
+#### 边缘情况处理
+
+**1. 跨日间隙（Overnight Gaps）**
+
+```typescript
+const isOvernightGap = (start: Date, end: Date): boolean => {
+  return start.getDate() !== end.getDate();
+};
+
+// 显示文案调整
+const formatGapDuration = (minutes: number, isOvernight: boolean): string => {
+  if (isOvernight) {
+    const hours = Math.floor(minutes / 60);
+    return `Overnight (${hours}h)`;
+  }
+  // ... 常规格式化逻辑
+};
+```
+
+**2. 极小间隙（15-30 分钟）**
+
+```tsx
+{gapDuration >= 15 && gapDuration < 30 && (
+  <TimeGap
+    height={32} // 减小高度
+    showTextOnHover={false} // 只显示"+"号
+    {...props}
+  />
+)}
+```
+
+**3. 极大间隙（> 8 小时）**
+
+```css
+/* 保持固定高度，不随时长增长 */
+.time-gap {
+  max-height: 48px; /* 强制最大高度 */
+}
+```
+
+**4. 时间冲突检测**
+
+```typescript
+const validateNewEventTime = (
+  suggestedStart: Date,
+  prevEvent: Event,
+  nextEvent: Event
+): { valid: boolean; error?: string } => {
+  const prevEnd = new Date(prevEvent.endTime);
+  const nextStart = new Date(nextEvent.startTime);
+
+  if (suggestedStart < prevEnd) {
+    return { 
+      valid: false, 
+      error: '新事件开始时间不能早于前一事件结束时间' 
+    };
+  }
+
+  if (suggestedStart >= nextStart) {
+    return { 
+      valid: false, 
+      error: '新事件开始时间不能晚于下一事件开始时间' 
+    };
+  }
+
+  return { valid: true };
+};
+```
+
+#### 性能优化
+
+**1. 事件委托（避免大量 Hover 监听）**
+
+```tsx
+// 在 TimelineView 层级统一处理 hover 事件
+const TimelineView: React.FC = ({ events }) => {
+  const timelineRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleTimelineHover = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const gapElement = target.closest('.time-gap');
+      
+      if (gapElement) {
+        // 只处理 TimeGap 的 hover
+        // ...
+      }
+    };
+
+    timelineRef.current?.addEventListener('mousemove', handleTimelineHover);
+    return () => {
+      timelineRef.current?.removeEventListener('mousemove', handleTimelineHover);
+    };
+  }, []);
+
+  return <div ref={timelineRef} className="timeline-view">...</div>;
+};
+```
+
+**2. 渲染优化（虚拟滚动）**
+
+```tsx
+import { Virtuoso } from 'react-virtuoso';
+
+// 当事件数量 > 50 时启用虚拟滚动
+{events.length > 50 ? (
+  <Virtuoso
+    data={timelineElements}
+    itemContent={(index, element) => element}
+    style={{ height: '100%' }}
+  />
+) : (
+  <div className="timeline-container">{timelineElements}</div>
+)}
+```
+
+**3. 防抖处理（Hover 时间计算）**
+
+```typescript
+import { debounce } from 'lodash';
+
+const handleMouseMove = useMemo(
+  () => debounce((e: React.MouseEvent) => {
+    // 计算 hover 时间...
+  }, 50), // 50ms 防抖
+  []
+);
+```
+
+#### 与 GoldenLayout 集成
+
+**在标签页内渲染 TimelineView：**
+
+```tsx
+// src/pages/TimeLog/TimeLogTabsContainer.tsx
+import { GoldenLayoutWrapper } from '@/components/layout/GoldenLayoutWrapper';
+import { TimelineView } from './components/TimelineView';
+
+const TimeLogTabsContainer: React.FC = () => {
+  const components = [
+    {
+      name: 'timelineView',
+      component: TimelineView, // Smart Zipper 时间轴视图
+    },
+    {
+      name: 'eventEditor',
+      component: EventLogEditor, // 单个事件编辑器
+    },
+  ];
+
+  const defaultLayout = {
+    content: [{
+      type: 'stack',
+      content: [{
+        type: 'component',
+        componentName: 'timelineView',
+        componentState: { 
+          date: new Date().toISOString(),
+          events: [] // 从 EventService 加载
+        },
+        title: '时光日志',
+      }]
+    }]
+  };
+
+  return (
+    <GoldenLayoutWrapper
+      config={defaultLayout}
+      components={components}
+    />
+  );
+};
+```
+
+#### 测试清单
+
+**功能测试：**
+- [ ] 正确识别和渲染 15 分钟以上的空白时间
+- [ ] Hover 时轴线从虚线变实线，显示"+ Add Event"按钮
+- [ ] 点击上半部分创建从前一事件结束时开始的新事件
+- [ ] 点击下半部分创建反推的新事件（30min 或 1h）
+- [ ] 鼠标移动时右侧显示实时计算的时间点
+- [ ] 跨日间隙显示"Overnight (Xh)"标识
+- [ ] 极小间隙（15-30min）只显示"+"号
+- [ ] 极大间隙（>8h）高度保持 48px 不增长
+
+**性能测试：**
+- [ ] 100+ 事件时时间轴渲染流畅（<100ms）
+- [ ] Hover 响应延迟 <50ms
+- [ ] 虚拟滚动正确工作（事件数 >50 时）
+- [ ] 无内存泄漏（连续操作 10 分钟 Heap Size 增长 <10MB）
+
+**交互测试：**
+- [ ] 拖拽标签不影响 TimeGap 交互
+- [ ] 分屏视图下 TimeGap 正常工作
+- [ ] 移动端触摸事件正确触发
+- [ ] 键盘导航（Tab 键）可聚焦 TimeGap
+
+**视觉测试：**
+- [ ] 与 Figma 设计风格一致（颜色、圆角、阴影）
+- [ ] 动画流畅（60fps）
+- [ ] 深色模式适配
+
+---
 
 ### 2.3 智能搜索与过滤器
 
@@ -7604,9 +8748,964 @@ const versionCache = await openDB('remarkable-versions', 1, {
 
 ---
 
-## 10. 时间架构集成总结
+## 10. 标签页与多窗口编辑功能调研
 
-### 10.1 核心原则重申
+### 10.1 功能需求分析
+
+**使用场景：**
+TimeLog 页面需要支持用户同时编辑多个事件的日志，提供类似浏览器标签页的体验：
+
+1. **独立窗口模式**：点击 Event 卡片 → 打开独立的 EventEditModal
+2. **标签页模式**：点击"在新标签页中打开" → 在 TimeLog 页面内打开标签页
+3. **多标签管理**：
+   - 用户可以同时打开多个事件编辑标签
+   - 支持标签拖拽排序
+   - 支持标签关闭（含未保存提示）
+   - 支持标签快捷切换（Ctrl+Tab / Cmd+Tab）
+
+**交互体验：**
+```
+┌─────────────────────────────────────────────────────────┐
+│ TimeLog 页面                                             │
+├─────────────────────────────────────────────────────────┤
+│ ┌─────┬─────┬─────┬─────┐                               │
+│ │准备演讲│开会  │写代码│  +  │  ← 标签栏（可拖拽排序）      │
+│ └──▼──┴─────┴─────┴─────┘                               │
+│ ┌───────────────────────────────────────────────────┐   │
+│ │ 🎯 准备演讲稿                                      │   │
+│ │ #工作 #文档编辑                                    │   │
+│ │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ │   │
+│ │ ▸ 2025-10-19 10:21:18                             │   │
+│ │ 处理完了一些出差的logistics...                      │   │
+│ │ [Slate 编辑器区域]                                 │   │
+│ │                                                   │   │
+│ │ [底部保存按钮区]                                   │   │
+│ └───────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 10.2 技术方案调研
+
+#### 方案 1: rc-tabs（推荐 ⭐⭐⭐⭐⭐）
+
+**基本信息：**
+- **GitHub**: [react-component/tabs](https://github.com/react-component/tabs)
+- **Stars**: 573+
+- **License**: MIT
+- **维护状态**: ✅ 活跃维护（最近更新：3周前）
+- **Bundle Size**: ~20KB (gzipped)
+- **TypeScript**: ✅ 完整支持
+
+**核心功能：**
+```typescript
+import Tabs from 'rc-tabs';
+
+const items = [
+  {
+    key: '1',
+    label: '🎯 准备演讲稿',
+    children: <EventLogEditor eventId="event-1" />,
+    closable: true,
+  },
+  {
+    key: '2',
+    label: '📝 开会讨论',
+    children: <EventLogEditor eventId="event-2" />,
+    closable: true,
+  },
+];
+
+<Tabs
+  items={items}
+  activeKey={activeKey}
+  onChange={setActiveKey}
+  tabPosition="top"
+  editable={{
+    onEdit: (type, info) => {
+      if (type === 'remove') {
+        handleCloseTab(info.key);
+      }
+    },
+    showAdd: true,
+    addIcon: <PlusOutlined />,
+  }}
+  animated={{ inkBar: true, tabPane: false }}
+/>
+```
+
+**优势：**
+- ✅ Ant Design 团队维护，质量有保证
+- ✅ 支持标签编辑（新增/删除）
+- ✅ 支持标签拖拽排序（需配合 react-dnd）
+- ✅ 支持键盘导航（左右方向键）
+- ✅ 支持标签超出自动收缩到下拉菜单
+- ✅ 支持自定义标签栏额外内容
+- ✅ 完整的 TypeScript 类型定义
+- ✅ 丰富的 API 和配置项
+
+**劣势：**
+- ⚠️ 拖拽功能需要额外集成（不是内置）
+- ⚠️ 样式需要自定义（提供 Less 变量）
+
+**推荐指数**: ⭐⭐⭐⭐⭐
+
+---
+
+#### 方案 2: @atlaskit/pragmatic-drag-and-drop（新一代拖拽方案）
+
+**基本信息：**
+- **GitHub**: [atlassian/pragmatic-drag-and-drop](https://github.com/atlassian/pragmatic-drag-and-drop)
+- **Stars**: 活跃项目
+- **License**: Apache 2.0
+- **维护状态**: ✅ Atlassian 新项目（react-beautiful-dnd 的继任者）
+- **Bundle Size**: ~15KB (gzipped)
+
+**说明：**
+- react-beautiful-dnd 已于 2024年8月归档 ❌
+- Atlassian 推出新的拖拽库：Pragmatic drag and drop
+- 更轻量、更灵活、性能更好
+
+**与 rc-tabs 结合使用：**
+```typescript
+import Tabs from 'rc-tabs';
+import { draggable, dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop';
+
+// 标签页配置
+const [tabItems, setTabItems] = useState(items);
+
+// 拖拽配置
+const handleDragEnd = (result) => {
+  const { source, destination } = result;
+  if (!destination) return;
+  
+  const newItems = Array.from(tabItems);
+  const [removed] = newItems.splice(source.index, 1);
+  newItems.splice(destination.index, 0, removed);
+  
+  setTabItems(newItems);
+};
+
+<Tabs
+  items={tabItems}
+  // ... 其他配置
+/>
+```
+
+**推荐指数**: ⭐⭐⭐⭐
+
+---
+
+#### 方案 3: GoldenLayout（专业级多窗口方案 ⭐⭐⭐⭐⭐）
+
+**基本信息：**
+- **GitHub**: [golden-layout/golden-layout](https://github.com/golden-layout/golden-layout)
+- **Stars**: 6.6k+
+- **License**: MIT
+- **维护状态**: ✅ 活跃维护（2022年最新版本 v2.6.0）
+- **Bundle Size**: ~50KB (gzipped)
+- **TypeScript**: ✅ 完整支持
+- **Used by**: 1.2k+ 项目
+
+**核心功能（专业级IDE体验）：**
+```typescript
+import GoldenLayout from 'golden-layout';
+
+const config = {
+  content: [{
+    type: 'row',
+    content: [{
+      type: 'stack', // 标签页容器
+      content: [{
+        type: 'component',
+        componentName: 'eventEditor',
+        componentState: { eventId: 'event-1' },
+        title: '🎯 准备演讲稿',
+        isClosable: true,
+      }, {
+        type: 'component',
+        componentName: 'eventEditor',
+        componentState: { eventId: 'event-2' },
+        title: '📝 开会讨论',
+        isClosable: true,
+      }]
+    }, {
+      type: 'component',
+      componentName: 'eventList',
+      title: 'Event 列表',
+      width: 30, // 占 30% 宽度
+    }]
+  }]
+};
+
+const myLayout = new GoldenLayout(config, document.getElementById('layoutContainer'));
+
+// 注册组件
+myLayout.registerComponent('eventEditor', function(container, state) {
+  container.getElement().html(`<div id="editor-${state.eventId}"></div>`);
+  // 渲染 React 组件
+  ReactDOM.render(
+    <EventLogEditor eventId={state.eventId} />,
+    container.getElement()[0]
+  );
+});
+
+myLayout.init();
+```
+
+**革命性功能（超越标签页）：**
+
+1. **原生弹出窗口支持** 🪟
+   - 标签页可以拖出成独立浏览器窗口
+   - 支持多显示器工作流
+   - 窗口间通信无缝衔接
+   ```typescript
+   // 用户可以直接拖拽标签页到浏览器外，自动创建新窗口
+   myLayout.on('itemCreated', (item) => {
+     if (item.isStack && item.header) {
+       // 支持拖出窗口
+       item.header._createPopout();
+     }
+   });
+   ```
+
+2. **灵活的布局系统** 📐
+   - 支持水平/垂直分割
+   - 支持嵌套布局（无限深度）
+   - 支持标签页堆叠（stack）
+   - 实时调整大小（可设置最小/最大尺寸）
+   ```typescript
+   // 示例：3栏布局 + 标签页
+   {
+     type: 'row',
+     content: [
+       { type: 'component', title: '左侧栏', width: 20 },
+       { 
+         type: 'stack', // 中间标签页区域
+         content: [
+           { type: 'component', title: 'Event 1' },
+           { type: 'component', title: 'Event 2' },
+         ]
+       },
+       { type: 'component', title: '右侧栏', width: 20 }
+     ]
+   }
+   ```
+
+3. **布局持久化** 💾
+   - 保存/恢复完整布局状态
+   - 包括窗口位置、大小、激活标签
+   ```typescript
+   // 保存布局
+   const state = myLayout.toConfig();
+   localStorage.setItem('layout', JSON.stringify(state));
+   
+   // 恢复布局
+   const savedState = JSON.parse(localStorage.getItem('layout'));
+   myLayout = new GoldenLayout(savedState);
+   ```
+
+4. **高级拖拽** 🎯
+   - 标签页拖拽排序
+   - 标签页拖拽到不同区域（分割、堆叠）
+   - 拖拽到弹出窗口
+   - 拖拽预览（实时显示放置位置）
+
+5. **触摸屏支持** 📱
+   - 移动设备友好
+   - 响应式布局
+
+**使用场景对比：**
+
+| 场景 | rc-tabs | GoldenLayout |
+|------|---------|--------------|
+| 简单标签页 | ✅ 完美 | ⚠️ 过度设计 |
+| 多标签编辑 | ✅ 合适 | ✅ 强大 |
+| 分屏对比 | ❌ 不支持 | ✅ 原生支持 |
+| 弹出窗口 | ❌ 不支持 | ✅ 原生支持 |
+| 复杂布局 | ❌ 不支持 | ✅ 专业级 |
+| 多显示器 | ❌ 不支持 | ✅ 完美支持 |
+
+**优势：**
+- ✅ 6.6k+ stars，成熟稳定
+- ✅ 专业级 IDE 体验（类似 VS Code 布局）
+- ✅ 原生弹出窗口支持
+- ✅ 灵活的分割布局
+- ✅ 布局持久化（保存/恢复）
+- ✅ 完整的 API 和事件系统
+- ✅ 支持虚拟组件（懒加载）
+- ✅ 完全可主题化
+- ✅ TypeScript 支持
+- ✅ 触摸屏支持
+- ✅ 响应式设计
+
+**劣势：**
+- ⚠️ 学习曲线较陡（功能强大但复杂）
+- ⚠️ Bundle 较大（~50KB vs rc-tabs ~20KB）
+- ⚠️ 需要更多配置
+- ⚠️ React 集成需要额外封装
+- ⚠️ 可能过度设计（如果只需要简单标签页）
+
+**适用场景：**
+- ✅ 需要弹出窗口功能
+- ✅ 需要多显示器支持
+- ✅ 需要分屏对比编辑
+- ✅ 需要复杂的布局管理
+- ✅ 追求专业级 IDE 体验
+- ❌ 只需要简单的标签页（用 rc-tabs 更轻量）
+
+**React 封装示例：**
+```typescript
+import React, { useEffect, useRef } from 'react';
+import GoldenLayout from 'golden-layout';
+import 'golden-layout/src/css/goldenlayout-base.css';
+import 'golden-layout/src/css/goldenlayout-dark-theme.css';
+
+const GoldenLayoutWrapper: React.FC = () => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const layoutRef = useRef<GoldenLayout | null>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const config = {
+      content: [{
+        type: 'row',
+        content: [{
+          type: 'stack',
+          width: 80,
+          content: [{
+            type: 'component',
+            componentName: 'eventEditor',
+            componentState: { eventId: 'event-1' },
+            title: '🎯 准备演讲稿',
+          }]
+        }, {
+          type: 'component',
+          componentName: 'eventList',
+          title: 'Events',
+          width: 20,
+        }]
+      }]
+    };
+
+    const layout = new GoldenLayout(config, containerRef.current);
+
+    // 注册 React 组件
+    layout.registerComponent('eventEditor', (container, state) => {
+      const element = container.getElement()[0];
+      ReactDOM.render(
+        <EventLogEditor eventId={state.eventId} />,
+        element
+      );
+      
+      // 清理函数
+      container.on('destroy', () => {
+        ReactDOM.unmountComponentAtNode(element);
+      });
+    });
+
+    layout.init();
+    layoutRef.current = layout;
+
+    return () => {
+      layout.destroy();
+    };
+  }, []);
+
+  return <div ref={containerRef} style={{ height: '100%' }} />;
+};
+```
+
+**推荐指数（取决于需求）**: 
+- 简单标签页：⭐⭐⭐（过度设计，用 rc-tabs）
+- 多窗口编辑：⭐⭐⭐⭐⭐（完美方案）
+- 分屏布局：⭐⭐⭐⭐⭐（无可替代）
+
+---
+
+#### 方案 4: react-tabs（备选）
+
+**基本信息：**
+- **GitHub**: [reactjs/react-tabs](https://github.com/reactjs/react-tabs)
+- **Stars**: 3k+
+- **License**: MIT
+- **维护状态**: ⚠️ 维护较慢
+
+**优势：**
+- ✅ 简单易用
+- ✅ 完整的键盘支持
+- ✅ 无障碍访问（ARIA）
+
+**劣势：**
+- ❌ 不支持标签编辑（新增/删除）
+- ❌ 不支持拖拽排序
+- ❌ API 相对简陋
+
+**推荐指数**: ⭐⭐
+
+---
+
+### 10.3 最终推荐方案（两种选择）
+
+#### 方案 A: rc-tabs + pragmatic-drag-and-drop（轻量级）⭐⭐⭐⭐
+
+**适用场景：**
+- ✅ 只需要标签页功能
+- ✅ 不需要弹出窗口
+- ✅ 不需要分屏布局
+- ✅ 追求轻量级（20KB）
+
+**理由：**
+1. **rc-tabs** 提供完整的标签页基础功能
+2. **pragmatic-drag-and-drop** 提供现代化的拖拽能力
+3. 两者结合可以实现标签页所有需求
+4. 都是活跃维护的项目，长期可靠
+5. Bundle 小，性能优秀
+
+---
+
+#### 方案 B: GoldenLayout（专业级）⭐⭐⭐⭐⭐
+
+**适用场景：**
+- ✅ 需要弹出窗口（多显示器支持）
+- ✅ 需要分屏对比编辑
+- ✅ 需要灵活的布局管理
+- ✅ 追求专业 IDE 体验
+
+**理由：**
+1. 6.6k+ stars，成熟稳定
+2. 原生支持弹出窗口
+3. 强大的布局系统（分割、堆叠、嵌套）
+4. 布局持久化（保存/恢复状态）
+5. 完整的事件系统
+6. 支持多显示器工作流
+
+**推荐 GoldenLayout 的理由：**
+
+根据 TimeLog 页面的**核心使用场景**：
+```
+用户在记录某个事件，既可以：
+1. 独立窗口编辑（EventEditModal）
+2. 新标签页编辑（TimeLog 内嵌）
+3. 👉 拖出成独立浏览器窗口（多显示器场景）
+4. 👉 分屏对比编辑（同时查看多个事件）
+```
+
+**GoldenLayout 完美契合 3 和 4 的需求！**
+
+实际工作场景：
+- 用户可能有多个显示器
+- 想在一个显示器上看 Event 列表
+- 在另一个显示器上编辑日志
+- 或者左右分屏对比两个事件的日志
+
+这些都是 rc-tabs 无法实现的高级功能。
+
+---
+
+### 10.4 最终决策：**GoldenLayout 作为 App 通用布局系统** ⭐⭐⭐⭐⭐
+
+**架构升级决策（2025-12-01）：**
+
+GoldenLayout 不仅用于 TimeLog 页面，而是作为 **ReMarkable App 的通用布局管理系统**。
+
+#### 未来使用场景
+
+**1. TimeLog 页面（Phase 1）**
+- 多标签编辑 Event 日志
+- 弹出窗口独立编辑
+- 分屏对比多个事件
+
+**2. Homepage Dashboard（Phase 2）**
+```
+┌─────────────────────────────────────────────────────────┐
+│ Homepage - 自由配置的仪表盘                              │
+├──────────────────┬──────────────────┬───────────────────┤
+│ 📊 时间统计       │ ✅ 任务提醒       │ ⏱️ 倒计时提醒     │
+│ ├─ 今日工作时长   │ ├─ 今日 5 个待办  │ ├─ Project Ace    │
+│ ├─ 本周专注时长   │ ├─ 紧急: 2 个     │ │   还剩 2天       │
+│ └─ 月度统计图表   │ └─ 即将到期: 3 个 │ └─ 演讲日         │
+│                  │                  │     还剩 5小时    │
+├──────────────────┴──────────────────┴───────────────────┤
+│ 🌲 EventTree - 项目树状视图                             │
+│ ├─ 📁 Project Ace                                       │
+│ │   ├─ 📝 准备演讲稿 (进行中)                            │
+│ │   └─ 📅 客户会议 (已完成)                              │
+│ └─ 📁 个人学习                                          │
+├──────────────────┬──────────────────────────────────────┤
+│ 📅 日历视图       │ 📈 周/月报表                          │
+└──────────────────┴──────────────────────────────────────┘
+
+用户可以：
+- 拖拽调整每个组件的大小和位置
+- 新增/删除组件
+- 保存自定义布局（多套布局配置）
+- 拖出任意组件成独立窗口（多显示器支持）
+```
+
+**3. Windows Desktop Widgets（Phase 3）**
+```
+桌面悬浮窗口：
+┌─────────────────┐      ┌──────────────┐      ┌───────────┐
+│ ⏱️ 专注计时器    │      │ 📋 快速笔记   │      │ 📊 今日统计│
+│ 已专注: 2h 15m  │      │              │      │ 完成: 8/12│
+│ [暂停] [停止]   │      │ [保存]       │      │ 工作: 5h  │
+└─────────────────┘      └──────────────┘      └───────────┘
+
+每个 Widget 都是 GoldenLayout 的一个独立窗口
+```
+
+#### 技术优势：一次投入，全局复用
+
+| 功能 | 传统方案 | GoldenLayout 方案 |
+|------|---------|------------------|
+| TimeLog 标签页 | ✅ rc-tabs | ✅ GoldenLayout |
+| Homepage 自由布局 | ❌ 需要新开发 | ✅ 免费获得 |
+| 桌面 Widgets | ❌ 需要新开发 | ✅ 免费获得 |
+| 弹出窗口 | ❌ 不支持 | ✅ 原生支持 |
+| 布局持久化 | ❌ 需要手写 | ✅ 内置支持 |
+| 多显示器支持 | ❌ 不支持 | ✅ 完美支持 |
+
+---
+
+### 10.5 架构决策：**GoldenLayout 作为 App 基础设施** ⭐⭐⭐⭐⭐
+
+**战略价值评估：**
+
+从 "TimeLog 的标签页组件" 升级为 "App 的通用布局系统"，投资回报率极高：
+
+1. **一次投入，三处受益**
+   - TimeLog: 标签页 + 弹出窗口 + 分屏编辑
+   - Homepage: 自由配置的仪表盘
+   - Desktop Widgets: Windows 桌面小组件
+
+2. **避免重复造轮子**
+   - 不用为每个页面单独实现布局管理
+   - 不用手写布局持久化逻辑
+   - 不用处理窗口通信问题
+
+3. **用户体验一致性**
+   - 所有页面使用相同的拖拽交互
+   - 统一的窗口管理体验
+   - 一次学习，处处适用
+
+4. **技术债务最小化**
+   - GoldenLayout 成熟稳定（6.6k stars）
+   - MIT License，无版权风险
+   - TypeScript 支持，类型安全
+
+**类比专业工具：**
+- **VS Code**: 使用类似布局系统（编辑器 + 侧边栏 + 终端）
+- **Notion**: 弹出窗口编辑页面
+- **Obsidian**: 分屏对比笔记
+- **Figma**: 多窗口设计（Inspector + Canvas + Layers）
+
+**ReMarkable 应该达到这个水平**。
+
+---
+
+### 10.6 实施计划
+
+**完整实施计划已迁移到独立文档：**
+
+📄 **[GoldenLayout 实施计划](./GOLDENLAYOUT_IMPLEMENTATION_PLAN.md)**
+
+**文档内容概览：**
+
+#### Phase 1: TimeLog 标签页功能（2-3 周）
+- Week 1: 安装和封装 GoldenLayout
+  - 创建 `GoldenLayoutWrapper` 通用组件
+  - React 18 集成（createRoot API）
+  - 自定义主题样式
+- Week 2: 实现 TimeLog 标签页容器
+  - `EventLogEditor` 组件
+  - `TimeLogTabsContainer` 容器
+  - 标签打开/关闭/切换逻辑
+- Week 3: 集成和测试
+  - 集成到 TimeLog 页面
+  - 布局持久化
+  - 性能优化
+
+#### Phase 2: Homepage Dashboard（3-4 周）
+- Week 1: 设计组件库（时间统计、任务提醒、倒计时等）
+- Week 2-3: 实现 Dashboard 配置器
+- Week 4: 组件市场（拖拽添加组件）
+
+#### Phase 3: Windows Desktop Widgets（2-3 周）
+- Week 1-2: Electron 窗口集成
+- Week 2: Widget 路由和渲染
+- Week 3: 系统托盘管理
+
+**总计时间**: 8-10 周
+
+**关键技术点**:
+- GoldenLayout v2.6.0（稳定版）
+- React 18 createRoot API
+- 布局持久化（localStorage）
+- Electron 多窗口管理
+- 性能优化（懒加载、虚拟滚动）
+
+详细代码示例、风险评估和成功指标请查看完整文档。
+
+---
+
+### 10.7 快速开始（Phase 1 最小实现）
+
+**安装：**
+```bash
+# 安装 GoldenLayout
+npm install golden-layout@2.6.0
+npm install --save-dev @types/golden-layout
+```
+
+**最小可用示例：**
+```typescript
+// TimeLogTabs.tsx
+import React, { useState, useCallback } from 'react';
+import Tabs from 'rc-tabs';
+import { draggable, dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop';
+import EventLogEditor from './EventLogEditor';
+import './TimeLogTabs.css';
+
+interface TabItem {
+  key: string;
+  eventId: string;
+  title: string;
+  emoji?: string;
+  closable: boolean;
+  dirty?: boolean; // 是否有未保存的修改
+}
+
+const TimeLogTabs: React.FC = () => {
+  const [tabs, setTabs] = useState<TabItem[]>([]);
+  const [activeKey, setActiveKey] = useState<string>('');
+
+  // 打开新标签
+  const openTab = useCallback((eventId: string, title: string, emoji?: string) => {
+    const newTab: TabItem = {
+      key: `tab-${eventId}`,
+      eventId,
+      title,
+      emoji,
+      closable: true,
+      dirty: false,
+    };
+
+    setTabs(prev => {
+      const exists = prev.find(t => t.key === newTab.key);
+      if (exists) {
+        setActiveKey(newTab.key);
+        return prev;
+      }
+      return [...prev, newTab];
+    });
+    setActiveKey(newTab.key);
+  }, []);
+
+  // 关闭标签
+  const closeTab = useCallback((targetKey: string) => {
+    const tab = tabs.find(t => t.key === targetKey);
+    
+    // 如果有未保存的修改，弹出确认框
+    if (tab?.dirty) {
+      if (!confirm(`${tab.title} 有未保存的修改，确定要关闭吗？`)) {
+        return;
+      }
+    }
+
+    setTabs(prev => {
+      const newTabs = prev.filter(t => t.key !== targetKey);
+      
+      // 如果关闭的是当前标签，切换到下一个
+      if (targetKey === activeKey && newTabs.length > 0) {
+        const index = prev.findIndex(t => t.key === targetKey);
+        const nextIndex = Math.min(index, newTabs.length - 1);
+        setActiveKey(newTabs[nextIndex].key);
+      }
+      
+      return newTabs;
+    });
+  }, [tabs, activeKey]);
+
+  // 拖拽排序
+  const onDragEnd = useCallback((result: any) => {
+    const { source, destination } = result;
+    if (!destination) return;
+
+    setTabs(prev => {
+      const newTabs = Array.from(prev);
+      const [removed] = newTabs.splice(source.index, 1);
+      newTabs.splice(destination.index, 0, removed);
+      return newTabs;
+    });
+  }, []);
+
+  // 标记为已修改
+  const markTabDirty = useCallback((eventId: string, dirty: boolean) => {
+    setTabs(prev =>
+      prev.map(tab =>
+        tab.eventId === eventId ? { ...tab, dirty } : tab
+      )
+    );
+  }, []);
+
+  // 渲染标签内容
+  const tabItems = tabs.map(tab => ({
+    key: tab.key,
+    label: (
+      <span className="tab-label">
+        {tab.emoji && <span className="tab-emoji">{tab.emoji}</span>}
+        <span className="tab-title">{tab.title}</span>
+        {tab.dirty && <span className="tab-dirty-indicator">●</span>}
+      </span>
+    ),
+    children: (
+      <EventLogEditor
+        eventId={tab.eventId}
+        onDirtyChange={(dirty) => markTabDirty(tab.eventId, dirty)}
+      />
+    ),
+    closable: tab.closable,
+  }));
+
+  return (
+    <div className="timelog-tabs-container">
+      <Tabs
+        items={tabItems}
+        activeKey={activeKey}
+        onChange={setActiveKey}
+        tabPosition="top"
+        editable={{
+          onEdit: (action, info) => {
+            if (action === 'remove') {
+              closeTab(info.key);
+            }
+          },
+          showAdd: false, // 不显示新增按钮（通过点击 Event 卡片打开）
+        }}
+        animated={{ inkBar: true, tabPane: false }}
+        tabBarExtraContent={{
+          right: (
+            <button className="close-all-tabs" onClick={() => {
+              if (confirm('确定关闭所有标签吗？')) {
+                setTabs([]);
+              }
+            }}>
+              关闭所有
+            </button>
+          ),
+        }}
+      />
+    </div>
+  );
+};
+
+export default TimeLogTabs;
+```
+
+**样式文件：**
+```css
+/* TimeLogTabs.css */
+.timelog-tabs-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tab-emoji {
+  font-size: 16px;
+}
+
+.tab-title {
+  font-size: 14px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-dirty-indicator {
+  color: #f5222d;
+  font-size: 12px;
+  margin-left: 2px;
+}
+
+.close-all-tabs {
+  padding: 4px 12px;
+  font-size: 12px;
+  color: #6b7280;
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.close-all-tabs:hover {
+  color: #1f2937;
+  background: #f3f4f6;
+}
+
+/* rc-tabs 自定义样式 */
+.rc-tabs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.rc-tabs-nav {
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 0;
+}
+
+.rc-tabs-tab {
+  padding: 8px 16px;
+  font-size: 14px;
+  color: #6b7280;
+  border: none;
+  background: transparent;
+  transition: color 0.2s;
+}
+
+.rc-tabs-tab:hover {
+  color: #1f2937;
+}
+
+.rc-tabs-tab-active {
+  color: #3b82f6 !important;
+  font-weight: 500;
+}
+
+.rc-tabs-ink-bar {
+  background: #3b82f6;
+  height: 2px;
+}
+
+.rc-tabs-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.rc-tabs-tabpane {
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* 关闭按钮样式 */
+.rc-tabs-tab-remove {
+  margin-left: 8px;
+  padding: 2px;
+  color: #9ca3af;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.rc-tabs-tab:hover .rc-tabs-tab-remove {
+  opacity: 1;
+}
+
+.rc-tabs-tab-remove:hover {
+  color: #f5222d;
+}
+```
+
+**快捷键支持：**
+```typescript
+// 添加键盘快捷键
+useEffect(() => {
+  const handleKeyDown = (e: KeyboardEvent) => {
+    // Ctrl+Tab / Cmd+Tab: 切换到下一个标签
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Tab') {
+      e.preventDefault();
+      const currentIndex = tabs.findIndex(t => t.key === activeKey);
+      const nextIndex = (currentIndex + 1) % tabs.length;
+      if (tabs[nextIndex]) {
+        setActiveKey(tabs[nextIndex].key);
+      }
+    }
+    
+    // Ctrl+W / Cmd+W: 关闭当前标签
+    if ((e.ctrlKey || e.metaKey) && e.key === 'w') {
+      e.preventDefault();
+      if (activeKey) {
+        closeTab(activeKey);
+      }
+    }
+  };
+
+  window.addEventListener('keydown', handleKeyDown);
+  return () => window.removeEventListener('keydown', handleKeyDown);
+}, [tabs, activeKey, closeTab]);
+```
+
+### 10.4 实现路线图
+
+**Phase 1: 基础标签页功能（1周）**
+- [ ] 集成 rc-tabs 组件
+- [ ] 实现打开/关闭标签
+- [ ] 实现标签切换
+- [ ] 实现未保存提示
+
+**Phase 2: 拖拽排序（1周）**
+- [ ] 集成 pragmatic-drag-and-drop
+- [ ] 实现标签拖拽排序
+- [ ] 实现拖拽动画
+
+**Phase 3: 高级功能（1周）**
+- [ ] 快捷键支持（Ctrl+Tab, Ctrl+W）
+- [ ] 标签持久化（刷新后恢复）
+- [ ] 标签右键菜单（关闭其他、关闭右侧等）
+- [ ] 标签预览（hover 显示缩略图）
+
+**Phase 4: 性能优化（1周）**
+- [ ] 标签懒加载
+- [ ] 虚拟滚动（超过20个标签时）
+- [ ] 内存优化（关闭标签后释放资源）
+
+### 10.5 性能考虑
+
+**内存优化：**
+```typescript
+// 标签页懒加载策略
+const TabPaneContent: React.FC<{ eventId: string; active: boolean }> = ({
+  eventId,
+  active
+}) => {
+  // 只有激活的标签才渲染内容
+  if (!active) {
+    return <div className="tab-placeholder">加载中...</div>;
+  }
+  
+  return <EventLogEditor eventId={eventId} />;
+};
+```
+
+**预加载策略：**
+```typescript
+// 预加载前后标签页的内容
+useEffect(() => {
+  const currentIndex = tabs.findIndex(t => t.key === activeKey);
+  const prevTab = tabs[currentIndex - 1];
+  const nextTab = tabs[currentIndex + 1];
+  
+  // 预加载相邻标签的数据
+  if (prevTab) prefetchEventData(prevTab.eventId);
+  if (nextTab) prefetchEventData(nextTab.eventId);
+}, [activeKey, tabs]);
+```
+
+---
+
+## 11. 时间架构集成总结
+
+### 11.1 核心原则重申
 
 **🚫 绝对禁止的做法：**
 

@@ -267,10 +267,15 @@ function parseHtmlToParagraphsWithLevel(html: string): Array<{ paragraph: Paragr
     }];
   }
   
-  pElements.forEach(pElement => {
+  pElements.forEach((pElement, idx) => {
     const bullet = pElement.getAttribute('data-bullet') === 'true';
     const bulletLevel = parseInt(pElement.getAttribute('data-bullet-level') || '0', 10);
     const level = parseInt(pElement.getAttribute('data-level') || '0', 10);
+    
+    // 🐛 调试日志：检查解析到的 bullet 属性
+    if (bullet) {
+      console.log(`[Deserialization] Paragraph ${idx} parsed as bullet:`, { bullet, bulletLevel, level, html: pElement.outerHTML.substring(0, 100) });
+    }
     
     const para: ParagraphNode = {
       type: 'paragraph',
@@ -453,7 +458,7 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
       }
     } else {
       // 🆕 v1.8: Eventlog 模式：遍历所有 paragraph，保存为 HTML 数组
-      const paragraphsHtml = paragraphs.map(para => {
+      const paragraphsHtml = paragraphs.map((para, idx) => {
         const fragment = para.children || [];
         const html = slateFragmentToHtml(fragment);
         
@@ -462,6 +467,11 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
         const bulletLevel = (para as any).bulletLevel || 0;
         // 🔥 使用 bulletLevel 作为 level（它们应该同步）
         const level = bullet ? bulletLevel : (node.level || 0);
+        
+        // 🐛 调试日志：检查 bullet 属性
+        if (bullet) {
+          console.log(`[Serialization] Paragraph ${idx} has bullet:`, { bullet, bulletLevel, level, html });
+        }
         
         if (bullet) {
           return `<p data-bullet="true" data-bullet-level="${bulletLevel}" data-level="${level}">${html}</p>`;

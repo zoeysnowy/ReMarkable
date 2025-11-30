@@ -456,7 +456,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
       childEventId: event.id,
       parentEventId: event.parentEventId,
       found: !!parent,
-      parentTimerLogs: parent?.timerLogs,
+      parentChildrenCount: parent?.childEventIds?.length || 0,
       refreshCounter  // 🔧 添加日志验证刷新
     });
     return parent;
@@ -480,26 +480,12 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     
     // 情况 1: 当前是子事件 → 显示父事件的所有子事件
     if (latestEvent.parentEventId) {
-      const latestParent = EventService.getEventById(latestEvent.parentEventId);
-      if (!latestParent) {
-        return [];
-      }
-      
-      const timerLogs = latestParent.timerLogs || [];
-      console.log('🔍 [childEvents] 子事件模式 - 读取父事件的最新 timerLogs:', {
-        parentId: latestParent.id,
-        timerLogsCount: timerLogs.length,
-        timerLogs,
+      console.log('🔍 [childEvents] 子事件模式 - 使用 EventService.getChildEvents:', {
+        parentId: latestEvent.parentEventId,
         refreshCounter
       });
       
-      if (timerLogs.length === 0) {
-        return [];
-      }
-      
-      const children = timerLogs
-        .map(childId => EventService.getEventById(childId))
-        .filter(e => e !== null) as Event[];
+      const children = EventService.getChildEvents(latestEvent.parentEventId);
       
       console.log('🔍 [childEvents] 成功加载子事件:', {
         count: children.length,
@@ -510,21 +496,12 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     }
     
     // 情况 2: 当前是父事件 → 显示自己的子事件
-    const timerLogs = latestEvent.timerLogs || [];
-    console.log('🔍 [childEvents] 父事件模式 - 读取自己的最新 timerLogs:', {
+    console.log('🔍 [childEvents] 父事件模式 - 使用 EventService.getChildEvents:', {
       eventId: latestEvent.id,
-      timerLogsCount: timerLogs.length,
-      timerLogs,
       refreshCounter
     });
     
-    if (timerLogs.length === 0) {
-      return [];
-    }
-    
-    const children = timerLogs
-      .map(childId => EventService.getEventById(childId))
-      .filter(e => e !== null) as Event[];
+    const children = EventService.getChildEvents(latestEvent.id);
     
     console.log('🔍 [childEvents] 成功加载子事件:', {
       count: children.length,
@@ -949,19 +926,20 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
       
       if (isParentMode) {
         // ==================== 父事件模式：批量更新所有子事件 ====================
-        if (event?.timerLogs && event.timerLogs.length > 0) {
+        const childrenToUpdate = EventService.getChildEvents(eventId);
+        
+        if (childrenToUpdate.length > 0) {
           console.log('🔗 [EventEditModalV2] 父事件模式：批量更新子事件 calendarIds + syncMode:', {
             parentId: eventId,
-            childCount: event.timerLogs.length,
+            childCount: childrenToUpdate.length,
             calendarIds: updatedEvent.calendarIds,
             syncMode: updatedEvent.syncMode
           });
           
-          for (const childId of event.timerLogs) {
-            const childEvent = EventService.getEventById(childId);
-            if (childEvent && childEvent.isTimer) {
-              console.log('  🔹 [EventEditModalV2] 更新子事件:', childId);
-              await EventHub.updateFields(childId, {
+          for (const childEvent of childrenToUpdate) {
+            if (EventService.isSubordinateEvent(childEvent)) {
+              console.log('  🔹 [EventEditModalV2] 更新附属子事件:', childEvent.id);
+              await EventHub.updateFields(childEvent.id, {
                 calendarIds: updatedEvent.calendarIds,
                 syncMode: updatedEvent.syncMode,
               }, {
@@ -1285,8 +1263,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     };
   }, [isDetailView]); // 当视图切换时重新绑定
 
-  // Ref for title input
-  const titleInputRef = useRef<HTMLTextAreaElement>(null);
+  // Ref for title input (contentEditable div)
+  const titleInputRef = useRef<HTMLDivElement>(null);
   const tagPickerRef = useRef<HTMLDivElement>(null);
   const tagRowRef = useRef<HTMLDivElement>(null);
   const tagPickerDropdownRef = useRef<HTMLDivElement>(null);
@@ -1303,57 +1281,68 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   const autoResizeTextarea = useCallback((element: HTMLElement | null, immediate = false) => {
     if (!element) return;
     
-    // 清除可能存在的内联高度样式
-    element.style.removeProperty('height');
+    const text = element.textContent || '';
+    const maxWidth = 240;
     
-    // 获取纯文本内容
-    const text = element.textContent || element.getAttribute('data-placeholder') || '';
     if (!text) {
-      element.style.width = '50px';
+      // 空内容时使用 placeholder 计算宽度
+      const placeholder = element.getAttribute('data-placeholder') || '';
+      if (placeholder) {
+        element.style.width = 'max-content';
+        const naturalWidth = element.offsetWidth;
+        element.style.width = Math.min(naturalWidth, maxWidth) + 'px';
+      } else {
+        element.style.width = '80px'; // 默认最小宽度（足够显示4个中文字）
+      }
       return;
     }
     
-    const maxWidth = 240;
+    // 临时设置为 max-content 让浏览器计算实际宽度
+    element.style.width = 'max-content';
+    const naturalWidth = element.offsetWidth;
     
-    // 用隐藏 div 测量文本不换行时的宽度（支持 HTML）
-    const testDiv = document.createElement('div');
-    testDiv.style.visibility = 'hidden';
-    testDiv.style.position = 'absolute';
-    testDiv.style.whiteSpace = 'nowrap'; // 不换行
-    testDiv.style.font = window.getComputedStyle(element).font;
-    testDiv.style.fontSize = window.getComputedStyle(element).fontSize;
-    testDiv.style.fontWeight = window.getComputedStyle(element).fontWeight;
-    testDiv.innerHTML = element.innerHTML || text;
-    document.body.appendChild(testDiv);
-    const textWidth = testDiv.offsetWidth;
-    document.body.removeChild(testDiv);
-    
-    // 如果文本宽度 <= 最大宽度，使用实际宽度；否则使用最大宽度
-    const finalWidth = textWidth <= maxWidth ? textWidth + 10 : maxWidth;
-    
-    // 只设置宽度，高度由内容自适应
-    element.style.width = finalWidth + 'px';
+    // 立即应用最终宽度（不超过最大宽度）
+    element.style.width = Math.min(naturalWidth, maxWidth) + 'px';
   }, []);
 
-  // 防抖的调整函数
-  const debouncedResize = useCallback(() => {
-    if (resizeTimerRef.current) {
-      clearTimeout(resizeTimerRef.current);
+  // 立即调整函数（无防抖，无延迟）
+  const immediateResize = useCallback(() => {
+    // 如果正在输入法输入，完全跳过宽度计算
+    if (isComposingRef.current) {
+      return;
     }
     
-    // 如果正在输入法输入，延迟更长时间
-    const delay = isComposingRef.current ? 300 : 100;
-    
-    resizeTimerRef.current = setTimeout(() => {
-      autoResizeTextarea(titleInputRef.current as HTMLElement, true);
-    }, delay);
+    autoResizeTextarea(titleInputRef.current as HTMLElement, true);
   }, [autoResizeTextarea]);
 
-  // 监听标题变化并自动调整宽度和高度
+  // 同步 formData.title 到 contentEditable（只在外部更改时）
   useEffect(() => {
-    // 首次渲染立即调整
-    autoResizeTextarea(titleInputRef.current as HTMLElement, true);
+    const element = titleInputRef.current as HTMLElement | null;
+    if (!element) return;
+    
+    const currentHtml = element.innerHTML;
+    const newHtml = removeEmojiFromTitle(formData.title);
+    
+    // 只在内容真正不同时才更新（避免用户输入时被覆盖）
+    if (currentHtml !== newHtml && document.activeElement !== element) {
+      // 保存滚动位置
+      const scrollTop = element.scrollTop;
+      element.innerHTML = newHtml;
+      element.scrollTop = scrollTop;
+      
+      // 调整宽度
+      autoResizeTextarea(element, true);
+    }
   }, [formData.title, autoResizeTextarea]);
+  
+  // 首次渲染时调整宽度
+  useEffect(() => {
+    const element = titleInputRef.current as HTMLElement | null;
+    if (element && element.innerHTML === '') {
+      element.innerHTML = removeEmojiFromTitle(formData.title);
+      autoResizeTextarea(element, true);
+    }
+  }, []);
 
   // 点击外部关闭各种选择器
   useEffect(() => {
@@ -1899,16 +1888,34 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                       onInput={(e) => {
                         const html = e.currentTarget.innerHTML;
                         handleTitleChange(html);
-                        // 实时调整宽度
+                        // 立即调整宽度（同步执行，零延迟）
                         if (!isComposingRef.current) {
-                          debouncedResize();
+                          autoResizeTextarea(e.currentTarget, true);
                         }
                       }}
                       onCompositionStart={() => {
                         isComposingRef.current = true;
+                        // 输入法启动时，移除宽度限制，让文字自由扩展
+                        const element = titleInputRef.current as HTMLElement | null;
+                        if (element) {
+                          element.style.width = 'max-content';
+                          element.style.maxWidth = '240px'; // 保持最大宽度限制
+                        }
                       }}
                       onCompositionEnd={() => {
                         isComposingRef.current = false;
+                        // 输入法结束后，立即执行宽度计算（同步，零延迟）
+                        const element = titleInputRef.current as HTMLElement | null;
+                        if (element) {
+                          element.style.maxWidth = ''; // 移除 maxWidth，改用精确宽度
+                          autoResizeTextarea(element, true);
+                        }
+                      }}
+                      onBlur={() => {
+                        // 失焦时立即调整宽度（确保最终状态正确）
+                        if (titleInputRef.current) {
+                          autoResizeTextarea(titleInputRef.current as HTMLElement, true);
+                        }
                       }}
                       onKeyDown={(e) => {
                         // 阻止回车换行
@@ -1916,13 +1923,6 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                           e.preventDefault();
                         }
                       }}
-                      onFocus={(e) => {
-                        // 聚焦时，如果是空的，确保光标在正确位置
-                        if (e.currentTarget.textContent?.trim() === '') {
-                          e.currentTarget.innerHTML = '';
-                        }
-                      }}
-                      dangerouslySetInnerHTML={{ __html: removeEmojiFromTitle(formData.title) }}
                     />
                   </div>
 

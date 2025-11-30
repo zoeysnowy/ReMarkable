@@ -49,8 +49,15 @@ import {
   
   // 操作工具
   applyTextFormat as slateApplyTextFormat,
+  detectBulletTrigger,
+  applyBulletAutoConvert,
+  getBulletChar,
   handleBulletBackspace,
   handleBulletEnter,
+  extractBulletItems,
+  generateClipboardData,
+  parsePlainTextBullets,
+  parseHTMLBullets,
   moveParagraphUp as slatMoveParagraphUp,
   moveParagraphDown as slateMoveParagraphDown,
   
@@ -662,9 +669,8 @@ export const ModalSlate = forwardRef<ModalSlateRef, ModalSlateProps>((
           }
         })();
         
-        // 计算 bullet 符号
-        const bulletSymbols = ['●', '○', '–', '□', '▸'];
-        const bulletSymbol = isBullet ? bulletSymbols[bulletLevel] || '●' : null;
+        // 计算 bullet 符号（使用 SlateCore 的统一符号）
+        const bulletSymbol = isBullet ? getBulletChar(bulletLevel) : null;
         
         return (
           <div
@@ -951,6 +957,23 @@ export const ModalSlate = forwardRef<ModalSlateRef, ModalSlateProps>((
     // IME 组字中，不处理快捷键
     if (event.nativeEvent?.isComposing) return;
     
+    // 🎯 空格键触发 Bullet 自动检测
+    if (event.key === ' ') {
+      console.log('[ModalSlate] 🔍 空格键按下，准备检测 Bullet 触发');
+      // 延迟执行，等待空格插入到编辑器后再检测
+      setTimeout(() => {
+        console.log('[ModalSlate] 🔍 开始检测...');
+        const trigger = detectBulletTrigger(editor);
+        console.log('[ModalSlate] 🔍 检测结果:', trigger);
+        if (trigger) {
+          console.log('[ModalSlate] 🎯 检测到 Bullet 触发字符:', trigger);
+          applyBulletAutoConvert(editor, trigger);
+        } else {
+          console.log('[ModalSlate] ❌ 未检测到触发字符');
+        }
+      }, 0);
+    }
+    
     // Shift+Alt+↑/↓ - 移动段落
     if (event.shiftKey && event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
       event.preventDefault();
@@ -1057,6 +1080,103 @@ export const ModalSlate = forwardRef<ModalSlateRef, ModalSlateProps>((
     }
   }, [editor, moveParagraphUp, moveParagraphDown]);
   
+  /**
+   * 处理复制 - 生成多格式剪贴板数据
+   */
+  const handleCopy = useCallback((event: React.ClipboardEvent) => {
+    try {
+      const { selection } = editor;
+      if (!selection || Range.isCollapsed(selection)) {
+        return; // 无选区，使用默认复制
+      }
+
+      // 获取选区内的节点
+      const fragment = Editor.fragment(editor, selection);
+      
+      // 提取 Bullet 项
+      const bulletItems = extractBulletItems(editor, fragment);
+      
+      if (bulletItems.length === 0) {
+        return; // 没有 bullet，使用默认复制
+      }
+
+      // 生成多格式剪贴板数据
+      const clipboardData = generateClipboardData(bulletItems);
+      
+      // 设置到剪贴板
+      event.clipboardData.setData('text/plain', clipboardData['text/plain']);
+      event.clipboardData.setData('text/html', clipboardData['text/html']);
+      
+      event.preventDefault();
+      console.log('[ModalSlate] 📋 复制 Bullet 内容:', bulletItems.length, '项');
+    } catch (err) {
+      console.error('[ModalSlate] 复制失败:', err);
+    }
+  }, [editor]);
+
+  /**
+   * 处理粘贴 - 解析多格式内容
+   */
+  const handlePaste = useCallback((event: React.ClipboardEvent) => {
+    try {
+      const clipboardData = event.clipboardData;
+      
+      // 优先尝试 HTML 解析
+      if (clipboardData.types.includes('text/html')) {
+        const html = clipboardData.getData('text/html');
+        const bulletItems = parseHTMLBullets(html);
+        
+        if (bulletItems.length > 0) {
+          event.preventDefault();
+          
+          // 插入解析后的 Bullet 项
+          bulletItems.forEach(item => {
+            const paragraph: ParagraphNode = {
+              type: 'paragraph',
+              bullet: true,
+              bulletLevel: item.level,
+              children: [{ text: item.text, ...item.marks }],
+            };
+            
+            Transforms.insertNodes(editor, paragraph);
+          });
+          
+          console.log('[ModalSlate] 📋 粘贴 HTML Bullet 内容:', bulletItems.length, '项');
+          return;
+        }
+      }
+      
+      // 回退到纯文本解析
+      if (clipboardData.types.includes('text/plain')) {
+        const plainText = clipboardData.getData('text/plain');
+        const bulletItems = parsePlainTextBullets(plainText);
+        
+        if (bulletItems.length > 0) {
+          event.preventDefault();
+          
+          // 插入解析后的 Bullet 项
+          bulletItems.forEach(item => {
+            const paragraph: ParagraphNode = {
+              type: 'paragraph',
+              bullet: true,
+              bulletLevel: item.level,
+              children: [{ text: item.text }],
+            };
+            
+            Transforms.insertNodes(editor, paragraph);
+          });
+          
+          console.log('[ModalSlate] 📋 粘贴纯文本 Bullet 内容:', bulletItems.length, '项');
+          return;
+        }
+      }
+      
+      // 如果都不是 bullet 格式，使用默认粘贴
+    } catch (err) {
+      console.error('[ModalSlate] 粘贴失败:', err);
+    }
+  }, [editor]);
+  
   // 组件卸载时清理定时器
   useEffect(() => {
     return () => {
@@ -1088,6 +1208,8 @@ export const ModalSlate = forwardRef<ModalSlateRef, ModalSlateProps>((
           renderElement={renderElement}
           renderLeaf={renderLeaf}
           onKeyDown={handleKeyDown}
+          onCopy={handleCopy}
+          onPaste={handlePaste}
           onFocus={handleFocus}
           onBlur={handleBlur}
           placeholder={hasTimestamp ? '' : placeholder}

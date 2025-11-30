@@ -1,0 +1,603 @@
+/* ========================================
+   TimeLog 页面布局样式
+   Figma: node-id=486-2661
+   Created: 2025-12-01
+   ======================================== */
+
+/* 主容器 */
+.timelog-page {
+  display: flex;
+  height: 100vh;
+  background: #FAFAFA;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  overflow: hidden;
+}
+
+/* ========================================
+   中间时光日志区
+   ======================================== */
+
+.timelog-content {
+  flex: 1;
+  min-width: 600px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 32px 24px;
+}
+
+/* 时光日志标题区 */
+.timelog-header {
+  margin-bottom: 24px;
+  flex-shrink: 0;
+}
+
+.timelog-date {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1F2937;
+  line-height: 32px;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+/* Event 卡片滚动区 */
+.timelog-events {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 滚动条样式 */
+.timelog-events::-webkit-scrollbar {
+  width: 6px;
+}
+
+.timelog-events::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.timelog-events::-webkit-scrollbar-thumb {
+  background: #D1D5DB;
+  border-radius: 3px;
+}
+
+.timelog-events::-webkit-scrollbar-thumb:hover {
+  background: #9CA3AF;
+}
+
+/* 空状态 */
+.timelog-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: #9CA3AF;
+  font-size: 14px;
+}
+
+/* ========================================
+   Event 卡片样式
+   ======================================== */
+
+.event-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.event-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
+.event-card:last-child {
+  margin-bottom: 0;
+}
+
+/* 1. 顶部状态行 */
+.event-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.event-icons {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.event-icon-plan,
+.event-icon-actual {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.event-time {
+  font-size: 14px;
+  font-weight: 500;
+  color: #4B5563;
+  letter-spacing: -0.01em;
+}
+
+.event-expand {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: #9CA3AF;
+  opacity: 0.6;
+  transition: opacity 0.2s, transform 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.event-expand:hover {
+  opacity: 1;
+  transform: rotate(90deg);
+}
+
+/* 2. 标题行 */
+.event-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.event-emoji {
+  font-size: 24px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.event-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1F2937;
+  margin: 0;
+  line-height: 24px;
+  letter-spacing: -0.01em;
+  flex: 1;
+  word-break: break-word;
+}
+
+/* 3. 标签行 */
+.event-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tag {
+  font-size: 13px;
+  color: #3B82F6;
+  background: rgba(59, 130, 246, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+  transition: background 0.2s ease;
+  cursor: pointer;
+}
+
+.tag:hover {
+  background: rgba(59, 130, 246, 0.15);
+}
+
+/* 4. 元信息行 */
+.event-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #6B7280;
+}
+
+.metadata-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 5. 关联任务 */
+.event-relations {
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.relation-link {
+  color: #3B82F6;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.relation-link:hover {
+  color: #2563EB;
+  text-decoration: underline;
+}
+
+/* 6. 日志内容区 */
+.event-log-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #F3F4F6;
+}
+
+.timestamp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.timestamp-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: #9CA3AF;
+  padding: 0;
+  width: 16px;
+  text-align: center;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.timestamp-toggle:hover {
+  color: #6B7280;
+}
+
+.timestamp-toggle.expanded {
+  transform: rotate(90deg);
+}
+
+.timestamp-time {
+  font-size: 12px;
+  color: #6B7280;
+  font-weight: 500;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+}
+
+.timestamp-options {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: #D1D5DB;
+  padding: 0;
+  margin-left: auto;
+  transition: color 0.2s ease;
+}
+
+.timestamp-options:hover {
+  color: #9CA3AF;
+}
+
+.log-content {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #374151;
+  margin-left: 24px;
+  margin-bottom: 12px;
+  
+  /* 最多显示3行，超出省略 */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  
+  /* 文本样式 */
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.log-content.expanded {
+  -webkit-line-clamp: unset;
+  display: block;
+}
+
+/* 7. 同步状态 */
+.event-sync-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #F3F4F6;
+  font-size: 12px;
+  color: #6B7280;
+}
+
+.sync-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* ========================================
+   右侧按钮区
+   ======================================== */
+
+.timelog-actions {
+  width: 60px;
+  flex-shrink: 0;
+  background: white;
+  border-left: 1px solid #E5E7EB;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 0;
+  gap: 16px;
+}
+
+.action-button {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, transform 0.2s ease;
+  position: relative;
+}
+
+.action-button:hover {
+  background: #F3F4F6;
+  transform: scale(1.05);
+}
+
+.action-button:active {
+  transform: scale(0.95);
+}
+
+.action-button img {
+  width: 20px;
+  height: 20px;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.action-button:hover img {
+  opacity: 1;
+}
+
+/* ========================================
+   响应式断点
+   ======================================== */
+
+/* 平板尺寸 (≤1024px) */
+@media (max-width: 1024px) {
+  .timelog-content {
+    min-width: 500px;
+    padding: 24px 16px;
+  }
+  
+  .timelog-header {
+    margin-bottom: 20px;
+  }
+  
+  .timelog-date {
+    font-size: 22px;
+  }
+  
+  .event-card {
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+}
+
+/* 移动端 (≤768px) */
+@media (max-width: 768px) {
+  .timelog-page {
+    flex-direction: column;
+  }
+  
+  .timelog-content {
+    min-width: unset;
+    padding: 16px;
+  }
+  
+  .timelog-actions {
+    width: 100%;
+    height: 60px;
+    flex-direction: row;
+    border-left: none;
+    border-top: 1px solid #E5E7EB;
+    padding: 0 16px;
+    justify-content: center;
+  }
+  
+  .timelog-date {
+    font-size: 20px;
+  }
+  
+  .event-card {
+    padding: 12px;
+    border-radius: 8px;
+  }
+  
+  .event-title {
+    font-size: 16px;
+  }
+}
+
+/* 小屏幕移动端 (≤480px) */
+@media (max-width: 480px) {
+  .timelog-content {
+    padding: 12px;
+  }
+  
+  .timelog-header {
+    margin-bottom: 16px;
+  }
+  
+  .timelog-date {
+    font-size: 18px;
+    line-height: 24px;
+  }
+  
+  .event-card {
+    padding: 10px;
+    margin-bottom: 12px;
+  }
+  
+  .event-title {
+    font-size: 15px;
+    line-height: 20px;
+  }
+  
+  .event-emoji {
+    font-size: 20px;
+  }
+}
+
+/* ========================================
+   动画效果
+   ======================================== */
+
+/* 卡片进入动画 */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.event-card {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* 按钮点击反馈 */
+@keyframes ripple {
+  0% {
+    transform: scale(0);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.action-button::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.1);
+  transform: scale(0);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.action-button:active::after {
+  animation: ripple 0.4s ease-out;
+}
+
+/* ========================================
+   打印样式
+   ======================================== */
+
+@media print {
+  .timelog-actions {
+    display: none;
+  }
+  
+  .timelog-content {
+    padding: 0;
+  }
+  
+  .event-card {
+    page-break-inside: avoid;
+    box-shadow: none;
+    border: 1px solid #E5E7EB;
+  }
+  
+  .event-expand,
+  .timestamp-toggle,
+  .timestamp-options {
+    display: none;
+  }
+  
+  .log-content {
+    -webkit-line-clamp: unset;
+    display: block;
+  }
+}
+
+/* ========================================
+   暗色模式支持（预留）
+   ======================================== */
+
+@media (prefers-color-scheme: dark) {
+  .timelog-page {
+    background: #111827;
+  }
+  
+  .timelog-content {
+    background: #111827;
+  }
+  
+  .timelog-date {
+    color: #F9FAFB;
+  }
+  
+  .event-card {
+    background: #1F2937;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+  
+  .event-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  }
+  
+  .event-title {
+    color: #F9FAFB;
+  }
+  
+  .event-time {
+    color: #D1D5DB;
+  }
+  
+  .event-metadata {
+    color: #9CA3AF;
+  }
+  
+  .log-content {
+    color: #E5E7EB;
+  }
+  
+  .event-log-section,
+  .event-sync-status {
+    border-top-color: #374151;
+  }
+  
+  .timelog-actions {
+    background: #1F2937;
+    border-left-color: #374151;
+  }
+  
+  .action-button:hover {
+    background: #374151;
+  }
+  
+  .timelog-empty {
+    color: #6B7280;
+  }
+}

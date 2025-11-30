@@ -357,6 +357,38 @@ export class EventService {
       // 添加新事件
       existingEvents.push(finalEvent);
 
+      // 🆕 自动维护父子事件双向关联
+      if (finalEvent.parentEventId) {
+        const parentIndex = existingEvents.findIndex(e => e.id === finalEvent.parentEventId);
+        if (parentIndex !== -1) {
+          const parentEvent = existingEvents[parentIndex];
+          
+          // 初始化 childEventIds 数组
+          if (!parentEvent.childEventIds) {
+            parentEvent.childEventIds = [];
+          }
+          
+          // 添加子事件 ID（避免重复）
+          if (!parentEvent.childEventIds.includes(finalEvent.id)) {
+            parentEvent.childEventIds.push(finalEvent.id);
+            
+            eventLogger.log('🔗 [EventService] 已关联子事件到父事件:', {
+              parentId: parentEvent.id,
+              parentTitle: parentEvent.title?.simpleTitle,
+              childId: finalEvent.id,
+              childTitle: finalEvent.title?.simpleTitle,
+              childType: this.getEventType(finalEvent),
+              totalChildren: parentEvent.childEventIds.length
+            });
+          }
+        } else {
+          eventLogger.warn('⚠️ [EventService] 父事件不存在:', {
+            parentId: finalEvent.parentEventId,
+            childId: finalEvent.id
+          });
+        }
+      }
+
       // 保存到localStorage
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
       eventLogger.log('💾 [EventService] Event saved to localStorage');
@@ -718,12 +750,69 @@ export class EventService {
         updatedAt: formatTimeForStorage(new Date())
       };
 
+      // 🆕 检测 parentEventId 变化，同步更新双向关联
+      if (filteredUpdates.parentEventId !== undefined && 
+          filteredUpdates.parentEventId !== originalEvent.parentEventId) {
+        
+        // 从旧父事件移除
+        if (originalEvent.parentEventId) {
+          const oldParentIndex = existingEvents.findIndex(e => e.id === originalEvent.parentEventId);
+          if (oldParentIndex !== -1 && existingEvents[oldParentIndex].childEventIds) {
+            existingEvents[oldParentIndex].childEventIds = 
+              existingEvents[oldParentIndex].childEventIds!.filter(cid => cid !== eventId);
+            
+            eventLogger.log('🔗 [EventService] 已从旧父事件移除子事件:', {
+              oldParentId: originalEvent.parentEventId,
+              childId: eventId,
+              remainingChildren: existingEvents[oldParentIndex].childEventIds!.length
+            });
+          }
+        }
+        
+        // 添加到新父事件
+        if (filteredUpdates.parentEventId) {
+          const newParentIndex = existingEvents.findIndex(e => e.id === filteredUpdates.parentEventId);
+          if (newParentIndex !== -1) {
+            const newParent = existingEvents[newParentIndex];
+            
+            if (!newParent.childEventIds) {
+              newParent.childEventIds = [];
+            }
+            
+            if (!newParent.childEventIds.includes(eventId)) {
+              newParent.childEventIds.push(eventId);
+              
+              eventLogger.log('🔗 [EventService] 已添加子事件到新父事件:', {
+                newParentId: filteredUpdates.parentEventId,
+                childId: eventId,
+                totalChildren: newParent.childEventIds.length
+              });
+            }
+          } else {
+            eventLogger.warn('⚠️ [EventService] 新父事件不存在:', filteredUpdates.parentEventId);
+          }
+        }
+      }
+
       // 更新数组
       existingEvents[eventIndex] = updatedEvent;
 
       // 保存到localStorage
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
       eventLogger.log('💾 [EventService] Event updated in localStorage');
+      
+      // 🐛 Bulletpoint 调试：检查保存的 eventlog
+      if (updatedEvent.eventlog) {
+        const eventlogStr = typeof updatedEvent.eventlog === 'object' 
+          ? updatedEvent.eventlog.html || updatedEvent.eventlog.plainText || JSON.stringify(updatedEvent.eventlog)
+          : String(updatedEvent.eventlog);
+        console.log('[EventService Bullet Debug] 保存的 eventlog:', {
+          eventId: updatedEvent.id?.slice(-8),
+          eventlogType: typeof updatedEvent.eventlog,
+          hasBulletAttr: eventlogStr.includes('data-bullet="true"'),
+          preview: eventlogStr.substring(0, 200)
+        });
+      }
       
       // 🔍 验证同步配置是否保存
       if (filteredUpdates.planSyncConfig || filteredUpdates.actualSyncConfig) {
@@ -854,6 +943,41 @@ export class EventService {
       }
 
       const deletedEvent = existingEvents[eventIndex];
+
+      // 🆕 从父事件移除子事件关联
+      if (deletedEvent.parentEventId) {
+        const parentIndex = existingEvents.findIndex(e => e.id === deletedEvent.parentEventId);
+        if (parentIndex !== -1 && existingEvents[parentIndex].childEventIds) {
+          existingEvents[parentIndex].childEventIds = 
+            existingEvents[parentIndex].childEventIds!.filter(cid => cid !== eventId);
+          
+          eventLogger.log('🔗 [EventService] 已从父事件移除子事件:', {
+            parentId: deletedEvent.parentEventId,
+            childId: eventId,
+            remainingChildren: existingEvents[parentIndex].childEventIds!.length
+          });
+        }
+      }
+
+      // 🆕 递归删除所有子事件（可选：可设置为只清理关联而不删除）
+      if (deletedEvent.childEventIds && deletedEvent.childEventIds.length > 0) {
+        eventLogger.log('🗑️ [EventService] 检测到子事件，递归删除:', {
+          parentId: eventId,
+          childCount: deletedEvent.childEventIds.length,
+          childIds: deletedEvent.childEventIds
+        });
+        
+        // 注意：这里直接操作 existingEvents 数组，递归删除会在后续的 filter 中生效
+        // 如果不想递归删除子事件，可以只清理 parentEventId
+        for (const childId of deletedEvent.childEventIds) {
+          const childIndex = existingEvents.findIndex(e => e.id === childId);
+          if (childIndex !== -1) {
+            // 清理子事件的 parentEventId（让它们变成独立事件）
+            delete existingEvents[childIndex].parentEventId;
+            eventLogger.log('🔗 [EventService] 已清理子事件的父关联:', childId);
+          }
+        }
+      }
 
       // 从数组中移除
       const updatedEvents = existingEvents.filter(e => e.id !== eventId);
@@ -1727,7 +1851,7 @@ export class EventService {
       
       // Timer 关联
       parentEventId: event.parentEventId,
-      timerLogs: event.timerLogs,
+      childEventIds: event.childEventIds,
       
       // 日历同步配置
       calendarIds: event.calendarIds || [],
@@ -1941,10 +2065,22 @@ export class EventService {
         });
         
         if (paragraphChildren.length > 0) {
-          slateNodes.push({
+          // 🆕 保留 bullet 属性（Bulletpoint 功能）
+          const bullet = element.getAttribute('data-bullet') === 'true';
+          const bulletLevel = element.getAttribute('data-bullet-level');
+          
+          const paragraphNode: any = {
             type: 'paragraph',
             children: paragraphChildren
-          });
+          };
+          
+          if (bullet && bulletLevel !== null) {
+            paragraphNode.bullet = true;
+            paragraphNode.bulletLevel = parseInt(bulletLevel, 10);
+            console.log('[EventService.parseHtmlNode] ✅ 保留 Bullet 属性:', { bullet, bulletLevel });
+          }
+          
+          slateNodes.push(paragraphNode);
         }
         return;
       }
@@ -2863,6 +2999,158 @@ export class EventService {
       eventLogger.error('❌ [EventService] Failed to create event from remote sync:', error);
       throw error; // 抛出错误让调用方处理
     }
+  }
+
+  // ========================================
+  // 🆕 EventTree 辅助方法
+  // ========================================
+
+  /**
+   * 获取事件类型描述（用于日志和调试）
+   */
+  static getEventType(event: Event): string {
+    if (event.isTimer) return 'Timer';
+    if (event.isTimeLog) return 'TimeLog';
+    if (event.isOutsideApp) return 'OutsideApp';
+    if (event.isPlan) return 'UserSubTask';
+    return 'Event';
+  }
+
+  /**
+   * 判断是否为附属事件（系统自动生成，无独立 Plan 状态）
+   */
+  static isSubordinateEvent(event: Event): boolean {
+    return !!(event.isTimer || event.isTimeLog || event.isOutsideApp);
+  }
+
+  /**
+   * 判断是否为用户子事件（用户主动创建，有完整 Plan 状态）
+   */
+  static isUserSubEvent(event: Event): boolean {
+    return !!(event.isPlan && event.parentEventId && !this.isSubordinateEvent(event));
+  }
+
+  /**
+   * 获取所有子事件（包括所有类型）
+   */
+  static getChildEvents(parentId: string): Event[] {
+    const parent = this.getEventById(parentId);
+    if (!parent?.childEventIds) return [];
+    
+    return parent.childEventIds
+      .map(id => this.getEventById(id))
+      .filter((e): e is Event => e !== null);
+  }
+
+  /**
+   * 获取附属事件（Timer/TimeLog/OutsideApp）
+   */
+  static getSubordinateEvents(parentId: string): Event[] {
+    return this.getChildEvents(parentId).filter(e => this.isSubordinateEvent(e));
+  }
+
+  /**
+   * 获取用户子任务
+   */
+  static getUserSubTasks(parentId: string): Event[] {
+    return this.getChildEvents(parentId).filter(e => this.isUserSubEvent(e));
+  }
+
+  /**
+   * 递归获取整个事件树（广度优先遍历）
+   */
+  static getEventTree(rootId: string): Event[] {
+    const result: Event[] = [];
+    const visited = new Set<string>();
+    const queue = [rootId];
+    
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      
+      // 避免循环引用
+      if (visited.has(currentId)) {
+        eventLogger.warn('⚠️ [EventService] 检测到循环引用:', currentId);
+        continue;
+      }
+      visited.add(currentId);
+      
+      const event = this.getEventById(currentId);
+      
+      if (event) {
+        result.push(event);
+        
+        // 添加子事件到队列
+        if (event.childEventIds) {
+          queue.push(...event.childEventIds);
+        }
+      }
+    }
+    
+    return result;
+  }
+
+  /**
+   * 计算事件总时长（包括所有附属事件的实际时长）
+   */
+  static getTotalDuration(parentId: string): number {
+    const children = this.getSubordinateEvents(parentId);
+    return children.reduce((sum, child) => {
+      if (child.startTime && child.endTime) {
+        const start = new Date(child.startTime).getTime();
+        const end = new Date(child.endTime).getTime();
+        return sum + (end - start);
+      }
+      return sum;
+    }, 0);
+  }
+
+  /**
+   * 获取事件的层级深度
+   */
+  static getEventDepth(eventId: string): number {
+    let depth = 0;
+    let currentId: string | undefined = eventId;
+    const visited = new Set<string>();
+    
+    while (currentId) {
+      if (visited.has(currentId)) {
+        eventLogger.warn('⚠️ [EventService] 检测到父子循环引用:', currentId);
+        break;
+      }
+      visited.add(currentId);
+      
+      const event = this.getEventById(currentId);
+      if (!event?.parentEventId) break;
+      
+      depth++;
+      currentId = event.parentEventId;
+    }
+    
+    return depth;
+  }
+
+  /**
+   * 获取根事件（最顶层的父事件）
+   */
+  static getRootEvent(eventId: string): Event | null {
+    let currentId = eventId;
+    const visited = new Set<string>();
+    
+    while (currentId) {
+      if (visited.has(currentId)) {
+        eventLogger.warn('⚠️ [EventService] 检测到父子循环引用:', currentId);
+        return null;
+      }
+      visited.add(currentId);
+      
+      const event = this.getEventById(currentId);
+      if (!event) return null;
+      if (!event.parentEventId) return event;
+      
+      currentId = event.parentEventId;
+    }
+    
+    return null;
   }
 }
 

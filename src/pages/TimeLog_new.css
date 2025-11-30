@@ -1,0 +1,591 @@
+/**
+ * TimeLog Page - CSS Styles (Based on Figma Design Node 486-2661)
+ * 
+ * 严格按照 Figma 设计样式实现
+ * 设计尺寸：905px 主内容区（不包含左侧导航96px和选择面板342px）
+ */
+
+/* ========================================
+   主容器
+   ======================================== */
+
+.timelog-page-new {
+  background: #FAFAFA;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', 'Segoe UI', sans-serif;
+}
+
+.timelog-main-container {
+  width: 905px;
+  max-width: 100%;
+  padding: 32px 24px;
+  position: relative;
+}
+
+/* ========================================
+   标题区
+   ======================================== */
+
+.timelog-header-section {
+  margin-bottom: 24px;
+}
+
+.timelog-header-border {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 0.8px solid #E5E7EB;
+  padding-bottom: 9.8px;
+}
+
+.timelog-gradient-bar {
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  background: linear-gradient(to right, #a855f7, #3b82f6);
+}
+
+.timelog-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1F2937;
+  line-height: 25.2px;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+/* ========================================
+   日期显示区
+   ======================================== */
+
+.timelog-date-display {
+  margin: 40px 0 24px 0;
+}
+
+.timelog-date-text {
+  font-size: 18px;
+  font-weight: 400;
+  color: #6B7280;
+  margin: 0;
+  font-family: 'Microsoft YaHei', sans-serif;
+}
+
+/* ========================================
+   Event 卡片
+   ======================================== */
+
+.event-card-new {
+  position: relative;
+  background: white;
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 24px;
+  margin-left: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.event-card-new:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
+/* 时间轴线条 */
+.event-timeline-line {
+  position: absolute;
+  left: -12px;
+  top: 0;
+  bottom: -24px;
+  width: 2px;
+  background: linear-gradient(to bottom, #E5E7EB 0%, #E5E7EB 100%);
+}
+
+.event-timeline-line::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 24px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: white;
+  border: 2px solid #a855f7;
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.1);
+}
+
+/* 时间标签 */
+.event-time-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.event-time-icons {
+  display: flex;
+  gap: 4px;
+  font-size: 16px;
+}
+
+.event-time-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: #4B5563;
+  letter-spacing: -0.01em;
+}
+
+/* 时间箭头 */
+.event-time-arrow {
+  position: absolute;
+  left: 24px;
+  top: -16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.event-time-arrow::before {
+  content: '';
+  display: inline-block;
+  width: 51px;
+  height: 8px;
+  background: url("data:image/svg+xml,%3Csvg width='51' height='8' viewBox='0 0 51 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50.3536 4.35355C50.5488 4.15829 50.5488 3.84171 50.3536 3.64645L47.1716 0.464466C46.9763 0.269204 46.6597 0.269204 46.4645 0.464466C46.2692 0.659728 46.2692 0.976311 46.4645 1.17157L49.2929 4L46.4645 6.82843C46.2692 7.02369 46.2692 7.34027 46.4645 7.53553C46.6597 7.7308 46.9763 7.7308 47.1716 7.53553L50.3536 4.35355ZM0 4.5H50V3.5H0V4.5Z' fill='%2322D3EE'/%3E%3C/svg%3E") no-repeat center;
+  background-size: contain;
+}
+
+.event-duration-badge {
+  font-size: 10px;
+  font-weight: 500;
+  background: linear-gradient(to right, #22d3ee, #3b82f6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* 卡片内容 */
+.event-card-content {
+  position: relative;
+}
+
+.event-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1F2937;
+  margin: 0 0 12px 0;
+  letter-spacing: -0.01em;
+}
+
+.event-emoji {
+  font-size: 24px;
+}
+
+/* 参会人员 */
+.event-attendees {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.attendee-icon {
+  font-size: 16px;
+}
+
+.attendee-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: #6B7280;
+}
+
+/* 地点 */
+.event-location {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.location-icon {
+  font-size: 16px;
+}
+
+.location-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: #6B7280;
+}
+
+/* 标签 */
+.event-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.event-tag {
+  font-size: 14px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+  transition: background 0.2s ease;
+}
+
+.tag-green {
+  color: #10B981;
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.tag-green:hover {
+  background: rgba(16, 185, 129, 0.15);
+}
+
+.tag-orange {
+  color: #F59E0B;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.tag-orange:hover {
+  background: rgba(245, 158, 11, 0.15);
+}
+
+/* 来源信息 */
+.event-source {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #F3F4F6;
+  font-size: 14px;
+  color: #6B7280;
+}
+
+.source-label {
+  font-weight: 500;
+}
+
+.source-name {
+  font-weight: 400;
+}
+
+.source-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #D1D5DB;
+}
+
+.source-status.active {
+  background: #10B981;
+  box-shadow: 0 0 4px rgba(16, 185, 129, 0.5);
+}
+
+.source-sync {
+  margin-left: auto;
+  color: #9CA3AF;
+  font-size: 14px;
+}
+
+/* 任务信息 */
+.event-task-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #6B7280;
+}
+
+.task-icon {
+  font-size: 16px;
+}
+
+.task-meta {
+  font-size: 14px;
+  font-weight: 400;
+}
+
+/* 关联任务 */
+.event-related-tasks {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: #6B7280;
+}
+
+.link-icon {
+  font-size: 20px;
+}
+
+.related-text {
+  font-size: 14px;
+  font-weight: 400;
+}
+
+/* 操作按钮 */
+.event-actions {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  display: flex;
+  gap: 8px;
+}
+
+.event-action-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, transform 0.2s ease;
+  font-size: 14px;
+  color: #9CA3AF;
+}
+
+.event-action-btn:hover {
+  background: #F3F4F6;
+  transform: scale(1.05);
+}
+
+.event-action-btn:active {
+  transform: scale(0.95);
+}
+
+.btn-favorite {
+  color: #FBBF24;
+}
+
+.btn-expand {
+  transform: rotate(0deg);
+  transition: transform 0.2s ease;
+}
+
+.btn-expand:hover {
+  transform: rotate(90deg);
+}
+
+/* ========================================
+   日志时间戳
+   ======================================== */
+
+.event-log-timestamp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  margin-left: 24px;
+  font-size: 16px;
+  color: #E5E7EB;
+}
+
+.timestamp-toggle {
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #9CA3AF;
+  font-size: 12px;
+  transition: transform 0.2s ease, color 0.2s ease;
+  padding: 0;
+}
+
+.timestamp-toggle:hover {
+  color: #6B7280;
+  transform: rotate(90deg);
+}
+
+.timestamp-time {
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 16px;
+}
+
+.timestamp-options {
+  margin-left: auto;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #D1D5DB;
+  font-size: 16px;
+  transition: color 0.2s ease;
+  padding: 0;
+}
+
+.timestamp-options:hover {
+  color: #9CA3AF;
+}
+
+/* ========================================
+   日志内容
+   ======================================== */
+
+.event-log-content {
+  margin-left: 48px;
+  margin-bottom: 24px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #374151;
+}
+
+.event-log-content p {
+  margin: 0 0 8px 0;
+}
+
+.event-log-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* ========================================
+   月份分隔
+   ======================================== */
+
+.month-divider {
+  margin: 48px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.month-year {
+  font-size: 18px;
+  font-weight: 700;
+  color: #6B7280;
+  font-family: 'Microsoft YaHei', sans-serif;
+}
+
+.month-number {
+  font-size: 36px;
+  font-weight: 700;
+  color: #6B7280;
+  font-family: 'Microsoft YaHei', sans-serif;
+  line-height: 1;
+}
+
+.month-calendar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.calendar-week {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.calendar-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 40px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #9CA3AF;
+  text-align: center;
+  line-height: 1.2;
+  font-family: 'Microsoft YaHei', sans-serif;
+}
+
+.calendar-day br {
+  display: block;
+  content: "";
+  margin: 2px 0;
+}
+
+/* ========================================
+   响应式布局
+   ======================================== */
+
+@media (max-width: 1024px) {
+  .timelog-main-container {
+    width: 100%;
+    padding: 24px 16px;
+  }
+
+  .event-card-new {
+    padding: 16px 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .timelog-main-container {
+    padding: 16px 12px;
+  }
+
+  .event-card-new {
+    padding: 14px 16px;
+    margin-left: 16px;
+  }
+
+  .event-title {
+    font-size: 16px;
+  }
+
+  .event-emoji {
+    font-size: 20px;
+  }
+
+  .event-actions {
+    right: 12px;
+    top: 12px;
+  }
+
+  .month-divider {
+    margin: 32px 0;
+    gap: 16px;
+  }
+
+  .month-number {
+    font-size: 28px;
+  }
+
+  .calendar-day {
+    width: 28px;
+    height: 36px;
+    font-size: 12px;
+  }
+}
+
+/* ========================================
+   动画效果
+   ======================================== */
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.event-card-new {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* ========================================
+   GoldenLayout 标签样式（预留）
+   ======================================== */
+
+/* 将在下一步实现 */

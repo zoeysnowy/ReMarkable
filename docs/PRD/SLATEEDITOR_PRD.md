@@ -133,19 +133,75 @@ export function moveParagraphDown(
 ): boolean;
 ```
 
-#### C. Bullet 操作 (bulletOperations.ts)
+#### C. Bullet 操作 (bulletOperations.ts) 🆕 v2.0
 
 ```typescript
-// 层级管理
-export function increaseBulletLevel(editor: Editor, path: Path, maxLevel?: number): void;
-export function decreaseBulletLevel(editor: Editor, path: Path): void;
+// 触发字符配置
+export const BULLET_TRIGGERS = ['* ', '- ', '• ', '➢ ', '· '] as const;
+export const BULLET_CHARS = ['●', '○', '–', '□', '▸'] as const;
 
-// OneNote 风格删除
+// 获取层级符号
+export function getBulletChar(level: number): string;
+
+// 自动检测触发（核心功能）
+export function detectBulletTrigger(editor: Editor): string | null;
+export function applyBulletAutoConvert(editor: Editor, trigger: string): boolean;
+
+// 层级管理
+export function increaseBulletLevel(editor: Editor, path?: Path, maxLevel?: number): boolean;
+export function decreaseBulletLevel(editor: Editor, path?: Path): boolean;
+export function toggleBullet(editor: Editor, path?: Path): boolean;
+
+// OneNote 风格交互
 export function handleBulletBackspace(editor: Editor, path: Path, offset: number): boolean;
-export function handleBulletEnter(editor: Editor, path: Path): boolean;
+export function handleBulletEnter(editor: Editor): boolean;
 ```
 
-#### D. Timestamp 服务 (timestampService.ts)
+**🎯 自动转换机制**:
+- 用户输入 `* ` → 自动转换为 Bullet level 0（符号 ●）
+- 用户输入 `- ` → 自动转换为 Bullet level 0
+- 用户输入 `• ` → 保留为 Bullet level 0
+- 用户输入 `➢ ` → 自动转换为 Bullet level 0
+- 用户输入 `· ` → 自动转换为 Bullet level 0
+- 触发字符会被自动删除，只保留 Bullet 符号
+
+#### D. 剪贴板操作 (clipboardHelpers.ts) 🆕 v2.0
+
+```typescript
+// Bullet 数据结构
+export interface BulletItem {
+  level: number;
+  text: string;
+  marks?: {
+    bold?: boolean;
+    italic?: boolean;
+    color?: string;
+    backgroundColor?: string;
+  };
+}
+
+// 提取与生成
+export function extractBulletItems(editor: Editor, nodes: Node[]): BulletItem[];
+export function generatePlainText(items: BulletItem[]): string;
+export function generateHTML(items: BulletItem[]): string;
+export function generateClipboardData(items: BulletItem[]): ClipboardData;
+
+// 解析粘贴内容
+export function parsePlainTextBullets(text: string): BulletItem[];
+export function parseHTMLBullets(html: string): BulletItem[];
+
+// 平台适配
+export function detectPlatform(): { isWeChat: boolean; isMobile: boolean; isOffice: boolean; };
+export function adjustFormatForPlatform(items: BulletItem[]): BulletItem[];
+```
+
+**🎨 格式兼容性**:
+- **Microsoft Office**: 支持 `<ul>`/`<ol>` 结构，保留缩进（margin-left）
+- **微信**: 自动简化为 2 级缩进，使用简单符号（● ○）
+- **富文本环境**: 生成 HTML 格式，带样式标记
+- **纯文本**: 使用空格缩进（每级 2 空格）
+
+#### E. Timestamp 服务 (timestampService.ts)
 
 ```typescript
 export class EventLogTimestampService {
@@ -160,7 +216,7 @@ export class EventLogTimestampService {
 }
 ```
 
-#### E. Inline 元素插入 (inlineHelpers.ts)
+#### F. Inline 元素插入 (inlineHelpers.ts)
 
 ```typescript
 // 插入 Tag
@@ -173,7 +229,7 @@ export function insertEmoji(editor: Editor, emoji: string): boolean;
 export function insertDateMention(editor: Editor, startDate: string, endDate?: string, options?: DateMentionOptions): boolean;
 ```
 
-#### F. 序列化工具 (jsonSerializer.ts)
+#### G. 序列化工具 (jsonSerializer.ts)
 
 ```typescript
 // JSON ↔ Slate nodes
@@ -200,9 +256,68 @@ export function slateNodesToJson(nodes: Descendant[]): string;
 - ✅ **扁平段落结构**: 直接的 paragraph 节点，无复杂嵌套
 - ✅ **Timestamp 自动管理**: 5分钟间隔自动插入
 - ✅ **Bullet 支持**: 多层级（0-4级），OneNote风格删除
+- ✅ **Bullet 自动转换** 🆕: 输入 `* ` `- ` `• ` `➢ ` 自动转换为 Bullet
+- ✅ **剪贴板增强** 🆕: 复制/粘贴保留 Bullet 格式，兼容 Office/微信
 - ✅ **段落移动**: Shift+Alt+↑/↓，自动跳过 timestamp
 - ✅ **Inline 元素**: Tag、DateMention、Emoji
 - ✅ **Preline 视觉**: timestamp后显示垂直时间线
+
+### 3.1.1 Bullet 功能详解 🆕
+
+#### 自动检测与转换
+```typescript
+// 用户输入流程
+用户输入: "* " → 检测触发 → 删除 "* " → 设置 bullet: true, bulletLevel: 0
+用户输入: "- " → 检测触发 → 删除 "- " → 设置 bullet: true, bulletLevel: 0
+用户输入: "• " → 检测触发 → 删除 "• " → 设置 bullet: true, bulletLevel: 0
+```
+
+**触发时机**: 在 `handleChange` 回调中检测光标前两个字符
+
+#### 层级调整快捷键
+- **Tab**: 增加层级（0 → 1 → 2 → 3 → 4）
+- **Shift + Tab**: 减少层级（4 → 3 → 2 → 1 → 0 → 取消 Bullet）
+- **Backspace（行首）**: 降低层级或取消 Bullet（OneNote 风格）
+- **Enter（空行）**: 取消当前行 Bullet，创建普通段落
+- **Enter（非空行）**: 创建新 Bullet 行，继承当前层级
+
+#### 复制粘贴机制
+```typescript
+// 复制时
+onCopy → extractBulletItems → generateClipboardData → {
+  'text/plain': '  ● 一级项目\n    ○ 二级项目',
+  'text/html': '<div style="margin-left: 0px">...</div>'
+}
+
+// 粘贴时
+onPaste → 检测格式 → parseHTMLBullets / parsePlainTextBullets → 插入 Bullet 节点
+```
+
+**格式保留规则**:
+| 来源 | 格式 | 处理方式 |
+|------|------|----------|
+| Microsoft Word | HTML (`<ul><li>`) | 解析 margin-left，还原层级 |
+| Google Docs | HTML + inline styles | 解析缩进，映射到层级 |
+| 微信聊天框 | 纯文本 + 空格缩进 | 每 2 空格 = 1 级 |
+| Notes.app | 纯文本 + Tab 缩进 | 自动检测缩进字符 |
+| 自身复制 | 自定义 HTML | 完整保留层级和格式 |
+
+#### 平台适配
+```typescript
+// 检测环境
+const { isWeChat, isMobile } = detectPlatform();
+
+// 微信环境：简化为 2 级
+if (isWeChat) {
+  maxLevel = 1; // 只允许 0-1 级
+  symbols = ['●', '○']; // 简化符号
+}
+
+// 移动端：减小缩进
+if (isMobile) {
+  indentSize = 16px; // 默认 24px
+}
+```
 
 ### 3.2 数据流
 
@@ -284,6 +399,9 @@ interface ModalSlateEditorProps {
 - ✅ **元数据透传**: 完整保留20+业务字段
 - ✅ **可视化状态**: 状态竖线、删除线、状态标签
 - ✅ **Snapshot 模式**: 查看历史时间范围的事件状态
+- ✅ **Bullet 支持**: 多层级（0-4级），OneNote风格删除
+- ✅ **Bullet 自动转换** 🆕: 输入 `* ` `- ` `• ` `➢ ` `· ` 自动转换为 Bullet
+- ✅ **剪贴板增强** 🆕: 复制/粘贴保留 Bullet 格式，兼容 Office/微信
 
 ### 4.2 EventLine 节点结构
 
@@ -366,6 +484,8 @@ interface PlanSlateEditorProps {
 | **特殊功能** | Timestamp、Preline | Checkbox、事件排序 |
 | **段落移动** | 单模式 | 双模式 |
 | **缩进管理** | bulletLevel (0-4) | level + bulletLevel |
+| **Bullet 自动转换** | ✅ | ✅ 🆕 |
+| **剪贴板增强** | ✅ | ✅ 🆕 |
 | **使用场景** | EventEditModal | PlanManager |
 | **代码量** | ~1,000 lines | ~2,850 lines |
 
@@ -606,7 +726,7 @@ export function insertLinkMention(editor: Editor, url: string, title?: string): 
 
 ---
 
-**文档版本**: v3.0  
-**最后更新**: 2025-11-29  
+**文档版本**: v3.1  
+**最后更新**: 2025-12-01  
 **作者**: GitHub Copilot  
-**状态**: ✅ 架构已实现，待重命名  
+**状态**: ✅ 架构已实现，Bullet v2.0 全面集成  

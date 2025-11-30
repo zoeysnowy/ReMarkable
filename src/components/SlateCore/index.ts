@@ -40,7 +40,6 @@ export {
   clearAllFormats,
   toggleFormat,
 } from './operations/formatting';
-export type { TextFormat } from './operations/formatting';
 
 // Bullet 操作
 export {
@@ -49,7 +48,26 @@ export {
   toggleBullet,
   handleBulletBackspace,
   handleBulletEnter,
+  detectBulletTrigger,
+  applyBulletAutoConvert,
+  getBulletChar,
+  BULLET_TRIGGERS,
+  BULLET_CHARS,
 } from './operations/bulletOperations';
+
+// 剪贴板操作
+export {
+  extractBulletItems,
+  generatePlainText,
+  generateHTML,
+  generateClipboardData,
+  parsePlainTextBullets,
+  parseHTMLBullets,
+  detectPlatform,
+  adjustFormatForPlatform,
+} from './operations/clipboardHelpers';
+export type { BulletItem, ClipboardData } from './operations/clipboardHelpers';
+export type { TextFormat } from './operations/formatting';
 
 // 节点操作
 export {

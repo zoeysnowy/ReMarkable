@@ -1,11 +1,196 @@
 # EventHub & TimeHub 统一架构文档
 
-> **文档版本**: v2.15.3  
+> **文档版本**: v2.16  
 > **创建时间**: 2025-11-06  
-> **最后更新**: 2025-11-29  
+> **最后更新**: 2025-12-01  
 > **关联模块**: EventHub, TimeHub, EventService, EventHistoryService, TimeParsingService, PlanManager, UpcomingEventsPanel, EventEditModal V2, ActionBasedSyncManager, syncRouter  
 > **文档类型**: 核心架构文档
-> **新增关联**: EventTitle 三层架构、EventHistoryService 时间快照查询、Snapshot 功能优化、checkType 与 checkbox 关联、父-子事件单一配置架构（subEventConfig）、**syncMode 同步控制（已实现）**、**EventService 生命周期管理（HMR 修复）**、**null 时间字段支持与 createdAt fallback（v2.15.3）**
+> **新增关联**: EventTitle 三层架构、EventHistoryService 时间快照查询、Snapshot 功能优化、checkType 与 checkbox 关联、父-子事件单一配置架构（subEventConfig）、**syncMode 同步控制（已实现）**、**EventService 生命周期管理（HMR 修复）**、**null 时间字段支持与 createdAt fallback（v2.15.3）**、**EventTree 统一字段架构（v2.16）**
+
+---
+
+## 🌳 v2.16 EventTree 统一字段架构 (2025-12-01)
+
+### 核心变更
+
+**背景**: 旧架构使用 `timerLogs` 字段存储 Timer 子事件，未来扩展需要 `userSubTaskIds`、`outsideAppEventIds` 等多个字段，导致字段碎片化  
+**解决方案**: 统一使用 `childEventIds` 字段管理所有类型的子事件，通过类型标记（`isTimer`、`isPlan`、`isOutsideApp` 等）区分  
+**状态**: ✅ 已完成实现，包含自动维护逻辑、辅助查询方法、数据迁移脚本
+
+### 架构改进
+
+#### 1. 统一字段结构
+
+```typescript
+interface Event {
+  // 🔗 父子关联（统一字段）
+  parentEventId?: string;      // 指向父事件 ID
+  childEventIds?: string[];    // 所有子事件 ID（不区分类型）
+  
+  // 🏷️ 事件类型标记（用于过滤和显示逻辑）
+  isTimer?: boolean;           // Timer 计时记录（附属事件）
+  isTimeLog?: boolean;         // 时间日志（附属事件）
+  isOutsideApp?: boolean;      // 外部应用同步事件（附属事件）
+  isPlan?: boolean;            // 用户计划事件
+  isTask?: boolean;            // 任务类型
+}
+```
+
+**旧字段废弃**:
+- ❌ `timerLogs?: string[]` - 已迁移到 `childEventIds`
+- ❌ `userSubTaskIds?: string[]` - 从未实现，直接使用 `childEventIds`
+- ❌ `outsideAppEventIds?: string[]` - 从未实现，直接使用 `childEventIds`
+
+#### 2. 自动维护双向关联
+
+**EventService 自动维护逻辑**:
+
+```typescript
+// createEvent: 创建子事件时自动更新父事件
+if (finalEvent.parentEventId) {
+  const parent = existingEvents.find(e => e.id === finalEvent.parentEventId);
+  if (parent) {
+    if (!parent.childEventIds) parent.childEventIds = [];
+    if (!parent.childEventIds.includes(finalEvent.id)) {
+      parent.childEventIds.push(finalEvent.id);
+    }
+  }
+}
+
+// updateEvent: 检测 parentEventId 变化，同步更新双向关联
+if (updates.parentEventId !== oldEvent.parentEventId) {
+  // 从旧父事件移除
+  if (oldEvent.parentEventId) {
+    oldParent.childEventIds = oldParent.childEventIds.filter(id => id !== eventId);
+  }
+  // 添加到新父事件
+  if (updates.parentEventId) {
+    newParent.childEventIds.push(eventId);
+  }
+}
+
+// deleteEvent: 清理父子关联
+if (event.parentEventId) {
+  parent.childEventIds = parent.childEventIds.filter(id => id !== eventId);
+}
+// 删除父事件时清理所有子事件的 parentEventId
+if (event.childEventIds) {
+  event.childEventIds.forEach(childId => {
+    delete getEventById(childId).parentEventId;
+  });
+}
+```
+
+#### 3. 辅助查询方法
+
+**EventService 新增方法**:
+
+```typescript
+// 类型判断
+EventService.getEventType(event)           // 返回类型描述字符串
+EventService.isSubordinateEvent(event)     // 判断是否为附属事件
+EventService.isUserSubEvent(event)         // 判断是否为用户子事件
+
+// 查询方法
+EventService.getChildEvents(parentId)      // 获取所有子事件
+EventService.getSubordinateEvents(parentId)// 仅附属事件（Timer/TimeLog/OutsideApp）
+EventService.getUserSubTasks(parentId)     // 仅用户子事件
+
+// 树结构操作
+EventService.getEventTree(rootId)          // 递归获取整个事件树
+EventService.getTotalDuration(parentId)    // 计算总时长
+EventService.getEventDepth(eventId)        // 获取层级深度
+EventService.getRootEvent(eventId)         // 获取根事件
+```
+
+**使用示例**:
+```typescript
+// ❌ 旧代码
+const childEvents = (parent.timerLogs || [])
+  .map(id => EventService.getEventById(id))
+  .filter(e => e !== null);
+
+// ✅ 新代码
+const childEvents = EventService.getChildEvents(parent.id);
+
+// 按类型过滤
+const timers = EventService.getSubordinateEvents(parent.id);
+const userTasks = EventService.getUserSubTasks(parent.id);
+```
+
+#### 4. 事件类型区分
+
+**附属事件 vs 用户子事件**:
+
+| 类型 | 标识字段 | Plan 页面显示 | 有 Plan 状态 | 说明 |
+|------|----------|--------------|-------------|------|
+| **用户子任务** | `isPlan=true, parentEventId=存在` | ✅ 显示 | ✅ 有 | 用户主动创建，有完整生命周期 |
+| **Timer 子事件** | `isTimer=true, parentEventId=存在` | ❌ 隐藏 | ❌ **仅 Actual** | 系统自动生成的计时记录 |
+| **时间日志** | `isTimeLog=true` | ❌ 隐藏 | ❌ **仅 Actual** | 系统自动记录的活动轨迹 |
+| **外部应用数据** | `isOutsideApp=true` | ❌ 隐藏 | ❌ **仅 Actual** | 外部应用同步的数据 |
+
+**关键区分点**:
+- **附属事件**: 只记录 Actual 数据（实际发生时间），不能被预先计划
+- **用户子事件**: 有完整的 Plan 状态（计划时间 + 实际时间）
+
+#### 5. 前端组件适配
+
+**EventEditModalV2**:
+```typescript
+// ❌ 旧代码
+const childEvents = (latestEvent.timerLogs || [])
+  .map(id => EventService.getEventById(id))
+  .filter(e => e !== null);
+
+// ✅ 新代码
+const childEvents = EventService.getChildEvents(latestEvent.id);
+```
+
+**PlanManager**:
+```typescript
+// ❌ 旧代码
+if (event.isTimer === true || 
+    event.isOutsideApp === true || 
+    event.isTimeLog === true) {
+  return false; // 隐藏系统事件
+}
+
+// ✅ 新代码
+if (EventService.isSubordinateEvent(event)) {
+  return false;
+}
+```
+
+#### 6. 数据迁移
+
+**迁移脚本**: `scripts/migrate-timerlogs-to-childeventids.js`
+
+**功能**:
+- ✅ 自动合并 `timerLogs` 和 `childEventIds`（去重）
+- ✅ 删除旧的 `timerLogs` 字段
+- ✅ 验证数据完整性（孤立子事件、无效引用）
+- ✅ 详细的迁移报告
+
+**数据修复脚本**: `scripts/fix-eventtree-integrity.js`
+
+**功能**:
+- ✅ 清理孤立子事件的 `parentEventId`
+- ✅ 移除无效的子事件引用
+- ✅ 验证双向关联一致性
+
+### 核心优势
+
+1. **单一数据源**: 所有子事件统一存储在 `childEventIds`
+2. **自动维护**: 创建/更新/删除时自动同步双向关联
+3. **类型灵活**: 通过标记区分，按需过滤
+4. **易于扩展**: 添加新类型只需加标记，无需新字段
+5. **查询高效**: O(1) 获取子事件列表，内存过滤
+
+### 相关文档
+
+- [EVENTTREE_UNIFIED_DESIGN.md](../architecture/EVENTTREE_UNIFIED_DESIGN.md) - 完整设计文档
+- [EVENTTREE_INTEGRITY_DIAGNOSIS.md](../diagnosis/EVENTTREE_INTEGRITY_DIAGNOSIS.md) - 诊断报告
+- [EVENTTREE_UNIFIED_IMPLEMENTATION_REPORT.md](../implementation/EVENTTREE_UNIFIED_IMPLEMENTATION_REPORT.md) - 实施报告
 
 ---
 
@@ -3003,7 +3188,50 @@ parentTaskId?: string;
 
 ---
 
-#### 8.2.6 childTaskCount & childTaskCompletedCount - 子任务统计
+#### 8.2.6 childEventIds - 子事件统一管理（v2.16）
+
+```typescript
+childEventIds?: string[];  // 所有子事件 ID（统一字段）
+```
+
+**用途**: 统一管理所有类型的子事件（Timer 记录、时间日志、外部应用数据、用户子任务）
+
+**旧字段废弃**:
+- ❌ `timerLogs?: string[]` - 已于 v2.16 废弃，迁移到 `childEventIds`
+- ❌ `userSubTaskIds?: string[]` - 从未实现，直接使用 `childEventIds`
+- ❌ `outsideAppEventIds?: string[]` - 从未实现，直接使用 `childEventIds`
+
+**自动维护**: EventService 在 createEvent/updateEvent/deleteEvent 时自动同步双向关联
+
+**查询方法**:
+```typescript
+// 获取所有子事件
+const children = EventService.getChildEvents(parentId);
+
+// 按类型过滤
+const timers = EventService.getSubordinateEvents(parentId);  // Timer/TimeLog/OutsideApp
+const userTasks = EventService.getUserSubTasks(parentId);     // 用户创建的子事件
+
+// 类型判断
+const isSystemEvent = EventService.isSubordinateEvent(event); // 是否为系统附属事件
+```
+
+**使用示例**:
+```typescript
+// ❌ 旧代码（v2.15 及以前）
+const childEvents = (parent.timerLogs || [])
+  .map(id => EventService.getEventById(id))
+  .filter(e => e !== null);
+
+// ✅ 新代码（v2.16+）
+const childEvents = EventService.getChildEvents(parent.id);
+```
+
+**完整文档**: 详见 [v2.16 EventTree 统一字段架构](#-v216-eventtree-统一字段架构-2025-12-01)
+
+---
+
+#### 8.2.7 childTaskCount & childTaskCompletedCount - 子任务统计
 
 ```typescript
 childTaskCount?: number;         // 子任务总数
@@ -3029,8 +3257,8 @@ export async function updateParentTaskStats(childEventId: string): Promise<void>
     const parentEvent = await EventService.getEventById(currentParentId);
     if (!parentEvent) break;
     
-    // 查询所有子任务
-    const childEvents = await EventService.getEventsByParentId(currentParentId);
+    // 查询所有子事件（v2.16+ 使用统一字段）
+    const childEvents = EventService.getChildEvents(currentParentId);
     
     // 计算统计数据
     const childTaskCount = childEvents.length;

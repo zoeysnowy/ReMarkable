@@ -376,10 +376,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         return false; // 不满足任何显示条件
       }
       
-      // 步骤 2: 排除系统事件（使用严格比较 === true）
-      if (event.isTimer === true || 
-          event.isOutsideApp === true || 
-          event.isTimeLog === true) {
+      // 步骤 2: 排除系统事件（使用 EventService 辅助方法）
+      if (EventService.isSubordinateEvent(event)) {
         return false;
       }
       
@@ -714,10 +712,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         return;
       }
       
-      // 排除条件：系统事件
-      if (event.isTimer === true || 
-          event.isOutsideApp === true || 
-          event.isTimeLog === true) {
+      // 排除条件：系统事件（使用 EventService 辅助方法）
+      if (EventService.isSubordinateEvent(event)) {
         // 🚫 系统事件，直接忽略
         return;
       }
@@ -1160,6 +1156,17 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         existingItem.description !== updatedItem.description ||
         existingItem.eventlog !== updatedItem.eventlog || // 🆕 v1.8: 检测 eventlog 变化
         JSON.stringify(existingItem.tags) !== JSON.stringify(updatedItem.tags);
+      
+      // 🐛 Bulletpoint 调试：检查 eventlog 字段
+      if (isChanged && updatedItem.eventlog) {
+        console.log('[PlanManager Bullet Debug] eventlog 内容:', {
+          eventId: updatedItem.id?.slice(-8),
+          eventlogType: typeof updatedItem.eventlog,
+          eventlogLength: updatedItem.eventlog.length,
+          hasBulletAttr: updatedItem.eventlog.includes('data-bullet="true"'),
+          preview: updatedItem.eventlog.substring(0, 200)
+        });
+      }
       
       if (isChanged) {
         const now = new Date();
@@ -1646,10 +1653,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           return;
         }
         
-        // 🎯 步骤 3: 系统事件过滤（使用严格比较 === true）
-        if (log.before.isTimer === true || 
-            log.before.isTimeLog === true || 
-            log.before.isOutsideApp === true) {
+        // 🎯 步骤 3: 系统事件过滤（使用 EventService 辅助方法）
+        if (EventService.isSubordinateEvent(log.before)) {
           console.log('[PlanManager] ⏭️ 跳过系统事件 ghost:', log.eventId.slice(-8));
           return;
         }

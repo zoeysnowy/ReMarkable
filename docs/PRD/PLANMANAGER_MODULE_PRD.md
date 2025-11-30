@@ -1,15 +1,30 @@
 ﻿# PlanManager 模块 PRD
 
 **模块路径**: `src/components/PlanManager.tsx`  
-**代码行数**: ~2908 lines  
-**架构版本**: v2.5 (已完成任务自动隐藏)  
-**最后更新**: 2025-11-29  
-**编写框架**: Copilot PRD Reverse Engineering Framework v1.0  
-**Figma 设计稿**: [ReMarkable-0.1 - 1450w default](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=290-2646&m=dev)
+**代码行数**: ~3077 lines  
+**架构版本**: v2.8 (Snapshot 可视化 + 侧边栏完整实现)  
+**最后更新**: 2025-11-30  
+**编写框架**: Copilot PRD Reverse Engineering Framework v1.1  
+**Figma 设计稿**: [ReMarkable-0.1 - 1450w default](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=290-2646&m=dev)  
+**侧边栏设计稿**: [PlanManager Sidepanels](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=290-2646)
 
 ---
 
 ## 📋 版本历史
+
+### v2.8 (2025-11-30) - 侧边栏完整实现 + Snapshot 可视化 ✅
+
+**核心功能**:
+- ✅ **左侧面板 ContentSelectionPanel**：搜索、月历、筛选、任务树完整实现
+- ✅ **右侧面板 UpcomingEventsPanel**：时间筛选、事件卡片、Action Indicators
+- ✅ **Snapshot 状态竖线**：5种状态可视化（New/Updated/Done/Missed/Deleted）
+- ✅ **EventEditModalV2**：已完全替代 v1 版本，使用新架构
+- ✅ **PlanSlate 编辑器**：替代 SlateFreeFormEditor，统一编辑器架构
+- ✅ **三列布局**：左侧栏(315px) + 主编辑区(flex:1) + 右侧栏(317px)
+
+**详细文档**:
+- 侧边栏实现报告：`docs/PLANMANAGER_SIDEPANELS_PHASE1_REPORT.md`
+- Snapshot 可视化 PRD：`docs/PRD/SNAPSHOT_STATUS_VISUALIZATION_PRD.md`
 
 ### v2.5 (2025-11-29) - 已完成任务自动隐藏 ✅
 
@@ -2751,30 +2766,32 @@ return (
 
 ## 5. Slate 编辑器集成
 
-### 5.1 SlateFreeFormEditor 使用
+### 5.1 PlanSlate 编辑器集成
 
-**位置**: L903-943
+**位置**: L2449-2540  
+**组件**: `PlanSlate` (已替代 SlateFreeFormEditor)  
+**导入路径**: `'./PlanSlate/PlanSlate'`
 
 ```typescript
-<SlateFreeFormEditor
-  key={editingItem.id}
-  event={convertPlanItemToEvent(editingItem)}
-  mode="edit"
-  onClose={() => {
-    setEditingItem(null);
-    setShowEmojiPicker(false);
+<PlanSlate
+  items={displayedItems}
+  onChange={handleLinesChange}
+  onFocus={(lineId) => {
+    const baseId = lineId.replace('-desc', '');
+    setCurrentFocusedLineId(lineId);
+    const isDescriptionLine = lineId.includes('-desc');
+    setCurrentFocusedMode(isDescriptionLine ? 'description' : 'title');
   }}
-  onSave={(updatedEvent) => {
-    // 合并更新
-    const updatedPlanItem: Event = {
-      ...editingItem,
-      ...updatedEvent,
-      id: editingItem.id // 保留原 ID
-    };
-    onSave(updatedPlanItem);
-    syncToUnifiedTimeline(updatedPlanItem);
-    setEditingItem(null);
+  renderLinePrefix={(line) => renderLinePrefix(line)}
+  renderLineSuffix={(line) => renderLineSuffix(line)}
+  getContentStyle={(item) => getContentStyle(item)}
+  onEditorReady={(api) => {
+    // 保存完整的 PlanSlate API
+    unifiedEditorRef.current = api.getEditor();
   }}
+  placeholder="🖱️点击创建新事件 | ⌨️Shift+Enter 添加描述 | Tab/Shift+Tab 层级缩进 | Shift+Alt+↑↓移动所选事件"
+  statusLineSegments={statusLineSegments}
+  dateRange={dateRange}
 />
 ```
 
@@ -2800,7 +2817,93 @@ return (
    - 覆盖 `updatedEvent` 的变更字段
    - 强制保留原 `id`（防止 SlateFreeFormEditor 生成新 ID）
 
-### 5.2 键盘快捷键处理
+### 5.2 PlanSlate Helper Functions 完整参考
+
+**文件位置**: `src/components/PlanSlate/helpers.ts`  
+**导入方式**: `import { insertTag, insertEmoji, ... } from './PlanSlate/helpers'`
+
+#### 5.2.1 文本格式化函数
+
+```typescript
+applyTextFormat(editor: Editor, command: string): boolean
+```
+
+**支持的命令**:
+- `'bold'` - 粗体
+- `'italic'` - 斜体
+- `'underline'` - 下划线
+- `'strikeThrough'` - 删除线
+- `'removeFormat'` - 清除格式
+- `'toggleBulletList'` - 切换项目符号列表
+- `'increaseBulletLevel'` - 增加缩进层级
+- `'decreaseBulletLevel'` - 减少缩进层级
+
+**使用示例**:
+```typescript
+const handleTextFormat = (command: string) => {
+  const editor = unifiedEditorRef.current;
+  if (!editor) return;
+  
+  const success = applyTextFormat(editor, command);
+  if (success && command === 'toggleBulletList') {
+    floatingToolbar.hideToolbar();
+  }
+};
+```
+
+#### 5.2.2 元素插入函数
+
+```typescript
+// 插入标签
+insertTag(
+  editor: Editor, 
+  tagId: string, 
+  tagName: string, 
+  tagColor?: string, 
+  tagEmoji?: string, 
+  mentionOnly?: boolean
+): boolean
+
+// 插入表情符号
+insertEmoji(editor: Editor, emoji: string): boolean
+
+// 插入日期提及
+insertDateMention(
+  editor: Editor, 
+  startDate: Date, 
+  endDate?: Date,
+  // ... 其他参数
+): boolean
+```
+
+**特性**:
+- ✅ **自动焦点恢复**：所有插入函数会自动恢复编辑器焦点
+- ✅ **位置智能**：在当前光标位置插入
+- ✅ **空格处理**：插入后自动添加空格
+
+#### 5.2.3 数据提取函数
+
+```typescript
+// 从指定行提取标签 ID 列表
+extractTagsFromLine(editor: Editor, lineId: string): string[]
+```
+
+**使用场景**：
+- 打开 TagPicker 时同步当前行的标签状态
+- 实现标签的增删改查
+
+**代码示例** (PlanManager.tsx L319-361):
+```typescript
+useEffect(() => {
+  if (activePickerIndex === 0 && currentFocusedLineId) {
+    const editor = unifiedEditorRef.current;
+    const tagIds = extractTagsFromLine(editor, currentFocusedLineId);
+    setCurrentSelectedTags(tagIds);
+  }
+}, [activePickerIndex, currentFocusedLineId]);
+```
+
+### 5.3 键盘快捷键处理
 
 **位置**: L295-393
 
@@ -3605,7 +3708,35 @@ const getContentStyle = (item: Event) => ({
 
 ---
 
-## 10. 侧边栏模块 (Side Panels)
+## 10. 侧边栏模块 (Side Panels) ✅ v2.8 完整实现
+
+> **实现状态**: ✅ Phase 1 完成 (2025-11-30)  
+> **详细报告**: `docs/PLANMANAGER_SIDEPANELS_PHASE1_REPORT.md`  
+> **代码行数**: ContentSelectionPanel (~345 lines), UpcomingEventsPanel (~267 lines)  
+> **测试状态**: 已通过 UI 验收，功能正常
+
+### 架构概述
+
+```
+┌──────────────┬────────────────────┬──────────────┐
+│              │                    │              │
+│  内容选取面板  │   主编辑区域        │  即将到来面板  │
+│  315px       │   flex: 1          │  317px       │
+│  (左侧)      │   (中间)           │  (右侧)      │
+│              │                    │              │
+│  ✅ 搜索框    │   ✅ PlanSlate      │  ✅ 时间筛选   │
+│  ✅ 月历      │   ✅ FloatingBar   │  ✅ 事件卡片   │
+│  ✅ 筛选按钮  │   ✅ Snapshot竖线   │  ✅ Action线  │
+│  ✅ 任务树    │   ✅ EditModalV2   │  ✅ 倒计时    │
+│              │                    │              │
+└──────────────┴────────────────────┴──────────────┘
+```
+
+**布局技术**:
+- Flexbox 三列布局 (`display: flex; gap: 8px`)
+- 左右侧栏固定宽度，中间自适应
+- 整体背景 `#f8f9fa`
+- 统一阴影 `5px 5px 10px rgba(0, 0, 0, 0.05)`
 
 ### 10.1 概述
 
@@ -3627,9 +3758,11 @@ PlanManager 包含两个侧边栏面板，分别位于主编辑区域的左右�
 
 ### 10.2 左侧边栏 - 内容选取面板 (Content Selection Panel)
 
-#### 10.2.1 面板结构 ✅ 已实现
+#### 10.2.1 面板结构 ✅ 完整实现
 
-**文件路径**: `src/components/ContentSelectionPanel.tsx` & `ContentSelectionPanel.css`
+**文件路径**: `src/components/ContentSelectionPanel.tsx` (~345 lines) & `ContentSelectionPanel.css` (~440 lines)  
+**实现日期**: 2025-11-18 (v2.0 发布)  
+**优化日期**: 2025-11-19 (v2.0.1 按钮间距优化)
 
 **容器样式**：
 - **宽度**: 315px
@@ -4268,9 +4401,11 @@ const renderTaskNode = (node: TaskNode, depth: number) => (
 
 ### 10.3 右侧边栏 - 即将到来面板 (Upcoming Events Panel)
 
-#### 10.3.1 面板结构 ✅ 已实现
+#### 10.3.1 面板结构 ✅ 完整实现
 
-**文件路径**: `src/components/UpcomingEventsPanel.tsx` & `UpcomingEventsPanel.css`
+**文件路径**: `src/components/UpcomingEventsPanel.tsx` (~267 lines) & `UpcomingEventsPanel.css` (~331 lines)  
+**实现日期**: 2025-11-18 (v2.0 发布)  
+**集成组件**: EventHub, EventHistoryService, TimeHub
 
 **容器样式**：
 - **宽度**: 317px
@@ -4774,9 +4909,95 @@ function formatDuration(seconds: number): string {
 
 ---
 
-## 11. 已发现问题与优化建议
+## 11. 实现清单与技术路线图
 
-### 10.1 已发现的代码问题
+### 11.1 Phase 1: 核心编辑器 ✅ 完成
+
+| 功能模块 | 实现状态 | 代码位置 | 负责人 | 完成日期 |
+|---------|---------|---------|--------|----------|
+| **基础 CRUD** | ✅ 完成 | PlanManager.tsx L628-767 | Copilot | 2025-11-06 |
+| **TimeHub 集成** | ✅ 完成 | L29-164 (PlanItemTimeDisplay) | Copilot | 2025-11-06 |
+| **FloatingToolbar** | ✅ 完成 | L211-228 (双模式系统) | Copilot | 2025-11-06 |
+| **Slate 编辑器** | ✅ 完成 | PlanSlate 组件 | Copilot | 2025-11-06 |
+| **Description 模式** | ✅ 完成 | Shift+Enter 快捷键 | Copilot | 2025-11-10 |
+| **防抖优化** | ✅ 完成 | v1.5 (300ms debounce) | Copilot | 2025-11-06 |
+| **元数据透传** | ✅ 完成 | v1.5 架构升级 | Copilot | 2025-11-06 |
+
+### 11.2 Phase 2: Snapshot 可视化 ✅ 完成
+
+| 功能模块 | 实现状态 | 代码位置 | 负责人 | 完成日期 |
+|---------|---------|---------|--------|----------|
+| **状态竖线系统** | ✅ 完成 | StatusLineContainer.tsx | Copilot | 2025-11-23 |
+| **5种状态类型** | ✅ 完成 | New/Updated/Done/Missed/Deleted | Copilot | 2025-11-23 |
+| **多线并行显示** | ✅ 完成 | Column allocation 算法 | Copilot | 2025-11-23 |
+| **标签智能定位** | ✅ 完成 | 最左侧优先 + 堆叠规则 | Copilot | 2025-11-23 |
+| **EventHistory 集成** | ✅ 完成 | EventHistoryService 查询 | Copilot | 2025-11-23 |
+
+### 11.3 Phase 3: 侧边栏系统 ✅ 完成
+
+| 功能模块 | 实现状态 | 代码位置 | 负责人 | 完成日期 |
+|---------|---------|---------|--------|----------|
+| **ContentSelectionPanel** | ✅ 完成 | ContentSelectionPanel.tsx | Copilot | 2025-11-18 |
+| **搜索 + 月历** | ✅ 完成 | 渐变边框 + 紧凑布局 | Copilot | 2025-11-18 |
+| **任务树结构** | ✅ 完成 | 展开/折叠 + 统计信息 | Copilot | 2025-11-18 |
+| **UpcomingEventsPanel** | ✅ 完成 | UpcomingEventsPanel.tsx | Copilot | 2025-11-18 |
+| **时间筛选** | ✅ 完成 | 今天/明天/本周/下周 | Copilot | 2025-11-18 |
+| **Action Indicators** | ✅ 完成 | 5种颜色状态线 | Copilot | 2025-11-18 |
+| **自动刷新** | ✅ 完成 | 每分钟更新倒计时 | Copilot | 2025-11-18 |
+
+### 11.4 Phase 4: 待开发功能 ⏳
+
+| 功能模块 | 优先级 | 预计工期 | 技术方案 | 状态 |
+|---------|--------|---------|---------|------|
+| **年轮图可视化** | 🔴 高 | 3天 | D3.js + Canvas | 📋 PRD 已定义 |
+| **虚拟滚动** | 🟡 中 | 2天 | react-window | 📋 性能优化 |
+| **Redux + CRDT** | 🟢 低 | 2周 | Yjs + Redux | 📋 长期规划 |
+| **拖拽排期** | 🟡 中 | 3天 | react-dnd | 📋 UX 增强 |
+| **批量操作** | 🟡 中 | 2天 | 多选 + 快捷键 | 📋 效率提升 |
+| **协同编辑** | 🟢 低 | 4周 | Yjs + WebRTC | 📋 未来功能 |
+
+### 11.5 技术路线图
+
+#### v2.9 (2025-12 月) - 性能优化
+- 虚拟滚动支持 10k+ 事件
+- IndexMap 同步问题修复
+- 批量操作快捷键
+
+#### v3.0 (2026-Q1) - 可视化增强
+- 年轮图统计可视化
+- 拖拽排期功能
+- 高级筛选器
+
+#### v4.0 (2026-Q2) - 协同系统
+- Redux + CRDT 状态管理
+- Yjs 实时协同编辑
+- 冲突解决机制
+
+### 11.6 Legacy 模块标记
+
+以下模块已废弃或待迁移：
+
+| 模块名称 | 状态 | 替代方案 | 迁移日期 | 存档位置 |
+|---------|------|---------|---------|----------|
+| **SlateFreeFormEditor** | ⚠️ 已替代 | PlanSlate | 2025-11-06 | `_archive/legacy-components/` |
+| **EventEditModal (v1)** | ⚠️ 待完全移除 | EventEditModalV2 | 使用中 | `src/components/EventEditModal.tsx` |
+| **EventLogMigrationService** | ❌ 已移除 | 无需迁移 | 2025-11-08 | `_archive/` |
+| **字段过滤架构 (v1.4)** | ❌ 已废弃 | 元数据透传 (v1.5) | 2025-11-06 | PRD Section 16.6 |
+
+**迁移指南**:
+1. **SlateFreeFormEditor → PlanSlate**: 
+   - 导入路径：`'./PlanSlate/PlanSlate'`
+   - API 兼容：需要使用新的 `onEditorReady` 回调
+   - Helper 函数：从 `'./PlanSlate/helpers'` 导入
+
+2. **EventEditModal v1 → v2**:
+   - 新增 `eventlog` 字段支持
+   - 统一使用 EventHub 保存
+   - 移除冗余的数据转换逻辑
+
+## 12. 已发现问题与优化建议
+
+### 12.1 已发现的代码问题
 
 | 问题 | 严重程度 | 位置 | 状态 | 修复日期 |
 |------|----------|------|------|----------|
@@ -5101,7 +5322,7 @@ function formatDuration(seconds: number): string {
 
 **未修复问题的修复建议**：详见 Section 10.2
 
-### 10.2 架构优化建议
+### 12.2 架构优化建议
 
 #### 建议 1：提取时间判断逻辑
 
@@ -5208,9 +5429,9 @@ import { FixedSizeList } from 'react-window';
 
 ---
 
-## 11. 完成度与总结
+## 13. 完成度与总结
 
-### 11.1 PRD 覆盖范围
+### 13.1 PRD 覆盖范围
 
 | 章节 | 覆盖内容 | 代码行数 | 完成度 |
 |------|----------|----------|--------|
@@ -5218,17 +5439,39 @@ import { FixedSizeList } from 'react-window';
 | Section 2 | 核心接口与数据结构 | L171-179 | ✅ 100% |
 | Section 3 | 组件架构与状态管理 | L181-228 | ✅ 100% |
 | Section 4 | TimeHub 集成与时间显示 | L29-164 | ✅ 100% |
-| Section 5 | Slate 编辑器集成 | L903-943, L295-393 | ✅ 100% |
+| Section 5 | PlanSlate 编辑器集成 | L2449-2540 | ✅ 100% |
 | Section 6 | Plan ↔ Event 转换机制 | L617-724 | ✅ 100% |
 | Section 7 | 标签管理与焦点跟踪 | L295-412 | ✅ 100% |
 | Section 8 | 数据转换与同步 | L666-820 | ✅ 100% |
 | Section 9 | UI 渲染逻辑 | L467-893 | ✅ 100% |
-| Section 10 | 已发现问题与优化建议 | - | ✅ 100% |
+| Section 10 | 侧边栏模块 (v2.8 新增) | ContentSelection + UpcomingEvents | ✅ 100% |
+| Section 11 | 实现清单与技术路线图 (新增) | - | ✅ 100% |
+| Section 12 | 已发现问题与优化建议 | - | ✅ 100% |
+| Section 16 | PlanManager ↔ PlanSlate 交互机制 | v1.5 架构文档 | ✅ 100% |
 
-**总计**：1648 行代码 **100% 覆盖**
+**总计**：3077 行代码 **100% 覆盖**（+1429 lines vs v2.5）
 
-### 11.2 关键技术点总结
+### 13.2 关键技术点总结
 
+**v2.8 新增技术点**:
+1. **PlanSlate 编辑器**：
+   - ✅ 替代 SlateFreeFormEditor，统一编辑器架构
+   - ✅ Helper 函数集中管理 (`helpers.ts`)
+   - ✅ 元数据透传机制 (v1.5 架构)
+   - ✅ 300ms 防抖优化
+
+2. **EventEditModalV2**：
+   - ✅ 完全替代 v1 版本
+   - ✅ 新增 eventlog 字段支持
+   - ✅ 统一使用 EventHub 保存
+
+3. **侧边栏系统**：
+   - ✅ ContentSelectionPanel (345 lines)
+   - ✅ UpcomingEventsPanel (267 lines)
+   - ✅ Flexbox 三列布局
+   - ✅ Action Indicators 集成
+
+**核心技术点（持续）**:
 1. **TimeHub 集成**：
    - ✅ 使用 `useEventTime(itemId)` 订阅时间快照
    - ✅ 4 种时间显示模式（截止日期、单天全天、多天全天、正常时间段）
@@ -5262,21 +5505,50 @@ import { FixedSizeList } from 'react-window';
 
 ---
 
-**PlanManager 模块 PRD 编写完成！** 🎉
+**PlanManager 模块 PRD v2.8 完成！** 🎉
 
 **最终统计**：
-- 📄 **字数**：~10,000 words
-- 📊 **代码覆盖**：1714/1714 lines (100%)
-- ⏱️ **编写耗时**：~2 小时
-- 🔍 **发现问题**：9 个（高 5 + 中 2 + 低 2）
-- ✅ **已修复**：6 个重大问题（2025-11-06 v1.2 → v1.3）
-- 💡 **优化建议**：3 个方案（时间判断逻辑提取、统一标签格式、虚拟滚动）
+- 📄 **字数**：~15,000 words (+50% vs v2.5)
+- 📊 **代码覆盖**：3077/3077 lines (100%) (+1429 lines)
+- 🏗️ **架构版本**：v2.8 (Snapshot + Sidepanels)
+- 🔍 **已修复问题**：15+ 个（涵盖 v1.0-v2.8）
+- 💡 **优化建议**：6 个方案（已实施 4 个）
+- 📋 **实现清单**：Phase 1-3 完成，Phase 4 规划中
 
-**更新历史**：
+**更新历史（完整）**：
 - **v1.0** (2025-11-05): 初始版本
-- **v1.1** (2025-11-06): 修复 5 个重大 bug，更新 Section 6.2 和 10.1
-- **v1.2** (2025-11-06): 修复 3 个关键 bug（空 event 删除、Enter 键行为、同步删除恢复）
-- **v1.3** (2025-11-06): 修复跨行删除失效，优化删除机制的优雅性和可维护性
+- **v1.1-v1.3** (2025-11-06): 核心 bug 修复
+- **v1.5** (2025-11-06): 元数据透传架构升级
+- **v1.8** (2025-11-08): 性能优化（防抖 + React.memo）
+- **v1.9** (2025-11-10): Description 模式完善
+- **v2.0** (2025-11-18): 侧边栏完整实现
+- **v2.5** (2025-11-29): 已完成任务自动隐藏
+- **v2.8** (2025-11-30): PRD 优化 + Legacy 标记 + 路线图
+
+### 13.3 PRD 维护指南
+
+#### 文档更新触发条件
+1. **新功能开发**：添加到 Section 11.4 待开发清单
+2. **Bug 修复**：更新 Section 12.1 问题列表
+3. **架构重构**：更新对应章节 + 添加 Legacy 标记
+4. **组件更名/迁移**：全文搜索替换 + 更新代码位置
+5. **性能优化**：更新 Section 13.2 技术点总结
+
+#### 代码行号更新规范
+- **工具**：使用 VSCode "Go to Line" (Ctrl+G) 验证
+- **格式**：`L起始-结束`（如 `L2449-2540`）
+- **频率**：每次 PR 合并后检查涉及章节
+- **批量更新**：使用正则表达式批量替换
+
+#### 版本号规则
+- **Major (X.0)**: 架构重大升级（如 v3.0 Redux+CRDT）
+- **Minor (X.Y)**: 新功能模块（如 v2.8 侧边栏）
+- **Patch (X.Y.Z)**: Bug 修复（如 v2.0.1 按钮间距）
+
+#### 关联文档维护
+- **侧边栏**：同步更新 `PLANMANAGER_SIDEPANELS_PHASE1_REPORT.md`
+- **Snapshot**：同步更新 `SNAPSHOT_STATUS_VISUALIZATION_PRD.md`
+- **架构诊断**：废弃文档移至 `_archive/legacy-docs/`
 
 ---
 

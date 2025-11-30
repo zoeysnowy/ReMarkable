@@ -347,7 +347,7 @@
   word-wrap: break-word;
   word-break: break-word;
   overflow-wrap: break-word;
-  white-space: normal; /* 允许正常换行，支持 HTML 富文本 */
+  white-space: pre-wrap; /* 保持空格，达到最大宽度时换行 */
   overflow-y: auto; /* 超出时滚动 */
   overflow-x: hidden; /* 隐藏横向滚动 */
   font-family: inherit; /* 继承父元素字体 */
@@ -356,7 +356,7 @@
 
 /* 富文本样式保留 */
 .title-input * {
-  white-space: normal;
+  white-space: pre-wrap;
   display: inline; /* 所有子元素默认行内显示 */
   line-height: inherit;
   font-size: inherit;

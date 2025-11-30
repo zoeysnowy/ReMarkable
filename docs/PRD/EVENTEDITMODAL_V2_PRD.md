@@ -1,8 +1,8 @@
 ﻿# EventEditModal v2 产品需求文档 (PRD)
 
-> **版本**: v2.0.5  
+> **版本**: v2.15.6  
 > **创建时间**: 2025-11-06  
-> **最后更新**: 2025-11-28  
+> **最后更新**: 2025-12-01  
 > **Figma 设计稿**: [EventEditModal v2 设计稿](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=201-630&m=dev)  
 > **基于**: EventEditModal v1 + Figma 设计稿  
 > **依赖模块**: EventHub, TimeHub, SlateEditor, HeadlessFloatingToolbar, Timer Module  
@@ -13,7 +13,24 @@
 > - [TIME_ARCHITECTURE.md](../TIME_ARCHITECTURE.md)
 > - [SLATE_DEVELOPMENT_GUIDE.md](../SLATE_DEVELOPMENT_GUIDE.md)
 
-> **🔥 v2.0.5 最新更新** (2025-11-28):
+> **🔥 v2.15.6 最新更新** (2025-12-01):
+> - ✅ **标题输入框流畅输入体验优化**: 完全解决输入法期间的换行和闪烁问题
+>   - **IME 期间无宽度限制**: 输入法启动时设置 `width: max-content`，让文字自由扩展到 240px
+>   - **输入法完成后精确调整**: 输入法结束时立即计算并应用精确宽度，支持自动换行（最多3行）
+>   - **新字符同行显示**: 新输入的字符始终和前一个字符在同一行，不会跳到第二行
+>   - **CSS 优化**: 使用 `white-space: pre-wrap` 保持空格，只在达到最大宽度时换行
+>   - **Placeholder 自适应**: 空内容时根据 placeholder 文本计算初始宽度，避免换行
+>   - **零延迟响应**: 移除所有防抖，同步执行宽度调整，checkbox 立即跟随
+> 
+> **🔥 v2.15.5 历史更新** (2025-12-01):
+> - ✅ **标题输入框宽度调整优化**: 完全移除防抖延迟，实现零延迟的响应式宽度调整
+>   - **浏览器原生计算**: 使用 CSS `max-content` 让浏览器计算自然宽度，无需创建隐藏 DOM 元素
+>   - **零延迟响应**: 移除所有 `setTimeout` 和 `requestAnimationFrame`，同步执行宽度调整
+>   - **IME 输入法优化**: 输入法激活期间完全跳过宽度计算，文字首字母位置固定
+>   - **删除即时响应**: 删除文字时 checkbox 立即跟随到新位置，无任何延迟
+>   - **用户体验提升**: 消除了之前用户感知到的"延迟感"和"卡顿感"
+> 
+> **🔥 v2.0.5 历史更新** (2025-11-28):
 > - ✅ **FloatingToolbar textStyle 子菜单修复**: 修复数字键 5-7 超出范围错误
 > - ✅ **动态 menuItemCount 机制**: 根据 activePicker 状态动态计算菜单项数量（主菜单 5 项，textStyle 子菜单 7 项）
 > - ✅ **状态同步架构**: `onSubPickerStateChange(isOpen, activePicker)` 回调传递当前菜单状态
@@ -706,7 +723,7 @@ function removeEmojiFromTitle(title: string): string {
 }
 ```
 
-**CSS 样式** (v2.15.4 更新):
+**CSS 样式** (v2.15.6 更新 - 2025-12-01):
 ```css
 .title-input {
   font-size: 18px;
@@ -721,14 +738,14 @@ function removeEmojiFromTitle(title: string): string {
   height: auto;          /* 高度自适应内容 */
   width: 50px-240px;     /* 宽度自适应（JS 控制）*/
   word-wrap: break-word;
-  white-space: normal;   /* 允许正常换行 */
+  white-space: pre-wrap; /* 🆕 保持空格，达到最大宽度时换行 */
   overflow-y: auto;      /* 超出3行显示滚动条 */
   overflow-x: hidden;
 }
 
 /* 富文本样式保留 */
 .title-input * {
-  white-space: normal;
+  white-space: pre-wrap; /* 🆕 子元素也使用 pre-wrap */
   display: inline;       /* 所有子元素行内显示 */
   line-height: inherit;
 }
@@ -747,38 +764,97 @@ function removeEmojiFromTitle(title: string): string {
 }
 ```
 
-**宽度自适应逻辑** (v2.15.4 更新):
+**宽度自适应逻辑** (v2.15.6 更新 - 2025-12-01):
 ```typescript
+// 🆕 v2.15.6: 输入法期间无宽度限制，完成后精确调整
 // 动态调整 contentEditable 宽度（高度由 CSS 自适应）
 const autoResizeTextarea = useCallback((element: HTMLElement | null) => {
   if (!element) return;
   
-  // 清除可能存在的内联高度样式
-  element.style.removeProperty('height');
-  
   const text = element.textContent || '';
+  const maxWidth = 240;
+  
   if (!text) {
-    element.style.width = '50px';
+    // 🆕 空内容时使用 placeholder 计算宽度
+    const placeholder = element.getAttribute('data-placeholder') || '';
+    if (placeholder) {
+      element.style.width = 'max-content';
+      const naturalWidth = element.offsetWidth;
+      element.style.width = Math.min(naturalWidth, maxWidth) + 'px';
+    } else {
+      element.style.width = '80px'; // 默认最小宽度（足够显示4个中文字）
+    }
     return;
   }
   
-  const maxWidth = 240;
+  // 临时设置为 max-content 让浏览器计算实际宽度（零延迟）
+  element.style.width = 'max-content';
+  const naturalWidth = element.offsetWidth;
   
-  // 用隐藏 div 测量文本不换行时的宽度（支持 HTML）
-  const testDiv = document.createElement('div');
-  testDiv.style.visibility = 'hidden';
-  testDiv.style.position = 'absolute';
-  testDiv.style.whiteSpace = 'nowrap';
-  testDiv.style.font = window.getComputedStyle(element).font;
-  testDiv.innerHTML = element.innerHTML || text;
-  document.body.appendChild(testDiv);
-  const textWidth = testDiv.offsetWidth;
-  document.body.removeChild(testDiv);
-  
-  // 宽度 = 实际宽度（+10px padding）或最大240px
-  const finalWidth = textWidth <= maxWidth ? textWidth + 10 : maxWidth;
-  element.style.width = finalWidth + 'px';
+  // 立即应用最终宽度（不超过最大宽度）
+  element.style.width = Math.min(naturalWidth, maxWidth) + 'px';
 }, []);
+
+// 立即调整函数（无防抖，无延迟）
+const immediateResize = useCallback(() => {
+  // 如果正在输入法输入，完全跳过宽度计算
+  if (isComposingRef.current) {
+    return;
+  }
+  
+  autoResizeTextarea(titleInputRef.current as HTMLElement, true);
+}, [autoResizeTextarea]);
+
+// IME 输入法事件处理
+const handleCompositionStart = () => {
+  isComposingRef.current = true;
+  // 🆕 输入法启动时，移除宽度限制，让文字自由扩展
+  const element = titleInputRef.current as HTMLElement | null;
+  if (element) {
+    element.style.width = 'max-content';
+    element.style.maxWidth = '240px'; // 保持最大宽度限制
+  }
+};
+
+const handleCompositionEnd = () => {
+  isComposingRef.current = false;
+  // 🆕 输入法结束后，立即执行宽度计算（同步，零延迟）
+  const element = titleInputRef.current as HTMLElement | null;
+  if (element) {
+    element.style.maxWidth = ''; // 移除 maxWidth，改用精确宽度
+    autoResizeTextarea(element, true);
+  }
+};
+
+// onInput 事件处理（同步执行，零延迟）
+const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
+  const html = e.currentTarget.innerHTML;
+  handleTitleChange(html);
+  // 立即调整宽度（同步执行，零延迟）
+  if (!isComposingRef.current) {
+    autoResizeTextarea(e.currentTarget, true);
+  }
+};
+
+// IME 输入法处理
+const handleCompositionEnd = () => {
+  isComposingRef.current = false;
+  // 输入法结束后，立即执行宽度计算（同步，零延迟）
+  const element = titleInputRef.current as HTMLElement | null;
+  if (element) {
+    autoResizeTextarea(element, true);
+  }
+};
+```
+
+**关键优化** (v2.15.6):
+- ✅ **零延迟响应**: 移除所有 `setTimeout` 和 `requestAnimationFrame`，同步执行宽度调整
+- ✅ **浏览器原生计算**: 使用 CSS `max-content` 让浏览器计算自然宽度，无需创建隐藏 DOM 元素
+- ✅ **IME 期间无宽度限制**: 输入法启动时设置 `width: max-content` + `max-width: 240px`，让文字自由扩展
+- ✅ **输入法完成即调整**: 输入法结束后移除 `max-width`，立即同步执行精确宽度计算
+- ✅ **新字符同行显示**: 使用 `white-space: pre-wrap`，新字符始终和前一个字符在同一行
+- ✅ **Placeholder 自适应**: 空内容时根据 placeholder 计算初始宽度，避免 4 字换行问题
+- ✅ **删除文字即时响应**: 删除文字时 checkbox 立即跟随到新位置，无延迟
 ```
 
 **数据保存**（子事件情况）:

@@ -2,34 +2,9 @@ import { STORAGE_KEYS } from '../constants/storage';
 import { PersistentStorage, PERSISTENT_OPTIONS } from '../utils/persistentStorage';
 import { logger } from '../utils/logger';
 import { EventService } from './EventService';
+import { formatTimeForStorage, parseLocalTimeString } from '../utils/timeUtils';
 
 const syncLogger = logger.module('Sync');
-
-const formatTimeForStorage = (date: Date | string): string => {
-  // 🔧 修复：处理字符串输入
-  let dateObj: Date;
-  
-  if (typeof date === 'string') {
-    dateObj = new Date(date);
-  } else if (date instanceof Date) {
-    dateObj = date;
-  } else {
-    dateObj = new Date();
-  }
-  
-  // 验证日期有效性
-  if (isNaN(dateObj.getTime())) {
-    dateObj = new Date();
-  }
-  
-  const year = dateObj.getFullYear();
-  const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
-  const day = dateObj.getDate().toString().padStart(2, '0');
-  const hours = dateObj.getHours().toString().padStart(2, '0');
-  const minutes = dateObj.getMinutes().toString().padStart(2, '0');
-  const seconds = dateObj.getSeconds().toString().padStart(2, '0');
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
-};
 
 interface SyncAction {
   id: string;
@@ -1119,6 +1094,20 @@ export class ActionBasedSyncManager {
     //   this.setEditLock(entityId);
     // }
 
+    // 🆕 [CRITICAL FIX] 当删除事件时，清理队列中该事件的所有待处理操作
+    // 避免在同步时尝试更新/删除已不存在的事件
+    if (type === 'delete' && entityType === 'event') {
+      const beforeCount = this.actionQueue.length;
+      this.actionQueue = this.actionQueue.filter(action => 
+        !(action.entityId === entityId && action.entityType === 'event' && !action.synchronized)
+      );
+      const removedCount = beforeCount - this.actionQueue.length;
+      
+      if (removedCount > 0) {
+        syncLogger.log(`🧹 [Queue Cleanup] Removed ${removedCount} pending actions for deleted event ${entityId}`);
+      }
+    }
+
     const action: SyncAction = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       type,
@@ -1283,6 +1272,49 @@ export class ActionBasedSyncManager {
         syncLogger.error('❌ [Full Sync] Priority sync failed:', error);
       });
     }
+  }
+
+  /**
+   * 🆕 公共方法：清理同步队列中的失效操作
+   * 用途：移除指向不存在事件的待处理操作
+   * 
+   * @returns 清理统计信息
+   */
+  public cleanupInvalidQueueActions(): { removed: number; kept: number } {
+    syncLogger.log('🧹 [Queue Cleanup] Starting cleanup of invalid actions...');
+    
+    const events = EventService.getAllEvents();
+    const eventIdSet = new Set(events.map(e => e.id));
+    
+    const beforeCount = this.actionQueue.length;
+    
+    // 保留：1) 已同步的操作（历史记录）2) 指向存在事件的待处理操作
+    this.actionQueue = this.actionQueue.filter(action => {
+      // 保留已同步的操作
+      if (action.synchronized) {
+        return true;
+      }
+      
+      // 保留指向存在事件的操作
+      if (action.entityId && eventIdSet.has(action.entityId)) {
+        return true;
+      }
+      
+      // 移除失效操作
+      return false;
+    });
+    
+    const afterCount = this.actionQueue.length;
+    const removed = beforeCount - afterCount;
+    
+    if (removed > 0) {
+      this.saveActionQueue();
+      syncLogger.log(`🧹 [Queue Cleanup] Removed ${removed} invalid actions, kept ${afterCount}`);
+    } else {
+      syncLogger.log('✅ [Queue Cleanup] No invalid actions found');
+    }
+    
+    return { removed, kept: afterCount };
   }
 
   private async performSync(options: { skipRemoteFetch?: boolean } = {}) {
@@ -1909,10 +1941,14 @@ private getUserSettings(): any {
         const localEvent = EventService.getEventById(action.entityId);
         
         if (!localEvent) {
-          console.warn(`⚠️ [SyncRemote] Event not found: ${action.entityId}`);
+          // 🔧 [FIX] 静默标记为已同步（事件可能已被删除）
+          // 只在前3个输出警告，避免刷屏
+          if (failCount < 3) {
+            console.warn(`⚠️ [SyncRemote] Event not found (likely deleted): ${action.entityId}`);
+          }
           action.synchronized = true;
           action.synchronizedAt = new Date();
-          failCount++;
+          skippedCount++; // 🔧 计入 skipped 而不是 failed
           continue;
         }
         
@@ -2867,13 +2903,58 @@ private getUserSettings(): any {
         return formatTimeForStorage(new Date()); // 🔧 使用本地时间格式化
       }
       
+      // 🔧 [CRITICAL FIX] 如果输入已经是正确格式（空格分隔），直接返回
+      // 这避免了 new Date() 再次解析导致的格式变化
+      if (typeof dateInput === 'string') {
+        // 检查是否已经是正确的格式 'YYYY-MM-DD HH:mm:ss'
+        const localFormat = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+        if (localFormat.test(dateInput)) {
+          return dateInput; // ✅ 已经是正确格式，直接返回
+        }
+      }
+      
+      // ✅ [BUG FIX] 先转换为 Date 对象，再格式化
+      // 问题：dateInput 可能是 string (ISO 8601) 或 Date 对象
+      // formatTimeForStorage() 只接受 Date 对象
+      let dateObj: Date;
+      
+      if (dateInput instanceof Date) {
+        // 已经是 Date 对象，直接使用
+        dateObj = dateInput;
+      } else if (typeof dateInput === 'string') {
+        // 字符串（ISO 8601 或其他格式），转换为 Date
+        // 使用 parseLocalTimeString 而不是 new Date()，避免时区问题
+        dateObj = parseLocalTimeString(dateInput);
+        
+        // 验证转换结果
+        if (isNaN(dateObj.getTime())) {
+          console.error('❌ safeFormatDateTime: Invalid date string:', dateInput);
+          return formatTimeForStorage(new Date());
+        }
+      } else if (typeof dateInput === 'object' && 'dateTime' in dateInput) {
+        // 🔧 处理 Outlook API 返回的对象 { dateTime: '...', timeZone: '...' }
+        dateObj = parseLocalTimeString(dateInput.dateTime);
+        
+        if (isNaN(dateObj.getTime())) {
+          console.error('❌ safeFormatDateTime: Invalid date object:', dateInput);
+          return formatTimeForStorage(new Date());
+        }
+      } else {
+        // 其他类型，尝试强制转换
+        console.warn('⚠️ safeFormatDateTime: Unexpected input type:', typeof dateInput, dateInput);
+        dateObj = new Date(dateInput);
+        
+        if (isNaN(dateObj.getTime())) {
+          return formatTimeForStorage(new Date());
+        }
+      }
+      
       // 🔧 [Time Architecture] 所有时间都必须转换为 'YYYY-MM-DD HH:mm:ss' 格式（空格分隔）
-      // 即使 dateInput 已经是 ISO 格式（T分隔），也要转换为本地格式
       // 原因：EventService validation 和整个系统都依赖这个格式
-      return formatTimeForStorage(dateInput);
+      return formatTimeForStorage(dateObj);
       
     } catch (error) {
-      console.error('❌ safeFormatDateTime error:', error);
+      console.error('❌ safeFormatDateTime error:', error, 'Input:', dateInput);
       return formatTimeForStorage(new Date()); // 🔧 使用本地时间格式化
     }
   }

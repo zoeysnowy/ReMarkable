@@ -1,0 +1,140 @@
+/**
+ * PlanSlate 样式
+ */
+
+.unified-slate-editor {
+  width: 100%;
+  min-height: 200px;
+  font-family: 'Microsoft YaHei', Arial;
+  font-size: 14px;
+  line-height: 1.6; /* 恢复默认行距 */
+  position: relative; /* 为 gray-text-placeholder 提供定位上下文 */
+}
+
+.unified-editable {
+  outline: none;
+  padding: 8px 0; /* 恢复默认内边距 */
+}
+
+.unified-editable [data-slate-placeholder] {
+  color: #aaa;
+  opacity: 0.5;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* 🔥 强制覆盖浏览器默认选中样式 - 使用最高优先级 */
+.unified-slate-editor ::selection,
+.unified-slate-editor *::selection,
+.unified-editable ::selection,
+.unified-editable *::selection {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+}
+
+/* 🔑 关键修复：彻底禁用选中时的文字颜色覆盖 */
+.unified-slate-editor ::selection {
+  color: unset !important;
+  -webkit-text-fill-color: unset !important;
+}
+
+.unified-slate-editor span[style*="color"]::selection {
+  color: unset !important;
+  -webkit-text-fill-color: unset !important;
+}
+
+/* 🔑 确保有颜色的 span 在选中时保持原色 */
+.unified-editable span[style*="color"] {
+  color: inherit; /* 这个会被 inline style 覆盖，确保 inline style 生效 */
+}
+
+/* 🆕 Gray text placeholder */
+.unified-slate-editor .gray-text-placeholder {
+  /* padding 由 inline style 控制以实现精确定位 */
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 14px;
+  user-select: none;
+}
+
+/* .unified-slate-editor .gray-text-placeholder:hover - hover效果已完全移除 */
+
+/* 🆕 Placeholder 行样式 */
+.unified-event-line.placeholder-line {
+  cursor: text;
+}
+
+/* .unified-event-line.placeholder-line:hover - hover效果已完全移除 */
+
+.unified-event-line.placeholder-line .event-line-content {
+  pointer-events: all;
+}
+
+/* 🆕 Bullet Paragraph 样式 */
+.slate-bullet-paragraph {
+  position: relative;
+  padding-left: 1.5em; /* 🔧 bullet 与文字之间约半个字符宽度的 gap */
+  margin: 1px 0; /* 🔧 紧凑间距 */
+  line-height: 1.5; /* 🔧 稍紧凑的行高 */
+}
+
+/* 🔧 eventlog 模式下的 bullet 更紧凑 */
+.eventlog-mode .slate-bullet-paragraph {
+  margin: 0;
+  line-height: 1.3; /* 更紧凑 */
+}
+
+/* Level 0 (用户的 Level 1): ● (实心圆点) */
+.slate-bullet-paragraph[data-level="0"]::before {
+  content: '●';
+  position: absolute;
+  left: 8px;
+  color: #374151;
+  font-size: 0.65em; /* 🔧 相对字体大小，自动适配 */
+  line-height: 1; /* 🔧 bullet 自身行高为 1，不受段落行高影响 */
+  top: 0.5em; /* 🔧 相对偏移，与第一行文字视觉居中对齐 */
+}
+
+/* Level 1 (用户的 Level 2): ○ (空心圆点) */
+.slate-bullet-paragraph[data-level="1"]::before {
+  content: '○';
+  position: absolute;
+  left: 8px;
+  color: #374151;
+  font-size: 0.65em;
+  line-height: 1;
+  top: 0.5em;
+}
+
+/* Level 2 (用户的 Level 3): – (短横线) */
+.slate-bullet-paragraph[data-level="2"]::before {
+  content: '–';
+  position: absolute;
+  left: 8px;
+  color: #374151;
+  font-size: 0.65em;
+  line-height: 1;
+  top: 0.5em;
+}
+
+/* Level 3 (用户的 Level 4): □ (空心方框) */
+.slate-bullet-paragraph[data-level="3"]::before {
+  content: '□';
+  position: absolute;
+  left: 8px;
+  color: #374151;
+  font-size: 0.65em;
+  line-height: 1;
+  top: 0.5em;
+}
+
+/* Level 4 (用户的 Level 5): ▸ (三角形) */
+.slate-bullet-paragraph[data-level="4"]::before {
+  content: '▸';
+  position: absolute;
+  left: 8px;
+  color: #374151;
+  font-size: 0.75em; /* 三角形稍大一点 */
+  line-height: 1;
+  top: 0.45em; /* 三角形形状特殊，稍微调高一点 */
+}
+
