@@ -152,20 +152,26 @@ export class StorageManager {
     try {
       // 动态导入存储服务（避免循环依赖）
       const { indexedDBService } = await import('./IndexedDBService');
-      const { sqliteService } = await import('./SQLiteService');
       // const { fileSystemService } = await import('./FileSystemService');
       
       this.indexedDBService = indexedDBService;
-      this.sqliteService = sqliteService;
       // this.fileSystemService = fileSystemService;
       
       // 初始化 IndexedDB（浏览器环境必需）
       await this.indexedDBService.initialize();
       
       // 初始化 SQLite（仅在 Electron 环境）
+      // ⚠️ 注意：在 Web 环境中不导入 SQLiteService，因为 better-sqlite3 是 Node.js 原生模块
       if (typeof window !== 'undefined' && (window as any).electron) {
-        await this.sqliteService.initialize();
-        console.log('[StorageManager] ✅ SQLite enabled (Electron)');
+        try {
+          const { sqliteService } = await import('./SQLiteService');
+          this.sqliteService = sqliteService;
+          await this.sqliteService.initialize();
+          console.log('[StorageManager] ✅ SQLite enabled (Electron)');
+        } catch (error) {
+          console.warn('[StorageManager] ⚠️  SQLite initialization failed:', error);
+          this.sqliteService = null;
+        }
       } else {
         console.log('[StorageManager] ℹ️  SQLite skipped (Web only)');
         this.sqliteService = null;

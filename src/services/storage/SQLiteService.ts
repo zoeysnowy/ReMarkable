@@ -1,6 +1,9 @@
 /**
  * SQLiteService - Layer 2 Persistent Storage
  * 
+ * ⚠️ 注意：此服务仅在 Electron 环境中可用
+ * 在 Web 环境中，此文件不会被加载（通过 StorageManager 动态导入控制）
+ * 
  * 功能：
  * - 10 个数据表：accounts, calendars, events, eventlogs, event_calendar_mappings, 
  *                sync_queue, contacts, tags, event_tags, attachments
@@ -21,8 +24,7 @@
  * @version 1.0.0
  */
 
-import Database from 'better-sqlite3';
-import { 
+import type { 
   Account, 
   Calendar, 
   StorageEvent, 
@@ -36,12 +38,16 @@ import {
   StorageStats
 } from './types';
 
+// ⚠️ 动态导入 better-sqlite3（Node.js 原生模块）
+// 此变量将在 initialize() 方法中赋值
+let Database: any = null;
+
 const DB_PATH = process.env.NODE_ENV === 'production' 
   ? './database/remarkable.db' 
   : './database/remarkable-dev.db';
 
 export class SQLiteService {
-  private db: Database.Database | null = null;
+  private db: any | null = null;
   private initialized = false;
 
   /**
@@ -53,6 +59,15 @@ export class SQLiteService {
     }
 
     try {
+      // 0. 动态导入 better-sqlite3（仅在 Electron 环境）
+      if (!Database) {
+        try {
+          Database = (await import('better-sqlite3')).default;
+        } catch (error) {
+          throw new Error('better-sqlite3 not available. SQLite requires Electron environment.');
+        }
+      }
+
       // 1. 创建数据库连接
       this.db = new Database(DB_PATH, {
         verbose: process.env.NODE_ENV === 'development' ? console.log : undefined

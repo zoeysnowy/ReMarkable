@@ -43,5 +43,12 @@ export default defineConfig({
       'dayjs',
       '@microsoft/microsoft-graph-client',
     ],
+    exclude: [
+      'better-sqlite3', // Node.js 原生模块，排除预构建
+    ],
+  },
+  // 外部化 Node.js 模块（仅 Electron 环境需要）
+  ssr: {
+    noExternal: [], // 保持默认
   },
 });

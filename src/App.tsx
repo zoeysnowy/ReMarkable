@@ -35,6 +35,13 @@ import { logger } from './utils/logger';
 // 🧪 导入存储测试模块（开发环境）
 import './tests/test-storage';
 
+// 🧪 导入 SQLite 测试模块（仅 Electron 环境）
+if (typeof window !== 'undefined' && (window as any).electron) {
+  import('./tests/test-storage-sqlite').catch(err => {
+    console.warn('SQLite tests not available:', err);
+  });
+}
+
 const AppLogger = logger.module('App');
 // 🚀 性能优化：生产环境禁用 AppLogger.log
 if (process.env.NODE_ENV === 'production') {
