@@ -168,7 +168,15 @@ export async function testSQLiteModule() {
 }
 
 // 在开发环境自动暴露到 window
-if (process.env.NODE_ENV === 'development') {
+if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
   (window as any).testSQLiteModule = testSQLiteModule;
-  console.log('🧪 SQLite Test Module loaded. Run: await testSQLiteModule()');
+  
+  // 检查 Electron 环境
+  if ((window as any).electron) {
+    console.log('🧪 SQLite Test Module loaded (Electron environment)');
+    console.log('   Run: await testSQLiteModule()');
+  } else {
+    console.log('ℹ️  SQLite Test Module loaded but not in Electron environment');
+    console.log('   SQLite tests require Electron. Run: npm run e');
+  }
 }
