@@ -80,7 +80,7 @@ function App() {
       await TagService.initialize();
       
       // 🧪 动态加载 SQLite 测试模块（仅 Electron 环境）
-      if (typeof window !== 'undefined' && (window as any).electron) {
+      if (typeof window !== 'undefined' && (window as any).electronAPI) {
         import('./tests/test-storage-sqlite').catch(err => {
           console.warn('⚠️  SQLite tests not available:', err);
         });

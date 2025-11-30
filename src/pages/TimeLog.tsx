@@ -78,31 +78,65 @@ const TimeLog: React.FC = () => {
 
   // 获取事件列表（根据日期范围筛选）
   const events = useMemo(() => {
-    const allEvents = EventService.getAllEvents();
+    // TODO: 临时硬编码示例数据，用于展示 Figma 设计
+    const mockEvents = [
+      {
+        id: 'mock-1',
+        title: '完成 ReMarkable 日志页面 UI 设计',
+        emoji: '🎨',
+        startTime: '2025-12-01T09:00:00',
+        endTime: '2025-12-01T11:30:00',
+        tags: ['ReMarkable开发', '工作'],
+        description: '根据 Figma 设计稿实现时光日志页面，包括时间轴、事件卡片、标签系统等核心功能。需要注意紫蓝渐变色的应用和交互细节。',
+        source: 'Outlook Calendar',
+        createdAt: Date.now() - 3600000,
+        dueDate: '2025-12-02T18:00:00'
+      },
+      {
+        id: 'mock-2',
+        title: '团队周会 - Sprint Review',
+        emoji: '👥',
+        startTime: '2025-12-01T14:00:00',
+        endTime: '2025-12-01T15:00:00',
+        tags: ['工作', '会议'],
+        description: '回顾本周的开发进度，展示新完成的功能模块，讨论下周的工作安排。',
+        source: 'Google Calendar',
+        createdAt: Date.now() - 7200000
+      },
+      {
+        id: 'mock-3',
+        title: '阅读《设计心理学》',
+        emoji: '📚',
+        startTime: '2025-12-01T19:30:00',
+        endTime: '2025-12-01T20:30:00',
+        tags: ['个人', '学习'],
+        description: '继续阅读第3章关于用户心智模型的内容，思考如何应用到产品设计中。',
+        createdAt: Date.now() - 14400000
+      }
+    ];
     
-    if (!dateRange) {
-      // 没有日期范围，显示今天的事件
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      
-      return allEvents.filter(event => {
-        const eventDate = event.startTime ? new Date(event.startTime) : new Date(event.createdAt || Date.now());
-        return eventDate >= today && eventDate < tomorrow;
-      });
-    }
+    return mockEvents;
     
-    // 有日期范围，筛选范围内的事件
-    const start = new Date(dateRange.start);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(dateRange.end);
-    end.setHours(23, 59, 59, 999);
-    
-    return allEvents.filter(event => {
-      const eventDate = event.startTime ? new Date(event.startTime) : new Date(event.createdAt || Date.now());
-      return eventDate >= start && eventDate <= end;
-    });
+    // 原有逻辑（暂时注释）
+    // const allEvents = EventService.getAllEvents();
+    // if (!dateRange) {
+    //   const today = new Date();
+    //   today.setHours(0, 0, 0, 0);
+    //   const tomorrow = new Date(today);
+    //   tomorrow.setDate(tomorrow.getDate() + 1);
+    //   return allEvents.filter(event => {
+    //     const eventDate = event.startTime ? new Date(event.startTime) : new Date(event.createdAt || Date.now());
+    //     return eventDate >= today && eventDate < tomorrow;
+    //   });
+    // }
+    // const start = new Date(dateRange.start);
+    // start.setHours(0, 0, 0, 0);
+    // const end = new Date(dateRange.end);
+    // end.setHours(23, 59, 59, 999);
+    // return allEvents.filter(event => {
+    //   const eventDate = event.startTime ? new Date(event.startTime) : new Date(event.createdAt || Date.now());
+    //   return eventDate >= start && eventDate <= end;
+    // });
   }, [dateRange]);
 
   // 处理日期范围变化
@@ -158,40 +192,40 @@ const TimeLog: React.FC = () => {
         onTagVisibilityChange={handleTagVisibilityChange}
       />
 
-      {/* 中间时光日志区 */}
-      <div className="timelog-content">
-        {/* 时光日志标题区 */}
-        <div className="timelog-header-section">
-          <div className="timelog-header-border">
-            <div className="timelog-gradient-bar"></div>
-            <h1 className="timelog-title">时光日志</h1>
+      {/* 中间时光日志区 - 整个内容在一个白色背景卡片里 */}
+      <div className="timelog-main-card">
+          {/* 时光日志标题区 */}
+          <div className="timelog-header-section">
+            <div className="timelog-header-border">
+              <div className="timelog-gradient-bar"></div>
+              <h1 className="timelog-title">时光日志</h1>
+            </div>
           </div>
-        </div>
 
-        {/* 日期显示 */}
-        <div className="timelog-date-display">
-          <p className="timelog-date-text">{displayDate.text}</p>
-        </div>
+          {/* 日期显示 */}
+          <div className="timelog-date-display">
+            <p className="timelog-date-text">{displayDate.text}</p>
+          </div>
 
-        {/* Event 卡片列表 */}
-        <div className="timelog-events">
+          {/* Event 列表 */}
+          <div className="timelog-events-list">
           {events.length === 0 ? (
             <div className="timelog-empty">
               <p>暂无事件记录</p>
             </div>
           ) : (
             events.map(event => (
-              <div key={event.id} className="event-card-new">
+              <div key={event.id} className="event-item">
                 {/* 时间轴线条 */}
                 <div className="event-timeline-line"></div>
 
-                {/* 时间标签 */}
-                <div className="event-time-label">
+                {/* 左侧：时间信息 */}
+                <div className="event-left">
                   <div className="event-time-icons">
-                    <span className="event-icon-calendar">📅</span>
-                    <span className="event-icon-clock">⏰</span>
+                    <span>📅</span>
+                    <span>⏰</span>
                   </div>
-                  <span className="event-time-text">
+                  <div className="event-time-text">
                     {event.startTime && event.endTime ? (
                       `${formatTime(event.startTime)} — ${formatTime(event.endTime)}`
                     ) : event.startTime ? (
@@ -199,27 +233,25 @@ const TimeLog: React.FC = () => {
                     ) : (
                       '未设置时间'
                     )}
-                  </span>
+                  </div>
+                  {event.startTime && event.endTime && (
+                    <div className="event-time-arrow">
+                      <span className="event-duration-badge">
+                        {formatDuration(event.startTime, event.endTime)}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
-                {/* 时间箭头（如果有开始和结束时间） */}
-                {event.startTime && event.endTime && (
-                  <div className="event-time-arrow">
-                    <span className="event-duration-badge">
-                      {formatDuration(event.startTime, event.endTime)}
-                    </span>
-                  </div>
-                )}
-
-                {/* 卡片内容 */}
-                <div className="event-card-content">
-                  {/* 标题 */}
-                  <h3 className="event-title-new">
+                {/* 中间：事件主要内容 */}
+                <div className="event-center">
+                  <div className="event-main-row">
                     {event.emoji && <span className="event-emoji">{event.emoji}</span>}
-                    {typeof event.title === 'string' ? event.title : '无标题'}
-                  </h3>
+                    <h3 className="event-title-new">
+                      {typeof event.title === 'string' ? event.title : '无标题'}
+                    </h3>
+                  </div>
 
-                  {/* 标签 */}
                   {event.tags && event.tags.length > 0 && (
                     <div className="event-tags-new">
                       {event.tags.map((tagId, index) => (
@@ -230,8 +262,7 @@ const TimeLog: React.FC = () => {
                     </div>
                   )}
 
-                  {/* 元信息 */}
-                  <div className="event-task-info">
+                  <div className="event-meta-row">
                     <span className="task-icon">📋</span>
                     <span className="task-meta">
                       创建于 {formatRelativeTime(event.createdAt)}
@@ -239,10 +270,9 @@ const TimeLog: React.FC = () => {
                     </span>
                   </div>
 
-                  {/* 来源信息 */}
                   {event.source && (
-                    <div className="event-source">
-                      <span className="source-label">来自</span>
+                    <div className="event-source-row">
+                      <span>来自</span>
                       <span className="source-name">{event.source}</span>
                       <span className={`source-status ${event.source ? 'active' : ''}`}></span>
                       <span className="source-sync">同步中</span>
@@ -250,27 +280,18 @@ const TimeLog: React.FC = () => {
                   )}
                 </div>
 
-                {/* 操作按钮 */}
-                <div className="event-actions">
-                  <button className="event-action-btn btn-favorite" title="收藏">⭐</button>
-                  <button className="event-action-btn btn-expand" title="展开">›</button>
-                </div>
-
-                {/* 日志内容 */}
-                {event.description && (
-                  <>
-                    <div className="event-log-timestamp">
-                      <button className="timestamp-toggle">▸</button>
-                      <span className="timestamp-time">
-                        {formatDateTime(event.createdAt || Date.now())}
-                      </span>
-                      <button className="timestamp-options">⊙</button>
-                    </div>
-                    <div className="event-log-content">
+                {/* 右侧：描述和操作 */}
+                <div className="event-right">
+                  {event.description && (
+                    <div className="event-description">
                       <p>{event.description}</p>
                     </div>
-                  </>
-                )}
+                  )}
+                  <div className="event-actions">
+                    <button className="event-action-btn btn-favorite" title="收藏">⭐</button>
+                    <button className="event-action-btn btn-expand" title="展开">›</button>
+                  </div>
+                </div>
               </div>
             ))
           )}

@@ -162,7 +162,7 @@ export class StorageManager {
       
       // 初始化 SQLite（仅在 Electron 环境）
       // ⚠️ 注意：在 Web 环境中不导入 SQLiteService，因为 better-sqlite3 是 Node.js 原生模块
-      if (typeof window !== 'undefined' && (window as any).electron) {
+      if (typeof window !== 'undefined' && (window as any).electronAPI) {
         try {
           const { sqliteService } = await import('./SQLiteService');
           this.sqliteService = sqliteService;

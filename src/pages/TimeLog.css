@@ -7,62 +7,104 @@
 /* 主容器 */
 .timelog-page {
   display: flex;
-  height: 100vh;
+  height: 100%;
   background: #FAFAFA;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', 'Segoe UI', sans-serif;
+  overflow: hidden;
+  gap: 20px;
+}
+
+/* ========================================
+   主白色卡片容器 - 包裹标题、日期和事件列表
+   ======================================== */
+
+.timelog-main-card {
+  flex: 1;
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  margin: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
 /* ========================================
-   中间时光日志区
+   标题区
    ======================================== */
 
-.timelog-content {
-  flex: 1;
-  min-width: 600px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 32px 24px;
-}
-
-/* 时光日志标题区 */
-.timelog-header {
-  margin-bottom: 24px;
+.timelog-header-section {
+  margin-bottom: 12px;
   flex-shrink: 0;
 }
 
-.timelog-date {
-  font-size: 24px;
-  font-weight: 600;
+.timelog-header-border {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 0.8px solid #E5E7EB;
+  padding-bottom: 8px;
+}
+
+.timelog-gradient-bar {
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  background: linear-gradient(to right, #a855f7, #3b82f6);
+}
+
+.timelog-title {
+  font-size: 18px;
+  font-weight: 700;
   color: #1F2937;
-  line-height: 32px;
+  line-height: 1.4;
   margin: 0;
   letter-spacing: -0.01em;
 }
 
-/* Event 卡片滚动区 */
-.timelog-events {
+/* ========================================
+   日期显示区
+   ======================================== */
+
+.timelog-date-display {
+  margin: 12px 0;
+  flex-shrink: 0;
+}
+
+.timelog-date-text {
+  font-size: 18px;
+  font-weight: 400;
+  color: #6B7280;
+  margin: 0;
+  font-family: 'Microsoft YaHei', sans-serif;
+}
+
+/* ========================================
+   事件列表区域
+   ======================================== */
+
+.timelog-events-list {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
 /* 滚动条样式 */
-.timelog-events::-webkit-scrollbar {
+.timelog-events-list::-webkit-scrollbar {
   width: 6px;
 }
 
-.timelog-events::-webkit-scrollbar-track {
+.timelog-events-list::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.timelog-events::-webkit-scrollbar-thumb {
+.timelog-events-list::-webkit-scrollbar-thumb {
   background: #D1D5DB;
   border-radius: 3px;
 }
 
-.timelog-events::-webkit-scrollbar-thumb:hover {
+.timelog-events-list::-webkit-scrollbar-thumb:hover {
   background: #9CA3AF;
 }
 
@@ -77,250 +119,280 @@
 }
 
 /* ========================================
-   Event 卡片样式
+   Event 条目样式 - 横向三栏布局
    ======================================== */
 
-.event-card {
-  background: white;
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
-}
-
-.event-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  transform: translateY(-1px);
-}
-
-.event-card:last-child {
-  margin-bottom: 0;
-}
-
-/* 1. 顶部状态行 */
-.event-status-row {
+.event-item {
+  position: relative;
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid #F3F4F6;
 }
 
-.event-icons {
+.event-item:last-child {
+  border-bottom: none;
+}
+
+/* 左栏：时间信息 */
+.event-left {
+  flex-shrink: 0;
+  width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 20px;
+}
+
+/* 中栏：主要内容 */
+.event-center {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 右栏：描述和操作 */
+.event-right {
+  flex-shrink: 0;
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* 时间轴线条 */
+.event-timeline-line {
+  position: absolute;
+  left: -16px;
+  top: 4px;
+  bottom: -16px;
+  width: 2px;
+  background: #E5E7EB;
+}
+
+.event-timeline-line::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: white;
+  border: 3px solid #a855f7;
+  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.1);
+}
+
+/* 左栏元素 */
+.event-time-icons {
   display: flex;
   gap: 4px;
-  align-items: center;
-}
-
-.event-icon-plan,
-.event-icon-actual {
-  font-size: 16px;
-  line-height: 1;
-}
-
-.event-time {
   font-size: 14px;
-  font-weight: 500;
-  color: #4B5563;
-  letter-spacing: -0.01em;
 }
 
-.event-expand {
-  margin-left: auto;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px;
-  color: #9CA3AF;
-  opacity: 0.6;
-  transition: opacity 0.2s, transform 0.2s;
+.event-time-text {
+  font-size: 12px;
+  font-weight: 400;
+  color: #6B7280;
+  line-height: 1.4;
+}
+
+/* 时间箭头 */
+.event-time-arrow {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 4px;
+  margin-top: 2px;
 }
 
-.event-expand:hover {
-  opacity: 1;
-  transform: rotate(90deg);
+.event-time-arrow::before {
+  content: '→';
+  color: #22d3ee;
+  font-size: 10px;
 }
 
-/* 2. 标题行 */
-.event-title-row {
+.event-duration-badge {
+  font-size: 10px;
+  font-weight: 500;
+  color: #22d3ee;
+  white-space: nowrap;
+}
+
+/* 中栏元素 */
+.event-main-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .event-emoji {
-  font-size: 24px;
-  line-height: 1;
+  font-size: 18px;
   flex-shrink: 0;
 }
 
-.event-title {
-  font-size: 18px;
+.event-title-new {
+  font-size: 15px;
   font-weight: 600;
   color: #1F2937;
   margin: 0;
-  line-height: 24px;
   letter-spacing: -0.01em;
-  flex: 1;
-  word-break: break-word;
+  line-height: 1.4;
 }
 
-/* 3. 标签行 */
-.event-tags {
+/* 标签 */
+.event-tags-new {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   margin-bottom: 8px;
 }
 
-.tag {
-  font-size: 13px;
-  color: #3B82F6;
-  background: rgba(59, 130, 246, 0.1);
-  padding: 4px 8px;
+.event-tag {
+  font-size: 12px;
+  padding: 3px 8px;
   border-radius: 4px;
   font-weight: 500;
   transition: background 0.2s ease;
   cursor: pointer;
 }
 
-.tag:hover {
+.tag-blue {
+  color: #3B82F6;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.tag-blue:hover {
   background: rgba(59, 130, 246, 0.15);
 }
 
-/* 4. 元信息行 */
-.event-metadata {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 8px;
-  font-size: 12px;
-  color: #6B7280;
+.tag-green {
+  color: #10B981;
+  background: rgba(16, 185, 129, 0.1);
 }
 
-.metadata-item {
+.tag-green:hover {
+  background: rgba(16, 185, 129, 0.15);
+}
+
+.tag-orange {
+  color: #F59E0B;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.tag-orange:hover {
+  background: rgba(245, 158, 11, 0.15);
+}
+
+.event-meta-row {
   display: flex;
   align-items: center;
   gap: 4px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #9CA3AF;
 }
 
-/* 5. 关联任务 */
-.event-relations {
-  margin-bottom: 12px;
-  font-size: 13px;
+.task-icon {
+  font-size: 12px;
 }
 
-.relation-link {
-  color: #3B82F6;
-  text-decoration: none;
-  cursor: pointer;
-  transition: color 0.2s ease;
+.task-meta {
+  font-size: 11px;
+  font-weight: 400;
 }
 
-.relation-link:hover {
-  color: #2563EB;
-  text-decoration: underline;
-}
-
-/* 6. 日志内容区 */
-.event-log-section {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #F3F4F6;
-}
-
-.timestamp-row {
+.event-source-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.timestamp-toggle {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 12px;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 11px;
   color: #9CA3AF;
-  padding: 0;
-  width: 16px;
-  text-align: center;
-  transition: color 0.2s ease, transform 0.2s ease;
 }
 
-.timestamp-toggle:hover {
-  color: #6B7280;
-}
-
-.timestamp-toggle.expanded {
-  transform: rotate(90deg);
-}
-
-.timestamp-time {
-  font-size: 12px;
-  color: #6B7280;
+.source-label {
   font-weight: 500;
-  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
 }
 
-.timestamp-options {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 16px;
-  color: #D1D5DB;
-  padding: 0;
+.source-name {
+  font-weight: 400;
+}
+
+.source-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #D1D5DB;
+}
+
+.source-status.active {
+  background: #10B981;
+  box-shadow: 0 0 4px rgba(16, 185, 129, 0.5);
+}
+
+.source-sync {
   margin-left: auto;
-  transition: color 0.2s ease;
-}
-
-.timestamp-options:hover {
   color: #9CA3AF;
+  font-size: 14px;
 }
 
-.log-content {
-  font-size: 14px;
-  line-height: 1.6;
-  color: #374151;
-  margin-left: 24px;
-  margin-bottom: 12px;
-  
-  /* 最多显示3行，超出省略 */
+/* 右栏元素 */
+.event-description {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6B7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
-  overflow: hidden;
-  
-  /* 文本样式 */
-  word-break: break-word;
-  white-space: pre-wrap;
 }
 
-.log-content.expanded {
-  -webkit-line-clamp: unset;
-  display: block;
+.event-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
 }
 
-/* 7. 同步状态 */
-.event-sync-status {
+.event-action-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #F3F4F6;
-  font-size: 12px;
-  color: #6B7280;
+  justify-content: center;
+  transition: background 0.2s ease, transform 0.2s ease;
+  font-size: 14px;
+  color: #9CA3AF;
 }
 
-.sync-icon {
-  font-size: 16px;
-  line-height: 1;
+.event-action-btn:hover {
+  background: #F3F4F6;
+  transform: scale(1.05);
 }
+
+.event-action-btn:active {
+  transform: scale(0.95);
+}
+
+.btn-favorite {
+  color: #FBBF24;
+}
+
+.btn-expand {
+  transform: rotate(0deg);
+  transition: transform 0.2s ease;
+}
+
+.btn-expand:hover {
+  transform: rotate(90deg);
+}
+
+
 
 /* ========================================
    右侧按钮区
@@ -330,11 +402,13 @@
   width: 60px;
   flex-shrink: 0;
   background: white;
-  border-left: 1px solid #E5E7EB;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 24px 0;
+  padding: 20px 0;
+  margin: 0;
   gap: 16px;
 }
 

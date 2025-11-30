@@ -14,7 +14,8 @@ if (typeof window !== 'undefined') {
     console.log('\n1️⃣  Environment:');
     console.log('   - NODE_ENV:', process.env.NODE_ENV);
     console.log('   - window exists:', typeof window !== 'undefined');
-    console.log('   - Electron:', typeof (window as any).electron !== 'undefined');
+    console.log('   - Electron:', typeof (window as any).electronAPI !== 'undefined');
+    console.log('   - electronAPI.isElectron:', (window as any).electronAPI?.isElectron);
     
     // 2. 检查测试函数
     console.log('\n2️⃣  Test Functions:');
@@ -32,7 +33,7 @@ if (typeof window !== 'undefined') {
     
     // 4. 建议
     console.log('\n💡 Suggestions:');
-    if (typeof (window as any).electron === 'undefined') {
+    if (typeof (window as any).electronAPI === 'undefined') {
       console.log('   ⚠️  Not in Electron environment');
       console.log('   → Run: npm run e');
     } else {
