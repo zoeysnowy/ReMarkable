@@ -65,8 +65,16 @@ export class SQLiteService {
       // 0. 动态导入 better-sqlite3（仅在 Electron 环境）
       if (!Database) {
         try {
-          Database = (await import(/* @vite-ignore */ 'better-sqlite3')).default;
+          const module = await import(/* @vite-ignore */ 'better-sqlite3');
+          // better-sqlite3 可能是 default 导出或者命名导出
+          Database = module.default || module;
+          
+          // 验证是否是构造函数
+          if (typeof Database !== 'function') {
+            throw new Error('Invalid better-sqlite3 module: not a constructor');
+          }
         } catch (error) {
+          console.error('Failed to load better-sqlite3:', error);
           throw new Error('better-sqlite3 not available. SQLite requires Electron environment.');
         }
       }
