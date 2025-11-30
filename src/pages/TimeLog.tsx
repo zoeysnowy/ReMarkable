@@ -9,6 +9,19 @@ import './TimeLog.css';
 import ExportIconSvg from '../assets/icons/export.svg';
 import LinkIconSvg from '../assets/icons/link_gray.svg';
 import MoreIconSvg from '../assets/icons/more.svg';
+import TimeIconSvg from '../assets/icons/Time.svg';
+import AttendeeIconSvg from '../assets/icons/Attendee.svg';
+import LocationIconSvg from '../assets/icons/Location.svg';
+import OutlookIconSvg from '../assets/icons/Outlook.svg';
+import GoogleIconSvg from '../assets/icons/Google_Calendar.svg';
+import SyncIconSvg from '../assets/icons/Sync.svg';
+import ArrowBlueSvg from '../assets/icons/Arrow_blue.svg';
+// 新增图标
+import PlanIconSvg from '../assets/icons/datetime.svg';
+import TimerIconSvg from '../assets/icons/timer_start.svg';
+import ExpandIconSvg from '../assets/icons/right.svg';
+import TagIconSvg from '../assets/icons/Tag.svg';
+import DownIconSvg from '../assets/icons/down.svg';
 
 const TimeLog: React.FC = () => {
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date } | null>(null);
@@ -214,82 +227,90 @@ const TimeLog: React.FC = () => {
               <p>暂无事件记录</p>
             </div>
           ) : (
-            events.map(event => (
-              <div key={event.id} className="event-item">
-                {/* 时间轴线条 */}
-                <div className="event-timeline-line"></div>
-
-                {/* 左侧：时间信息 */}
-                <div className="event-left">
-                  <div className="event-time-icons">
-                    <span>📅</span>
-                    <span>⏰</span>
-                  </div>
-                  <div className="event-time-text">
-                    {event.startTime && event.endTime ? (
-                      `${formatTime(event.startTime)} — ${formatTime(event.endTime)}`
-                    ) : event.startTime ? (
-                      formatTime(event.startTime)
-                    ) : (
-                      '未设置时间'
-                    )}
-                  </div>
-                  {event.startTime && event.endTime && (
-                    <div className="event-time-arrow">
-                      <span className="event-duration-badge">
-                        {formatDuration(event.startTime, event.endTime)}
-                      </span>
-                    </div>
-                  )}
+            events.map((event, index) => (
+              <div key={event.id} className="timeline-event-wrapper">
+                {/* 左侧独立时间轴 */}
+                <div className="timeline-axis">
+                  <div className="timeline-line"></div>
+                  <div className="timeline-dot"></div>
                 </div>
 
-                {/* 中间：事件主要内容 */}
-                <div className="event-center">
-                  <div className="event-main-row">
-                    {event.emoji && <span className="event-emoji">{event.emoji}</span>}
-                    <h3 className="event-title-new">
-                      {typeof event.title === 'string' ? event.title : '无标题'}
-                    </h3>
+                {/* 右侧事件内容 (无卡片样式) */}
+                <div className="event-content">
+                  {/* Row 1: Time Info & Status */}
+                  <div className="event-row event-time-row">
+                    <div className="time-status-icons">
+                      {event.startTime && <img src={PlanIconSvg} className="status-icon" alt="plan" />}
+                      {/* 示例：如果有计时记录显示 Timer 图标 */}
+                      <img src={TimerIconSvg} className="status-icon" alt="timer" />
+                    </div>
+                    
+                    <span className="time-text start-time">{event.startTime && formatTime(event.startTime)}</span>
+                    <span className="time-duration-arrow">
+                      <span className="duration-text">2h30min</span>
+                      <img src={ArrowBlueSvg} className="arrow-icon" alt="arrow" />
+                    </span>
+                    <span className="time-text end-time">{event.endTime && formatTime(event.endTime)}</span>
+                    
+                    <div className="event-right-actions">
+                      <button className="icon-btn expand-btn">
+                        <img src={ExpandIconSvg} alt="expand" />
+                      </button>
+                    </div>
                   </div>
 
+                  {/* Row 2: Title & Source */}
+                  <div className="event-row event-title-row">
+                    {event.emoji && <span className="event-emoji">{event.emoji}</span>}
+                    <span className="event-title">
+                      {typeof event.title === 'string' ? event.title : '无标题'}
+                    </span>
+                    
+                    <div className="event-source-info">
+                      <span className="source-label">来自</span>
+                      <img src={event.source?.includes('Google') ? GoogleIconSvg : OutlookIconSvg} className="source-icon" alt="source" />
+                      <span className="source-name">{event.source || 'Outlook'}: 默认</span>
+                      <span className="sync-tag">只接收同步</span>
+                    </div>
+                  </div>
+
+                  {/* Row 3: Tags */}
                   {event.tags && event.tags.length > 0 && (
-                    <div className="event-tags-new">
-                      {event.tags.map((tagId, index) => (
-                        <span key={index} className="event-tag tag-blue">
-                          #{tagId}
-                        </span>
+                    <div className="event-row event-tags-row">
+                      {event.tags.map((tagId, idx) => (
+                        <span key={idx} className="tag-item">#{tagId}</span>
                       ))}
                     </div>
                   )}
 
-                  <div className="event-meta-row">
-                    <span className="task-icon">📋</span>
-                    <span className="task-meta">
-                      创建于 {formatRelativeTime(event.createdAt)}
-                      {event.dueDate && ` • 距ddl还有 ${formatDueDateRemaining(event.dueDate)}`}
-                    </span>
+                  {/* Row 4: Attendees */}
+                  <div className="event-row event-meta-row">
+                    <img src={AttendeeIconSvg} className="row-icon" alt="attendees" />
+                    <span className="meta-text">Zoey Gong; Jenny Wong; Cindy Cai</span>
                   </div>
 
-                  {event.source && (
-                    <div className="event-source-row">
-                      <span>来自</span>
-                      <span className="source-name">{event.source}</span>
-                      <span className={`source-status ${event.source ? 'active' : ''}`}></span>
-                      <span className="source-sync">同步中</span>
-                    </div>
-                  )}
-                </div>
+                  {/* Row 5: Location */}
+                  <div className="event-row event-meta-row">
+                    <img src={LocationIconSvg} className="row-icon" alt="location" />
+                    <span className="meta-text">静安嘉里中心2座F38, RM工作室, 5号会议室</span>
+                  </div>
 
-                {/* 右侧：描述和操作 */}
-                <div className="event-right">
+                  {/* Row 6: Log Content */}
                   {event.description && (
-                    <div className="event-description">
-                      <p>{event.description}</p>
+                    <div className="event-log-box">
+                      <div className="timestamp-row">
+                        <button className="timestamp-toggle"><img src={DownIconSvg} alt="toggle" /></button>
+                        <span className="log-timestamp">2025-10-19 10:35:18</span>
+                        <button className="timestamp-options"><img src={MoreIconSvg} alt="more" /></button>
+                      </div>
+                      <div className="log-text">{event.description}</div>
                     </div>
                   )}
-                  <div className="event-actions">
-                    <button className="event-action-btn btn-favorite" title="收藏">⭐</button>
-                    <button className="event-action-btn btn-expand" title="展开">›</button>
+                  
+                  {/* 底部同步状态 */}
+                  <div className="event-sync-status">
+                    <img src={OutlookIconSvg} alt="sync" />
+                    <span>同步至 Outlook</span>
                   </div>
                 </div>
               </div>

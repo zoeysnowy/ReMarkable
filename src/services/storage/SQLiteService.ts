@@ -38,12 +38,10 @@ import type {
   StorageStats
 } from './types';
 
-// ⚠️ 动态导入 better-sqlite3（Node.js 原生模块）
-// 此变量将在 initialize() 方法中赋值
-let Database: any = null;
+import { SQLiteDatabaseWrapper } from './SQLiteDatabaseWrapper';
 
 export class SQLiteService {
-  private db: any | null = null;
+  private db: SQLiteDatabaseWrapper | null = null;
   private initialized = false;
   
   // 延迟初始化 DB_PATH（避免在模块加载时访问 process.env）
@@ -62,52 +60,32 @@ export class SQLiteService {
     }
 
     try {
-      // 0. 获取 better-sqlite3（从 Electron preload 暴露）
-      if (!Database) {
-        console.log('🔍 [SQLiteService] Checking for Electron environment...');
-        
-        // 检查 Electron 环境
-        if (typeof window === 'undefined' || !(window as any).electronAPI) {
-          console.error('❌ [SQLiteService] Not in Electron environment');
-          throw new Error('SQLiteService requires Electron environment');
-        }
-        
-        const electronAPI = (window as any).electronAPI;
-        console.log('✅ [SQLiteService] electronAPI found');
-        console.log('   electronAPI.sqlite:', electronAPI.sqlite);
-        console.log('   electronAPI.sqlite?.available:', electronAPI.sqlite?.available);
-        
-        // 检查 SQLite 支持
-        if (!electronAPI.sqlite || !electronAPI.sqlite.available) {
-          console.error('❌ [SQLiteService] SQLite not available');
-          console.error('   electronAPI.sqlite exists:', !!electronAPI.sqlite);
-          console.error('   electronAPI.sqlite?.available:', electronAPI.sqlite?.available);
-          throw new Error('SQLite not available in this Electron build');
-        }
-        
-        // 获取 Database 构造函数
-        Database = electronAPI.sqlite.Database;
-        console.log('✅ [SQLiteService] Database constructor obtained:', typeof Database);
-        
-        // 验证是否是构造函数
-        if (typeof Database !== 'function') {
-          console.error('❌ [SQLiteService] Invalid Database type:', typeof Database);
-          throw new Error('Invalid better-sqlite3 module: not a constructor');
-        }
-        
-        console.log('✅ [SQLiteService] better-sqlite3 loaded from Electron preload');
+      console.log('🔍 [SQLiteService] Initializing...');
+      
+      // 检查 Electron 环境
+      if (typeof window === 'undefined' || !(window as any).electronAPI) {
+        throw new Error('SQLiteService requires Electron environment');
+      }
+      
+      const electronAPI = (window as any).electronAPI;
+      if (!electronAPI.sqlite || !electronAPI.sqlite.available) {
+        throw new Error('SQLite not available in this Electron build');
       }
 
-      // 1. 创建数据库连接
-      this.db = new Database(this.dbPath, {
+      console.log('✅ [SQLiteService] Creating database connection via IPC...');
+      
+      // 1. 创建数据库连接（通过 IPC 包装类）
+      this.db = new SQLiteDatabaseWrapper(this.dbPath, {
         verbose: process.env.NODE_ENV === 'development' ? console.log : undefined
       });
+      
+      await this.db.initialize();
 
       // 2. 启用 WAL 模式（并发读写优化）
-      this.db.pragma('journal_mode = WAL');
-      this.db.pragma('synchronous = NORMAL');
-      this.db.pragma('cache_size = -64000'); // 64MB cache
-      this.db.pragma('temp_store = MEMORY');
+      await this.db.pragma('journal_mode = WAL');
+      await this.db.pragma('synchronous = NORMAL');
+      await this.db.pragma('cache_size = -64000'); // 64MB cache
+      await this.db.pragma('temp_store = MEMORY');
 
       // 3. 创建所有表
       this.createTables();

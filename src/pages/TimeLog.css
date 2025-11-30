@@ -1,7 +1,7 @@
-/* ========================================
+﻿/* ========================================
    TimeLog 页面布局样式
    Figma: node-id=486-2661
-   Created: 2025-12-01
+   Refined: 2025-12-01 (Match Figma Design)
    ======================================== */
 
 /* 主容器 */
@@ -15,16 +15,16 @@
 }
 
 /* ========================================
-   主白色卡片容器 - 包裹标题、日期和事件列表
+   主白色卡片容器
    ======================================== */
 
 .timelog-main-card {
   flex: 1;
   background: white;
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: 20px; /* Figma: 20px */
+  padding: 24px 40px;
   margin: 0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.1); /* Figma shadow */
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -35,7 +35,7 @@
    ======================================== */
 
 .timelog-header-section {
-  margin-bottom: 12px;
+  margin-bottom: 20px;
   flex-shrink: 0;
 }
 
@@ -44,7 +44,7 @@
   align-items: center;
   gap: 12px;
   border-bottom: 0.8px solid #E5E7EB;
-  padding-bottom: 8px;
+  padding-bottom: 12px;
 }
 
 .timelog-gradient-bar {
@@ -57,10 +57,9 @@
 .timelog-title {
   font-size: 18px;
   font-weight: 700;
-  color: #1F2937;
+  color: #111827;
   line-height: 1.4;
   margin: 0;
-  letter-spacing: -0.01em;
 }
 
 /* ========================================
@@ -68,14 +67,14 @@
    ======================================== */
 
 .timelog-date-display {
-  margin: 12px 0;
+  margin: 12px 0 24px 0;
   flex-shrink: 0;
 }
 
 .timelog-date-text {
   font-size: 18px;
-  font-weight: 400;
-  color: #6B7280;
+  font-weight: 700; /* Figma: Bold */
+  color: #4B5563; /* Figma: text-gray-600 */
   margin: 0;
   font-family: 'Microsoft YaHei', sans-serif;
 }
@@ -88,311 +87,274 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-}
-
-/* 滚动条样式 */
-.timelog-events-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.timelog-events-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.timelog-events-list::-webkit-scrollbar-thumb {
-  background: #D1D5DB;
-  border-radius: 3px;
-}
-
-.timelog-events-list::-webkit-scrollbar-thumb:hover {
-  background: #9CA3AF;
-}
-
-/* 空状态 */
-.timelog-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 200px;
-  color: #9CA3AF;
-  font-size: 14px;
+  padding-right: 10px;
+  padding-left: 10px; /* Space for timeline */
 }
 
 /* ========================================
-   Event 条目样式 - 横向三栏布局
+   Event 条目样式 - 独立时间轴布局
    ======================================== */
 
-.event-item {
-  position: relative;
+.timeline-event-wrapper {
   display: flex;
   gap: 16px;
   padding: 16px 0;
-  border-bottom: 1px solid #F3F4F6;
+  position: relative;
 }
 
-.event-item:last-child {
-  border-bottom: none;
-}
-
-/* 左栏：时间信息 */
-.event-left {
+/* 左侧独立时间轴 */
+.timeline-axis {
+  width: 40px;
+  position: relative;
   flex-shrink: 0;
-  width: 140px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-left: 20px;
 }
 
-/* 中栏：主要内容 */
-.event-center {
-  flex: 1;
-  min-width: 0;
-}
-
-/* 右栏：描述和操作 */
-.event-right {
-  flex-shrink: 0;
-  width: 240px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-/* 时间轴线条 */
-.event-timeline-line {
+.timeline-line {
   position: absolute;
-  left: -16px;
-  top: 4px;
-  bottom: -16px;
+  left: 50%;
+  top: 0;
+  bottom: 0;
   width: 2px;
   background: #E5E7EB;
+  transform: translateX(-50%);
 }
 
-.event-timeline-line::before {
-  content: '';
+/* 最后一个事件不显示向下的线，或者根据需求调整 */
+.timeline-event-wrapper:last-child .timeline-line {
+  bottom: auto;
+  height: 24px; /* 只延伸到点的位置 */
+}
+
+.timeline-dot {
   position: absolute;
-  left: -5px;
-  top: 0;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
+  left: 50%;
+  top: 20px; /* 对齐时间行中心 */
+  width: 10px;
+  height: 10px;
   background: white;
-  border: 3px solid #a855f7;
-  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.1);
+  border: 2px solid #3B82F6;
+  border-radius: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
 }
 
-/* 左栏元素 */
-.event-time-icons {
+/* 右侧内容区 - 无卡片样式 */
+.event-content {
+  flex: 1;
   display: flex;
-  gap: 4px;
+  flex-direction: column;
+  gap: 6px;
+  /* 移除之前的卡片样式 */
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+/* 通用行样式 */
+.event-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+.row-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 12px;
+  opacity: 0.8;
+}
+
+/* Row 1: Time Info & Status */
+.event-time-row {
+  margin-bottom: 8px;
+  color: #4B5563;
   font-size: 14px;
-}
-
-.event-time-text {
-  font-size: 12px;
-  font-weight: 400;
-  color: #6B7280;
-  line-height: 1.4;
-}
-
-/* 时间箭头 */
-.event-time-arrow {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 2px;
-}
-
-.event-time-arrow::before {
-  content: '→';
-  color: #22d3ee;
-  font-size: 10px;
-}
-
-.event-duration-badge {
-  font-size: 10px;
   font-weight: 500;
-  color: #22d3ee;
-  white-space: nowrap;
+  height: 24px; /* 固定高度以便对齐 */
 }
 
-/* 中栏元素 */
-.event-main-row {
+.time-status-icons {
   display: flex;
+  gap: 4px;
+  margin-right: 12px;
+}
+
+.status-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.time-text {
+  font-family: 'Inter', monospace;
+  min-width: 45px;
+}
+
+.time-duration-arrow {
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+  margin: 0 24px;
+  position: relative;
+  top: -6px;
+}
+
+.duration-text {
+  font-size: 10px;
+  font-weight: 600;
+  background: linear-gradient(to right, #22d3ee, #3b82f6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: -4px;
+}
+
+.arrow-icon {
+  width: 50px;
+  height: 6px;
+}
+
+.event-right-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 12px;
+}
+
+.expand-btn img {
+  width: 20px;
+  height: 20px;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+
+.expand-btn:hover img {
+  opacity: 1;
+}
+
+/* Row 2: Title & Source */
+.event-title-row {
+  margin-bottom: 4px;
+  align-items: center;
+  /* 移除之前的 padding-left，因为现在有独立的时间轴列 */
 }
 
 .event-emoji {
-  font-size: 18px;
-  flex-shrink: 0;
+  font-size: 24px;
+  margin-right: 12px;
+  line-height: 1;
 }
 
-.event-title-new {
-  font-size: 15px;
+.event-title {
+  font-size: 18px;
   font-weight: 600;
   color: #1F2937;
-  margin: 0;
-  letter-spacing: -0.01em;
-  line-height: 1.4;
+  margin-right: 16px;
 }
 
-/* 标签 */
-.event-tags-new {
+.event-source-info {
+  margin-left: auto;
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  color: #6B7280;
+  gap: 8px;
+}
+
+/* Row 3: Tags */
+.event-tags-row {
+  margin-bottom: 8px;
+  gap: 12px;
+}
+
+.tag-item {
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Tag Colors based on Figma */
+.tag-item:nth-child(3n+1) { color: #8b5cf6; } /* Purple */
+.tag-item:nth-child(3n+2) { color: #3b82f6; } /* Blue */
+.tag-item:nth-child(3n+3) { color: #10b981; } /* Green */
+
+/* Row 4 & 5: Meta (Attendees, Location) */
+.event-meta-row {
+  margin-bottom: 4px;
+  color: #4B5563;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.event-meta-row .row-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+}
+
+/* Row 6: Log Content */
+.event-log-box {
+  margin-top: 12px;
+  background: transparent;
+  padding: 0;
+}
+
+.timestamp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 8px;
 }
 
-.event-tag {
-  font-size: 12px;
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-weight: 500;
-  transition: background 0.2s ease;
-  cursor: pointer;
-}
-
-.tag-blue {
-  color: #3B82F6;
-  background: rgba(59, 130, 246, 0.1);
-}
-
-.tag-blue:hover {
-  background: rgba(59, 130, 246, 0.15);
-}
-
-.tag-green {
-  color: #10B981;
-  background: rgba(16, 185, 129, 0.1);
-}
-
-.tag-green:hover {
-  background: rgba(16, 185, 129, 0.15);
-}
-
-.tag-orange {
-  color: #F59E0B;
-  background: rgba(245, 158, 11, 0.1);
-}
-
-.tag-orange:hover {
-  background: rgba(245, 158, 11, 0.15);
-}
-
-.event-meta-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 6px;
-  font-size: 11px;
-  color: #9CA3AF;
-}
-
-.task-icon {
-  font-size: 12px;
-}
-
-.task-meta {
-  font-size: 11px;
-  font-weight: 400;
-}
-
-.event-source-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 6px;
-  font-size: 11px;
-  color: #9CA3AF;
-}
-
-.source-label {
-  font-weight: 500;
-}
-
-.source-name {
-  font-weight: 400;
-}
-
-.source-status {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #D1D5DB;
-}
-
-.source-status.active {
-  background: #10B981;
-  box-shadow: 0 0 4px rgba(16, 185, 129, 0.5);
-}
-
-.source-sync {
-  margin-left: auto;
-  color: #9CA3AF;
-  font-size: 14px;
-}
-
-/* 右栏元素 */
-.event-description {
-  font-size: 12px;
-  line-height: 1.5;
-  color: #6B7280;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-}
-
-.event-actions {
-  display: flex;
-  gap: 6px;
-  justify-content: flex-end;
-}
-
-.event-action-btn {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+.timestamp-toggle, .timestamp-options {
+  background: none;
   border: none;
-  background: transparent;
   cursor: pointer;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.timestamp-toggle img, .timestamp-options img {
+  width: 16px;
+  height: 16px;
+  opacity: 0.5;
+}
+
+.log-timestamp {
+  font-size: 12px;
+  color: #9CA3AF;
+  font-family: monospace;
+}
+
+.log-text {
   font-size: 14px;
+  color: #6B7280;
+  line-height: 1.6;
+  background: #F9FAFB;
+  padding: 12px;
+  border-radius: 8px;
+  border-left: 3px solid #E5E7EB;
+  margin-left: 24px; /* Indent to align with timestamp text */
+}
+
+/* 底部同步状态 */
+.event-sync-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
   color: #9CA3AF;
 }
 
-.event-action-btn:hover {
-  background: #F3F4F6;
-  transform: scale(1.05);
+.event-sync-status img {
+  width: 14px;
+  height: 14px;
+  opacity: 0.6;
 }
-
-.event-action-btn:active {
-  transform: scale(0.95);
-}
-
-.btn-favorite {
-  color: #FBBF24;
-}
-
-.btn-expand {
-  transform: rotate(0deg);
-  transition: transform 0.2s ease;
-}
-
-.btn-expand:hover {
-  transform: rotate(90deg);
-}
-
-
 
 /* ========================================
    右侧按钮区
@@ -408,7 +370,6 @@
   flex-direction: column;
   align-items: center;
   padding: 20px 0;
-  margin: 0;
   gap: 16px;
 }
 
@@ -422,256 +383,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s ease, transform 0.2s ease;
-  position: relative;
+  transition: all 0.2s;
 }
 
 .action-button:hover {
   background: #F3F4F6;
-  transform: scale(1.05);
-}
-
-.action-button:active {
-  transform: scale(0.95);
 }
 
 .action-button img {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   opacity: 0.6;
-  transition: opacity 0.2s ease;
 }
 
 .action-button:hover img {
   opacity: 1;
-}
-
-/* ========================================
-   响应式断点
-   ======================================== */
-
-/* 平板尺寸 (≤1024px) */
-@media (max-width: 1024px) {
-  .timelog-content {
-    min-width: 500px;
-    padding: 24px 16px;
-  }
-  
-  .timelog-header {
-    margin-bottom: 20px;
-  }
-  
-  .timelog-date {
-    font-size: 22px;
-  }
-  
-  .event-card {
-    padding: 14px;
-    margin-bottom: 14px;
-  }
-}
-
-/* 移动端 (≤768px) */
-@media (max-width: 768px) {
-  .timelog-page {
-    flex-direction: column;
-  }
-  
-  .timelog-content {
-    min-width: unset;
-    padding: 16px;
-  }
-  
-  .timelog-actions {
-    width: 100%;
-    height: 60px;
-    flex-direction: row;
-    border-left: none;
-    border-top: 1px solid #E5E7EB;
-    padding: 0 16px;
-    justify-content: center;
-  }
-  
-  .timelog-date {
-    font-size: 20px;
-  }
-  
-  .event-card {
-    padding: 12px;
-    border-radius: 8px;
-  }
-  
-  .event-title {
-    font-size: 16px;
-  }
-}
-
-/* 小屏幕移动端 (≤480px) */
-@media (max-width: 480px) {
-  .timelog-content {
-    padding: 12px;
-  }
-  
-  .timelog-header {
-    margin-bottom: 16px;
-  }
-  
-  .timelog-date {
-    font-size: 18px;
-    line-height: 24px;
-  }
-  
-  .event-card {
-    padding: 10px;
-    margin-bottom: 12px;
-  }
-  
-  .event-title {
-    font-size: 15px;
-    line-height: 20px;
-  }
-  
-  .event-emoji {
-    font-size: 20px;
-  }
-}
-
-/* ========================================
-   动画效果
-   ======================================== */
-
-/* 卡片进入动画 */
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.event-card {
-  animation: slideIn 0.3s ease-out;
-}
-
-/* 按钮点击反馈 */
-@keyframes ripple {
-  0% {
-    transform: scale(0);
-    opacity: 0.5;
-  }
-  100% {
-    transform: scale(2);
-    opacity: 0;
-  }
-}
-
-.action-button::after {
-  content: '';
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.1);
-  transform: scale(0);
-  opacity: 0;
-  pointer-events: none;
-}
-
-.action-button:active::after {
-  animation: ripple 0.4s ease-out;
-}
-
-/* ========================================
-   打印样式
-   ======================================== */
-
-@media print {
-  .timelog-actions {
-    display: none;
-  }
-  
-  .timelog-content {
-    padding: 0;
-  }
-  
-  .event-card {
-    page-break-inside: avoid;
-    box-shadow: none;
-    border: 1px solid #E5E7EB;
-  }
-  
-  .event-expand,
-  .timestamp-toggle,
-  .timestamp-options {
-    display: none;
-  }
-  
-  .log-content {
-    -webkit-line-clamp: unset;
-    display: block;
-  }
-}
-
-/* ========================================
-   暗色模式支持（预留）
-   ======================================== */
-
-@media (prefers-color-scheme: dark) {
-  .timelog-page {
-    background: #111827;
-  }
-  
-  .timelog-content {
-    background: #111827;
-  }
-  
-  .timelog-date {
-    color: #F9FAFB;
-  }
-  
-  .event-card {
-    background: #1F2937;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  }
-  
-  .event-card:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  }
-  
-  .event-title {
-    color: #F9FAFB;
-  }
-  
-  .event-time {
-    color: #D1D5DB;
-  }
-  
-  .event-metadata {
-    color: #9CA3AF;
-  }
-  
-  .log-content {
-    color: #E5E7EB;
-  }
-  
-  .event-log-section,
-  .event-sync-status {
-    border-top-color: #374151;
-  }
-  
-  .timelog-actions {
-    background: #1F2937;
-    border-left-color: #374151;
-  }
-  
-  .action-button:hover {
-    background: #374151;
-  }
-  
-  .timelog-empty {
-    color: #6B7280;
-  }
 }

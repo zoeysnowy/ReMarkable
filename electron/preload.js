@@ -1,25 +1,12 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// 🗄️ 引入 better-sqlite3（Node.js 原生模块）
-let BetterSqlite3;
-try {
-  console.log('🔍 [Preload] Attempting to load better-sqlite3...');
-  console.log('   __dirname:', __dirname);
-  console.log('   process.cwd():', process.cwd());
-  
-  // 使用绝对路径加载
-  const sqlite3Path = require('path').join(__dirname, 'node_modules', 'better-sqlite3');
-  console.log('   Trying path:', sqlite3Path);
-  
-  BetterSqlite3 = require(sqlite3Path);
-  console.log('✅ [Preload] better-sqlite3 loaded successfully:', typeof BetterSqlite3);
-  console.log('✅ [Preload] BetterSqlite3 is constructor:', typeof BetterSqlite3 === 'function');
-} catch (error) {
-  console.error('❌ [Preload] Failed to load better-sqlite3:');
-  console.error('   Error:', error.message);
-  console.error('   Stack:', error.stack);
-  BetterSqlite3 = null;
-}
+// 🗄️ 通过 IPC 从主进程获取 better-sqlite3
+// 注意：在 Context Isolation 下，preload 无法直接 require Node.js 模块
+// 解决方案：通过 ipcRenderer.invoke 从主进程获取
+let BetterSqlite3 = null;
+
+// 标记为通过 IPC 提供
+const sqliteAvailableViaIPC = true;
 
 // 安全地暴露API给渲染进程
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -118,14 +105,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 环境信息
   isDev: process.env.NODE_ENV === 'development',
   
-  // 🗄️ SQLite 支持（通过 better-sqlite3）
-  sqlite: BetterSqlite3 ? {
-    // 暴露构造函数
-    Database: BetterSqlite3,
-    // 标记可用性
-    available: true
-  } : {
-    available: false
+  // 🗄️ SQLite 支持（通过 IPC）
+  sqlite: {
+    available: sqliteAvailableViaIPC,
+    // 创建数据库连接
+    createDatabase: (dbPath, options) => ipcRenderer.invoke('sqlite:create-database', dbPath, options),
+    // 执行 SQL
+    exec: (dbId, sql) => ipcRenderer.invoke('sqlite:exec', dbId, sql),
+    // 准备语句
+    prepare: (dbId, sql) => ipcRenderer.invoke('sqlite:prepare', dbId, sql),
+    // 运行语句
+    run: (stmtId, params) => ipcRenderer.invoke('sqlite:run', stmtId, params),
+    // 查询单行
+    get: (stmtId, params) => ipcRenderer.invoke('sqlite:get', stmtId, params),
+    // 查询所有行
+    all: (stmtId, params) => ipcRenderer.invoke('sqlite:all', stmtId, params),
+    // Pragma 操作
+    pragma: (dbId, pragma) => ipcRenderer.invoke('sqlite:pragma', dbId, pragma),
+    // 关闭数据库
+    close: (dbId) => ipcRenderer.invoke('sqlite:close', dbId),
   },
   
   // Microsoft认证辅助

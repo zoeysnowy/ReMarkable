@@ -450,6 +450,120 @@ ipcMain.handle('get-user-data-path', () => {
   return app.getPath('userData');
 });
 
+// 🗄️ SQLite 数据库操作 IPC handlers
+// 存储所有活动的数据库连接
+const sqliteConnections = new Map();
+
+ipcMain.handle('sqlite:create-database', (event, dbPath, options) => {
+  try {
+    if (!Database) {
+      throw new Error('better-sqlite3 not available');
+    }
+    const db = new Database(dbPath, options || {});
+    const dbId = `db_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    sqliteConnections.set(dbId, db);
+    console.log(`✅ [SQLite] Database created: ${dbId}`);
+    return { success: true, dbId };
+  } catch (error) {
+    console.error('❌ [SQLite] Failed to create database:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('sqlite:exec', (event, dbId, sql) => {
+  try {
+    const db = sqliteConnections.get(dbId);
+    if (!db) {
+      throw new Error(`Database ${dbId} not found`);
+    }
+    db.exec(sql);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('sqlite:prepare', (event, dbId, sql) => {
+  try {
+    const db = sqliteConnections.get(dbId);
+    if (!db) {
+      throw new Error(`Database ${dbId} not found`);
+    }
+    const stmt = db.prepare(sql);
+    const stmtId = `stmt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    sqliteConnections.set(stmtId, stmt);
+    return { success: true, stmtId };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('sqlite:run', (event, stmtId, params) => {
+  try {
+    const stmt = sqliteConnections.get(stmtId);
+    if (!stmt) {
+      throw new Error(`Statement ${stmtId} not found`);
+    }
+    const result = stmt.run(params || []);
+    return { success: true, changes: result.changes, lastInsertRowid: result.lastInsertRowid };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('sqlite:get', (event, stmtId, params) => {
+  try {
+    const stmt = sqliteConnections.get(stmtId);
+    if (!stmt) {
+      throw new Error(`Statement ${stmtId} not found`);
+    }
+    const result = stmt.get(params || []);
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('sqlite:all', (event, stmtId, params) => {
+  try {
+    const stmt = sqliteConnections.get(stmtId);
+    if (!stmt) {
+      throw new Error(`Statement ${stmtId} not found`);
+    }
+    const result = stmt.all(params || []);
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('sqlite:pragma', (event, dbId, pragma) => {
+  try {
+    const db = sqliteConnections.get(dbId);
+    if (!db) {
+      throw new Error(`Database ${dbId} not found`);
+    }
+    const result = db.pragma(pragma);
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('sqlite:close', (event, dbId) => {
+  try {
+    const db = sqliteConnections.get(dbId);
+    if (db && typeof db.close === 'function') {
+      db.close();
+      sqliteConnections.delete(dbId);
+      console.log(`✅ [SQLite] Database closed: ${dbId}`);
+    }
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('get-app-info', () => {
   return {
     name: app.getName(),
