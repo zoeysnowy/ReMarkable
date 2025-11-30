@@ -42,13 +42,16 @@ import type {
 // 此变量将在 initialize() 方法中赋值
 let Database: any = null;
 
-const DB_PATH = process.env.NODE_ENV === 'production' 
-  ? './database/remarkable.db' 
-  : './database/remarkable-dev.db';
-
 export class SQLiteService {
   private db: any | null = null;
   private initialized = false;
+  
+  // 延迟初始化 DB_PATH（避免在模块加载时访问 process.env）
+  private get dbPath(): string {
+    return process.env.NODE_ENV === 'production' 
+      ? './database/remarkable.db' 
+      : './database/remarkable-dev.db';
+  }
 
   /**
    * 初始化 SQLite 数据库
@@ -69,7 +72,7 @@ export class SQLiteService {
       }
 
       // 1. 创建数据库连接
-      this.db = new Database(DB_PATH, {
+      this.db = new Database(this.dbPath, {
         verbose: process.env.NODE_ENV === 'development' ? console.log : undefined
       });
 
