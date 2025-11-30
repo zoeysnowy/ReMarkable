@@ -1,5 +1,15 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+// 🗄️ 引入 better-sqlite3（Node.js 原生模块）
+let BetterSqlite3;
+try {
+  BetterSqlite3 = require('better-sqlite3');
+  console.log('✅ better-sqlite3 loaded in preload');
+} catch (error) {
+  console.warn('⚠️  better-sqlite3 not available:', error.message);
+  BetterSqlite3 = null;
+}
+
 // 安全地暴露API给渲染进程
 contextBridge.exposeInMainWorld('electronAPI', {
   // 应用信息
@@ -96,6 +106,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // 环境信息
   isDev: process.env.NODE_ENV === 'development',
+  
+  // 🗄️ SQLite 支持（通过 better-sqlite3）
+  sqlite: BetterSqlite3 ? {
+    // 暴露构造函数
+    Database: BetterSqlite3,
+    // 标记可用性
+    available: true
+  } : {
+    available: false
+  },
   
   // Microsoft认证辅助
   openExternalAuth: (url) => ipcRenderer.invoke('open-external-auth', url),
