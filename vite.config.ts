@@ -4,12 +4,27 @@ import svgr from 'vite-plugin-svgr';
 import tsconfigPaths from 'vite-tsconfig-paths';
 import path from 'path';
 
+// 自定义插件：阻止 Vite 解析 better-sqlite3
+function ignoreBetterSqlite3() {
+  return {
+    name: 'ignore-better-sqlite3',
+    resolveId(id: string) {
+      if (id === 'better-sqlite3') {
+        // 返回 false 表示这是外部依赖，不要尝试解析
+        return false;
+      }
+      return null;
+    },
+  };
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     react(),
     svgr(),
     tsconfigPaths(),
+    ignoreBetterSqlite3(),
   ],
   server: {
     port: 3000,
@@ -25,6 +40,9 @@ export default defineConfig({
     outDir: 'build',
     sourcemap: false,
     rollupOptions: {
+      external: [
+        'better-sqlite3', // Node.js 原生模块，仅在 Electron 中可用
+      ],
       output: {
         manualChunks: {
           'vendor-react': ['react', 'react-dom'],
