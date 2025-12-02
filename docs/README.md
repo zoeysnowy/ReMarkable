@@ -1,4 +1,4 @@
-# ReMarkable 文档中心
+# 4DNote 文档中心
 
 本目录包含 ReMarkable 项目的所有技术文档，按功能和用途分类组织。
 

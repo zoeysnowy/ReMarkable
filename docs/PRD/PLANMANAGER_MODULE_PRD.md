@@ -1,4 +1,4 @@
-﻿# PlanManager 模块 PRD
+# PlanManager 模块 PRD
 
 **模块路径**: `src/components/PlanManager.tsx`  
 **代码行数**: ~3077 lines  
@@ -1637,7 +1637,7 @@ onChange={debouncedOnChange}
 
 ### 1.1 核心职责
 
-PlanManager 是 ReMarkable 应用的 **计划项管理中心**，负责：
+PlanManager 是 4DNote 应用的 **计划项管理中心**，负责：
 
 1. **展示与编辑计划列表**：以层级结构展示所有计划项（Plan Items）
 2. **Slate.js 富文本编辑**：使用 PlanSlateEditor 提供现代化的编辑体验

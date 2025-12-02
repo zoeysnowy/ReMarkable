@@ -27,7 +27,7 @@
 
 ### 1.1 产品定位
 
-**AI Event Extraction Demo** 是 ReMarkable 应用中的独立测试页面，用于验证 AI 事件提取功能的完整流程。通过上传 PDF 或文本文件，AI 自动识别会议信息并创建日历事件。
+**AI Event Extraction Demo** 是 4DNote 应用中的独立测试页面，用于验证 AI 事件提取功能的完整流程。通过上传 PDF 或文本文件，AI 自动识别会议信息并创建日历事件。
 
 ### 1.2 目标用户
 
@@ -387,7 +387,7 @@ export interface ExtractedEventInfo {
 **示例**:
 ```json
 {
-  "title": "ReMarkable v1.0 产品评审会",
+  "title": "4DNote v1.0 产品评审会",
   "startTime": "2025-11-10T14:00:00+08:00",
   "endTime": "2025-11-10T16:00:00+08:00",
   "location": "北京市朝阳区办公楼 3 楼会议室",
@@ -557,7 +557,7 @@ describe('AIService', () => {
 ```
 会议通知
 
-主题：ReMarkable v1.0 产品评审会
+主题：4DNote v1.0 产品评审会
 时间：2025年11月10日 14:00 - 16:00
 地点：北京市朝阳区办公楼 3 楼会议室
 参会人员：张三、李四、王五
@@ -570,7 +570,7 @@ describe('AIService', () => {
 **预期输出**:
 ```json
 {
-  "title": "ReMarkable v1.0 产品评审会",
+  "title": "4DNote v1.0 产品评审会",
   "startTime": "2025-11-10T14:00:00+08:00",
   "endTime": "2025-11-10T16:00:00+08:00",
   "location": "北京市朝阳区办公楼 3 楼会议室",

@@ -1187,7 +1187,7 @@ EventService.exportEventHistory();    // 导出事件历史
 
 ### 1.1 设计理念
 
-**EventHub** 和 **TimeHub** 是 ReMarkable 应用的两个核心状态管理中心，共同实现了**单一数据源（Single Source of Truth）**原则：
+**EventHub** 和 **TimeHub** 是 4DNote 应用的两个核心状态管理中心，共同实现了**单一数据源（Single Source of Truth）**原则：
 
 - **EventHub**: 管理事件的**所有非时间字段**（标题、标签、描述、优先级、组织者、参会人等）
 - **TimeHub**: 管理事件的**时间字段和时间意图**（start/end/allDay/TimeSpec）

@@ -1,4 +1,4 @@
-﻿# EventEditModal v2 产品需求文档 (PRD)
+# EventEditModal v2 产品需求文档 (PRD)
 
 > **版本**: v2.15.6  
 > **创建时间**: 2025-11-06  
@@ -1621,7 +1621,7 @@ interface Contact {
   phone?: string;
   avatarUrl?: string;
   organization?: string;    // 公司/组织
-  isReMarkable?: boolean;   // ReMarkable 本地联系人
+  isReMarkable?: boolean;   // 4DNote 本地联系人
   isOutlook?: boolean;      // Outlook 联系人
   isGoogle?: boolean;       // Google 联系人
   isiCloud?: boolean;       // iCloud 联系人
@@ -1778,7 +1778,7 @@ const handleSearchInput = async (query: string) => {
 async function searchContacts(query: string): Promise<Contact[]> {
   // 3.1 搜索所有来源
   const platformContacts = await ContactService.searchPlatformContacts(query); // Outlook/Google/iCloud
-  const remarkableContacts = await ContactService.searchLocalContacts(query);   // ReMarkable 本地联系人
+  const remarkableContacts = await ContactService.searchLocalContacts(query);   // 4DNote 本地联系人
   const historicalContacts = await EventService.searchHistoricalParticipants(query); // 历史事件参会人
   
   // 3.2 合并所有结果
@@ -4121,7 +4121,7 @@ syncToCalendar(event, 'google-personal');
 | **3** | `event.isTimer && !event.parentEventId` | ⏱️ + `ReMarkable计时` | **独立 Timer 事件**（直接从 Timer 页面创建，无父事件） |
 | **3** | `event.isPlan === true` | ✅ + `ReMarkable计划` | 由 **Plan 模块**创建的计划事件 |
 | **3** | `event.isTimeCalendar === true` | 🚀 + `ReMarkable` | 由 **TimeCalendar 页面**创建的事件 |
-| **4** | `event.source === 'local'` 或 `event.remarkableSource === true` | 🚀 + `ReMarkable` | ReMarkable 本地创建的其他事件 |
+| **4** | `event.source === 'local'` 或 `event.remarkableSource === true` | 🚀 + `ReMarkable` | 4DNote 本地创建的其他事件 |
 
 **核心规则**:
 1. **Timer 子事件优先继承父事件来源**

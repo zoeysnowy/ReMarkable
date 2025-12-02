@@ -9,8 +9,8 @@
 
 4DNote 是一个现代化的时间管理应用，支持与 Microsoft Outlook 日历的双向同步功能，提供强大的事件管理和多标签分类系统。采用先进的Slate.js编辑器和优化的状态管理机制。
 
-> 📖 **最新发布**: [v1.1 Release Notes](./RELEASE_NOTES_v1.1.md) - Calendar Integration & Event Management Enhancements
-> 🔧 **最新优化**: Plan页面编辑器增强、循环更新防护、ID分配优化
+> 📖 **重大更新**: v1.3 - 项目重命名为 4DNote
+> 🔧 **最新优化**: Storage Architecture v2.4.0, 文档架构重组, 代码重命名完成
 
 ## ✨ 主要功能
 

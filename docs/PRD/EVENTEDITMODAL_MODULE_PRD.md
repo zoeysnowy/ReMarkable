@@ -1,4 +1,4 @@
-﻿# ReMarkable EventEditModal 模块产品需求文档 (PRD)
+# 4DNote EventEditModal 模块产品需求文档 (PRD)
 
 > **AI 生成时间**: 2025-11-05  
 > **最后更新**: 2025-11-13 (v1.8 - SyncTargetPicker 升级)  
@@ -82,7 +82,7 @@ interface Event {
   name?: string;           // 组织者姓名
   email?: string;          // 组织者邮箱
   avatarUrl?: string;      // 头像 URL（可选）
-  isReMarkable?: boolean;  // 是否为 ReMarkable 本地联系人
+  isReMarkable?: boolean;  // 是否为 4DNote 本地联系人
   isOutlook?: boolean;     // 是否从 Outlook 同步
   isGoogle?: boolean;      // 是否从 Google 同步（预留）
   isiCloud?: boolean;      // 是否从 iCloud 同步（预留）
@@ -97,7 +97,7 @@ Array<{
   avatarUrl?: string;      // 头像 URL（可选）
   type?: string;           // "required" | "optional" | "resource"
   status?: string;         // "accepted" | "declined" | "tentative" | "none"
-  isReMarkable?: boolean;  // 是否为 ReMarkable 本地联系人
+  isReMarkable?: boolean;  // 是否为 4DNote 本地联系人
   isOutlook?: boolean;     // 是否从 Outlook 同步
   isGoogle?: boolean;      // 是否从 Google 同步（预留）
   isiCloud?: boolean;      // 是否从 iCloud 同步（预留）
@@ -108,13 +108,13 @@ Array<{
 
 **设计理念**: 统一的联系人管理，支持多平台融合
 
-- **isReMarkable**: 标识为 ReMarkable 本地联系人，仅需姓名，邮箱可选
+- **isReMarkable**: 标识为 4DNote 本地联系人，仅需姓名，邮箱可选
 - **isOutlook**: 标识从 Outlook 同步的联系人，必须有有效邮箱
 - **isGoogle/isiCloud**: 预留字段，用于未来扩展
 
 **优先级规则**:
 1. Outlook 同步时，有邮箱的使用 `isOutlook=true`
-2. ReMarkable 本地添加的使用 `isReMarkable=true`
+2. 4DNote 本地添加的使用 `isReMarkable=true`
 3. 同一联系人可以同时有多个标识
 
 #### UI 功能特性
@@ -157,7 +157,7 @@ Array<{
 - 批量选择：支持多选参会人
 - 快速添加：点击联系人卡片即可添加
 - 联系人来源：
-  - ReMarkable 本地联系人
+  - 4DNote 本地联系人
   - Outlook 同步的联系人
   - 最近使用的联系人
 
@@ -171,7 +171,7 @@ Array<{
   - 设置 `isOutlook=true`
 
 - **不符合 Outlook 格式的联系人**:
-  - ReMarkable 本地联系人（仅有姓名）
+  - 4DNote 本地联系人（仅有姓名）
   - 邮箱格式无效的联系人
   - **处理方式**: 整合到 `description` 字段开头
     ```

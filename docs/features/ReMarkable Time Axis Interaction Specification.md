@@ -1,5 +1,5 @@
 
-# ReMarkable Time Axis: "Smart Zipper" Interaction Spec
+# 4DNote Time Axis: "Smart Zipper" Interaction Spec
 
 ## 1. Overview
 Implement a "Compact Time Axis" that collapses empty time durations into visual "gaps" (Zipper) to maximize screen density, while allowing intuitive event creation via smart hover and click interactions within these gaps.

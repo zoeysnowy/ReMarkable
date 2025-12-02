@@ -16,7 +16,7 @@
 
 ### 1.1 核心职责
 
-`App.tsx` 是 ReMarkable 应用的**根组件**，负责：
+`App.tsx` 是 4DNote 应用的**根组件**，负责：
 
 1. **路由管理**: 管理页面切换（home, calendar, plan, tag, settings）
 2. **全局状态管理**: 维护跨组件共享的状态

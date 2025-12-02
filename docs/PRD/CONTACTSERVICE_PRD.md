@@ -1,4 +1,4 @@
-﻿# ContactService 产品需求文档 (PRD)
+# ContactService 产品需求文档 (PRD)
 
 ## 文档信息
 - **创建日期**: 2025-11-18
@@ -1174,7 +1174,7 @@ interface ContactModalProps {
 
 ```
 LocalStorage (当前实现)
-├── remarkable_contacts          # ReMarkable 本地联系人
+├── remarkable_contacts          # 4DNote 本地联系人
 ├── google_contacts_cache        # Google 联系人缓存
 └── outlook_contacts_cache       # Outlook 联系人缓存
 ```

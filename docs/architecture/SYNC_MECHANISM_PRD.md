@@ -1,4 +1,4 @@
-# ReMarkable 同步机制产品需求文档 (PRD)
+# 4DNote 同步机制产品需求文档 (PRD)
 
 > **AI 生成时间**: 2025-11-05  
 > **最后更新**: 2025-11-10  
@@ -77,7 +77,7 @@ if (this.indexMapRebuildPromise) {
 - ✅ **队列合并优化**: 同一事件的多个 update action 自动合并，只保留最新的，减少 API 调用
 - ✅ **CalendarSync 降级方案**: 当 syncManager 未初始化时，可直接调用 `microsoftService` 进行简化版同步
 - ✅ **标签日历映射修复**: 添加/修改标签后自动同步到标签映射的日历分组，优先级：标签映射 > 手动选择 > 默认日历
-- 🆕 **参会人和组织者同步**: 支持 ReMarkable 本地联系人和 Outlook 联系人的双向同步
+- 🆕 **参会人和组织者同步**: 支持 4DNote 本地联系人和 Outlook 联系人的双向同步
   - 平台标识：isReMarkable/isOutlook/isGoogle/isiCloud
   - 智能整合：不符合 Outlook 格式的联系人整合到 description
   - 双向提取：同步回来时自动提取 ReMarkable 联系人
@@ -748,7 +748,7 @@ window.addEventListener('calendarFallback', (event) => {
 **问题背景**:
 - Outlook 要求 organizer 和 attendees 必须有有效的邮箱地址
 - ReMarkable 用户可能只记录姓名（如"张三"），不需要邮箱
-- 需要支持多平台联系人（Outlook/Google/iCloud/ReMarkable 本地）
+- 需要支持多平台联系人（Outlook/Google/iCloud/4DNote 本地）
 
 **解决方案**: 
 - **平台标识系统**: 使用 `isReMarkable/isOutlook/isGoogle/isiCloud` 标识联系人来源
@@ -768,7 +768,7 @@ interface Contact {
   status?: string;         // "accepted" | "declined" | "tentative" | "none"（仅 attendees）
   
   // 平台标识
-  isReMarkable?: boolean;  // ReMarkable 本地联系人
+  isReMarkable?: boolean;  // 4DNote 本地联系人
   isOutlook?: boolean;     // Outlook 同步的联系人
   isGoogle?: boolean;      // Google 联系人（预留）
   isiCloud?: boolean;      // iCloud 联系人（预留）
