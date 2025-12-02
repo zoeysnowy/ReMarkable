@@ -1,0 +1,49 @@
+
+flowchart TD
+    subgraph Application_Layer
+        UI["User Interface"]
+        AISearch["AI Search Bar"]
+    end
+
+    subgraph Service_Layer
+        EventSrvc
+        AISrvc["AI Service"]
+    end
+
+    subgraph Storage_Abstraction
+        SM["StorageManager"]
+    end
+
+    subgraph Local_Storage_Implementation
+        direction TB
+        IDB[("IndexedDB")]
+        
+        subgraph Electron_Native_Power
+            SQLite[("SQLite DB")]
+            VectorExt{{"SQLite-vss Extension"}}
+            EmbedModel["Local Embedding Model\n(e.g. Xenova/transformers.js)"]
+        end
+    end
+
+    %% Data Flow
+    UI --> EventSrvc
+    EventSrvc --> SM
+    SM --> IDB
+    SM --> SQLite
+    
+    %% AI Flow - The "Local Loop"
+    SQLite -.->|"Raw Text"| EmbedModel
+    EmbedModel -.->|"Vectors"| VectorExt
+    VectorExt -.->|"Vector Storage"| SQLite
+    
+    %% Search Flow
+    AISearch --> AISrvc
+    AISrvc -->|"Query Text"| EmbedModel
+    EmbedModel -->|"Query Vector"| VectorExt
+    VectorExt -->|"Similarity Search"| SQLite
+    SQLite -->|"Results"| AISrvc
+    AISrvc --> UI
+
+    style VectorExt fill:#f9f,stroke:#333,stroke-width:2px
+    style EmbedModel fill:#bbf,stroke:#333,stroke-width:2px
+    style SQLite fill:#dfd,stroke:#333,stroke-width:2px
