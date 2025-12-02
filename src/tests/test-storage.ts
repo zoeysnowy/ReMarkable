@@ -55,7 +55,7 @@ export async function testStorageModule() {
     console.log('4️⃣  Testing Event Management...');
     const testEvent: StorageEvent = {
       id: 'test-event-1',
-      title: 'Test Event',
+      title: { simpleTitle: 'Test Event' },
       description: 'This is a test event',
       startTime: new Date('2025-12-01T10:00:00').toISOString(),
       endTime: new Date('2025-12-01T11:00:00').toISOString(),
@@ -78,7 +78,7 @@ export async function testStorageModule() {
     for (let i = 0; i < 5; i++) {
       batchEvents.push({
         id: `batch-event-${i}`,
-        title: `Batch Event ${i}`,
+        title: { simpleTitle: `Batch Event ${i}` },
         startTime: new Date(Date.now() + i * 3600000).toISOString(),
         endTime: new Date(Date.now() + (i + 1) * 3600000).toISOString(),
         source: 'local',
@@ -98,7 +98,7 @@ export async function testStorageModule() {
       orderDirection: 'asc',
       limit: 10
     });
-    console.log('✅ Query returned', queryResult.data.length, 'events');
+    console.log('✅ Query returned', queryResult.items.length, 'events');
     console.log('   Total:', queryResult.total, '| Has more:', queryResult.hasMore);
     console.log('');
 
@@ -127,7 +127,7 @@ export async function testStorageModule() {
 }
 
 // 自动运行测试（如果在开发环境）
-if (import.meta.env.DEV) {
+if (import.meta.env && (import.meta.env as any).DEV) {
   console.log('🔧 Dev mode detected, storage tests available');
   console.log('💡 Run testStorageModule() in console to test storage');
   

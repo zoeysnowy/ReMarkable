@@ -1,6 +1,6 @@
 /* 页面容器样式 */
 .page-container {
-  padding: 16px 24px 8px 24px; /* 🔧 底部 padding 设为 8px，与 statusbar 保持距离 */
+  padding: 8px; /* 🔧 统一为 8px，不再使用 16px 24px */
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -19,11 +19,11 @@
 
 /* 特殊页面样式 */
 .page-container.tag-management {
-  padding: 7px 7px 8px 7px;  /* 🔧 底部改为 8px，与 statusbar 保持距离 */
+  padding: 8px;  /* 🔧 统一为 8px */
 }
 
 .page-container.plan-management {
-  padding: 8px 8px 8px 8px;  /* 🔧 Plan页面：四周8px，与 header 和 statusbar 保持距离 */
+  padding: 8px;  /* 🔧 Plan页面：四周8px */
   background: #F5F5F7;  /* 灰色背景 */
 }
 
@@ -34,7 +34,7 @@
 }
 
 .page-container.time-calendar {
-  padding: 4px 8px 8px 8px;  /* 🔧 TimeCalendar页面：顶部4px，左右8px，底部8px */
+  padding: 8px;  /* 🔧 TimeCalendar页面：统一为 8px */
   height: 100%; /* 🔧 确保占满父容器 */
 }
 
@@ -42,6 +42,14 @@
   flex: 1;
   min-height: 0; /* 🔧 重要：允许内容正确收缩和滚动 */
   overflow: hidden; /* 🔧 TimeCalendar 自己处理滚动 */
+}
+
+.page-container.timelog-page-container {
+  padding: 8px; /* 🔧 TimeLog页面：极简边距 */
+}
+
+.page-container.home-page-container {
+  padding: 8px; /* 🔧 Home页面：极简边距 */
 }
 
 .page-container.full-width {

@@ -55,20 +55,108 @@ export enum SyncStatus {
 export type SyncStatusType = 'pending' | 'synced' | 'error' | 'local-only' | 'conflict';
 
 /**
+ * 附件类型枚举
+ */
+export enum AttachmentType {
+  VOICE_RECORDING = 'voice-recording',  // 🎤 语音记录（实时录音）
+  IMAGE = 'image',                       // 🖼️ 图片
+  AUDIO = 'audio',                       // 🎵 音频文件
+  VIDEO = 'video',                       // 🎥 视频
+  DOCUMENT = 'document',                 // 📄 文档（PDF、Word等）
+  SUB_EVENT = 'sub-event',              // 🔗 子事件/子页面
+  WEB_CLIP = 'web-clip',                // 📺 网页收藏
+}
+
+/**
+ * 附件浏览模式
+ */
+export enum AttachmentViewMode {
+  EDITOR = 'editor',           // 编辑模式（默认）
+  GALLERY = 'gallery',         // 图册模式（图片）
+  VIDEO_STREAM = 'video-stream', // 视频流模式（视频）
+  AUDIO_STREAM = 'audio-stream', // 音频流模式（音频）
+  TRANSCRIPT = 'transcript',   // 转写文本模式（语音记录）
+  DOCUMENT_LIB = 'document-lib', // 文档库模式（文档）
+  TREE_NAV = 'tree-nav',       // 树形导航模式（子页面）
+  BOOKMARK = 'bookmark',       // 书签模式（网页收藏）
+}
+
+/**
+ * AI 纪要数据
+ */
+export interface TranscriptData {
+  // 原始转写文本（AI 生成，不可编辑）
+  rawTranscript: string;
+  
+  // 用户编辑后的纪要（可保存）
+  editedSummary?: string;
+  
+  // AI 生成的摘要
+  aiSummary?: string;
+  
+  // 分段转写（带时间戳）
+  segments?: Array<{
+    start: number;      // 开始时间（秒）
+    end: number;        // 结束时间（秒）
+    text: string;       // 文本内容
+    speaker?: string;   // 说话人（如果支持）
+  }>;
+  
+  // 提取的关键信息
+  keyPoints?: string[];
+  actionItems?: string[];
+  
+  // 转写状态
+  status: 'processing' | 'completed' | 'failed';
+  processedAt?: string;
+  error?: string;
+}
+
+/**
  * 附件元数据
  * 用于 Event.eventlog.attachments
  */
 export interface Attachment {
   id: string;
+  type: AttachmentType;      // 附件类型（新增）
   filename: string;
   size: number;              // 文件大小（字节）
   mimeType: string;          // MIME 类型
   localPath?: string;        // 本地路径（Electron userData/attachments/）
   cloudUrl?: string;         // 云端 URL（OneDrive）
+  thumbnailPath?: string;    // 缩略图路径（图片/视频）
+  
+  // 状态
   status: 'local-only' | 'synced' | 'pending-upload' | 'cloud-only' | 'upload-failed';
   uploadedAt: string;        // 上传时间
   lastAccessedAt?: string;   // 最后访问时间
   isPinned?: boolean;        // 是否固定（不自动清理）
+  
+  // 时间信息（用于排序）
+  timestamp: string;         // 拍摄/录制/创建时间（优先用 EXIF）
+  
+  // 图片特定字段
+  width?: number;            // 原始宽度
+  height?: number;           // 原始高度
+  exifData?: any;            // EXIF 信息（GPS、相机型号等）
+  
+  // 音频/视频特定字段
+  duration?: number;         // 时长（秒）
+  
+  // 语音记录特定字段
+  transcriptData?: TranscriptData;  // AI 转写数据
+  
+  // 文档特定字段
+  pageCount?: number;        // 页数（PDF）
+  extractedText?: string;    // OCR 提取的文本
+  
+  // 子事件特定字段
+  linkedEventId?: string;    // 关联的子事件 ID
+  
+  // 网页收藏特定字段
+  webUrl?: string;           // 原始 URL
+  webTitle?: string;         // 网页标题
+  webFavicon?: string;       // 网站图标
 }
 
 /**
@@ -242,6 +330,7 @@ export interface Event {
   lastSyncTime?: string; // 🔧 修改：使用字符串存储本地时间
   createdAt: string;     // 🔧 修改：使用字符串存储本地时间
   updatedAt: string;     // 🔧 修改：使用字符串存储本地时间
+  deletedAt?: string | null; // 🆕 v3.0: 软删除时间戳（null=未删除，ISO 8601字符串=已删除）
   timerSessionId?: string;
   tags?: string[];       // 🆕 多标签支持
   category?: string;
@@ -310,9 +399,29 @@ export interface Event {
    */
   eventlog?: string | EventLog;
   
-  // 🆕 Issue #12: EventTree 父子事件关联
+  // 🆕 Issue #12: EventTree 父子事件关联（刚性骨架）
   parentEventId?: string;      // 父事件 ID（所有类型子事件都用此字段）
   childEventIds?: string[];    // 子事件 ID 列表（包括 Timer、用户子任务、外部同步事件等）
+  
+  // 🆕 Issue #13: 双向链接（柔性血管）
+  /**
+   * 双向链接 ID 列表
+   * 用户通过 @mention 创建的链接关系
+   * 不占用 EventTree 画布空间，堆叠在主节点背后，Hover 展开
+   * 
+   * 创建方式：在 EventLog 中输入 `@事件名称`
+   * 语义：目前不区分关系类型（依赖、参考、相关等），未来可通过 AI 自动推断
+   */
+  linkedEventIds?: string[];
+  
+  /**
+   * 反向链接（自动计算，只读）
+   * 记录哪些事件 mention 了当前事件
+   * 用于"图谱视图"和"被引用查询"
+   * 
+   * 计算逻辑：每次保存事件时自动更新
+   */
+  backlinks?: string[];
   
   // 🆕 签到功能：用于任务管理和定时打卡
   checked?: string[];       // 签到时间戳数组（ISO格式）

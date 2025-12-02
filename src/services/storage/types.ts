@@ -4,7 +4,38 @@
  * @date 2025-12-01
  */
 
-import type { Event, Contact, Tag } from '../../types';
+import type { Event, Contact } from '../../types';
+
+// Re-export types for internal use
+export type { Event, Contact };
+
+/**
+ * Tag 存储类型（扩展，支持软删除和云同步）
+ */
+export interface StorageTag {
+  id: string;
+  name: string;
+  color: string;
+  emoji?: string;
+  parentId?: string;
+  level?: number;
+  calendarMapping?: {
+    calendarId: string;
+    calendarName: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null; // 软删除
+}
+
+/**
+ * Tag 类型（临时定义，待从主类型文件导出）
+ */
+export interface Tag {
+  id: string;
+  name: string;
+  [key: string]: any;
+}
 
 /**
  * 存储层级
@@ -37,8 +68,13 @@ export interface Account {
   accessToken?: string;
   refreshToken?: string;
   tokenExpiry?: string;
+  isActive?: boolean;
   syncEnabled: boolean;
   lastSyncAt?: string;
+  syncInterval?: number;
+  serverUrl?: string;
+  defaultCalendarId?: string;
+  settings?: Record<string, any>;
   createdAt: string;
   updatedAt: string;
 }
@@ -49,9 +85,20 @@ export interface Account {
 export interface Calendar {
   id: string;
   accountId: string;
+  remoteId?: string;
   name: string;
+  description?: string;
   color?: string;
+  emoji?: string;
+  type?: string;
+  isPrimary?: boolean;
+  isVisible?: boolean;
   isDefault: boolean;
+  orderIndex?: number;
+  syncEnabled?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
+  canShare?: boolean;
   syncToken?: string;
   lastSyncAt?: string;
   createdAt: string;
@@ -124,6 +171,7 @@ export interface QueryOptions {
   limit?: number;
   
   // 排序
+  sort?: string; // 兼容字段
   orderBy?: string;
   orderDirection?: 'asc' | 'desc';
   
@@ -146,9 +194,10 @@ export interface QueryOptions {
  * 查询结果
  */
 export interface QueryResult<T> {
-  data: T[];
+  items: T[];
   total: number;
   hasMore: boolean;
+  offset?: number; // 兼容字段
 }
 
 /**
@@ -157,29 +206,46 @@ export interface QueryResult<T> {
 export interface BatchResult<T> {
   success: T[];
   failed: Array<{ item: T; error: Error }>;
+  errors?: Array<{ item: T; error: Error }>; // 兼容字段
 }
 
 /**
  * 存储统计信息
  */
 export interface StorageStats {
-  indexedDB: {
+  indexedDB?: {
     used: number;
     quota: number;
-    percentage: number;
+    percentage?: number;
+    eventsCount?: number;
+    contactsCount?: number;
+    tagsCount?: number;
   };
-  sqlite: {
-    fileSize: number;
-    vacuumSize: number;
+  sqlite?: {
+    used: number;
+    quota: number;
+    accountsCount?: number;
+    calendarsCount?: number;
+    eventsCount?: number;
+    eventLogsCount?: number;
+    contactsCount?: number;
+    tagsCount?: number;
   };
-  fileSystem: {
+  fileSystem?: {
     attachments: number;
     backups: number;
     logs: number;
   };
-  cache: {
+  cache?: {
     size: number;
+    count: number;
+    maxSize: number;
     hitRate: number;
+    breakdown?: {
+      events: { size: number; count: number; maxSize: number };
+      contacts: { size: number; count: number; maxSize: number };
+      tags: { size: number; count: number; maxSize: number };
+    };
   };
 }
 

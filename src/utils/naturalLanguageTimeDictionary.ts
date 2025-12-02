@@ -1543,9 +1543,99 @@ export const POINT_IN_TIME_DICTIONARY: Record<string, (referenceDate?: Date) => 
 /**
  * 组合表达式解析
  * 支持"下周末上午"、"本周中下午"等组合表达
+ * 🆕 v2.10.2: 支持纯数字日期格式（替代 chrono-node）
  */
 export function parseNaturalLanguage(input: string, referenceDate: Date = new Date()): ParseResult {
   const trimmedInput = input.trim().toLowerCase();
+  
+  // 🆕 v2.10.2: 优先检测纯数字日期格式（替代 chrono-node）
+  // 支持格式：
+  // - ISO 8601: 2025-12-25, 2025/12/25, 20251225
+  // - 短格式: 12-25, 12/25, 12.25
+  // - 带时间: 2025-12-25 14:30, 12/25 14:30, 12-25 14:30
+  const numericDatePatterns = [
+    // 完整日期格式 (YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD, YYYYMMDD)
+    /^(\d{4})[-\/.]?(\d{1,2})[-\/.]?(\d{1,2})(?:\s+(\d{1,2})[：:]?(\d{1,2}))?$/,
+    // 短格式 (MM-DD, MM/DD, MM.DD)
+    /^(\d{1,2})[-\/.](\d{1,2})(?:\s+(\d{1,2})[：:]?(\d{1,2}))?$/,
+  ];
+  
+  for (const pattern of numericDatePatterns) {
+    const match = trimmedInput.match(pattern);
+    if (match) {
+      let year: number, month: number, day: number, hour: number | null = null, minute: number | null = null;
+      
+      if (match[0].startsWith(match[1]) && match[1].length === 4) {
+        // 完整格式: YYYY-MM-DD
+        [, year, month, day] = match.map(m => m ? parseInt(m) : 0) as [string, number, number, number];
+        if (match[4]) hour = parseInt(match[4]);
+        if (match[5]) minute = parseInt(match[5]);
+      } else {
+        // 短格式: MM-DD (使用当前年份或明年)
+        const now = dayjs(referenceDate);
+        month = parseInt(match[1]);
+        day = parseInt(match[2]);
+        year = now.year();
+        
+        // 如果日期已过，自动使用明年
+        const targetDate = dayjs().year(year).month(month - 1).date(day);
+        if (targetDate.isBefore(now, 'day')) {
+          year = now.year() + 1;
+        }
+        
+        if (match[3]) hour = parseInt(match[3]);
+        if (match[4]) minute = parseInt(match[4]);
+      }
+      
+      // 验证日期有效性
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        const targetDate = dayjs().year(year).month(month - 1).date(day);
+        
+        // 检查日期是否真实存在（如 2月30日无效）
+        if (targetDate.isValid() && targetDate.month() === month - 1) {
+          dbg('dict', '🎯 检测到纯数字日期格式', { 
+            原始输入: trimmedInput,
+            解析结果: { year, month, day, hour, minute },
+            目标日期: targetDate.format('YYYY-MM-DD')
+          });
+          
+          // 如果包含时间
+          if (hour !== null && hour >= 0 && hour < 24) {
+            const validMinute = minute !== null && minute >= 0 && minute < 60 ? minute : 0;
+            const timeName = validMinute > 0 ? `${hour}:${validMinute.toString().padStart(2, '0')}` : `${hour}点`;
+            
+            return {
+              matched: true,
+              pointInTime: {
+                date: targetDate,
+                displayHint: targetDate.format('YYYY-MM-DD'),
+                isFuzzyDate: false
+              },
+              timePeriod: {
+                name: timeName,
+                startHour: hour,
+                startMinute: validMinute,
+                endHour: 0,
+                endMinute: 0,
+                isFuzzyTime: false,
+                timeType: 'start'
+              }
+            };
+          }
+          
+          // 只有日期，没有时间
+          return {
+            matched: true,
+            pointInTime: {
+              date: targetDate,
+              displayHint: targetDate.format('YYYY-MM-DD'),
+              isFuzzyDate: false
+            }
+          };
+        }
+      }
+    }
+  }
   
   // 🆕 v2.7.4: 检测截止关键词（优先级最高）
   const deadlineKeywords = [

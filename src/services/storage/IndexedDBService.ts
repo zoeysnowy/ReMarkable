@@ -29,6 +29,7 @@ import type {
   Attachment,
   SyncQueueItem,
   Metadata,
+  StorageStats,
   QueryOptions,
   QueryResult
 } from './types';
@@ -52,8 +53,24 @@ export class IndexedDBService {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = () => {
-        console.error('[IndexedDBService] Failed to open database:', request.error);
-        reject(request.error);
+        const error = request.error;
+        console.error('[IndexedDBService] Failed to open database:', error);
+        
+        // 如果是 Internal error，尝试删除并重建数据库
+        if (error?.message?.includes('Internal error')) {
+          console.warn('[IndexedDBService] Attempting to reset corrupted database...');
+          this.resetDatabase().then(() => {
+            console.log('[IndexedDBService] Database reset complete, retrying...');
+            // 重试初始化
+            this.initPromise = null;
+            this.initialize().then(resolve).catch(reject);
+          }).catch(resetError => {
+            console.error('[IndexedDBService] Failed to reset database:', resetError);
+            reject(error);
+          });
+        } else {
+          reject(error);
+        }
       };
 
       request.onsuccess = () => {
@@ -322,7 +339,7 @@ export class IndexedDBService {
     const paginatedEvents = events.slice(offset, offset + limit);
 
     return {
-      data: paginatedEvents,
+      items: paginatedEvents,
       total,
       hasMore: offset + limit < total
     };
@@ -332,8 +349,13 @@ export class IndexedDBService {
     return this.put('events', event);
   }
 
-  async updateEvent(event: StorageEvent): Promise<void> {
-    return this.put('events', event);
+  async updateEvent(id: string, updates: Partial<StorageEvent>): Promise<void> {
+    const existingEvent = await this.getEvent(id);
+    if (!existingEvent) {
+      throw new Error(`Event not found: ${id}`);
+    }
+    const updatedEvent = { ...existingEvent, ...updates, updatedAt: new Date().toISOString() };
+    return this.put('events', updatedEvent);
   }
 
   async deleteEvent(id: string): Promise<void> {
@@ -424,6 +446,57 @@ export class IndexedDBService {
   }
 
   /**
+   * 获取存储统计信息
+   */
+  async getStorageStats(): Promise<Partial<StorageStats>> {
+    await this.initialize();
+    
+    const estimate = await this.getStorageEstimate();
+    
+    const [
+      accountsCount,
+      calendarsCount,
+      eventsCount,
+      contactsCount,
+      tagsCount
+    ] = await Promise.all([
+      this.count('accounts'),
+      this.count('calendars'),
+      this.count('events'),
+      this.count('contacts'),
+      this.count('tags')
+    ]);
+
+    return {
+      indexedDB: {
+        used: estimate.usage,
+        quota: estimate.quota,
+        percentage: estimate.quota > 0 ? (estimate.usage / estimate.quota) * 100 : 0,
+        eventsCount,
+        contactsCount,
+        tagsCount
+      }
+    };
+  }
+
+  /**
+   * 统计 Store 中的记录数
+   */
+  private async count(storeName: string): Promise<number> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+      const transaction = this.db.transaction(storeName, 'readonly');
+      const store = transaction.objectStore(storeName);
+      const request = store.count();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
    * 清空所有数据（危险操作！）
    */
   async clearAll(): Promise<void> {
@@ -459,6 +532,39 @@ export class IndexedDBService {
       this.initPromise = null;
       console.log('[IndexedDBService] Database closed');
     }
+  }
+
+  /**
+   * 重置数据库（删除并重建）
+   */
+  async resetDatabase(): Promise<void> {
+    console.log('[IndexedDBService] Resetting database...');
+    
+    // 关闭现有连接
+    this.close();
+
+    // 删除数据库
+    return new Promise((resolve, reject) => {
+      const deleteRequest = indexedDB.deleteDatabase(DB_NAME);
+      
+      deleteRequest.onsuccess = () => {
+        console.log('[IndexedDBService] ✅ Database deleted successfully');
+        resolve();
+      };
+      
+      deleteRequest.onerror = () => {
+        console.error('[IndexedDBService] ❌ Failed to delete database:', deleteRequest.error);
+        reject(deleteRequest.error);
+      };
+      
+      deleteRequest.onblocked = () => {
+        console.warn('[IndexedDBService] ⚠️  Database deletion blocked (close all tabs)');
+        // 等待一段时间后重试
+        setTimeout(() => {
+          resolve();
+        }, 1000);
+      };
+    });
   }
 }
 

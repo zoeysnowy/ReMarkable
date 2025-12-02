@@ -31,6 +31,7 @@ import { EventLineElement } from './EventLineElement';
 import { TagElementComponent } from '../SlateCore/elements/TagElement';
 import DateMentionElement from '../SlateCore/elements/DateMentionElement';
 import { TimestampDividerElement } from '../SlateCore/elements/TimestampDividerElement';
+import { EventMentionElement } from '../SlateCore/elements/EventMentionElement';
 
 // ✅ 从 SlateCore 导入共享服务
 import { EventLogTimestampService } from '../SlateCore/services/timestampService';
@@ -57,6 +58,7 @@ import {
 } from '../SlateCore/operations/clipboardHelpers';
 
 import UnifiedDateTimePicker from '../FloatingToolbar/pickers/UnifiedDateTimePicker';
+import { UnifiedMentionMenu } from '../UnifiedMentionMenu';
 import { SlateErrorBoundary } from './ErrorBoundary';
 import { EventService } from '../../services/EventService';
 import { parseNaturalLanguage } from '../../utils/naturalLanguageTimeDictionary';
@@ -67,7 +69,7 @@ import {
   slateNodesToRichHtml,
   parseExternalHtml,
 } from './serialization';
-import { insertDateMention } from './helpers';
+import { insertDateMention, insertEventMention } from './helpers';
 import { formatTimeForStorage } from '../../utils/timeUtils';
 import {
   initDebug,
@@ -171,12 +173,12 @@ const withCustom = (editor: CustomEditor) => {
 
   editor.isInline = element => {
     const e = element as any;
-    return (e.type === 'tag' || e.type === 'dateMention') ? true : isInline(element);
+    return (e.type === 'tag' || e.type === 'dateMention' || e.type === 'event-mention') ? true : isInline(element);
   };
 
   editor.isVoid = element => {
     const e = element as any;
-    return (e.type === 'tag' || e.type === 'dateMention' || e.type === 'timestamp-divider') ? true : isVoid(element);
+    return (e.type === 'tag' || e.type === 'dateMention' || e.type === 'event-mention' || e.type === 'timestamp-divider') ? true : isVoid(element);
   };
 
   // 🆕 拦截 insertBreak（Enter 键）以继承 bullet 属性
@@ -1117,6 +1119,11 @@ export const PlanSlate: React.FC<PlanSlateProps> = ({
   const [mentionInitialStart, setMentionInitialStart] = useState<Date | undefined>();
   const [mentionInitialEnd, setMentionInitialEnd] = useState<Date | undefined>();
   
+  // 🔍 Unified Mention 状态（事件/标签/AI搜索）
+  const [mentionType, setMentionType] = useState<'time' | 'search' | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearchMenu, setShowSearchMenu] = useState(false);
+  
   // 🆕 v1.8: 跟踪最近保存的事件ID，避免增量更新覆盖
   const recentlySavedEventsRef = React.useRef<Set<string>>(new Set());
   
@@ -1217,7 +1224,7 @@ export const PlanSlate: React.FC<PlanSlateProps> = ({
             const text = atMatch[1];
             console.log('[@ Mention] 检测到@输入:', text);
             
-            // 实时解析自然语言
+            // 🔍 优先级1: 尝试时间解析（只在有输入时）
             if (text.length > 0) {
               const parsed = parseNaturalLanguage(text);
               console.log('[@ Mention] 解析结果:', { 
@@ -1229,11 +1236,15 @@ export const PlanSlate: React.FC<PlanSlateProps> = ({
               });
               
               if (parsed && parsed.matched) {
-                console.log('[@ Mention] 解析成功 - 详细信息:', {
+                // ✅ 时间解析成功 → 显示时间选择器
+                console.log('[@ Mention] 时间解析成功 - 详细信息:', {
                   dateRange: parsed.dateRange,
                   timePeriod: parsed.timePeriod,
                   pointInTime: parsed.pointInTime,
                 });
+                
+                setMentionType('time');
+                setShowSearchMenu(false);
                 
                 // 提取开始和结束时间
                 let startTime: Date | undefined;
@@ -1296,17 +1307,72 @@ export const PlanSlate: React.FC<PlanSlateProps> = ({
                 } else {
                   setShowMentionPicker(false);
                 }
-              } else {
+              } else if (text.length >= 0) {
+                // 🔍 优先级2: 时间解析失败 → 显示搜索菜单（包括空查询 @）
+                console.log('[@ Mention] 时间解析失败，触发搜索菜单:', text);
+                console.log('[@ Mention] 准备显示搜索菜单，状态:', {
+                  mentionType: 'search',
+                  searchQuery: text,
+                  showSearchMenu: true
+                });
+                
+                setMentionType('search');
+                setSearchQuery(text);
                 setShowMentionPicker(false);
+                setShowSearchMenu(true);
+                
+                // 创建虚拟 anchor 元素用于 Tippy 定位
+                const domRange = ReactEditor.toDOMRange(editor, editor.selection);
+                const rect = domRange.getBoundingClientRect();
+                
+                if (!mentionAnchorRef.current) {
+                  const anchor = document.createElement('span');
+                  anchor.style.position = 'absolute';
+                  anchor.style.width = '1px';
+                  anchor.style.height = '1px';
+                  document.body.appendChild(anchor);
+                  mentionAnchorRef.current = anchor;
+                }
+                
+                mentionAnchorRef.current.style.top = `${rect.bottom}px`;
+                mentionAnchorRef.current.style.left = `${rect.left}px`;
               }
             } else {
+              // 空输入（只输入 @），显示搜索菜单
+              console.log('[@ Mention] 空输入，显示搜索菜单');
+              
+              setMentionType('search');
+              setSearchQuery('');
               setShowMentionPicker(false);
+              setShowSearchMenu(true);
+              
+              // 创建虚拟 anchor 元素用于 Tippy 定位
+              const domRange = ReactEditor.toDOMRange(editor, editor.selection);
+              const rect = domRange.getBoundingClientRect();
+              
+              if (!mentionAnchorRef.current) {
+                const anchor = document.createElement('span');
+                anchor.style.position = 'absolute';
+                anchor.style.width = '1px';
+                anchor.style.height = '1px';
+                document.body.appendChild(anchor);
+                mentionAnchorRef.current = anchor;
+              }
+              
+              mentionAnchorRef.current.style.top = `${rect.bottom}px`;
+              mentionAnchorRef.current.style.left = `${rect.left}px`;
             }
           } else {
-            if (showMentionPicker) {
-              console.log('[@ Mention] 不在@上下文，清除状态');
-              setShowMentionPicker(false);
-            }
+            // 没有检测到 @，关闭所有菜单
+            setShowMentionPicker(false);
+            setShowSearchMenu(false);
+          }
+        } else {
+          // 不是文本节点
+          if (showMentionPicker || showSearchMenu) {
+            console.log('[@ Mention] 不在文本节点，清除状态');
+            setShowMentionPicker(false);
+            setShowSearchMenu(false);
           }
         }
       } catch (err) {
@@ -1715,6 +1781,122 @@ export const PlanSlate: React.FC<PlanSlateProps> = ({
       }
     }
   }, [editor]);
+  
+  // 🔍 Unified Mention 搜索结果选择
+  const handleSearchSelect = useCallback(async (item: any) => {
+    if (!editor.selection) return;
+    
+    try {
+      console.log('[Unified Mention] 选中项:', item);
+      
+      // 找到 @xxx 文本的位置并删除
+      const { anchor } = editor.selection;
+      const [node, path] = Editor.node(editor, anchor.path);
+      
+      if (SlateText.isText(node)) {
+        const textBeforeCursor = node.text.slice(0, anchor.offset);
+        const atMatch = textBeforeCursor.match(/@([^\s]*)$/);
+        
+        if (atMatch) {
+          const atStartOffset = anchor.offset - atMatch[0].length;
+          
+          // 删除 @xxx 文本
+          Transforms.delete(editor, {
+            at: {
+              anchor: { path, offset: atStartOffset },
+              focus: { path, offset: anchor.offset },
+            },
+          });
+          
+          // 获取当前事件ID
+          const match = Editor.above(editor, {
+            match: n => (n as any).type === 'event-line',
+          });
+          
+          let eventId: string | undefined;
+          if (match) {
+            const [eventLineNode] = match;
+            eventId = (eventLineNode as EventLineNode).eventId;
+          }
+          
+          // 根据不同类型插入不同的节点
+          console.log('[Unified Mention] 处理类型:', item.type, '数据:', item);
+          
+          switch (item.type) {
+            case 'event':
+              // 插入事件提及元素
+              console.log('[Unified Mention] 插入事件:', item.id, item.title);
+              insertEventMention(editor, item.id, item.title);
+              break;
+              
+            case 'tag':
+              // 插入标签节点
+              const tagName = item.id.startsWith('#') ? item.id.slice(1) : item.id;
+              console.log('[Unified Mention] 插入标签:', tagName);
+              const tagNode: TagNode = {
+                type: 'tag',
+                tag: tagName,
+                children: [{ text: '' }],
+              };
+              Transforms.insertNodes(editor, tagNode as any);
+              Transforms.insertText(editor, ' ');
+              break;
+              
+            case 'time':
+              // 插入时间提及
+              if (item.metadata?.pointInTime?.date) {
+                // 有精确时间点
+                const startDate = item.metadata.pointInTime.date.format('YYYY-MM-DD HH:mm:ss');
+                insertDateMention(editor, startDate, undefined, false, eventId, item.title);
+              } else if (item.id) {
+                // 时间预设（今天、明天等）
+                const now = new Date();
+                let targetDate: Date;
+                
+                switch (item.id) {
+                  case 'today':
+                    targetDate = now;
+                    break;
+                  case 'tomorrow':
+                    targetDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+                    break;
+                  case 'nextWeek':
+                    targetDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+                    break;
+                  default:
+                    targetDate = now;
+                }
+                
+                const startDate = targetDate.toISOString().slice(0, 19).replace('T', ' ');
+                insertDateMention(editor, startDate, undefined, false, eventId, item.title);
+              }
+              break;
+              
+            case 'ai':
+              // TODO: 触发 AI 助手
+              Transforms.insertText(editor, `🤖 ${item.title}`);
+              console.log('[Unified Mention] AI 助手触发:', item.metadata?.prompt);
+              break;
+              
+            case 'new':
+              // 创建新页面
+              Transforms.insertText(editor, item.title);
+              console.log('[Unified Mention] 创建新页面:', item.title);
+              break;
+          }
+          
+          // 立即保存
+          flushPendingChanges();
+        }
+      }
+      
+      // 关闭搜索菜单
+      setShowSearchMenu(false);
+    } catch (err) {
+      console.error('[Unified Mention] 插入失败:', err);
+      setShowSearchMenu(false);
+    }
+  }, [editor, flushPendingChanges]);
   
   const handleClick = useCallback((event: React.MouseEvent) => {
     // 🔧 防止在编辑器为空时处理点击
@@ -2735,6 +2917,17 @@ export const PlanSlate: React.FC<PlanSlateProps> = ({
         return <TagElementComponent {...props} />;
       case 'dateMention':
         return <DateMentionElement {...props} />;
+      case 'event-mention':
+        return (
+          <EventMentionElement 
+            {...props} 
+            element={element}
+            onMentionClick={(eventId) => {
+              console.log('[PlanSlate] 点击事件 Mention:', eventId);
+              // TODO: 实现跳转逻辑（例如滚动到事件位置）
+            }}
+          />
+        );
       case 'timestamp-divider':
         return <TimestampDividerElement {...props} />;
       default:
@@ -2872,7 +3065,7 @@ export const PlanSlate: React.FC<PlanSlateProps> = ({
             />
             
             {/* 🆕 @提及选择器 - 直接使用 UnifiedDateTimePicker（绝对定位） */}
-            {showMentionPicker && mentionAnchorRef.current && (
+            {showMentionPicker && mentionType === 'time' && mentionAnchorRef.current && (
               <div
                 style={{
                   position: 'fixed',
@@ -2889,6 +3082,25 @@ export const PlanSlate: React.FC<PlanSlateProps> = ({
                   onSearchChange={handleMentionSearchChange} // 🆕 实时更新解析结果
                   onApplied={handleMentionSelect}
                   onClose={handleMentionClose}
+                />
+              </div>
+            )}
+            
+            {/* 🔍 Unified Mention 搜索菜单（事件/标签/AI搜索） */}
+            {showSearchMenu && mentionType === 'search' && mentionAnchorRef.current && (
+              <div
+                style={{
+                  position: 'fixed',
+                  top: `${mentionAnchorRef.current.style.top}`,
+                  left: `${mentionAnchorRef.current.style.left}`,
+                  zIndex: 10000,
+                }}
+              >
+                <UnifiedMentionMenu
+                  query={searchQuery}
+                  onSelect={handleSearchSelect}
+                  onClose={() => setShowSearchMenu(false)}
+                  context="editor"
                 />
               </div>
             )}

@@ -1,10 +1,14 @@
 /**
  * 标签服务 - 应用级别的标签管理系统
  * 独立于日历同步，为整个应用提供标签功能
+ * 
+ * ✅ v3.0: 迁移到 StorageManager（IndexedDB + SQLite）
  */
 
-import { PersistentStorage, PERSISTENT_OPTIONS } from '../utils/persistentStorage';
-import { STORAGE_KEYS } from '../constants/storage';
+import { storageManager } from './storage/StorageManager';
+import type { StorageTag } from './storage/types';
+import { generateTagId, isValidId } from '../utils/idGenerator';
+import { formatTimeForStorage } from '../utils/timeUtils';
 
 export interface HierarchicalTag {
   id: string;
@@ -17,6 +21,9 @@ export interface HierarchicalTag {
     calendarId: string;
     calendarName: string;
   };
+  createdAt?: string;
+  updatedAt?: string;
+  deletedAt?: string | null;
 }
 
 export interface FlatTag {
@@ -30,6 +37,9 @@ export interface FlatTag {
     calendarId: string;
     calendarName: string;
   };
+  createdAt?: string;
+  updatedAt?: string;
+  deletedAt?: string | null;
 }
 
 class TagServiceClass {
@@ -44,21 +54,41 @@ class TagServiceClass {
       return;
     }
 
+    console.log('🏷️ [TagService] Initializing with StorageManager...');
     
     try {
-      // 从持久化存储加载标签
-      const savedTags = PersistentStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS, PERSISTENT_OPTIONS.TAGS);
+      // ✅ v3.0: 从 StorageManager 加载标签
+      const result = await storageManager.queryTags({ limit: 1000 });
       
-      if (savedTags && Array.isArray(savedTags) && savedTags.length > 0) {
-        this.tags = savedTags;
-        // ✅ 重新扁平化以确保添加 level 字段（兼容旧数据）
-        this.flatTags = this.flattenTags(savedTags);
+      if (result.items.length > 0) {
+        console.log(`🏷️ [TagService] Loaded ${result.items.length} tags from StorageManager`);
+        
+        // 转换为 FlatTag 格式
+        this.flatTags = result.items.map(tag => ({
+          id: tag.id,
+          name: tag.name,
+          color: tag.color,
+          emoji: tag.emoji,
+          parentId: tag.parentId,
+          level: 0, // 将在 flattenTags 中计算
+          createdAt: tag.createdAt,
+          updatedAt: tag.updatedAt,
+          deletedAt: tag.deletedAt,
+        }));
+        
+        // 构建层级结构
+        this.tags = this.buildTagHierarchy(this.flatTags);
+        
+        // 重新计算 level
+        this.flatTags = this.flattenTags(this.tags);
       } else {
+        console.log('🏷️ [TagService] No tags found, creating defaults...');
         await this.createDefaultTags();
       }
       
       this.initialized = true;
       this.notifyListeners();
+      console.log('✅ [TagService] Initialized successfully');
     } catch (error) {
       console.error('❌ [TagService] Failed to initialize:', error);
       // 即使出错也要创建默认标签确保应用可用
@@ -70,35 +100,43 @@ class TagServiceClass {
 
   // 创建默认标签结构
   private async createDefaultTags(): Promise<void> {
+    const now = formatTimeForStorage(new Date());
+    
     const defaultTags: HierarchicalTag[] = [
       {
-        id: 'work',
+        id: generateTagId(),
         name: '工作',
         color: '#3498db',
+        createdAt: now,
+        updatedAt: now,
         children: [
-          { id: 'work-meeting', name: '会议', color: '#e74c3c' },
-          { id: 'work-project', name: '项目开发', color: '#f39c12' },
-          { id: 'work-planning', name: '规划设计', color: '#9b59b6' }
+          { id: generateTagId(), name: '会议', color: '#e74c3c', createdAt: now, updatedAt: now },
+          { id: generateTagId(), name: '项目开发', color: '#f39c12', createdAt: now, updatedAt: now },
+          { id: generateTagId(), name: '规划设计', color: '#9b59b6', createdAt: now, updatedAt: now }
         ]
       },
       {
-        id: 'personal',
+        id: generateTagId(),
         name: '个人',
         color: '#2ecc71',
+        createdAt: now,
+        updatedAt: now,
         children: [
-          { id: 'personal-study', name: '学习', color: '#1abc9c' },
-          { id: 'personal-exercise', name: '运动', color: '#e67e22' },
-          { id: 'personal-entertainment', name: '娱乐', color: '#e91e63' }
+          { id: generateTagId(), name: '学习', color: '#1abc9c', createdAt: now, updatedAt: now },
+          { id: generateTagId(), name: '运动', color: '#e67e22', createdAt: now, updatedAt: now },
+          { id: generateTagId(), name: '娱乐', color: '#e91e63', createdAt: now, updatedAt: now }
         ]
       },
       {
-        id: 'life',
+        id: generateTagId(),
         name: '生活',
         color: '#95a5a6',
+        createdAt: now,
+        updatedAt: now,
         children: [
-          { id: 'life-shopping', name: '购物', color: '#34495e' },
-          { id: 'life-healthcare', name: '医疗健康', color: '#16a085' },
-          { id: 'life-travel', name: '出行', color: '#2980b9' }
+          { id: generateTagId(), name: '购物', color: '#34495e', createdAt: now, updatedAt: now },
+          { id: generateTagId(), name: '医疗健康', color: '#16a085', createdAt: now, updatedAt: now },
+          { id: generateTagId(), name: '出行', color: '#2980b9', createdAt: now, updatedAt: now }
         ]
       }
     ];
@@ -107,14 +145,51 @@ class TagServiceClass {
     this.flatTags = this.flattenTags(defaultTags);
     await this.saveTags();
     
-    // 标记为已初始化
-    localStorage.setItem('remarkable-tags-initialized', 'true');
+    console.log('✅ [TagService] Created default tags with UUID IDs');
   }
 
-  // 保存标签到持久化存储
+  // 保存标签到 StorageManager
   private async saveTags(): Promise<void> {
     try {
-      PersistentStorage.setItem(STORAGE_KEYS.HIERARCHICAL_TAGS, this.tags, PERSISTENT_OPTIONS.TAGS);
+      console.log('💾 [TagService] Saving tags to StorageManager...');
+      
+      // 扁平化标签
+      const flatTags = this.flattenTags(this.tags);
+      
+      // 批量保存到 StorageManager
+      for (const tag of flatTags) {
+        // 生成 UUID ID（如果是旧 ID）
+        if (!isValidId(tag.id, 'tag')) {
+          const oldId = tag.id;
+          tag.id = generateTagId();
+          console.log(`🔄 [TagService] Migrated tag ID: ${oldId} → ${tag.id}`);
+        }
+        
+        const now = formatTimeForStorage(new Date());
+        
+        const storageTag: StorageTag = {
+          id: tag.id,
+          name: tag.name,
+          color: tag.color,
+          emoji: tag.emoji,
+          parentId: tag.parentId,
+          createdAt: tag.createdAt || now,
+          updatedAt: now,
+          deletedAt: null,
+        };
+        
+        try {
+          // 尝试获取现有标签
+          const existing = await storageManager.getTag(tag.id);
+          // 如果存在，更新
+          await storageManager.updateTag(tag.id, storageTag);
+        } catch {
+          // 如果不存在，创建
+          await storageManager.createTag(storageTag);
+        }
+      }
+      
+      console.log(`✅ [TagService] Saved ${flatTags.length} tags`);
     } catch (error) {
       console.error('❌ [TagService] Failed to save tags:', error);
     }
@@ -227,15 +302,18 @@ class TagServiceClass {
 
   // 获取所有标签（扁平结构）
   // ✅ [PERFORMANCE FIX] 直接返回内部引用，避免每次创建新数组
+  // ⚠️ v3.0: 移除同步加载逻辑，依赖 initialize() 异步加载
   getFlatTags(): FlatTag[] {
-    // 如果还没有初始化，尝试同步加载
-    if (!this.initialized || this.flatTags.length === 0) {
-      const savedTags = PersistentStorage.getItem(STORAGE_KEYS.HIERARCHICAL_TAGS, PERSISTENT_OPTIONS.TAGS);
-      if (savedTags && Array.isArray(savedTags) && savedTags.length > 0) {
-        this.tags = savedTags;
-        this.flatTags = this.flattenTags(savedTags);
-      }
+    // 如果还没有初始化，返回空数组并触发初始化
+    if (!this.initialized) {
+      console.warn('⚠️ [TagService] getFlatTags() called before initialization, returning empty array');
+      // 触发异步初始化（不阻塞）
+      this.initialize().catch(err => {
+        console.error('❌ [TagService] Failed to initialize:', err);
+      });
+      return [];
     }
+    
     return this.flatTags;
   }
 

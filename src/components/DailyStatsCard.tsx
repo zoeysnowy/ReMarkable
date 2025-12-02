@@ -29,13 +29,20 @@ export const DailyStatsCard: React.FC<DailyStatsCardProps> = ({
   const [refreshKey, setRefreshKey] = useState(0);
   
   // ✅ 自己维护 events state，从 EventService 初始化
-  const [events, setEvents] = useState<Event[]>(() => {
-    return EventService.getAllEvents();
-  });
+  const [events, setEvents] = useState<Event[]>([]);
+
+  // 异步加载初始事件数据
+  useEffect(() => {
+    const loadEvents = async () => {
+      const allEvents = await EventService.getAllEvents();
+      setEvents(allEvents);
+    };
+    loadEvents();
+  }, []);
 
   useEffect(() => {
     // ✅ 增量更新事件列表
-    const handleEventUpdated = (e: any) => {
+    const handleEventUpdated = async (e: any) => {
       const { eventId, isDeleted, isNewEvent } = e.detail || {};
       
       if (isDeleted) {
@@ -43,13 +50,13 @@ export const DailyStatsCard: React.FC<DailyStatsCardProps> = ({
         setEvents(prev => prev.filter(event => event.id !== eventId));
       } else if (isNewEvent) {
         // 增量添加
-        const newEvent = EventService.getEventById(eventId);
+        const newEvent = await EventService.getEventById(eventId);
         if (newEvent) {
           setEvents(prev => [...prev, newEvent]);
         }
       } else {
         // 增量更新
-        const updatedEvent = EventService.getEventById(eventId);
+        const updatedEvent = await EventService.getEventById(eventId);
         if (updatedEvent) {
           setEvents(prev => 
             prev.map(event => event.id === eventId ? updatedEvent : event)

@@ -2278,7 +2278,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       
       <div className={`time-calendar-container ${className}`} style={{ 
         height: '100%', 
-        padding: '4px 8px',
+        padding: '0', // 🔧 移除内边距，由 PageContainer 统一控制 8px 边距
         fontFamily: 'Microsoft YaHei, Arial, sans-serif',
         display: 'flex',
         flexDirection: 'column',
@@ -2740,7 +2740,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
             fontSize: '12px',
             color: getAdaptiveColors.textSecondary, // 🎨 自适应文字颜色
             flexShrink: 0,
-            marginTop: '4px', // 🔧 添加上边距，与日历主体保持 4px 间距
+            marginTop: '8px', // 🔧 统一间距为 8px
             backdropFilter: calendarOpacity < 1 ? 'blur(10px)' : 'none'
           }}>
             <span>

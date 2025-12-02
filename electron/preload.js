@@ -109,21 +109,59 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sqlite: {
     available: sqliteAvailableViaIPC,
     // 创建数据库连接
-    createDatabase: (dbPath, options) => ipcRenderer.invoke('sqlite:create-database', dbPath, options),
+    createDatabase: async (dbPath, options) => {
+      const result = await ipcRenderer.invoke('sqlite:create-database', dbPath, options);
+      if (!result.success) throw new Error(result.error);
+      return { success: true, dbId: result.dbId };
+    },
     // 执行 SQL
-    exec: (dbId, sql) => ipcRenderer.invoke('sqlite:exec', dbId, sql),
+    exec: async (dbId, sql) => {
+      const result = await ipcRenderer.invoke('sqlite:exec', dbId, sql);
+      if (!result.success) throw new Error(result.error);
+      return result;
+    },
     // 准备语句
-    prepare: (dbId, sql) => ipcRenderer.invoke('sqlite:prepare', dbId, sql),
+    prepare: async (dbId, sql) => {
+      const result = await ipcRenderer.invoke('sqlite:prepare', dbId, sql);
+      if (!result.success) throw new Error(result.error);
+      return result.stmtId; // 直接返回 stmtId
+    },
     // 运行语句
-    run: (stmtId, params) => ipcRenderer.invoke('sqlite:run', stmtId, params),
+    run: async (stmtId, params) => {
+      const result = await ipcRenderer.invoke('sqlite:run', stmtId, params);
+      if (!result.success) throw new Error(result.error);
+      return { changes: result.changes, lastInsertRowid: result.lastInsertRowid };
+    },
     // 查询单行
-    get: (stmtId, params) => ipcRenderer.invoke('sqlite:get', stmtId, params),
+    get: async (stmtId, params) => {
+      const result = await ipcRenderer.invoke('sqlite:get', stmtId, params);
+      if (!result.success) throw new Error(result.error);
+      return result.data; // 直接返回数据
+    },
     // 查询所有行
-    all: (stmtId, params) => ipcRenderer.invoke('sqlite:all', stmtId, params),
+    all: async (stmtId, params) => {
+      const result = await ipcRenderer.invoke('sqlite:all', stmtId, params);
+      if (!result.success) throw new Error(result.error);
+      return result.data; // 直接返回数据数组
+    },
     // Pragma 操作
-    pragma: (dbId, pragma) => ipcRenderer.invoke('sqlite:pragma', dbId, pragma),
+    pragma: async (dbId, pragma) => {
+      const result = await ipcRenderer.invoke('sqlite:pragma', dbId, pragma);
+      if (!result.success) throw new Error(result.error);
+      return result.data; // 直接返回 pragma 结果
+    },
     // 关闭数据库
-    close: (dbId) => ipcRenderer.invoke('sqlite:close', dbId),
+    close: async (dbId) => {
+      const result = await ipcRenderer.invoke('sqlite:close', dbId);
+      if (!result.success) throw new Error(result.error);
+      return result;
+    },
+    // 删除数据库文件（修复损坏的数据库）
+    deleteDatabase: async (dbPath) => {
+      const result = await ipcRenderer.invoke('sqlite:deleteDatabase', dbPath);
+      if (!result.success) throw new Error(result.error);
+      return result;
+    },
   },
   
   // Microsoft认证辅助
@@ -138,6 +176,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 开机自启动设置
   setLoginItemSettings: (settings) => ipcRenderer.invoke('set-login-item-settings', settings),
   getLoginItemSettings: () => ipcRenderer.invoke('get-login-item-settings'),
+  
+  // 🗑️ 清理存储数据（包括IndexedDB）
+  clearStorageData: () => ipcRenderer.invoke('clear-storage-data'),
   
   // 🆕 通用 invoke 方法（用于动态调用 IPC）
   invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args)

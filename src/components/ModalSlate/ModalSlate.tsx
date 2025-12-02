@@ -691,7 +691,7 @@ export const ModalSlate = forwardRef<ModalSlateRef, ModalSlateProps>((
                   left: '8px',
                   top: '-28px', // 向上延伸到 timestamp 文字顶部（padding-top 8px + 文字行高约 20px）
                   bottom: isLastContentParagraph ? '-8px' : '0', // 最后段落向下延伸一点，其他段落到底部
-                  width: '2px',
+                  width: '1px', // 改为 1px，比 event timeline 更细
                   background: '#e5e7eb',
                   zIndex: 0,
                   pointerEvents: 'none' // 防止 preline 拦截点击事件

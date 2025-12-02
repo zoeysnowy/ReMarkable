@@ -48,20 +48,25 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
   // ✅ 从 EventService 加载所有事件（只在组件挂载时执行一次）
   useEffect(() => {
     // 初始加载：只执行一次
-    const initialEvents = EventService.getAllEvents();
-    console.log('🔍 [UpcomingEventsPanel] 初始加载事件缓存:', {
-      count: initialEvents.length
-    });
-    setAllEventsCache(initialEvents);
+    const loadInitialEvents = async () => {
+      const initialEvents = await EventService.getAllEvents();
+      console.log('🔍 [UpcomingEventsPanel] 初始加载事件缓存:', {
+        count: initialEvents.length
+      });
+      setAllEventsCache(initialEvents);
+    };
+    
+    loadInitialEvents();
 
     // ✅ 监听 eventsUpdated 增量更新缓存
-    const handleEventsUpdated = (e: any) => {
+    const handleEventsUpdated = async (e: any) => {
       const { eventId, isNewEvent, isDeleted } = e.detail || {};
       
       if (!eventId) {
         // 没有 eventId，fallback 到全量重载
         console.log('[UpcomingEventsPanel] 无 eventId，全量重载缓存');
-        setAllEventsCache(EventService.getAllEvents());
+        const allEvents = await EventService.getAllEvents();
+        setAllEventsCache(allEvents);
         return;
       }
       
@@ -72,28 +77,34 @@ const UpcomingEventsPanel: React.FC<UpcomingEventsPanelProps> = ({
       });
       
       // ✅ 增量更新缓存
-      setAllEventsCache(prev => {
-        const updatedEvent = EventService.getEventById(eventId);
+      if (isDeleted) {
+        // 事件被删除
+        setAllEventsCache(prev => prev.filter(e => e.id !== eventId));
+      } else {
+        // 获取最新的事件数据
+        const updatedEvent = await EventService.getEventById(eventId);
         
-        if (isDeleted || !updatedEvent) {
-          // 事件被删除
-          return prev.filter(e => e.id !== eventId);
+        if (!updatedEvent) {
+          // 事件不存在，从缓存中移除
+          setAllEventsCache(prev => prev.filter(e => e.id !== eventId));
         } else if (isNewEvent) {
           // 新事件，添加到列表
-          return [...prev, updatedEvent];
+          setAllEventsCache(prev => [...prev, updatedEvent]);
         } else {
           // 更新现有事件
-          const existingIndex = prev.findIndex(e => e.id === eventId);
-          if (existingIndex >= 0) {
-            const updated = [...prev];
-            updated[existingIndex] = updatedEvent;
-            return updated;
-          } else {
-            // 事件不在缓存中，添加
-            return [...prev, updatedEvent];
-          }
+          setAllEventsCache(prev => {
+            const existingIndex = prev.findIndex(e => e.id === eventId);
+            if (existingIndex >= 0) {
+              const updated = [...prev];
+              updated[existingIndex] = updatedEvent;
+              return updated;
+            } else {
+              // 事件不在缓存中，添加
+              return [...prev, updatedEvent];
+            }
+          });
         }
-      });
+      }
     };
 
     window.addEventListener('eventsUpdated', handleEventsUpdated as EventListener);

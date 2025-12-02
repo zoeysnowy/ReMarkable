@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EventTree 测试 - 堆叠卡片交互</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f9fafb;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 700;
+      color: #1f2937;
+      margin-bottom: 12px;
+    }
+
+    .description {
+      font-size: 16px;
+      color: #6b7280;
+      margin-bottom: 40px;
+    }
+
+    .demo-section {
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      margin-bottom: 40px;
+    }
+
+    .demo-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: #1f2937;
+      margin-bottom: 20px;
+    }
+
+    .demo-content {
+      min-height: 400px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f9fafb;
+      border-radius: 8px;
+      padding: 40px;
+    }
+
+    .instructions {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+    }
+
+    .instructions h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1e40af;
+      margin-bottom: 12px;
+    }
+
+    .instructions ul {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .instructions li {
+      font-size: 14px;
+      color: #1e40af;
+      margin-bottom: 8px;
+      padding-left: 20px;
+      position: relative;
+    }
+
+    .instructions li::before {
+      content: '✓';
+      position: absolute;
+      left: 0;
+      color: #3b82f6;
+      font-weight: bold;
+    }
+
+    .status {
+      background: #fef3c7;
+      border: 1px solid #fcd34d;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 20px;
+      text-align: center;
+    }
+
+    .status p {
+      font-size: 14px;
+      color: #92400e;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🌲 EventTree 测试页面</h1>
+    <p class="description">
+      测试双向链接堆叠卡片交互和悬停展开动画
+    </p>
+
+    <!-- Demo 1: EventTree Canvas -->
+    <div class="demo-section">
+      <h2 class="demo-title">EventTree Canvas 预览</h2>
+      <div class="demo-content">
+        <div id="eventtree-root" style="width: 100%; height: 100%;"></div>
+      </div>
+
+      <div class="instructions">
+        <h3>📋 测试步骤</h3>
+        <ul>
+          <li>将鼠标悬停在事件节点上</li>
+          <li>观察堆叠的链接卡片从收纳态扇形展开</li>
+          <li>点击链接卡片查看对应事件</li>
+          <li>拖拽节点调整布局</li>
+          <li>使用缩放控制器调整视图</li>
+        </ul>
+      </div>
+
+      <div class="status">
+        <p>⚠️ 此页面需要集成到 React 应用中才能正常运行</p>
+      </div>
+    </div>
+
+    <!-- Demo 2: 使用说明 -->
+    <div class="demo-section">
+      <h2 class="demo-title">🔧 集成指南</h2>
+      
+      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">1. 基础使用</h3>
+      <pre style="background: #1f2937; color: #e5e7eb; padding: 16px; border-radius: 6px; overflow-x: auto; font-size: 13px; line-height: 1.6; margin-bottom: 20px;"><code>import { EventTreeCanvas } from './components/EventTree/EventTreeCanvas';
+import { EventService } from './services/EventService';
+
+function MyComponent() {
+  const events = EventService.getAllEvents();
+  
+  return (
+    &lt;EventTreeCanvas
+      rootEventId="event-123"
+      events={events}
+      onEventClick={(event) =&gt; {
+        console.log('点击事件:', event);
+      }}
+      onCheckboxChange={(event, isCompleted) =&gt; {
+        EventService.updateEvent(event.id, { isCompleted });
+      }}
+    /&gt;
+  );
+}</code></pre>
+
+      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">2. 在 EventEditModal 中集成</h3>
+      <pre style="background: #1f2937; color: #e5e7eb; padding: 16px; border-radius: 6px; overflow-x: auto; font-size: 13px; line-height: 1.6; margin-bottom: 20px;"><code>// 在 EventEditModal 的关联区域添加 EventTree 按钮
+&lt;button onClick={() => setShowEventTree(true)}&gt;
+  🌲 查看事件树
+&lt;/button&gt;
+
+{showEventTree && (
+  &lt;EventTreeCanvas
+    rootEventId={event.id}
+    events={allEvents}
+    onEventClick={handleEventClick}
+  /&gt;
+)}</code></pre>
+
+      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">3. 核心特性</h3>
+      <ul style="list-style: none; padding-left: 0;">
+        <li style="margin-bottom: 12px; padding-left: 24px; position: relative;">
+          <strong style="color: #3b82f6; position: absolute; left: 0;">🦴</strong>
+          <strong>刚性骨架 (Rigid Bone)</strong><br>
+          <span style="color: #6b7280; font-size: 14px;">parentEventId/childEventIds 占据画布空间，显示为连线</span>
+        </li>
+        <li style="margin-bottom: 12px; padding-left: 24px; position: relative;">
+          <strong style="color: #ef4444; position: absolute; left: 0;">🩸</strong>
+          <strong>柔性血管 (Flexible Vessels)</strong><br>
+          <span style="color: #6b7280; font-size: 14px;">linkedEventIds 堆叠在背后，悬停时扇形展开</span>
+        </li>
+        <li style="margin-bottom: 12px; padding-left: 24px; position: relative;">
+          <strong style="color: #10b981; position: absolute; left: 0;">🔍</strong>
+          <strong>系统事件过滤</strong><br>
+          <span style="color: #6b7280; font-size: 14px;">自动过滤 isTimer/isOutsideApp/isTimeLog 事件</span>
+        </li>
+        <li style="margin-bottom: 12px; padding-left: 24px; position: relative;">
+          <strong style="color: #f59e0b; position: absolute; left: 0;">✨</strong>
+          <strong>Framer Motion 动画</strong><br>
+          <span style="color: #6b7280; font-size: 14px;">流畅的 spring 弹簧动画，收纳 ↔ 展开状态切换</span>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Demo 3: 架构说明 -->
+    <div class="demo-section">
+      <h2 class="demo-title">🏗️ 架构概览</h2>
+      
+      <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+        <h4 style="font-size: 14px; font-weight: 600; color: #6b7280; margin-bottom: 12px;">组件结构</h4>
+        <pre style="font-size: 13px; line-height: 1.8; color: #374151;">EventTreeCanvas
+├─ ReactFlow (画布容器)
+│  ├─ CustomEventNode (自定义节点)
+│  │  ├─ LinkedCard × N (堆叠卡片)
+│  │  └─ EventNodeContent (主节点)
+│  ├─ Controls (缩放/平移)
+│  ├─ MiniMap (小地图)
+│  └─ Background (网格背景)
+└─ EventTree.css (样式)</pre>
+      </div>
+
+      <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px;">
+        <h4 style="font-size: 14px; font-weight: 600; color: #6b7280; margin-bottom: 12px;">数据流</h4>
+        <pre style="font-size: 13px; line-height: 1.8; color: #374151;">1. EventService.getAllEvents() → 获取所有事件
+2. EventService.shouldShowInEventTree() → 过滤系统事件
+3. EventService.getLinkedEvents() → 获取双向链接
+4. 构建 React Flow 节点和边
+5. 渲染 CustomEventNode + LinkedCard
+6. 用户交互 → onEventClick / onCheckboxChange</pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 模拟数据加载
+    document.addEventListener('DOMContentLoaded', () => {
+      const root = document.getElementById('eventtree-root');
+      if (root) {
+        root.innerHTML = `
+          <div style="text-align: center; color: #9ca3af; font-size: 14px;">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 16px;">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <p><strong>React 组件需要在应用中渲染</strong></p>
+            <p style="margin-top: 8px; opacity: 0.7;">请将 EventTreeCanvas 组件集成到您的 React 应用</p>
+          </div>
+        `;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -7,13 +7,34 @@
  * 运行方式：
  * 1. 在 Electron 环境启动应用：npm run e
  * 2. 打开开发者工具控制台
- * 3. 运行：await testSQLiteModule()
+ * 3. 运行：testSQLiteModule()
  */
+
+/**
+ * 快速重建损坏的 SQLite 数据库
+ */
+async function rebuildSQLiteDatabase() {
+  console.log('🔄 Rebuilding SQLite database...');
+  
+  if (typeof window === 'undefined' || !(window as any).electronAPI) {
+    console.error('❌ Not in Electron environment');
+    return;
+  }
+  
+  try {
+    const { sqliteService } = await import('../services/storage/SQLiteService');
+    await sqliteService.rebuildDatabase();
+    console.log('✅ Database rebuilt successfully');
+    console.log('💡 Please run testCRUDIntegration() again');
+  } catch (error) {
+    console.error('❌ Failed to rebuild database:', error);
+  }
+}
 
 /**
  * 测试 SQLite 存储模块
  */
-export async function testSQLiteModule() {
+async function testSQLiteModule() {
   console.log('🧪 SQLite Storage Module Test Started');
   console.log('═══════════════════════════════════════');
 
@@ -27,6 +48,16 @@ export async function testSQLiteModule() {
   try {
     // 动态导入 SQLiteService（仅在 Electron 环境）
     const { sqliteService } = await import('../services/storage/SQLiteService');
+
+    // Test 0: 清理旧数据
+    console.log('\n0️⃣  Cleaning up old test data...');
+    try {
+      await sqliteService.initialize();
+      await sqliteService.clearAll();
+      console.log('✅ Old data cleared');
+    } catch (e) {
+      console.log('ℹ️  No old data to clear');
+    }
 
     // Test 1: 初始化
     console.log('\n1️⃣  Testing SQLite initialization...');
@@ -64,6 +95,7 @@ export async function testSQLiteModule() {
       canEdit: true,
       canDelete: true,
       canShare: false,
+      isDefault: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -76,7 +108,7 @@ export async function testSQLiteModule() {
     console.log('\n4️⃣  Testing Event CRUD...');
     const testEvent = {
       id: 'evt-test-001',
-      title: 'SQLite Test Event',
+      title: { simpleTitle: 'SQLite Test Event' },
       startTime: new Date().toISOString(),
       endTime: new Date(Date.now() + 3600000).toISOString(),
       isAllDay: false,
@@ -99,7 +131,7 @@ export async function testSQLiteModule() {
     console.log('\n5️⃣  Testing Batch Create...');
     const batchEvents = Array.from({ length: 5 }, (_, i) => ({
       id: `evt-batch-${i + 1}`,
-      title: `Batch Event ${i + 1}`,
+      title: { simpleTitle: `Batch Event ${i + 1}` },
       startTime: new Date(Date.now() + i * 3600000).toISOString(),
       endTime: new Date(Date.now() + (i + 1) * 3600000).toISOString(),
       isAllDay: false,
@@ -168,15 +200,20 @@ export async function testSQLiteModule() {
 }
 
 // 在开发环境自动暴露到 window
-if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
+if (typeof window !== 'undefined') {
   (window as any).testSQLiteModule = testSQLiteModule;
+  (window as any).rebuildSQLiteDatabase = rebuildSQLiteDatabase;
   
   // 检查 Electron 环境
   if ((window as any).electronAPI) {
     console.log('🧪 SQLite Test Module loaded (Electron environment)');
-    console.log('   Run: await testSQLiteModule()');
+    console.log('   Run: testSQLiteModule()');
+    console.log('   🔧 Rebuild corrupted DB: rebuildSQLiteDatabase()');
   } else {
     console.log('ℹ️  SQLite Test Module loaded but not in Electron environment');
     console.log('   SQLite tests require Electron. Run: npm run e');
   }
 }
+
+// 导出供其他模块使用
+export { testSQLiteModule };

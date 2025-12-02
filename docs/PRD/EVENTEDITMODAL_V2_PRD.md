@@ -7319,34 +7319,387 @@ function getRecentCompletionStats(): { count: number; daysAgo: number } {
 
 **显示条件**:
 ```typescript
-function shouldShowRelatedTasks(event: Event): boolean {
-  return !!(event.parentTaskId || (event.childTaskCount && event.childTaskCount > 0));
+function shouldShowRelatedSection(event: Event): boolean {
+  // 显示条件：有父事件、有子事件、或有双向链接
+  return !!(
+    event.parentEventId || 
+    (event.childEventIds && event.childEventIds.length > 0) ||
+    (event.linkedEventIds && event.linkedEventIds.length > 0) ||
+    (event.backlinks && event.backlinks.length > 0)
+  );
 }
 ```
 
 ---
 
-#### 5.1 上级任务与关联区域
+#### 5.1 EventTree 数据架构（v2.17.0 更新）
+
+**🎯 核心设计理念**：
+- **刚性骨架（Hierarchy Bone）**：父子关系 (`parentEventId` / `childEventIds`) 占据画布空间，用 line + link 标记显示
+- **柔性血管（Bidirectional Links）**：双向链接 (`linkedEventIds` / `backlinks`) 不占画布空间，堆叠在主节点背后，Hover 展开
 
 **数据来源**: 
 ```typescript
-event.parentTaskId?: string          // 父任务 ID
-event.childTaskCount?: number        // 🆕 子任务总数
-event.childTaskCompletedCount?: number  // 🆕 已完成子任务数
+// ========== 刚性骨架：父子层级关系 ==========
+event.parentEventId?: string;        // 父事件 ID（所有类型子事件都用此字段）
+event.childEventIds?: string[];      // 子事件 ID 列表（包括 Timer、用户子任务、文档等）
+
+// ========== 柔性血管：双向链接 ==========
+event.linkedEventIds?: string[];     // 用户主动创建的链接（通过 @mention）
+event.backlinks?: string[];          // 自动计算的反向链接（哪些事件链接了我）
+
+// ========== 弃用字段（向后兼容） ==========
+event.parentTaskId?: string;         // @deprecated 使用 parentEventId 替代
+event.childTaskCount?: number;       // @deprecated 使用 childEventIds.length 替代
+event.childTaskCompletedCount?: number; // @deprecated 动态计算
 ```
+
+**字段说明**:
+
+| 字段 | 类型 | 用途 | 示例 |
+|------|------|------|------|
+| `parentEventId` | `string?` | 父事件 ID（刚性骨架） | `'event-parent-001'` |
+| `childEventIds` | `string[]?` | 子事件 ID 列表（刚性骨架） | `['event-child-001', 'timer-002']` |
+| `linkedEventIds` | `string[]?` | 双向链接 ID 列表（柔性血管） | `['event-ref-001', 'doc-003']` |
+| `backlinks` | `string[]?` | 反向链接（自动计算，只读） | `['event-mention-005']` |
+
+**EventTree 节点筛选规则**:
+```typescript
+/**
+ * 判断事件是否应该显示在 EventTree 中
+ * 排除系统自动生成的事件类型
+ */
+function shouldShowInEventTree(event: Event): boolean {
+  // 排除系统事件
+  if (event.isTimer) return false;         // Timer 子事件
+  if (event.isOutsideApp) return false;    // 外部应用数据（听歌、录屏等）
+  if (event.isTimeLog) return false;       // 纯系统时间日志
+  
+  // 显示所有用户创建的事件
+  return true; // Task、文档、Plan 事件、TimeCalendar 事件等
+}
+```
+
+**支持的嵌套类型**（无限制）:
+- ✅ Task ← Task（任务分解）
+- ✅ 文档 ← 文档（文档章节）
+- ✅ Task ← 文档（任务相关文档）
+- ✅ 文档 ← Task（文档相关子任务）
+- ✅ Event ← Event（任意事件嵌套）
+
+**不支持的嵌套类型**（系统事件）:
+- ❌ Timer 子事件（`isTimer = true`）
+- ❌ OutsideApp 事件（`isOutsideApp = true`）
+- ❌ 纯系统 TimeLog（`isTimeLog = true`）
+
+---
+
+#### 5.2 双向链接（Bidirectional Links）- 堆叠卡片设计
+
+**🎯 设计理念：Vessels as Stacks**
+
+> "收纳与展开"：双向链接的节点不占用画布空间，而是像"附件"或"扑克牌"一样藏在主节点背后。只有当你关注（Hover）这个节点时，它们才滑出来。
+
+**创建方式**:
+```typescript
+// 用户在 EventLog 中输入 @mention
+// UnifiedMention 组件自动创建双向链接
+
+// 示例：在事件 A 的 EventLog 中输入：
+// "参考 @Project Ace 的设计方案"
+
+// 结果：
+eventA.linkedEventIds = ['project-ace-id'];  // 事件 A 链接了 Project Ace
+projectAce.backlinks = ['event-a-id'];       // Project Ace 被事件 A 链接
+```
+
+**显示状态**:
+
+1. **收纳态（Default State）**:
+   - 用户只能看到主节点（line + link 标记）
+   - 右上角显示链接数量指示器（如 `🔗 3`）
+   - 链接卡片被缩放、旋转并堆叠在主节点背后
+   - 视觉效果：像一叠整理好的文件
+
+2. **展开态（Hover State）**:
+   - 鼠标悬浮主节点 → 链接卡片扇形滑出（Fan-out）
+   - 每张卡片间隔 180px（横向平铺）
+   - 可直接点击链接卡片跳转到对应事件
+
+**UI 结构**:
+```tsx
+// CustomEventNode.tsx - React Flow 自定义节点
+interface EventNodeData {
+  event: Event;                  // 主事件数据
+  linkedEvents: Event[];         // 双向链接的事件（堆叠在背后）
+}
+
+function CustomEventNode({ data }: NodeProps<EventNodeData>) {
+  const [isHovered, setIsHovered] = useState(false);
+  
+  return (
+    <div 
+      className="relative"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {/* 1. 堆叠的双向链接卡片（绝对定位，藏在主节点后） */}
+      <div className="absolute top-0 left-0 pointer-events-none">
+        {data.linkedEvents.map((linkedEvent, index) => (
+          <LinkedCard 
+            key={linkedEvent.id}
+            event={linkedEvent}
+            index={index}
+            isHovered={isHovered}
+          />
+        ))}
+      </div>
+      
+      {/* 2. 主节点（line + link 标记，不是卡片） */}
+      <div className="relative z-10 flex items-center gap-2 p-2 bg-white rounded">
+        {/* Checkbox（如果是 Task） */}
+        {data.event.isTask && (
+          <input type="checkbox" checked={data.event.isCompleted} />
+        )}
+        
+        {/* Emoji */}
+        {data.event.emoji && <span>{data.event.emoji}</span>}
+        
+        {/* 标题 */}
+        <span className="font-medium">{data.event.title}</span>
+        
+        {/* 链接指示器（未展开时显示数量） */}
+        {data.linkedEvents.length > 0 && (
+          <div className={`ml-auto flex items-center gap-1 text-xs ${isHovered ? 'opacity-0' : 'opacity-100'}`}>
+            <LinkIcon size={12} />
+            <span>{data.linkedEvents.length}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+**堆叠卡片动画**（Framer Motion）:
+```tsx
+function LinkedCard({ event, index, isHovered }: LinkedCardProps) {
+  // 收纳态：缩放 + 旋转 + 堆叠
+  const xOffset = isHovered ? (index + 1) * 180 : (index + 1) * 4;
+  const yOffset = isHovered ? 0 : (index + 1) * 4;
+  const rotate = isHovered ? 0 : (index + 1) * 2;
+  const scale = isHovered ? 1 : 1 - (index * 0.05);
+  const opacity = isHovered ? 1 : 1 - (index * 0.15);
+  
+  return (
+    <motion.div
+      animate={{ x: xOffset, y: yOffset, rotate, scale, opacity }}
+      transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+      className="absolute w-48 h-20 bg-blue-50 rounded-lg shadow-lg p-3 cursor-pointer"
+      onClick={() => openEventEditModal(event)}
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <LinkIcon size={12} className="opacity-50" />
+        <span className="text-xs font-bold opacity-70">LINKED</span>
+      </div>
+      <h4 className="text-sm font-semibold line-clamp-2">{event.title}</h4>
+    </motion.div>
+  );
+}
+```
+
+**样式定义**:
+```css
+/* ========== 堆叠卡片容器 ========== */
+.linked-cards-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none; /* 收纳态不可点击 */
+}
+
+.linked-cards-container.expanded {
+  pointer-events: auto; /* 展开态可点击 */
+}
+
+/* ========== 单张链接卡片 ========== */
+.linked-card {
+  position: absolute;
+  width: 192px;
+  height: 80px;
+  padding: 12px;
+  background: rgba(239, 246, 255, 0.95);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transform-origin: bottom left;
+}
+
+.linked-card:hover {
+  background: rgba(219, 234, 254, 1);
+  border-color: rgba(59, 130, 246, 0.4);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
+}
+
+.linked-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  opacity: 0.7;
+}
+
+.linked-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e40af;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+```
+
+---
+
+#### 5.3 EventTree 入口与显示位置
+
+**入口 1：EventEditModal 关联区域**
+
+```tsx
+// 在 EventEditModal 的【中 Section】下方显示
+<div className="event-tree-section">
+  <div className="section-header">
+    <img src={LinkColorIcon} alt="关联" className="icon-link" />
+    <span className="section-title">关联事项</span>
+    
+    {/* Pin 按钮 */}
+    <button 
+      className="pin-btn"
+      onClick={() => pinEventTree(event.id)}
+      title="固定到侧边栏"
+    >
+      📌
+    </button>
+    
+    {/* 展开/收起按钮 */}
+    <button 
+      className="toggle-btn"
+      onClick={() => setTreeExpanded(!treeExpanded)}
+    >
+      {treeExpanded ? '▲' : '▼'}
+    </button>
+  </div>
+  
+  {/* EventTree 内容（向下展开） */}
+  {treeExpanded && (
+    <EventTreeViewer 
+      rootEventId={event.id}
+      showLinkedCards={true}  // 显示双向链接堆叠卡片
+    />
+  )}
+</div>
+```
+
+**入口 2：ContentPanel 侧边栏（TimeLog / Plan 页面）**
+
+```tsx
+// 左侧侧边栏下方，与标签树同级
+<Tabs defaultValue="recent">
+  <TabsList>
+    <TabsTrigger value="recent">事项</TabsTrigger>
+    <TabsTrigger value="favorite">收藏</TabsTrigger>
+  </TabsList>
+  
+  {/* 事项 Tab：显示最近活跃的 EventTree */}
+  <TabsContent value="recent">
+    <div className="event-tree-list">
+      {recentEventTrees.map(tree => (
+        <EventTreeItem 
+          key={tree.rootEventId}
+          rootEvent={tree.rootEvent}
+          lastActiveTime={tree.lastActiveTime}
+          onClick={() => openEventTreePanel(tree.rootEventId)}
+        />
+      ))}
+    </div>
+  </TabsContent>
+  
+  {/* 收藏 Tab：显示用户收藏的 EventTree */}
+  <TabsContent value="favorite">
+    <div className="event-tree-list">
+      {favoriteEventTrees.map(tree => (
+        <EventTreeItem 
+          key={tree.rootEventId}
+          rootEvent={tree.rootEvent}
+          isPinned={true}
+          onClick={() => openEventTreePanel(tree.rootEventId)}
+        />
+      ))}
+    </div>
+  </TabsContent>
+</Tabs>
+```
+
+**EventTreeItem 显示样式**:
+```tsx
+function EventTreeItem({ rootEvent, lastActiveTime, isPinned, onClick }) {
+  return (
+    <div 
+      className="event-tree-item"
+      onClick={onClick}
+    >
+      {/* Emoji + 标题 */}
+      <div className="tree-header">
+        {rootEvent.emoji && <span className="tree-emoji">{rootEvent.emoji}</span>}
+        <span className="tree-title">{rootEvent.title}</span>
+      </div>
+      
+      {/* 子事件数量 + 最后活跃时间 */}
+      <div className="tree-meta">
+        <span className="child-count">
+          {rootEvent.childEventIds?.length || 0} 个子事项
+        </span>
+        {lastActiveTime && (
+          <span className="last-active">
+            {formatRelativeTime(lastActiveTime)}
+          </span>
+        )}
+      </div>
+      
+      {/* Pin 状态 */}
+      {isPinned && <span className="pin-badge">📌</span>}
+    </div>
+  );
+}
+```
+
+---
+
+#### 5.4 刚性骨架显示逻辑（v2.17.0）
 
 **显示逻辑**:
 ```typescript
 import { LinkColorIcon } from '@/assets/icons';
 
-function renderParentTask(event: Event): ReactNode {
-  if (!event.parentTaskId) return null;
+function renderEventTreeSection(event: Event): ReactNode {
+  if (!shouldShowRelatedSection(event)) return null;
   
-  const parentEvent = EventService.getEventById(event.parentTaskId);
-  if (!parentEvent) return null;
+  // 🆕 v2.17.0: 使用新的父子字段
+  const parentEvent = event.parentEventId 
+    ? EventService.getEventById(event.parentEventId)
+    : null;
   
-  const progress = event.childTaskCount > 0
-    ? `${event.childTaskCompletedCount}/${event.childTaskCount}`
+  // 过滤出可显示的子事件（排除系统事件）
+  const visibleChildEvents = (event.childEventIds || [])
+    .map(id => EventService.getEventById(id))
+    .filter(child => child && shouldShowInEventTree(child));
+  
+  const progress = visibleChildEvents.length > 0
+    ? `${visibleChildEvents.filter(e => e.isCompleted).length}/${visibleChildEvents.length}`
     : '';
   
   // 🆕 展开/收缩状态（默认展开）
@@ -8929,35 +9282,65 @@ interface Event {
   isCompleted?: boolean;
   
   /**
-   * 父任务 ID
+   * @deprecated 父任务 ID（使用 parentEventId 替代）
    * 用于显示"上级任务"链接
    */
   parentTaskId?: string;
   
   /**
-   * 🆕 子任务总数
+   * @deprecated 子任务总数（使用 childEventIds.length 替代）
    * 多层任务嵌套时可以累加
    */
   childTaskCount?: number;
   
   /**
-   * 🆕 已完成的子任务数量
+   * @deprecated 已完成的子任务数量（动态计算）
    * 用于计算进度（如 "5/7"）
    */
   childTaskCompletedCount?: number;
   
   /**
-   * 🆕 Timer 子事件列表
-   * 非 Timer 创建的事件可以被多次计时，每次计时生成一个 Timer 子事件
-   * Timer 子事件的日志会合并显示在父事件的 Slate 编辑区
-   */
-  timerChildEvents?: TimerChildEvent[];
-  
-  /**
-   * 🆕 父事件 ID（用于 Timer 子事件）
-   * Timer 子事件通过此字段关联到父事件
+   * 🆕 v2.17.0 父事件 ID（刚性骨架）
+   * 所有类型子事件都用此字段：Task、文档、Timer、TimeLog、OutsideApp
+   * 替代旧的 parentTaskId 字段
    */
   parentEventId?: string;
+  
+  /**
+   * 🆕 v2.17.0 子事件 ID 列表（刚性骨架）
+   * 包括所有类型子事件：Task、文档、Timer、TimeLog、OutsideApp
+   * 
+   * 注意：EventTree 显示时会过滤掉系统事件（isTimer/isOutsideApp/isTimeLog）
+   * 只显示用户创建的 Task 和文档
+   */
+  childEventIds?: string[];
+  
+  /**
+   * 🆕 v2.17.0 双向链接 ID 列表（柔性血管）
+   * 用户通过 @mention 创建的链接关系
+   * 不占用 EventTree 画布空间，堆叠在主节点背后，Hover 展开
+   * 
+   * 创建方式：
+   * - 在 EventLog 中输入 `@事件名称`
+   * - UnifiedMention 组件自动创建双向链接
+   * 
+   * 语义：
+   * - 目前不区分关系类型（依赖、参考、相关等）
+   * - 未来可通过 AI 自动推断关系语义
+   */
+  linkedEventIds?: string[];
+  
+  /**
+   * 🆕 v2.17.0 反向链接（自动计算，只读）
+   * 记录哪些事件 mention 了当前事件
+   * 用于"图谱视图"和"被引用查询"
+   * 
+   * 计算逻辑：
+   * - 每次保存事件时自动更新
+   * - 遍历所有事件的 linkedEventIds
+   * - 如果包含当前事件 ID，则添加到 backlinks
+   */
+  backlinks?: string[];
 }
 
 /**

@@ -170,6 +170,58 @@ export function insertDateMention(
 }
 
 /**
+ * 插入 EventMention 元素（事件引用）
+ */
+export function insertEventMention(
+  editor: Editor,
+  eventId: string,
+  eventTitle: string
+): boolean {
+  try {
+    const eventMentionNode = {
+      type: 'event-mention',
+      eventId,
+      eventTitle,
+      children: [{ text: '' }],
+    };
+    
+    console.log('[insertEventMention] 创建 EventMention 节点', {
+      eventId,
+      eventTitle,
+      fullNode: eventMentionNode
+    });
+    
+    // 🔧 只在没有选区时才设置焦点
+    if (!editor.selection) {
+      ReactEditor.focus(editor as ReactEditor);
+    }
+    
+    // 如果此时仍然没有 selection，说明编辑器状态异常，直接返回
+    if (!editor.selection) {
+      console.warn('[insertEventMention] No selection after focus, aborting');
+      return false;
+    }
+    
+    Transforms.insertNodes(editor, eventMentionNode as any);
+    
+    // 插入空格
+    Transforms.insertText(editor, ' ');
+    
+    // 🔧 确保插入后编辑器保持焦点
+    setTimeout(() => {
+      if (!ReactEditor.isFocused(editor as ReactEditor)) {
+        ReactEditor.focus(editor as ReactEditor);
+      }
+    }, 10);
+    
+    return true;
+  } catch (err) {
+    console.error('[insertEventMention] Failed:', err);
+    return false;
+  }
+}
+
+/**
  * 将 Slate fragment 转换为 HTML（内部使用）
  */
 function slateFragmentToHtml(fragment: (TextNode | TagNode | DateMentionNode)[]): string {

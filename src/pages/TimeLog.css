@@ -11,7 +11,7 @@
   background: #FAFAFA;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', 'Segoe UI', sans-serif;
   overflow: hidden;
-  gap: 20px;
+  gap: 8px; /* Reduced from 16px */
 }
 
 /* ========================================
@@ -22,7 +22,7 @@
   flex: 1;
   background: white;
   border-radius: 20px; /* Figma: 20px */
-  padding: 24px 40px;
+  padding: 16px 16px; /* Reduced from 20px 24px */
   margin: 0;
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.1); /* Figma shadow */
   display: flex;
@@ -30,12 +30,19 @@
   overflow: hidden;
 }
 
+/* 为右侧悬浮玻璃栏腾出视觉与交互空间（仅在宽屏显示栏时应用） */
+@media (min-width: 1101px) {
+  .timelog-main-card {
+    margin-right: 64px; /* 48px按钮宽度 + 左右各8px间距 */
+  }
+}
+
 /* ========================================
    标题区
    ======================================== */
 
 .timelog-header-section {
-  margin-bottom: 20px;
+  margin-bottom: 16px; /* Reduced from 20px */
   flex-shrink: 0;
 }
 
@@ -67,7 +74,7 @@
    ======================================== */
 
 .timelog-date-display {
-  margin: 12px 0 24px 0;
+  margin: 8px 0 16px 0; /* Reduced from 12px 0 24px 0 */
   flex-shrink: 0;
 }
 
@@ -87,8 +94,8 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-right: 10px;
-  padding-left: 10px; /* Space for timeline */
+  padding-right: 0; /* Reduced from 10px */
+  padding-left: 0; /* Reduced from 10px */
 }
 
 /* ========================================
@@ -97,13 +104,49 @@
 
 .timeline-event-wrapper {
   display: flex;
-  gap: 16px;
-  padding: 16px 0;
+  flex-direction: column;
+  padding: 12px 0; /* Reduced from 16px 0 */
   position: relative;
 }
 
-/* 左侧独立时间轴 */
-.timeline-axis {
+/* Row 1: Header (Icon + Time) */
+.event-header-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px; /* Reduced from 8px */
+}
+
+.event-icon-col {
+  width: 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.timeline-status-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.event-time-col {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  color: #4B5563;
+  font-size: 14px;
+  font-weight: 500;
+  height: 24px;
+}
+
+/* Row 2: Body (Line + Details) */
+.event-body-row {
+  display: flex;
+  position: relative;
+  /* 完全由内容撑开高度，不设置 min-height */
+}
+
+.event-line-col {
   width: 40px;
   position: relative;
   flex-shrink: 0;
@@ -114,47 +157,24 @@
   left: 50%;
   top: 0;
   bottom: 0;
-  width: 2px;
+  width: 2px; /* Event timeline 宽度：2px */
   background: #E5E7EB;
   transform: translateX(-50%);
+  /* 动态高度：自动根据 event-body-row 的内容高度延伸 */
+  transition: height 0.3s ease; /* 平滑过渡动画 */
 }
 
-/* 最后一个事件不显示向下的线，或者根据需求调整 */
+/* 最后一个事件的时间轴也完整显示 */
 .timeline-event-wrapper:last-child .timeline-line {
-  bottom: auto;
-  height: 24px; /* 只延伸到点的位置 */
+  bottom: 0;
 }
 
-.timeline-icon-wrapper {
-  position: absolute;
-  left: 50%;
-  top: 20px; /* 对齐时间行中心 */
-  width: 24px;
-  height: 24px;
-  background: white;
-  transform: translateX(-50%);
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.timeline-status-icon {
-  width: 20px;
-  height: 20px;
-  /* 稍微调整颜色或样式如果需要 */
-}
-
-/* 右侧内容区 - 无卡片样式 */
-.event-content {
+.event-details-col {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  /* 移除之前的卡片样式 */
-  background: transparent;
-  box-shadow: none;
-  border-radius: 0;
+  gap: 4px;
+  padding-bottom: 8px; /* 底部留白，确保时间轴延伸到最后一行内容底部 */
 }
 
 /* 通用行样式 */
@@ -194,31 +214,91 @@
 }
 
 .time-text {
-  font-family: 'Inter', monospace;
-  min-width: 45px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* 移除固定宽度，让文本自然宽度显示 */
+}
+
+/* ========================================
+   Time Row Actions (Right Aligned)
+   ======================================== */
+
+.event-time-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0; /* 默认隐藏，hover时显示 */
+  transition: opacity 0.2s ease-in-out;
+  padding-right: 8px;
+}
+
+.timeline-event-wrapper:hover .event-time-actions {
+  opacity: 1;
+}
+
+.time-action-btn {
+  width: auto;
+  height: auto;
+  padding: 4px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.time-action-btn:hover {
+  background-color: #F3F4F6;
+}
+
+.time-action-btn img {
+  width: 20px;
+  height: 20px;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.time-action-btn:first-child img {
+  width: 24px;
+  height: 24px;
+}
+
+.time-action-btn:hover img {
+  opacity: 1;
 }
 
 .time-duration-arrow {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin: 0 24px;
-  position: relative;
-  top: -6px;
+  gap: 0px;
+  margin: 0 12px;
 }
 
 .duration-text {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
-  background: linear-gradient(to right, #22d3ee, #3b82f6);
+  background: linear-gradient(135deg, #22d3ee, #3b82f6);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  margin-bottom: -4px;
+  background-clip: text;
+  font-family: 'Microsoft YaHei', Arial;
+  line-height: 1;
+  display: inline-block;
+  white-space: nowrap;
+  margin-bottom: 0;
 }
 
 .arrow-icon {
-  width: 50px;
-  height: 6px;
+  width: 51px;
+  height: auto;
+  flex-shrink: 0;
 }
 
 .event-right-actions {
@@ -242,17 +322,18 @@
 .event-title-row {
   margin-bottom: 4px;
   align-items: center;
+  gap: 4px; /* 🔧 Add gap for spacing between emoji and title */
   /* 移除之前的 padding-left，因为现在有独立的时间轴列 */
 }
 
 .event-emoji {
-  font-size: 24px;
-  margin-right: 12px;
+  font-size: 14px;
+  /* margin-right: 4px; 🔧 Removed margin, using gap instead */
   line-height: 1;
 }
 
 .event-title {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: #1F2937;
   margin-right: 16px;
@@ -269,16 +350,49 @@
 
 /* Row 3: Tags */
 .event-tags-row {
-  margin-bottom: 8px;
+  margin-bottom: 4px; /* 🔧 Unified margin with other rows */
   gap: 12px;
+  align-items: center;
+  display: flex;
 }
 
 .tag-item {
   font-size: 14px;
   font-weight: 700;
+  line-height: 1.5; /* 🔧 Unified line-height with other text */
   display: flex;
   align-items: center;
-  gap: 4px;
+  padding-bottom: 0;
+  margin-bottom: 0;
+  animation: none !important;
+}
+
+/* Log expand/collapse toggle button */
+.log-expand-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.log-expand-toggle:hover {
+  background: #f3f4f6;
+}
+
+.log-expand-toggle img {
+  width: 16px;
+  height: 16px;
+  opacity: 0.5;
+}
+
+.log-expand-toggle:hover img {
+  opacity: 0.8;
 }
 
 /* Tag Colors based on Figma */
@@ -300,52 +414,28 @@
   margin-right: 8px;
 }
 
-/* Row 6: Log Content */
+/* Row 6: Log Content - 参考 EventEditModal V2 的 timestamp 和 preline 设计 */
+/* Event Log 区域 - ModalSlate 编辑器 */
 .event-log-box {
-  margin-top: 12px;
+  margin-top: 4px;
   background: transparent;
   padding: 0;
+  /* 不需要额外的 padding-bottom，由 event-details-col 统一管理 */
 }
 
-.timestamp-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.timestamp-toggle, .timestamp-options {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.timestamp-toggle img, .timestamp-options img {
-  width: 16px;
-  height: 16px;
-  opacity: 0.5;
-}
-
-.log-timestamp {
-  font-size: 12px;
-  color: #9CA3AF;
-  font-family: monospace;
-}
-
-.log-text {
+.timelog-slate-editor {
   font-size: 14px;
-  color: #6B7280;
   line-height: 1.6;
-  background: #F9FAFB;
-  padding: 12px;
-  border-radius: 8px;
-  border-left: 3px solid #E5E7EB;
-  margin-left: 24px; /* Indent to align with timestamp text */
+  color: #333;
+  /* 编辑器内容会自动撑开高度 */
 }
+
+/* 覆盖 ModalSlate 的默认最小高度 */
+.timelog-slate-editor .slate-editable {
+  min-height: 40px !important; /* 大幅降低最小高度，让时间轴紧贴内容 */
+}
+
+/* ModalSlate 内的 TimestampDivider 会自动应用 SlateCore 的紫蓝渐变样式 */
 
 /* ========================================
    右侧按钮区

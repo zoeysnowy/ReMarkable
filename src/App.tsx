@@ -33,7 +33,7 @@ import TimeLog from './pages/TimeLog';
 import { logger } from './utils/logger';
 
 // 🧪 导入存储测试模块（开发环境）
-import './tests/test-storage';
+import './tests/test-storage-indexeddb';
 import './tests/debug-storage-env';
 
 const AppLogger = logger.module('App');
@@ -76,8 +76,58 @@ function App() {
       // 缓存管理
       CacheManager.checkAndClearOldCache();
       
+      // 🔥 v3.0.0: 初始化 StorageManager（IndexedDB + SQLite）
+      console.log('📦 [App] Initializing StorageManager...');
+      try {
+        const { storageManager } = await import('./services/storage/StorageManager');
+        await storageManager.initialize();
+        console.log('✅ [App] StorageManager initialized');
+        
+        // 🔄 数据迁移：localStorage → StorageManager
+        const { needsMigration, migrateFromLocalStorage } = await import('./utils/dataMigration');
+        const shouldMigrate = await needsMigration();
+        
+        if (shouldMigrate) {
+          console.log('🔄 [App] Starting data migration...');
+          const migrationResult = await migrateFromLocalStorage();
+          
+          if (migrationResult.success) {
+            console.log('✅ [App] Migration completed:', {
+              migratedCount: migrationResult.migratedCount,
+              duration: `${migrationResult.duration}ms`
+            });
+          } else {
+            console.error('❌ [App] Migration failed:', {
+              failedCount: migrationResult.failedCount,
+              errors: migrationResult.errors
+            });
+            // 迁移失败不阻止应用启动，继续使用 localStorage 作为降级方案
+          }
+        } else {
+          console.log('ℹ️  [App] No migration needed');
+        }
+      } catch (error) {
+        console.error('❌ [App] StorageManager initialization failed:', error);
+        // 初始化失败不阻止应用启动，会降级到 localStorage
+      }
+      
       // 初始化标签系统（独立于日历连接）
       await TagService.initialize();
+      
+      // 🔍 初始化 Unified Mention 搜索索引
+      console.log('🔍 [App] Initializing Unified Mention search index...');
+      try {
+        const { unifiedSearchIndex } = await import('./services/search/UnifiedSearchIndex');
+        await unifiedSearchIndex.initialize();
+        console.log('✅ [App] Search index initialized');
+        
+        // 暴露到全局以便调试和PlanSlate使用
+        if (typeof window !== 'undefined') {
+          (window as any).unifiedSearchIndex = unifiedSearchIndex;
+        }
+      } catch (err) {
+        console.error('❌ [App] Search index initialization failed:', err);
+      }
       
       // 🧪 动态加载 SQLite 测试模块（仅 Electron 环境）
       if (typeof window !== 'undefined' && (window as any).electronAPI) {
@@ -376,18 +426,18 @@ function App() {
     let parentEventId = eventIdOrParentId;
     if (eventIdOrParentId) {
       // 从 EventService 读取单个事件（自动规范化 title）
-      const existingEvent = EventService.getEventById(eventIdOrParentId);
+      const existingEvent = await EventService.getEventById(eventIdOrParentId);
       
-      // 检测条件：isTimer=true + 无 parentEventId + 有 timerLogs（说明已完成至少一次计时）
+      // 检测条件：isTimer=true + 无 parentEventId + 有 childEventIds（说明已完成至少一次计时）
       if (existingEvent && 
           existingEvent.isTimer === true && 
           !existingEvent.parentEventId && 
-          existingEvent.timerLogs && 
-          existingEvent.timerLogs.length > 0) {
+          existingEvent.childEventIds && 
+          existingEvent.childEventIds.length > 0) {
         
         AppLogger.log('🔄 [Timer] 检测到独立 Timer 二次计时，自动升级为父子结构', {
           timerId: existingEvent.id,
-          timerLogsCount: existingEvent.timerLogs.length
+          childEventsCount: existingEvent.childEventIds.length
         });
         
         // Step 1: 创建父事件（继承原 Timer 的所有元数据）
@@ -401,7 +451,7 @@ function App() {
           source: 'local',
           isTimer: false,           // ✅ 不再是 Timer
           isTimeCalendar: true,     // 标记为 TimeCalendar 创建
-          timerLogs: [existingEvent.id], // 将原 Timer 作为第一个子事件
+          childEventIds: [existingEvent.id], // 将原 Timer 作为第一个子事件
           createdAt: existingEvent.createdAt,
           updatedAt: formatTimeForStorage(new Date()),
           syncStatus: 'pending' as const,
@@ -468,7 +518,7 @@ function App() {
       // 🔧 如果有父事件，继承父事件的元数据
       let parentEvent = null;
       if (parentEventId) {
-        parentEvent = EventService.getEventById(parentEventId);
+        parentEvent = await EventService.getEventById(parentEventId);
         console.log('🔗 [Timer Start] 读取父事件元数据:', {
           parentEventId,
           found: !!parentEvent,
@@ -715,7 +765,7 @@ function App() {
       const timerEventId = globalTimer.eventId;
       
       // 🔧 [BUG FIX] 读取现有事件，保留用户的 description 和 location
-      const existingEvent = EventService.getEventById(timerEventId);
+      const existingEvent = await EventService.getEventById(timerEventId);
       
       // 🆕 [FEATURE] 自动生成标题：如果用户既没有标题也没有标签，生成默认标题
       let eventTitle: string;
@@ -755,7 +805,7 @@ function App() {
       // 🔧 如果有父事件，继承父事件的最新元数据
       let currentParentEvent = null;
       if (globalTimer.parentEventId) {
-        currentParentEvent = EventService.getEventById(globalTimer.parentEventId);
+        currentParentEvent = await EventService.getEventById(globalTimer.parentEventId);
         console.log('🔗 [Timer Stop] 读取父事件最新元数据:', {
           parentEventId: globalTimer.parentEventId,
           found: !!currentParentEvent,
@@ -817,56 +867,56 @@ function App() {
       if (result.success) {
         AppLogger.log('💾 [Timer Stop] Event saved via EventService:', timerEventId);
         
-        // 🆕 Issue #12: 更新父事件的 timerLogs
+        // 🆕 Issue #12: 更新父事件的 childEventIds
         if (globalTimer.parentEventId) {
-          const parentEvent = EventService.getEventById(globalTimer.parentEventId);
-          console.log('📝 [Timer Stop] 准备更新父事件 timerLogs:', {
+          const parentEvent = await EventService.getEventById(globalTimer.parentEventId);
+          console.log('📝 [Timer Stop] 准备更新父事件 childEventIds:', {
             parentEventId: globalTimer.parentEventId,
             parentEventFound: !!parentEvent,
-            currentTimerLogs: parentEvent?.timerLogs,
+            currentChildEventIds: parentEvent?.childEventIds,
             timerEventId,
             hasParentEventId: !!globalTimer.parentEventId,
             globalTimer
           });
           if (parentEvent) {
             // 🔧 避免重复添加：检查 timerEventId 是否已存在
-            const currentTimerLogs = parentEvent.timerLogs || [];
-            if (currentTimerLogs.includes(timerEventId)) {
-              console.log('⚠️ [Timer Stop] timerEventId 已存在于 timerLogs，跳过添加:', timerEventId);
+            const currentChildEventIds = parentEvent.childEventIds || [];
+            if (currentChildEventIds.includes(timerEventId)) {
+              console.log('⚠️ [Timer Stop] timerEventId 已存在于 childEventIds，跳过添加:', timerEventId);
             } else {
-              const updatedTimerLogs = [...currentTimerLogs, timerEventId];
+              const updatedChildEventIds = [...currentChildEventIds, timerEventId];
               console.log('📝 [Timer Stop] 调用 EventService.updateEvent 前:', {
                 parentId: globalTimer.parentEventId,
-                oldTimerLogs: parentEvent.timerLogs,
-                newTimerLogs: updatedTimerLogs,
+                oldChildEventIds: parentEvent.childEventIds,
+                newChildEventIds: updatedChildEventIds,
                 updatePayload: {
-                  timerLogs: updatedTimerLogs,
+                  childEventIds: updatedChildEventIds,
                   updatedAt: formatTimeForStorage(new Date())
                 }
               });
             
               const updateResult = await EventService.updateEvent(globalTimer.parentEventId, {
-                timerLogs: updatedTimerLogs,
+                childEventIds: updatedChildEventIds,
                 updatedAt: formatTimeForStorage(new Date())
               } as Partial<Event>);
               
               console.log('📝 [Timer Stop] EventService.updateEvent 返回:', updateResult);
               
               // 验证更新是否成功
-              const verifyParent = EventService.getEventById(globalTimer.parentEventId);
-              console.log('✅ [Timer Stop] 验证父事件 timerLogs:', {
+              const verifyParent = await EventService.getEventById(globalTimer.parentEventId);
+              console.log('✅ [Timer Stop] 验证父事件 childEventIds:', {
                 parentId: globalTimer.parentEventId,
-                timerLogs: verifyParent?.timerLogs,
+                childEventIds: verifyParent?.childEventIds,
                 updateSuccessful: updateResult.success,
-                expectedCount: updatedTimerLogs.length,
-                actualCount: verifyParent?.timerLogs?.length || 0
+                expectedCount: updatedChildEventIds.length,
+                actualCount: verifyParent?.childEventIds?.length || 0
               });
             }
           } else {
             console.error('❌ [Timer Stop] 找不到父事件:', globalTimer.parentEventId);
           }
         } else {
-          console.log('⚠️ [Timer Stop] 没有 parentEventId，跳过 timerLogs 更新');
+          console.log('⚠️ [Timer Stop] 没有 parentEventId，跳过 childEventIds 更新');
         }
         
         // ✅ 不需要手动 setAllEvents，storage 监听器会自动更新
@@ -888,7 +938,7 @@ function App() {
   };
 
   // 打开计时器事件编辑框
-  const handleTimerEdit = () => {
+  const handleTimerEdit = async () => {
     // 🔧 [PERFORMANCE FIX] 移除不必要的 appTags 检查
     // TagService 已经初始化，直接使用即可
     
@@ -934,7 +984,7 @@ function App() {
     const timerEventId = globalTimer.eventId;
     
     // 🔧 [BUG FIX] 从 EventService 读取现有事件，保留 description 和其他字段
-    const existingEvent = EventService.getEventById(timerEventId);
+    const existingEvent = await EventService.getEventById(timerEventId);
 
     const tempEvent: Event = {
       id: timerEventId,
@@ -1150,7 +1200,7 @@ function App() {
         const eventTitle = globalTimer.eventTitle || (tag?.emoji ? `${tag.emoji} ${tag.name}` : globalTimer.tagName);
         
         // 读取现有事件，保留用户编辑的字段（description、location、eventlog）
-        const existingEvent = EventService.getEventById(timerEventId);
+        const existingEvent = await EventService.getEventById(timerEventId);
         
         const timerEvent: Event = {
           id: timerEventId, // ✅ 固定 ID，整个运行过程不变
@@ -1170,22 +1220,16 @@ function App() {
           isTimer: true
         };
 
-        // ✅ 更新同一个事件（不创建新事件）
-        const existingEvents = EventService.getAllEvents();
-        const eventIndex = existingEvents.findIndex((e: Event) => e.id === timerEventId);
-        
-        if (eventIndex === -1) {
-          existingEvents.push(timerEvent);
+        // ✅ 使用 EventService 更新事件（已迁移到 StorageManager，existingEvent 已在上面加载）
+        if (!existingEvent) {
+          await EventService.createEvent(timerEvent, true); // skipSync=true 避免同步运行中的 Timer
           AppLogger.log('💾 [Timer Auto-save] Created timer event:', timerEventId);
         } else {
-          existingEvents[eventIndex] = timerEvent;
+          await EventService.updateEvent(timerEventId, timerEvent, true); // skipSync=true
           AppLogger.log('🔄 [Timer Auto-save] Updated timer event:', timerEventId);
         }
         
-        // 🔧 直接保存（getAllEvents 已经返回规范化后的数据）
-        localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
-        
-        // 🔇 运行中静默保存，不触发 eventsUpdated（避免频繁重渲染）
+        // 🔇 运行中静默保存，StorageManager 已处理持久化
       } catch (error) {
         AppLogger.error('💾 [Timer] Failed to save timer event:', error);
       }
@@ -1229,37 +1273,42 @@ function App() {
           
           const eventTitle = globalTimer.eventTitle || (tag?.emoji ? `${tag.emoji} ${tag.name}` : globalTimer.tagName);
           
-          // 🔧 [BUG FIX] 读取现有事件，保留用户的 description
-          const existingEvent = EventService.getEventById(timerEventId);
-          
+          // ⚠️ beforeunload 必须同步执行，使用 EventService 的同步保存（StorageManager 会在下次启动时同步）
+          // 创建事件对象（新事件）
           const timerEvent: Event = {
             id: timerEventId,
             title: { simpleTitle: eventTitle }, // 保存时移除"[专注中]"标记
             startTime: formatTimeForStorage(startTime),
             endTime: formatTimeForStorage(endTime),
-            location: existingEvent?.location || '', // 🔧 保留location
-            description: existingEvent?.description || '计时事件（已自动保存）', // 🔧 保留用户输入的description
+            location: '',
+            description: '计时事件（已自动保存）',
             tags: globalTimer.tagIds, // 使用完整的标签数组
             calendarIds: tag && (tag as any).calendarId ? [(tag as any).calendarId] : [], // 转换为数组格式，无标签时为空数组
             isAllDay: false,
-            createdAt: existingEvent?.createdAt || formatTimeForStorage(startTime),
+            createdAt: formatTimeForStorage(startTime),
             updatedAt: formatTimeForStorage(new Date()),
             syncStatus: 'local-only', // 🔧 [BUG FIX] 页面刷新时仍保持local-only，不同步运行中的Timer
             remarkableSource: true
           };
 
-          const existingEvents = EventService.getAllEvents();
-          const eventIndex = existingEvents.findIndex((e: Event) => e.id === timerEventId);
-          
-          if (eventIndex === -1) {
-            existingEvents.push(timerEvent);
-          } else {
-            existingEvents[eventIndex] = timerEvent;
+          // ⚠️ 使用 localStorage 直接保存（因为 beforeunload 不支持 async）
+          // StorageManager 会在下次应用启动时读取并迁移到 IndexedDB
+          try {
+            const rawEvents = localStorage.getItem(STORAGE_KEYS.EVENTS);
+            const events: Event[] = rawEvents ? JSON.parse(rawEvents) : [];
+            const eventIndex = events.findIndex(e => e.id === timerEventId);
+            
+            if (eventIndex === -1) {
+              events.push(timerEvent);
+            } else {
+              events[eventIndex] = timerEvent;
+            }
+            
+            localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+            AppLogger.log('💾 [Timer] Saved timer event before unload (sync):', timerEventId);
+          } catch (lsError) {
+            AppLogger.error('💾 [Timer] localStorage save failed:', lsError);
           }
-          
-          // 🔧 直接保存（getAllEvents 已经返回规范化后的数据）
-          localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
-          AppLogger.log('💾 [Timer] Saved timer event before unload:', timerEventId);
         } catch (error) {
           AppLogger.error('💾 [Timer] Failed to save on unload:', error);
         }
@@ -1300,7 +1349,7 @@ function App() {
     
     // 🔧 [BUG FIX] 检查事件是否已存在，新事件用 createEvent，已有事件用 updateEvent
     // 🆕 传递来源信息，防止循环更新
-    const existingEvent = EventService.getEventById(item.id);
+    const existingEvent = await EventService.getEventById(item.id);
     const sourceOptions = {
       originComponent: 'PlanManager' as const,
       source: 'user-edit' as const
@@ -1344,7 +1393,7 @@ function App() {
   // 更新 UnifiedTimeline Event
   const handleUpdateEvent = useCallback(async (eventId: string, updates: Partial<Event>) => {
     // 🔧 [BUG FIX] 检查事件是否存在，不存在则创建
-    const existingEvent = EventService.getEventById(eventId);
+    const existingEvent = await EventService.getEventById(eventId);
     const result = existingEvent
       ? await EventService.updateEvent(eventId, updates)
       : await EventService.createEvent({ ...updates, id: eventId } as Event);
@@ -1646,13 +1695,13 @@ function App() {
     switch (currentPage) {
       case 'home':
         content = (
-          <PageContainer title="首页" subtitle="时间管理与任务概览">
+          <PageContainer title="首页" subtitle="时间管理与任务概览" className="home-page-container">
             <div className="home-content" style={{ 
               display: 'grid',
               gridTemplateColumns: '280px 1fr',
-              gap: '24px',
+              gap: '8px', /* 🔧 Reduced from 24px */
               alignItems: 'stretch', /* 改为stretch，让两个卡片高度始终一致*/
-              padding: '12px', /* 增加padding以确保阴影完全示*/
+              padding: '0', /* 🔧 Reduced from 12px */
               overflow: 'visible' /* 允许阴影溢出 */
             }}>
               {/* 计时器卡片 - 左侧，固定宽度*/}
@@ -1715,7 +1764,7 @@ function App() {
 
       case 'tag':
         content = (
-          <PageContainer title="标签" subtitle="标签管理与专注表盘配置">
+          <PageContainer title="标签" subtitle="标签管理与专注表盘配置" className="tag-management">
             <div className="tag-management-layout">
               {/* 左侧标签设置区域 */}
               <div className="tag-setting-section">
@@ -1778,12 +1827,10 @@ function App() {
         // PlanManager 现在自己监听 eventsUpdated，不需要通过 props 接收 items
         
         content = (
-          <PageContainer title="计划" subtitle="我的任务与日程管理" className="plan-management">
-            <PlanManager
-              availableTags={availableTagsForEdit.map(t => t.name)}
-              microsoftService={microsoftService} // 🆕 传递 Microsoft 服务，支持 To Do Lists
-            />
-          </PageContainer>
+          <PlanManager
+            availableTags={availableTagsForEdit.map(t => t.name)}
+            microsoftService={microsoftService} // 🆕 传递 Microsoft 服务，支持 To Do Lists
+          />
         );
         break;
 

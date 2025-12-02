@@ -30,27 +30,22 @@ export class SQLiteDatabaseWrapper {
     console.log(`✅ SQLite database connected: ${this.dbId}`);
   }
 
-  exec(sql: string): void {
+  async exec(sql: string): Promise<void> {
     if (!this.dbId) {
       throw new Error('Database not initialized');
     }
     
     const electronAPI = (window as any).electronAPI;
-    // exec 是同步操作的包装，但 IPC 是异步的
-    // 这里返回 void，实际需要等待
-    electronAPI.sqlite.exec(this.dbId, sql).catch((err: any) => {
-      console.error('SQLite exec error:', err);
-      throw err;
-    });
+    await electronAPI.sqlite.exec(this.dbId, sql);
   }
 
-  pragma(pragma: string, options?: { simple?: boolean }): any {
+  async pragma(pragma: string, options?: { simple?: boolean }): Promise<any> {
     if (!this.dbId) {
       throw new Error('Database not initialized');
     }
 
     const electronAPI = (window as any).electronAPI;
-    return electronAPI.sqlite.pragma(this.dbId, pragma);
+    return await electronAPI.sqlite.pragma(this.dbId, pragma);
   }
 
   prepare(sql: string): SQLiteStatementWrapper {
@@ -82,13 +77,8 @@ class SQLiteStatementWrapper {
     }
 
     const electronAPI = (window as any).electronAPI;
-    const result = await electronAPI.sqlite.prepare(this.dbId, this.sql);
-    
-    if (!result.success) {
-      throw new Error(`Failed to prepare statement: ${result.error}`);
-    }
-
-    this.stmtId = result.stmtId;
+    // preload.js 中的 prepare 直接返回 stmtId 字符串
+    this.stmtId = await electronAPI.sqlite.prepare(this.dbId, this.sql);
     this.initialized = true;
   }
 
@@ -96,41 +86,23 @@ class SQLiteStatementWrapper {
     await this.ensureInitialized();
     
     const electronAPI = (window as any).electronAPI;
-    const result = await electronAPI.sqlite.run(this.stmtId, params);
-    
-    if (!result.success) {
-      throw new Error(`Statement run failed: ${result.error}`);
-    }
-
-    return {
-      changes: result.changes,
-      lastInsertRowid: result.lastInsertRowid
-    };
+    // preload.js 已经解包了结果，直接返回 { changes, lastInsertRowid }
+    return await electronAPI.sqlite.run(this.stmtId, params);
   }
 
   async get(...params: any[]): Promise<any> {
     await this.ensureInitialized();
     
     const electronAPI = (window as any).electronAPI;
-    const result = await electronAPI.sqlite.get(this.stmtId, params);
-    
-    if (!result.success) {
-      throw new Error(`Statement get failed: ${result.error}`);
-    }
-
-    return result.data;
+    // preload.js 已经解包了结果，直接返回数据
+    return await electronAPI.sqlite.get(this.stmtId, params);
   }
 
   async all(...params: any[]): Promise<any[]> {
     await this.ensureInitialized();
     
     const electronAPI = (window as any).electronAPI;
-    const result = await electronAPI.sqlite.all(this.stmtId, params);
-    
-    if (!result.success) {
-      throw new Error(`Statement all failed: ${result.error}`);
-    }
-
-    return result.data;
+    // preload.js 已经解包了结果，直接返回数据数组
+    return await electronAPI.sqlite.all(this.stmtId, params);
   }
 }

@@ -2697,8 +2697,8 @@ body {
 .tag-management-layout {
   display: grid;
   grid-template-columns: 1fr 300px;  /* 左侧自适应(屏幕宽度-300px)，右侧固定300px */
-  gap: 12px;  /* 紧凑间距，匹配Figma设计 */
-  height: calc(100vh - 80px - 41px - 8px - 7px);  /* 🔧 视口高度 - header(80px) - statusbar(41px) - 底部间距(8px) - main padding-top(7px) */
+  gap: 8px;  /* 🔧 统一间距为 8px */
+  height: 100%;  /* 🔧 使用 100% 高度，由 PageContainer 控制 */
   width: 100%;  /* 使用全部容器宽度 */
   align-items: stretch; /* 🔧 拉伸子元素填满高度 */
 }

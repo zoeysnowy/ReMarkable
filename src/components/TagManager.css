@@ -249,7 +249,7 @@
 
 .editor-container {
   flex-shrink: 0;
-  padding: 20px;
+  padding: 16px; /* 🔧 Reduced from 20px */
   background-color: white;
   border-bottom: 1px solid #e2e8f0;
 }
@@ -281,7 +281,7 @@
 
 .tags-display {
   flex: 1;
-  padding: 20px;
+  padding: 16px; /* 🔧 Reduced from 20px */
   overflow-y: auto;
 }
 

@@ -1,0 +1,170 @@
+/* GlassIconBar - Frosted vertical icon actions (TimeLog right side)
+   Figma reference: Node 486-2997 etc.
+*/
+
+.glass-icon-bar {
+  position: fixed; /* anchor to viewport */
+  top: 88px; /* align with timelog card top: 80px header + 8px page padding */
+  right: 8px; /* 8px to viewport edge */
+  display: flex;
+  flex-direction: column;
+  gap: 40px; /* vertical spacing groups */
+  padding-top: 0px;
+  z-index: 300; /* above cards */
+  pointer-events: none; /* parent non-interactive; buttons re-enable */
+}
+
+.glass-icon-group {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  pointer-events: auto;
+}
+
+.glass-btn-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #9CA3AF;
+  font-family: 'Inter', 'Microsoft YaHei', sans-serif;
+}
+
+.glass-icon-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px; /* 更通透卡片的圆角 */
+  position: relative;
+  border: 1px solid rgba(255,255,255,0.42); /* 边框更轻，提升透明感 */
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.12) 55%, rgba(255,255,255,0.06) 100%),
+    linear-gradient(180deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.10) 100%);
+  box-shadow:
+    0 14px 28px rgba(31, 41, 55, 0.14), /* 环境阴影略减弱更通透 */
+    inset 0 0.8px 0 rgba(255,255,255,0.65), /* 顶部高光线 */
+    inset 0 -0.8px 0 rgba(255,255,255,0.22); /* 底部微光线 */
+  backdrop-filter: blur(28px) saturate(180%) contrast(1.06);
+  -webkit-backdrop-filter: blur(28px) saturate(180%) contrast(1.06);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: box-shadow .25s ease, transform .18s ease, background .25s ease;
+  color: #55627a;
+  font-size: 20px;
+}
+
+/* 细微噪点叠加，提升材质感 */
+.glass-icon-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(100% 80% at 100% 0%, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.0) 45%), /* 右上角高光椭圆更柔和 */
+    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="1" stitchTiles="stitch"/></filter><rect width="60" height="60" filter="url(%23n)" opacity="0.012"/></svg>');
+  background-size: cover;
+}
+
+/* 右下角高光边，贴近 Figma 的玻璃立体感 */
+.glass-icon-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    inset -1.5px -1.5px 3px rgba(255,255,255,0.18), /* 更轻的内高光 */
+    0 0 0 0.4px rgba(255,255,255,0.35); /* 更轻的外环 */
+}
+
+.glass-icon-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 26px rgba(31,41,55,0.14), 0 6px 12px rgba(31,41,55,0.08);
+}
+
+.glass-icon-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.18) inset;
+}
+
+/* Hover效果：图标和文字渐变 */
+.glass-btn-wrapper:hover .glass-icon-btn {
+  position: relative;
+}
+
+.glass-btn-wrapper:hover .glass-icon-btn img {
+  filter: brightness(0) saturate(100%) invert(42%) sepia(93%) saturate(1352%) hue-rotate(223deg) brightness(97%) contrast(101%);
+  /* 使用紫色作为基础色，hover时通过渐变蒙版实现渐变效果 */
+}
+
+/* 为SVG添加渐变蒙版效果 */
+.glass-btn-wrapper:hover .glass-icon-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #a855f7 0%, #3b82f6 75%);
+  border-radius: inherit;
+  mix-blend-mode: overlay;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.glass-btn-wrapper:hover .glass-icon-label {
+  background: linear-gradient(135deg, #a855f7 0%, #3b82f6 75%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.glass-icon-label {
+  user-select: none;
+  line-height: 1;
+  letter-spacing: .5px;
+  font-size: 12px;
+}
+
+/* Fallback if backdrop-filter unsupported */
+@supports not ((backdrop-filter: blur(10px))) {
+  .glass-icon-btn {
+    background: linear-gradient(180deg, rgba(240,240,245,0.82) 0%, rgba(240,240,245,0.64) 100%);
+    box-shadow: 0 10px 22px rgba(0,0,0,0.12);
+  }
+}
+
+/* Focus accessibility */
+.glass-icon-btn:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .glass-icon-btn {
+    background: linear-gradient(180deg, rgba(30,41,59,0.40) 0%, rgba(30,41,59,0.24) 100%);
+    border-color: rgba(255,255,255,0.22);
+    color: #e2e8f0;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06);
+  }
+  .glass-icon-btn[data-active="true"] {
+    background:
+      radial-gradient(120% 100% at 0% 0%, rgba(59,130,246,0.50) 0%, rgba(168,85,247,0.50) 55%, rgba(59,130,246,0.32) 100%),
+      linear-gradient(180deg, rgba(30,41,59,0.36) 0%, rgba(30,41,59,0.22) 100%);
+    color: #60a5fa;
+  }
+}
+
+/* Reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  .glass-icon-btn { transition: none; }
+}
+
+/* Responsive tweak: collapse right bar on narrow screens */
+@media (max-width: 1280px) {
+  .glass-icon-bar { right: 8px; }
+}
+@media (max-width: 1100px) {
+  .glass-icon-bar { display: none; }
+}

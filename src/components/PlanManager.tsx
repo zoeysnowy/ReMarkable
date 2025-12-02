@@ -5,7 +5,7 @@ import Tippy from '@tippyjs/react';
 import 'tippy.js/dist/tippy.css';
 import type { Event } from '../types';
 import { PlanSlate } from './PlanSlate/PlanSlate';
-import { insertTag, insertEmoji, insertDateMention, applyTextFormat, extractTagsFromLine } from './PlanSlate/helpers';
+import { insertTag, insertEmoji, insertDateMention, insertEventMention, applyTextFormat, extractTagsFromLine } from './PlanSlate/helpers';
 import { StatusLineContainer, StatusLineSegment } from './StatusLineContainer';
 import { useFloatingToolbar } from './FloatingToolbar/useFloatingToolbar';
 import { HeadlessFloatingToolbar } from './FloatingToolbar/HeadlessFloatingToolbar';
@@ -288,224 +288,18 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       console.log('[PlanManager] 使用缓存的初始数据:', {
         数量: initialItemsRef.current.length,
         示例: initialItemsRef.current.slice(0, 3).map(e => ({
-          id: e.id?.slice(-10),
-          title: e.title?.simpleTitle?.slice(0, 20) || '',
+          id: (e.id || '').slice(-10),
+          title: (e.title?.simpleTitle || '').slice(0, 20),
           isPlan: e.isPlan
         }))
       });
       return initialItemsRef.current;
     }
     
-    // 初始化：从 EventService 加载 Plan 事件
-    const now = new Date();
-    const rawEvents = EventService.getAllEvents();
-    
-    // 🛡️ 过滤掉 ghost 事件（带 _isDeleted 标记的临时事件）
-    const allEvents = rawEvents.filter(e => !(e as any)._isDeleted);
-    
-    if (rawEvents.length !== allEvents.length) {
-      console.warn('[PlanManager] 🚨 发现并过滤了', rawEvents.length - allEvents.length, '个 ghost 事件！');
-    }
-    
-    // 🔍 DEBUG: 检查 EventService 返回的数据
-    console.log('[PlanManager] 初始化 - 从 EventService 加载:', {
-      总事件数: allEvents.length,
-      示例事件: allEvents.slice(0, 3).map(e => {
-        const eventlog = (e as any).eventlog;
-        const eventlogType = typeof eventlog;
-        const eventlogContent = eventlogType === 'object' && eventlog !== null
-          ? eventlog.html || eventlog.slateJson || ''
-          : eventlog || '';
-        
-        return {
-          id: e.id?.substring(0, 30),
-          title: e.title?.simpleTitle?.substring(0, 20) || '',
-          isPlan: e.isPlan,
-          eventlogType,
-          hasEventlog: !!eventlog,
-          hasDescription: !!e.description,
-          eventlogContentLength: eventlogContent.length,
-          descriptionLength: (e.description || '').length,
-        };
-      })
-    });
-    
-    // 🔧 数据迁移：为旧的 isPlan 事件批量设置 checkType（仅执行一次）
-    const needsMigration = allEvents.filter(e => e.isPlan && !e.checkType);
-    if (needsMigration.length > 0) {
-      console.log('🔧 [数据迁移] 检测到需要迁移的 isPlan 事件:', needsMigration.length);
-      
-      // 直接修改内存中的事件对象
-      needsMigration.forEach(event => {
-        event.checkType = 'once';
-      });
-      
-      // 批量更新到 localStorage（静默更新，不触发事件广播）
-      const eventsData = localStorage.getItem('remarkable_events');
-      if (eventsData) {
-        try {
-          const events = JSON.parse(eventsData);
-          let updatedCount = 0;
-          
-          events.forEach((e: Event) => {
-            if (e.isPlan && !e.checkType) {
-              e.checkType = 'once';
-              updatedCount++;
-            }
-          });
-          
-          if (updatedCount > 0) {
-            localStorage.setItem('remarkable_events', JSON.stringify(events));
-            console.log(`✅ [数据迁移] 已静默更新 ${updatedCount} 个事件的 checkType`);
-          }
-        } catch (err) {
-          console.error('❌ [数据迁移] 批量更新失败:', err);
-        }
-      }
-    }
-    
-    // 🎯 并集过滤公式：(isPlan OR checkType OR isTimeCalendar) - 排除条件
-    const filtered = allEvents.filter((event: Event) => {
-      // 步骤 1: 并集条件 - 满足任意一个即纳入
-      const matchesInclusionCriteria = 
-        event.isPlan === true || 
-        (event.checkType && event.checkType !== 'none') ||
-        event.isTimeCalendar === true;
-      
-      if (!matchesInclusionCriteria) {
-        return false; // 不满足任何显示条件
-      }
-      
-      // 步骤 2: 排除系统事件（使用 EventService 辅助方法）
-      if (EventService.isSubordinateEvent(event)) {
-        return false;
-      }
-      
-      // 🆕 步骤 2.5: 过滤空白事件（标题和 eventlog 都为空）
-      // 检查标题内容
-      const titleObj = event.title;
-      const hasTitle = event.content || 
-                      (typeof titleObj === 'string' ? titleObj : 
-                       (titleObj && (titleObj.simpleTitle || titleObj.fullTitle || titleObj.colorTitle)));
-      
-      // 检查 eventlog 内容
-      const eventlogField = (event as any).eventlog;
-      let hasEventlog = false;
-      
-      if (eventlogField) {
-        if (typeof eventlogField === 'string') {
-          // 字符串格式：去除空白后检查是否有内容
-          hasEventlog = eventlogField.trim().length > 0;
-        } else if (typeof eventlogField === 'object' && eventlogField !== null) {
-          // EventLog 对象格式：检查 slateJson, html, plainText
-          const slateContent = eventlogField.slateJson || '';
-          const htmlContent = eventlogField.html || '';
-          const plainContent = eventlogField.plainText || '';
-          
-          // 任一字段有实质内容即算有 eventlog
-          hasEventlog = slateContent.trim().length > 0 || 
-                       htmlContent.trim().length > 0 || 
-                       plainContent.trim().length > 0;
-        }
-      }
-      
-      // 只有标题和eventlog都为空时才过滤掉（与 Snapshot ghost 过滤逻辑一致）
-      if (!hasTitle && !hasEventlog) {
-        return false; // 完全空白的事件，过滤掉
-      }
-      
-      // 步骤 3: 过期/完成事件处理
-      const isExpired = isEventExpired(event, now);
-      
-      // 3.1 纯日历事件：过期后自动清理
-      if (event.isTimeCalendar && isExpired) {
-        // 检查是否是任务类事件（有 checkbox）
-        const isTaskLike = event.isPlan === true || 
-                           (event.checkType && event.checkType !== 'none');
-        
-        if (!isTaskLike) {
-          return false; // 纯日历事件，过期后移除
-        }
-        // 任务类日历事件：继续执行后续检查
-      }
-      
-      // 3.2 已完成任务：过0点后自动隐藏（除非在 Snapshot 模式）
-      if (event.checkType && event.checkType !== 'none') {
-        // 检查任务是否已完成
-        const lastChecked = event.checked?.[event.checked.length - 1];
-        const lastUnchecked = event.unchecked?.[event.unchecked.length - 1];
-        const isCompleted = lastChecked && (!lastUnchecked || lastChecked > lastUnchecked);
-        
-        if (isCompleted && lastChecked) {
-          // 获取完成时间（checked 数组最后一个时间戳）
-          const completedTime = new Date(lastChecked);
-          const today = new Date(now);
-          today.setHours(0, 0, 0, 0); // 今天0点
-          
-          // 如果完成时间是今天之前（已过0点），则隐藏
-          if (completedTime < today) {
-            return false; // 昨天及更早完成的任务自动隐藏
-          }
-          // 今天完成的任务继续显示
-        }
-      }
-      
-      return true;
-    });
-    
-    // 🔍 DIAGNOSIS: 检查过滤后的数据
-    console.log('[PlanManager] 初始化 - 过滤后的 Plan 事件:', {
-      过滤后数量: filtered.length,
-      示例: filtered.slice(0, 3).map(e => {
-        const eventlog = (e as any).eventlog;
-        const eventlogType = typeof eventlog;
-        const eventlogContent = eventlogType === 'object' && eventlog !== null
-          ? eventlog.html || eventlog.slateJson || ''
-          : eventlog || '';
-        
-        return {
-          id: e.id?.substring(0, 30),
-          title: e.title?.simpleTitle?.substring(0, 20) || '',
-          eventlogType,
-          hasEventlog: !!eventlog,
-          hasDescription: !!e.description,
-          eventlogContentLength: eventlogContent.length,
-          descriptionLength: (e.description || '').length,
-        };
-      })
-    });
-    
-    // 🚨 DIAGNOSIS: 检测空数组异常
-    if (filtered.length === 0 && allEvents.length > 0) {
-      const isPlanEvents = allEvents.filter(e => e.isPlan);
-      console.error('🔴 [诊断] PlanManager 所有事件被过滤！', {
-        总事件数: allEvents.length,
-        isPlan事件: isPlanEvents.length,
-        'isPlan事件详情': isPlanEvents.map(e => ({
-          id: e.id?.substring(0, 20),
-          title: e.title?.simpleTitle?.substring(0, 20) || '',
-          isPlan: e.isPlan,
-          checkType: e.checkType, // 🔍 检查 checkType
-          isTimeCalendar: e.isTimeCalendar,
-          isTimer: e.isTimer,
-          isOutsideApp: e.isOutsideApp,
-          isTimeLog: e.isTimeLog,
-        })),
-        有parentEventId的: allEvents.filter(e => e.parentEventId).length,
-        TimeCalendar事件: allEvents.filter(e => e.isTimeCalendar).length,
-        TimeCalendar已过期: allEvents.filter(e => e.isTimeCalendar && e.endTime != null && e.endTime !== '' && new Date(e.endTime) <= now).length,
-        示例事件: allEvents.slice(0, 3).map(e => ({
-          id: e.id?.substring(0, 20),
-          title: e.title?.simpleTitle?.substring(0, 20) || '',
-          isPlan: e.isPlan,
-          isTimeCalendar: e.isTimeCalendar,
-          parentEventId: e.parentEventId,
-          endTime: e.endTime
-        }))
-      });
-    }
-    
-    return filtered;
+    // 🔧 FIX: 初始化为空数组，通过 useEffect 异步加载数据
+    // （不能在 useState 初始化器中调用 async 方法）
+    console.log('[PlanManager] 初始化为空数组，等待 useEffect 加载数据');
+    return [];
   });
   
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -660,6 +454,140 @@ const PlanManager: React.FC<PlanManagerProps> = ({
   // 🆕 v1.5: onChange 防抖优化（300ms）
   const onChangeTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingUpdatedItemsRef = useRef<any[] | null>(null);
+  
+  // 🔧 FIX: 异步加载初始数据
+  useEffect(() => {
+    const loadInitialData = async () => {
+      console.log('[PlanManager] 开始异步加载初始数据...');
+      
+      if (initialItemsRef.current) {
+        console.log('[PlanManager] 使用缓存的初始数据:', initialItemsRef.current.length);
+        setItems(initialItemsRef.current);
+        return;
+      }
+      
+      try {
+        // 从 EventService 异步加载所有事件
+        const now = new Date();
+        const rawEvents = await EventService.getAllEvents();
+        
+        // 🛡️ 过滤掉 ghost 事件（带 _isDeleted 标记的临时事件）
+        const allEvents = rawEvents.filter(e => !(e as any)._isDeleted);
+        
+        if (rawEvents.length !== allEvents.length) {
+          console.warn('[PlanManager] 🚨 发现并过滤了', rawEvents.length - allEvents.length, '个 ghost 事件！');
+        }
+        
+        console.log('[PlanManager] 初始化 - 从 EventService 加载:', {
+          总事件数: allEvents.length,
+        });
+        
+        // 🔧 数据迁移：为旧的 isPlan 事件批量设置 checkType（仅执行一次）
+        const needsMigration = allEvents.filter(e => e.isPlan && !e.checkType);
+        if (needsMigration.length > 0) {
+          console.log('🔧 [数据迁移] 检测到需要迁移的 isPlan 事件:', needsMigration.length);
+          
+          // 直接修改内存中的事件对象
+          needsMigration.forEach(event => {
+            event.checkType = 'once';
+          });
+          
+          // 批量更新到存储（静默更新，不触发事件广播）
+          for (const event of needsMigration) {
+            await EventService.updateEvent(event.id, { checkType: 'once' }, { silent: true });
+          }
+          console.log(`✅ [数据迁移] 已静默更新 ${needsMigration.length} 个事件的 checkType`);
+        }
+        
+        // 🎯 并集过滤公式：(isPlan OR checkType OR isTimeCalendar) - 排除条件
+        const filtered = allEvents.filter((event: Event) => {
+          // 步骤 1: 并集条件 - 满足任意一个即纳入
+          const matchesInclusionCriteria = 
+            event.isPlan === true || 
+            (event.checkType && event.checkType !== 'none') ||
+            event.isTimeCalendar === true;
+          
+          if (!matchesInclusionCriteria) {
+            return false;
+          }
+          
+          // 步骤 2: 排除系统事件
+          if (EventService.isSubordinateEvent(event)) {
+            return false;
+          }
+          
+          // 步骤 2.5: 过滤空白事件
+          const titleObj = event.title;
+          const hasTitle = event.content || 
+                          (typeof titleObj === 'string' ? titleObj : 
+                           (titleObj && (titleObj.simpleTitle || titleObj.fullTitle || titleObj.colorTitle)));
+          
+          const eventlogField = (event as any).eventlog;
+          let hasEventlog = false;
+          
+          if (eventlogField) {
+            if (typeof eventlogField === 'string') {
+              hasEventlog = eventlogField.trim().length > 0;
+            } else if (typeof eventlogField === 'object' && eventlogField !== null) {
+              const slateContent = eventlogField.slateJson || '';
+              const htmlContent = eventlogField.html || '';
+              const plainContent = eventlogField.plainText || '';
+              
+              hasEventlog = slateContent.trim().length > 0 || 
+                           htmlContent.trim().length > 0 || 
+                           plainContent.trim().length > 0;
+            }
+          }
+          
+          if (!hasTitle && !hasEventlog) {
+            return false;
+          }
+          
+          // 步骤 3: 过期/完成事件处理
+          const isExpired = isEventExpired(event, now);
+          
+          if (event.isTimeCalendar && isExpired) {
+            const isTaskLike = event.isPlan === true || 
+                               (event.checkType && event.checkType !== 'none');
+            
+            if (!isTaskLike) {
+              return false;
+            }
+          }
+          
+          // 3.2 已完成任务：过0点后自动隐藏
+          if (event.checkType && event.checkType !== 'none') {
+            const lastChecked = event.checked?.[event.checked.length - 1];
+            const lastUnchecked = event.unchecked?.[event.unchecked.length - 1];
+            const isCompleted = lastChecked && (!lastUnchecked || lastChecked > lastUnchecked);
+            
+            if (isCompleted && lastChecked) {
+              const completedTime = new Date(lastChecked);
+              const today = new Date(now);
+              today.setHours(0, 0, 0, 0);
+              
+              if (completedTime < today) {
+                return false;
+              }
+            }
+          }
+          
+          return true;
+        });
+        
+        console.log('[PlanManager] 初始化 - 过滤后的 Plan 事件:', filtered.length);
+        
+        // 缓存并设置
+        initialItemsRef.current = filtered;
+        setItems(filtered);
+      } catch (error) {
+        console.error('[PlanManager] 加载初始数据失败:', error);
+        setItems([]);
+      }
+    };
+    
+    loadInitialData();
+  }, []); // 只在组件挂载时执行一次
   
   // 清理定时器和缓存
   useEffect(() => {

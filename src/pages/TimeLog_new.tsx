@@ -7,12 +7,18 @@
 
 import React from 'react';
 import './TimeLog_new.css';
+import { GlassIconBar } from '../components/GlassIconBar';
 
 const TimeLog_new: React.FC = () => {
   return (
     <div className="timelog-page-new">
       {/* 时光日志主容器 */}
       <div className="timelog-main-container">
+        {/* 右侧毛玻璃操作栏 */}
+        <GlassIconBar onAction={(id) => {
+          // TODO: integrate with actual handlers (record, upload, etc.)
+          console.log('[GlassIconBar] action:', id);
+        }} />
         {/* 标题区 */}
         <div className="timelog-header-section">
           <div className="timelog-header-border">

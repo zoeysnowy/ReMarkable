@@ -3,6 +3,7 @@ const path = require('path');
 const http = require('http');
 const url = require('url');
 const { spawn } = require('child_process');
+const fs = require('fs');
 
 // 🗄️ 加载 better-sqlite3（在主进程中）
 let Database;
@@ -381,6 +382,102 @@ ipcMain.handle('show-notification', createIPCHandler('show-notification', (event
   return true;
 }));
 
+// 🗑️ 清理存储数据（包括IndexedDB）
+ipcMain.handle('clear-storage-data', createIPCHandler('clear-storage-data', async () => {
+  const { session, app } = require('electron');
+  const fs = require('fs').promises;
+  const path = require('path');
+  
+  try {
+    console.log('🗑️ [Main] 开始清理存储数据...');
+    
+    // 1. 强制关闭所有 SQLite 连接（包括断开连接前执行 PRAGMA optimize）
+    console.log('📊 [Main] 关闭 SQLite 连接...');
+    for (const [dbId, db] of sqliteConnections.entries()) {
+      if (db && typeof db.close === 'function') {
+        try {
+          // 尝试执行优化（确保 WAL 文件被清空）
+          try {
+            db.pragma('wal_checkpoint(TRUNCATE)');
+          } catch (e) {
+            console.warn(`   ⚠️  WAL checkpoint 失败: ${dbId}`, e.message);
+          }
+          
+          db.close();
+          sqliteConnections.delete(dbId);
+          console.log(`   ✅ 已关闭: ${dbId}`);
+        } catch (err) {
+          console.warn(`   ⚠️  关闭失败: ${dbId}`, err.message);
+          // 强制删除连接
+          sqliteConnections.delete(dbId);
+        }
+      }
+    }
+    console.log('✅ [Main] SQLite 连接已关闭');
+    
+    // 等待 100ms 确保文件句柄释放
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // 2. 清理浏览器存储（session.clearStorageData 会正确关闭 IndexedDB 连接）
+    console.log('🗑️ [Main] 清理浏览器存储数据...');
+    await session.defaultSession.clearStorageData({
+      storages: ['indexeddb', 'localstorage', 'cookies', 'serviceworkers', 'cachestorage']
+    });
+    console.log('✅ [Main] 浏览器存储数据清理完成');
+    
+    // 等待 200ms 确保 IndexedDB 文件句柄释放
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    // 3. 删除 SQLite 数据库文件
+    console.log('📁 [Main] 删除 SQLite 文件...');
+    
+    // 需要清理的目录列表
+    const pathsToClean = [
+      app.getPath('userData'),
+      path.join(__dirname, 'database'), // 项目目录下的 database 文件夹
+    ];
+    
+    let totalDeleted = 0;
+    for (const dirPath of pathsToClean) {
+      try {
+        const files = await fs.readdir(dirPath);
+        const dbFiles = files.filter(file => 
+          file.endsWith('.db') || 
+          file.endsWith('.db-wal') || 
+          file.endsWith('.db-shm')
+        );
+        
+        for (const file of dbFiles) {
+          const filePath = path.join(dirPath, file);
+          try {
+            await fs.unlink(filePath);
+            console.log(`   ✅ 已删除: ${filePath}`);
+            totalDeleted++;
+          } catch (err) {
+            console.warn(`   ⚠️  删除失败: ${file} - ${err.message}`);
+          }
+        }
+      } catch (err) {
+        if (err.code !== 'ENOENT') {
+          console.warn(`⚠️  扫描目录失败 ${dirPath}: ${err.message}`);
+        }
+      }
+    }
+    
+    if (totalDeleted > 0) {
+      console.log(`✅ [Main] SQLite 数据库文件已删除 (${totalDeleted} 个文件)`);
+    } else {
+      console.log('ℹ️ [Main] 未找到 SQLite 数据库文件');
+    }
+    
+    console.log('✅ [Main] 所有存储数据清理完成');
+    return { success: true };
+  } catch (error) {
+    console.error('❌ [Main] 清理存储数据失败:', error);
+    return { success: false, error: error.message };
+  }
+}));
+
 // 文件操作
 ipcMain.handle('dialog:openFile', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -460,6 +557,15 @@ ipcMain.handle('sqlite:create-database', (event, dbPath, options) => {
       throw new Error('better-sqlite3 not available');
     }
     
+    // 如果不是内存数据库，确保目录存在
+    if (dbPath !== ':memory:') {
+      const dir = path.dirname(dbPath);
+      if (!fs.existsSync(dir)) {
+        console.log(`📁 [SQLite] Creating directory: ${dir}`);
+        fs.mkdirSync(dir, { recursive: true });
+      }
+    }
+    
     // 合并选项，在开发环境自动启用 verbose
     const finalOptions = {
       ...(options || {}),
@@ -506,15 +612,60 @@ ipcMain.handle('sqlite:prepare', (event, dbId, sql) => {
 });
 
 ipcMain.handle('sqlite:run', (event, stmtId, params) => {
+  // 🔧 CRITICAL FIX: 清理参数中的对象类型（better-sqlite3 只接受原始类型）
+  // typeof null === 'object' 在 JavaScript 中返回 true，但 SQLite 不接受 object
+  const cleanedParams = params ? params.map(p => {
+    // null → undefined（better-sqlite3 内部会将 undefined 转为 NULL）
+    // 这避免了 typeof null === 'object' 导致的类型检查问题
+    if (p === null || p === undefined) {
+      return undefined;
+    }
+    // 原始类型直接返回
+    if (typeof p !== 'object') {
+      return p;
+    }
+    // Buffer 保持不变
+    if (Buffer.isBuffer(p)) {
+      return p;
+    }
+    // 其他对象类型序列化为 JSON
+    console.warn('[Main Process] ⚠️ Converting object to JSON:', typeof p, p?.constructor?.name);
+    return JSON.stringify(p);
+  }) : [];
+
   try {
     const stmt = sqliteConnections.get(stmtId);
     if (!stmt) {
       throw new Error(`Statement ${stmtId} not found`);
     }
-    const result = stmt.run(params || []);
+    
+    // 🔍 Debug: Log parameters in main process
+    if (params && params.length > 10) {
+      console.log('[Main Process] 🔍 sqlite:run params count:', params.length);
+      console.log('[Main Process] 🔍 First 5 params:', params.slice(0, 5).map((p, i) => ({
+        index: i,
+        type: typeof p,
+        value: p === null ? 'null' : (typeof p === 'object' ? JSON.stringify(p).substring(0, 50) : p)
+      })));
+      console.log('[Main Process] 🔍 Last 2 params:', params.slice(-2).map((p, i) => ({
+        index: params.length - 2 + i,
+        type: typeof p,
+        value: p === null ? 'null' : (typeof p === 'object' ? JSON.stringify(p).substring(0, 50) : p)
+      })));
+    }
+    
+    const result = stmt.run(...cleanedParams);
     return { success: true, changes: result.changes, lastInsertRowid: result.lastInsertRowid };
   } catch (error) {
-    return { success: false, error: error.message };
+    console.error('[Main Process] ❌ sqlite:run failed:', error.message);
+    console.error('[Main Process] 📜 Error code:', error.code);
+    console.error('[Main Process] 📜 Error name:', error.name);
+    console.error('[Main Process] 📜 Full error:', error);
+    if (params && params.length > 10) {
+      console.error('[Main Process] 🔍 Original params types:', params.map((p, i) => `[${i}] ${typeof p}`));
+      console.error('[Main Process] 🔍 Cleaned params types:', cleanedParams.map((p, i) => `[${i}] ${typeof p}`));
+    }
+    return { success: false, error: error.message, code: error.code };
   }
 });
 
@@ -524,7 +675,7 @@ ipcMain.handle('sqlite:get', (event, stmtId, params) => {
     if (!stmt) {
       throw new Error(`Statement ${stmtId} not found`);
     }
-    const result = stmt.get(params || []);
+    const result = stmt.get(...(params || []));
     return { success: true, data: result };
   } catch (error) {
     return { success: false, error: error.message };
@@ -537,7 +688,7 @@ ipcMain.handle('sqlite:all', (event, stmtId, params) => {
     if (!stmt) {
       throw new Error(`Statement ${stmtId} not found`);
     }
-    const result = stmt.all(params || []);
+    const result = stmt.all(...(params || []));
     return { success: true, data: result };
   } catch (error) {
     return { success: false, error: error.message };
@@ -550,7 +701,19 @@ ipcMain.handle('sqlite:pragma', (event, dbId, pragma) => {
     if (!db) {
       throw new Error(`Database ${dbId} not found`);
     }
-    const result = db.pragma(pragma);
+    let result = db.pragma(pragma);
+    // 如果是单个值的 pragma（如 journal_mode），提取值
+    if (Array.isArray(result) && result.length === 1 && typeof result[0] === 'object') {
+      const keys = Object.keys(result[0]);
+      if (keys.length === 1) {
+        result = result[0][keys[0]];
+      }
+    } else if (typeof result === 'object' && !Array.isArray(result) && result !== null) {
+      const keys = Object.keys(result);
+      if (keys.length === 1) {
+        result = result[keys[0]];
+      }
+    }
     return { success: true, data: result };
   } catch (error) {
     return { success: false, error: error.message };
@@ -567,6 +730,45 @@ ipcMain.handle('sqlite:close', (event, dbId) => {
     }
     return { success: true };
   } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// 删除数据库文件（用于修复损坏的数据库）
+ipcMain.handle('sqlite:deleteDatabase', (event, dbPath) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    
+    // 安全检查：只允许删除 database 目录下的 .db 文件
+    if (!dbPath.includes('database') || !dbPath.endsWith('.db')) {
+      throw new Error('Invalid database path');
+    }
+    
+    const fullPath = path.join(__dirname, '..', dbPath);
+    
+    if (fs.existsSync(fullPath)) {
+      fs.unlinkSync(fullPath);
+      console.log(`🗑️ [SQLite] Database file deleted: ${fullPath}`);
+      
+      // 同时删除可能存在的 WAL 和 SHM 文件
+      const walPath = fullPath + '-wal';
+      const shmPath = fullPath + '-shm';
+      if (fs.existsSync(walPath)) {
+        fs.unlinkSync(walPath);
+        console.log(`🗑️ [SQLite] WAL file deleted: ${walPath}`);
+      }
+      if (fs.existsSync(shmPath)) {
+        fs.unlinkSync(shmPath);
+        console.log(`🗑️ [SQLite] SHM file deleted: ${shmPath}`);
+      }
+      
+      return { success: true };
+    } else {
+      return { success: true, message: 'File does not exist' };
+    }
+  } catch (error) {
+    console.error('❌ [SQLite] Failed to delete database:', error);
     return { success: false, error: error.message };
   }
 });
@@ -1662,6 +1864,342 @@ ipcMain.handle('check-ai-proxy-status', async () => {
     running: isRunning,
     pid: proxyProcess?.pid
   };
+});
+
+// ========================================
+// 📎 附件管理 IPC Handlers
+// ========================================
+
+/**
+ * 获取附件存储目录
+ */
+function getAttachmentsDir() {
+  const userDataPath = app.getPath('userData');
+  const attachmentsDir = path.join(userDataPath, 'attachments');
+  
+  // 确保目录存在
+  if (!fs.existsSync(attachmentsDir)) {
+    fs.mkdirSync(attachmentsDir, { recursive: true });
+  }
+  
+  return attachmentsDir;
+}
+
+/**
+ * 根据日期创建子目录（年/月）
+ */
+function getDateBasedPath() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  return path.join(String(year), month);
+}
+
+/**
+ * 保存附件
+ */
+ipcMain.handle('attachment:save', async (event, data) => {
+  const startTime = Date.now();
+  
+  try {
+    const { id, eventId, filename, mimeType, buffer, generateThumbnail, extractText } = data;
+    
+    console.log('[Attachment] 保存附件:', {
+      id,
+      eventId,
+      filename,
+      mimeType,
+      size: `${(buffer.length / 1024).toFixed(2)} KB`,
+      generateThumbnail,
+      extractText,
+    });
+    
+    // 1. 确定存储路径（按类型分类）
+    const attachmentsDir = getAttachmentsDir();
+    let category = 'documents';
+    if (mimeType.startsWith('image/')) category = 'images';
+    else if (mimeType.startsWith('video/')) category = 'videos';
+    else if (mimeType.startsWith('audio/')) category = 'audio';
+    
+    const dateBasedPath = getDateBasedPath();
+    const targetDir = path.join(attachmentsDir, category, dateBasedPath);
+    
+    // 2. 创建目录
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    
+    // 3. 生成唯一文件名
+    const ext = path.extname(filename);
+    const basename = path.basename(filename, ext);
+    const uniqueFilename = `${basename}_${id}${ext}`;
+    const filePath = path.join(targetDir, uniqueFilename);
+    
+    // 4. 保存文件
+    const fileBuffer = Buffer.from(buffer);
+    fs.writeFileSync(filePath, fileBuffer);
+    
+    console.log('[Attachment] ✅ 文件已保存:', filePath);
+    
+    // 5. 生成缩略图（仅图片）
+    let thumbnailPath = null;
+    if (category === 'images' && generateThumbnail) {
+      try {
+        // 注意：这里需要 sharp 库，如果没有安装则跳过
+        // 可以在后续迭代中添加
+        console.log('[Attachment] ⏭️ 缩略图生成跳过（需安装 sharp）');
+      } catch (error) {
+        console.warn('[Attachment] ⚠️ 缩略图生成失败:', error.message);
+      }
+    }
+    
+    // 6. 提取文本（图片OCR/PDF）
+    if (extractText) {
+      try {
+        // 注意：需要 tesseract.js 或 pdf-parse，后续迭代添加
+        console.log('[Attachment] ⏭️ 文本提取跳过（需安装 OCR 库）');
+      } catch (error) {
+        console.warn('[Attachment] ⚠️ 文本提取失败:', error.message);
+      }
+    }
+    
+    // 7. 保存到数据库（SQLite attachments 表）
+    if (Database && db) {
+      try {
+        db.prepare(`
+          INSERT INTO attachments (
+            id, event_id, filename, file_size, mime_type,
+            local_path, status, uploaded_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          id,
+          eventId,
+          filename,
+          buffer.length,
+          mimeType,
+          path.relative(attachmentsDir, filePath),
+          'local-only',
+          formatTimeForStorage(new Date())
+        );
+        
+        console.log('[Attachment] ✅ 数据库记录已创建');
+      } catch (dbError) {
+        console.error('[Attachment] ❌ 数据库保存失败:', dbError.message);
+      }
+    }
+    
+    const duration = Date.now() - startTime;
+    performanceMonitor.recordIPC('attachment:save', duration);
+    
+    return {
+      success: true,
+      localPath: path.relative(attachmentsDir, filePath),
+      fullPath: filePath,
+      thumbnailPath,
+      duration: `${duration}ms`,
+    };
+    
+  } catch (error) {
+    console.error('[Attachment] ❌ 保存失败:', error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+});
+
+/**
+ * 获取附件完整路径
+ */
+ipcMain.handle('attachment:getPath', async (event, attachmentId) => {
+  try {
+    if (!Database || !db) {
+      throw new Error('数据库未初始化');
+    }
+    
+    const attachment = db.prepare(`
+      SELECT local_path FROM attachments WHERE id = ? AND deleted_at IS NULL
+    `).get(attachmentId);
+    
+    if (!attachment) {
+      throw new Error('附件不存在');
+    }
+    
+    const attachmentsDir = getAttachmentsDir();
+    const fullPath = path.join(attachmentsDir, attachment.local_path);
+    
+    // 检查文件是否存在
+    if (!fs.existsSync(fullPath)) {
+      throw new Error('附件文件不存在');
+    }
+    
+    return {
+      success: true,
+      path: fullPath,
+    };
+    
+  } catch (error) {
+    console.error('[Attachment] ❌ 获取路径失败:', error.message);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+});
+
+/**
+ * 获取缩略图路径
+ */
+ipcMain.handle('attachment:getThumbnail', async (event, attachmentId) => {
+  try {
+    if (!Database || !db) {
+      throw new Error('数据库未初始化');
+    }
+    
+    const attachment = db.prepare(`
+      SELECT thumbnail_path FROM attachments WHERE id = ? AND deleted_at IS NULL
+    `).get(attachmentId);
+    
+    if (!attachment || !attachment.thumbnail_path) {
+      return { success: false, path: null };
+    }
+    
+    const attachmentsDir = getAttachmentsDir();
+    const fullPath = path.join(attachmentsDir, attachment.thumbnail_path);
+    
+    return {
+      success: true,
+      path: fs.existsSync(fullPath) ? fullPath : null,
+    };
+    
+  } catch (error) {
+    console.error('[Attachment] ❌ 获取缩略图失败:', error.message);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+});
+
+/**
+ * 删除附件
+ */
+ipcMain.handle('attachment:delete', async (event, attachmentId) => {
+  try {
+    if (!Database || !db) {
+      throw new Error('数据库未初始化');
+    }
+    
+    // 1. 查询附件信息
+    const attachment = db.prepare(`
+      SELECT local_path, thumbnail_path FROM attachments 
+      WHERE id = ? AND deleted_at IS NULL
+    `).get(attachmentId);
+    
+    if (!attachment) {
+      throw new Error('附件不存在');
+    }
+    
+    const attachmentsDir = getAttachmentsDir();
+    
+    // 2. 删除文件
+    const filePath = path.join(attachmentsDir, attachment.local_path);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log('[Attachment] ✅ 文件已删除:', filePath);
+    }
+    
+    // 3. 删除缩略图
+    if (attachment.thumbnail_path) {
+      const thumbnailPath = path.join(attachmentsDir, attachment.thumbnail_path);
+      if (fs.existsSync(thumbnailPath)) {
+        fs.unlinkSync(thumbnailPath);
+        console.log('[Attachment] ✅ 缩略图已删除');
+      }
+    }
+    
+    // 4. 更新数据库（软删除）
+    db.prepare(`
+      UPDATE attachments SET deleted_at = ? WHERE id = ?
+    `).run(formatTimeForStorage(new Date()), attachmentId);
+    
+    return {
+      success: true,
+      message: '附件已删除',
+    };
+    
+  } catch (error) {
+    console.error('[Attachment] ❌ 删除失败:', error.message);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+});
+
+/**
+ * 获取事件的所有附件
+ */
+ipcMain.handle('attachment:getByEvent', async (event, eventId) => {
+  try {
+    if (!Database || !db) {
+      throw new Error('数据库未初始化');
+    }
+    
+    const attachments = db.prepare(`
+      SELECT * FROM attachments 
+      WHERE event_id = ? AND deleted_at IS NULL
+      ORDER BY uploaded_at DESC
+    `).all(eventId);
+    
+    return {
+      success: true,
+      attachments: attachments.map(att => ({
+        id: att.id,
+        filename: att.filename,
+        size: att.file_size,
+        mimeType: att.mime_type,
+        localPath: att.local_path,
+        status: att.status,
+        uploadedAt: att.uploaded_at,
+      })),
+    };
+    
+  } catch (error) {
+    console.error('[Attachment] ❌ 查询失败:', error.message);
+    return {
+      success: false,
+      error: error.message,
+      attachments: [],
+    };
+  }
+});
+
+/**
+ * 打开附件（使用系统默认应用）
+ */
+ipcMain.handle('attachment:open', async (event, attachmentId) => {
+  try {
+    const result = await ipcMain.emit('attachment:getPath', event, attachmentId);
+    
+    if (!result.success) {
+      throw new Error(result.error);
+    }
+    
+    await shell.openPath(result.path);
+    
+    return {
+      success: true,
+      message: '已打开附件',
+    };
+    
+  } catch (error) {
+    console.error('[Attachment] ❌ 打开失败:', error.message);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
 });
 
 // 应用退出时清理代理进程

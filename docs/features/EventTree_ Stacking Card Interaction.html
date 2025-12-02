@@ -1,0 +1,367 @@
+
+	      <!DOCTYPE html>
+<html>
+  <head>
+    <title>CodeSandbox</title>
+
+    <script type="importmap">
+      {"imports":{"react":"https://esm.sh/react@18.3.1","framer-motion":"https://esm.sh/framer-motion?external=react,react-dom","lucide-react":"https://esm.sh/lucide-react?external=react,react-dom","react-dom":"https://esm.sh/react-dom@18.3.1","react/jsx-runtime":"https://esm.sh/react@18.3.1/jsx-runtime","react-dom/client":"https://esm.sh/react-dom@18.3.1/client","tailwindcss/defaultTheme":"https://esm.sh/tailwindcss/defaultTheme","tailwindcss-animate":"https://esm.sh/tailwindcss-animate"}}
+    </script>
+
+    <script>
+      window.addEventListener("error", function (event) {
+        const errorObj = {
+          message: event.message,
+          source: event.filename,
+          lineno: event.lineno,
+          colno: event.colno,
+          stack: event.error ? event.error.stack : null
+        };
+        window.parent.postMessage(
+          { action: "error", error: JSON.stringify(errorObj) },
+          "*"
+        );
+        event.preventDefault();
+      });
+
+  function handleImportError(error) {
+    throw new Error('Import module failed: ' + error.target.src);
+  }
+
+  const observer = new MutationObserver(mutations => {
+    mutations.forEach(mutation => {
+      mutation.addedNodes.forEach(node => {
+        if (node.tagName === 'SCRIPT' && node.type === 'module') {
+          node.onerror = handleImportError;
+        }
+      });
+    });
+  });
+
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+
+  document.querySelectorAll('script[type="module"]').forEach(script => {
+    script.onerror = handleImportError;
+  });
+
+  
+window.console = new Proxy(console, {
+  get(target, prop) {
+    if (['log', 'warn', 'error'].includes(prop)) {
+      return new Proxy(target[prop], {
+        apply(fn, thisArg, args) {
+          fn.apply(thisArg, args);
+          window.parent.postMessage({ action: 'console', 
+            type: prop, 
+            args: args.map((arg) => {
+              try {
+                return JSON.stringify(arg).replace(/^["']|["']$/g, '');
+              } catch (e) {
+                return arg;
+              }
+            }) 
+          }, '*');
+        }
+      });
+    }
+    return target[prop];
+  }
+});
+
+
+    </script>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,container-queries"></script>
+    <style type="text/tailwindcss">
+      @layer base {
+        :root {
+          --background: 0 0% 100%;
+          --foreground: 222.2 47.4% 11.2%;
+
+          --muted: 210 40% 96.1%;
+          --muted-foreground: 215.4 16.3% 46.9%;
+
+          --popover: 0 0% 100%;
+          --popover-foreground: 222.2 47.4% 11.2%;
+
+          --border: 214.3 31.8% 91.4%;
+          --input: 214.3 31.8% 91.4%;
+
+          --card: 0 0% 100%;
+          --card-foreground: 222.2 47.4% 11.2%;
+
+          --primary: 222.2 47.4% 11.2%;
+          --primary-foreground: 210 40% 98%;
+
+          --secondary: 210 40% 96.1%;
+          --secondary-foreground: 222.2 47.4% 11.2%;
+
+          --accent: 210 40% 96.1%;
+          --accent-foreground: 222.2 47.4% 11.2%;
+
+          --destructive: 0 100% 50%;
+          --destructive-foreground: 210 40% 98%;
+
+          --ring: 215 20.2% 65.1%;
+
+          --radius: 0.5rem;
+        }
+
+        .dark {
+          --background: 224 71% 4%;
+          --foreground: 213 31% 91%;
+
+          --muted: 223 47% 11%;
+          --muted-foreground: 215.4 16.3% 56.9%;
+
+          --accent: 216 34% 17%;
+          --accent-foreground: 210 40% 98%;
+
+          --popover: 224 71% 4%;
+          --popover-foreground: 215 20.2% 65.1%;
+
+          --border: 216 34% 17%;
+          --input: 216 34% 17%;
+
+          --card: 224 71% 4%;
+          --card-foreground: 213 31% 91%;
+
+          --primary: 210 40% 98%;
+          --primary-foreground: 222.2 47.4% 1.2%;
+
+          --secondary: 222.2 47.4% 11.2%;
+          --secondary-foreground: 210 40% 98%;
+
+          --destructive: 0 63% 31%;
+          --destructive-foreground: 210 40% 98%;
+
+          --ring: 216 34% 17%;
+
+          --radius: 0.5rem;
+        }
+      }
+    </style>
+    <script type="module">
+          import defaultTheme from "tailwindcss/defaultTheme"
+          import tailwindcssAnimate from "tailwindcss-animate"
+
+          const fontFamily = defaultTheme.fontFamily;
+
+          tailwind.config = {
+            darkMode: ["class"],
+        content: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
+        theme: {
+          container: {
+            center: true,
+            padding: "2rem",
+            screens: {
+              "2xl": "1400px",
+            },
+          },
+          extend: {
+            colors: {
+              border: "hsl(var(--border))",
+              input: "hsl(var(--input))",
+              ring: "hsl(var(--ring))",
+              background: "hsl(var(--background))",
+              foreground: "hsl(var(--foreground))",
+              primary: {
+                DEFAULT: "hsl(var(--primary))",
+                foreground: "hsl(var(--primary-foreground))",
+              },
+              secondary: {
+                DEFAULT: "hsl(var(--secondary))",
+                foreground: "hsl(var(--secondary-foreground))",
+              },
+              destructive: {
+                DEFAULT: "hsl(var(--destructive))",
+                foreground: "hsl(var(--destructive-foreground))",
+              },
+              muted: {
+                DEFAULT: "hsl(var(--muted))",
+                foreground: "hsl(var(--muted-foreground))",
+              },
+              accent: {
+                DEFAULT: "hsl(var(--accent))",
+                foreground: "hsl(var(--accent-foreground))",
+              },
+              popover: {
+                DEFAULT: "hsl(var(--popover))",
+                foreground: "hsl(var(--popover-foreground))",
+              },
+              card: {
+                DEFAULT: "hsl(var(--card))",
+                foreground: "hsl(var(--card-foreground))",
+              },
+            },
+            borderRadius: {
+              lg: `var(--radius)`,
+              md: `calc(var(--radius) - 2px)`,
+              sm: "calc(var(--radius) - 4px)",
+            },
+            fontFamily: {
+              sans: [...fontFamily.sans],
+            },
+
+            keyframes: {
+              "accordion-down": {
+                from: { height: "0" },
+                to: { height: "var(--radix-accordion-content-height)" },
+              },
+              "accordion-up": {
+                from: { height: "var(--radix-accordion-content-height)" },
+                to: { height: "0" },
+              },
+            },
+            animation: {
+              "accordion-down": "accordion-down 0.2s ease-out",
+              "accordion-up": "accordion-up 0.2s ease-out",
+            },
+          },
+        },
+        plugins: [tailwindcssAnimate]
+      }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.27.0/babel.min.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel" data-type="module">
+      		  import {createRoot} from "react-dom/client";
+            
+      		  
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FileText, Link as LinkIcon, ArrowRight, MoreHorizontal, Layers } from 'lucide-react';
+
+// 模拟数据：一个主 Event，以及它链接的 3 个其他 Event
+const mainEvent = {
+  id: '1',
+  title: '产品发布会策划 (Main Task)',
+  type: 'task',
+  description: 'Q4 核心目标，涉及多部门协作',
+  color: 'bg-slate-900',
+  textColor: 'text-white'
+};
+
+const linkedEvents = [
+  { id: '2', title: '市场部需求文档', type: 'doc', color: 'bg-blue-50', textColor: 'text-blue-900' },
+  { id: '3', title: '场地预算审批', type: 'task', color: 'bg-purple-50', textColor: 'text-purple-900' },
+  { id: '4', title: 'KOL 邀请名单', type: 'data', color: 'bg-emerald-50', textColor: 'text-emerald-900' },
+];
+
+const Card = ({ event, index, total, isHovered }) => {
+  // 计算展开时的偏移量
+  const xOffset = isHovered ? (index + 1) * 160 : (index + 1) * 4;
+  const yOffset = isHovered ? 0 : (index + 1) * 4;
+  const rotate = isHovered ? 0 : (index + 1) * 2;
+  const scale = isHovered ? 1 : 1 - (index * 0.05);
+  const zIndex = total - index;
+  const opacity = isHovered ? 1 : 1 - (index * 0.15); // 堆叠时后面稍微透明一点
+
+  return (
+    <motion.div
+      layout
+      initial={false}
+      animate={{
+        x: xOffset,
+        y: yOffset,
+        rotate: rotate,
+        scale: scale,
+        opacity: opacity,
+      }}
+      transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+      className={`absolute top-0 left-0 w-48 h-24 p-3 rounded-lg shadow-lg border border-gray-200/50 backdrop-blur-sm flex flex-col justify-between cursor-pointer ${event.color} ${event.textColor}`}
+      style={{ 
+        zIndex: isHovered ? 100 : -zIndex, // 展开时层级提高
+        transformOrigin: 'bottom left'
+      }}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+            <LinkIcon size={12} className="opacity-50"/>
+            <span className="text-xs font-bold opacity-70">LINKED</span>
+        </div>
+        <ArrowRight size={12} className="opacity-50 group-hover:translate-x-1 transition-transform"/>
+      </div>
+      <div>
+        <h4 className="text-sm font-semibold leading-tight line-clamp-2">{event.title}</h4>
+      </div>
+    </motion.div>
+  );
+};
+
+function StackedEventNode() {
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    <div className="flex flex-col items-center justify-center w-full h-96 bg-slate-50 p-8">
+      
+      <div className="mb-12 text-center max-w-md">
+        <h2 className="text-lg font-bold text-slate-800 mb-2">"Vessels as Stacks" Concept</h2>
+        <p className="text-sm text-slate-500">
+           Hover over the card below. <br/>
+           Hierarchy is the position. Links are the hidden depth.
+        </p>
+      </div>
+
+      {/* 节点容器：在 React Flow 中，这就是一个 Custom Node */}
+      <div 
+        className="relative w-64 h-32" // 占据的物理空间
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        {/* 1. 链接的卡片 (Rendered BEHIND or NEXT TO the main card) */}
+        {/* 我们反向渲染，让第一个链接在最上面 */}
+        <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
+            {linkedEvents.map((event, index) => (
+            <Card 
+                key={event.id} 
+                event={event} 
+                index={index} 
+                total={linkedEvents.length} 
+                isHovered={isHovered} 
+            />
+            ))}
+        </div>
+
+        {/* 2. 主卡片 (Hierarchy Bone) - 永远在最前面，不动 */}
+        <div className={`relative z-10 w-64 h-32 p-4 rounded-xl shadow-xl border-2 border-slate-800/10 flex flex-col justify-between transition-all duration-300 ${mainEvent.color} ${mainEvent.textColor}`}>
+          <div className="flex justify-between items-start">
+            <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-white/10 rounded-md">
+                    <Layers size={16} />
+                </div>
+                <span className="text-xs font-medium opacity-80 tracking-wider">EVENT CARD</span>
+            </div>
+            
+            {/* 链接指示器 (当未展开时显示数量) */}
+            <div className={`px-2 py-1 rounded-full bg-white/20 text-xs font-bold flex items-center gap-1 transition-opacity duration-300 ${isHovered ? 'opacity-0' : 'opacity-100'}`}>
+                <LinkIcon size={10} />
+                <span>{linkedEvents.length}</span>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-lg font-bold mb-1">{mainEvent.title}</h3>
+            <p className="text-xs opacity-70">{mainEvent.description}</p>
+          </div>
+          
+          <div className="w-full h-1 bg-white/10 rounded-full mt-2 overflow-hidden">
+            <div className="w-2/3 h-full bg-blue-400 rounded-full"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+      		  createRoot(document.getElementById("root")).render(
+             <>
+      		    <StackedEventNode />
+              </>
+      		    );
+              window.parent.postMessage({ action: "ready" }, "*");
+    </script>
+  </body>
+</html>

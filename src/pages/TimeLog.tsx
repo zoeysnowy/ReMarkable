@@ -1,7 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import GlassIconBar from '../components/GlassIconBar';
 import ContentSelectionPanel from '../components/ContentSelectionPanel';
 import { EventService } from '../services/EventService';
 import { TagService } from '../services/TagService';
+import { ModalSlate } from '../components/ModalSlate/ModalSlate';
 import type { Event } from '../types';
 import './TimeLog.css';
 
@@ -22,6 +24,13 @@ import TimerIconSvg from '../assets/icons/timer_start.svg';
 import ExpandIconSvg from '../assets/icons/right.svg';
 import TagIconSvg from '../assets/icons/Tag.svg';
 import DownIconSvg from '../assets/icons/down.svg';
+import EditIconSvg from '../assets/icons/Edit.svg';
+import FavoriteIconSvg from '../assets/icons/favorite.svg';
+import LinkColorIconSvg from '../assets/icons/link_color.svg';
+import DdlIconSvg from '../assets/icons/ddl_add.svg';
+import RotationIconSvg from '../assets/icons/rotation_gray.svg';
+import AddTaskIconSvg from '../assets/icons/Add_task_gray.svg';
+import TimerStartIconSvg from '../assets/icons/timer_start.svg';
 
 const TimeLog: React.FC = () => {
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date } | null>(null);
@@ -29,6 +38,7 @@ const TimeLog: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'tags' | 'tasks' | 'favorites' | 'new'>('tags');
   const [tagServiceVersion, setTagServiceVersion] = useState(0);
+  const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set(['mock-1', 'mock-2', 'mock-3'])); // 默认展开所有 mock 事件
 
   // 订阅标签服务变化（与 PlanManager 一致）
   useEffect(() => {
@@ -100,10 +110,24 @@ const TimeLog: React.FC = () => {
         startTime: '2025-12-01T09:00:00',
         endTime: '2025-12-01T11:30:00',
         tags: ['ReMarkable开发', '工作'],
-        description: '根据 Figma 设计稿实现时光日志页面，包括时间轴、事件卡片、标签系统等核心功能。需要注意紫蓝渐变色的应用和交互细节。',
         source: 'Outlook Calendar',
         createdAt: Date.now() - 3600000,
-        dueDate: '2025-12-02T18:00:00'
+        dueDate: '2025-12-02T18:00:00',
+        eventlog: {
+          slateJson: JSON.stringify([
+            {
+              type: 'timestamp-divider',
+              timestamp: new Date(Date.now() - 3600000).toISOString(),
+              displayText: formatDateTime(Date.now() - 3600000),
+              children: [{ text: '' }]
+            },
+            {
+              type: 'paragraph',
+              children: [{ text: '根据 Figma 设计稿实现时光日志页面，包括时间轴、事件卡片、标签系统等核心功能。需要注意紫蓝渐变色的应用和交互细节。' }]
+            }
+          ]),
+          updatedAt: new Date(Date.now() - 3600000).toISOString()
+        }
       },
       {
         id: 'mock-2',
@@ -112,9 +136,23 @@ const TimeLog: React.FC = () => {
         startTime: '2025-12-01T14:00:00',
         endTime: '2025-12-01T15:00:00',
         tags: ['工作', '会议'],
-        description: '回顾本周的开发进度，展示新完成的功能模块，讨论下周的工作安排。',
         source: 'Google Calendar',
-        createdAt: Date.now() - 7200000
+        createdAt: Date.now() - 7200000,
+        eventlog: {
+          slateJson: JSON.stringify([
+            {
+              type: 'timestamp-divider',
+              timestamp: new Date(Date.now() - 7200000).toISOString(),
+              displayText: formatDateTime(Date.now() - 7200000),
+              children: [{ text: '' }]
+            },
+            {
+              type: 'paragraph',
+              children: [{ text: '回顾本周的开发进度，展示新完成的功能模块，讨论下周的工作安排。' }]
+            }
+          ]),
+          updatedAt: new Date(Date.now() - 7200000).toISOString()
+        }
       },
       {
         id: 'mock-3',
@@ -123,8 +161,22 @@ const TimeLog: React.FC = () => {
         startTime: '2025-12-01T19:30:00',
         endTime: '2025-12-01T20:30:00',
         tags: ['个人', '学习'],
-        description: '继续阅读第3章关于用户心智模型的内容，思考如何应用到产品设计中。',
-        createdAt: Date.now() - 14400000
+        createdAt: Date.now() - 14400000,
+        eventlog: {
+          slateJson: JSON.stringify([
+            {
+              type: 'timestamp-divider',
+              timestamp: new Date(Date.now() - 14400000).toISOString(),
+              displayText: formatDateTime(Date.now() - 14400000),
+              children: [{ text: '' }]
+            },
+            {
+              type: 'paragraph',
+              children: [{ text: '继续阅读第3章关于用户心智模型的内容，思考如何应用到产品设计中。' }]
+            }
+          ]),
+          updatedAt: new Date(Date.now() - 14400000).toISOString()
+        }
       }
     ];
     
@@ -192,6 +244,40 @@ const TimeLog: React.FC = () => {
     // TODO: 实现更多选项功能
   };
 
+  // 切换 eventlog 展开/折叠
+  const toggleLogExpanded = (eventId: string) => {
+    setExpandedLogs(prev => {
+      const next = new Set(prev);
+      if (next.has(eventId)) {
+        next.delete(eventId);
+      } else {
+        next.add(eventId);
+      }
+      return next;
+    });
+  };
+
+  // 处理 eventlog 内容变化
+  const handleLogChange = async (eventId: string, slateJson: string) => {
+    console.log('📝 [TimeLog] Saving eventlog for:', eventId);
+    const event = await EventService.getEventById(eventId);
+    if (event) {
+      const existingLog = typeof event.eventlog === 'object' ? event.eventlog : undefined;
+      await EventService.updateEvent(eventId, {
+        eventlog: {
+          slateJson,
+          html: existingLog?.html,
+          plainText: existingLog?.plainText,
+          attachments: existingLog?.attachments,
+          versions: existingLog?.versions,
+          syncState: existingLog?.syncState,
+          createdAt: existingLog?.createdAt,
+          updatedAt: new Date().toISOString()
+        }
+      });
+    }
+  };
+
   return (
     <div className="timelog-page">
       {/* 左侧内容选取区 - 完全复用 ContentSelectionPanel */}
@@ -229,29 +315,16 @@ const TimeLog: React.FC = () => {
           ) : (
             events.map((event, index) => (
               <div key={event.id} className="timeline-event-wrapper">
-                {/* 左侧独立时间轴 */}
-                <div className="timeline-axis">
-                  <div className="timeline-line"></div>
-                  {/* 使用图标替代圆点 */}
-                  <div className="timeline-icon-wrapper">
-                    {/* 优先显示 Timer 图标，或者根据业务逻辑显示 */}
-                    {/* 这里简单逻辑：如果有 startTime 显示 Plan，否则显示 Timer (示例) */}
-                    {/* 实际逻辑可能是：如果是 Timer 记录显示 Timer，如果是计划显示 Plan */}
-                    {/* 为了演示效果，我们交替显示或者根据 mock 数据 */}
+                {/* Row 1: Icon + Time Info */}
+                <div className="event-header-row">
+                  <div className="event-icon-col">
                     <img 
                       src={index % 2 === 0 ? PlanIconSvg : TimerIconSvg} 
                       className="timeline-status-icon" 
                       alt="status" 
                     />
                   </div>
-                </div>
-
-                {/* 右侧事件内容 (无卡片样式) */}
-                <div className="event-content">
-                  {/* Row 1: Time Info & Status */}
-                  <div className="event-row event-time-row">
-                    {/* 图标已移至时间轴，此处移除 time-status-icons */}
-                    
+                  <div className="event-time-col">
                     <span className="time-text start-time">{event.startTime && formatTime(event.startTime)}</span>
                     <span className="time-duration-arrow">
                       <span className="duration-text">2h30min</span>
@@ -259,62 +332,106 @@ const TimeLog: React.FC = () => {
                     </span>
                     <span className="time-text end-time">{event.endTime && formatTime(event.endTime)}</span>
                     
-                    <div className="event-right-actions">
-                      <button className="icon-btn expand-btn">
-                        <img src={ExpandIconSvg} alt="expand" />
+                    <div className="event-time-actions">
+                      <button className="time-action-btn" title="收藏">
+                        <img src={FavoriteIconSvg} alt="favorite" />
+                      </button>
+                      <button className="time-action-btn" title="添加截止日">
+                        <img src={DdlIconSvg} alt="ddl" />
+                      </button>
+                      <button className="time-action-btn" title="循环">
+                        <img src={RotationIconSvg} alt="rotation" />
+                      </button>
+                      <button className="time-action-btn" title="添加子任务">
+                        <img src={AddTaskIconSvg} alt="add task" />
+                      </button>
+                      <button className="time-action-btn" title="开始计时">
+                        <img src={TimerStartIconSvg} alt="timer start" />
                       </button>
                     </div>
                   </div>
+                </div>
 
-                  {/* Row 2: Title & Source */}
-                  <div className="event-row event-title-row">
-                    {event.emoji && <span className="event-emoji">{event.emoji}</span>}
-                    <span className="event-title">
-                      {typeof event.title === 'string' ? event.title : '无标题'}
-                    </span>
-                    
-                    <div className="event-source-info">
-                      <span className="source-label">来自</span>
-                      <img src={event.source?.includes('Google') ? GoogleIconSvg : OutlookIconSvg} className="source-icon" alt="source" />
-                      <span className="source-name">{event.source || 'Outlook'}: 默认</span>
-                      <span className="sync-tag">只接收同步</span>
-                    </div>
+                {/* Row 2: Line + Details */}
+                <div className="event-body-row">
+                  <div className="event-line-col">
+                    <div className="timeline-line"></div>
                   </div>
-
-                  {/* Row 3: Tags */}
-                  {event.tags && event.tags.length > 0 && (
-                    <div className="event-row event-tags-row">
-                      {event.tags.map((tagId, idx) => (
-                        <span key={idx} className="tag-item">#{tagId}</span>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Row 4: Attendees */}
-                  <div className="event-row event-meta-row">
-                    <img src={AttendeeIconSvg} className="row-icon" alt="attendees" />
-                    <span className="meta-text">Zoey Gong; Jenny Wong; Cindy Cai</span>
-                  </div>
-
-                  {/* Row 5: Location */}
-                  <div className="event-row event-meta-row">
-                    <img src={LocationIconSvg} className="row-icon" alt="location" />
-                    <span className="meta-text">静安嘉里中心2座F38, RM工作室, 5号会议室</span>
-                  </div>
-
-                  {/* Row 6: Log Content */}
-                  {event.description && (
-                    <div className="event-log-box">
-                      <div className="timestamp-row">
-                        <button className="timestamp-toggle"><img src={DownIconSvg} alt="toggle" /></button>
-                        <span className="log-timestamp">2025-10-19 10:35:18</span>
-                        <button className="timestamp-options"><img src={MoreIconSvg} alt="more" /></button>
+                  <div className="event-details-col">
+                    {/* Title & Source */}
+                    <div className="event-row event-title-row">
+                      {event.emoji && <span className="event-emoji">{event.emoji}</span>}
+                      <span className="event-title">
+                        {typeof event.title === 'string' ? event.title : '无标题'}
+                      </span>
+                      
+                      <div className="event-source-info">
+                        <span className="source-label">来自</span>
+                        <img src={event.source?.includes('Google') ? GoogleIconSvg : OutlookIconSvg} className="source-icon" alt="source" />
+                        <span className="source-name">{event.source || 'Outlook'}: 默认</span>
+                        <span className="sync-tag">只接收同步</span>
                       </div>
-                      <div className="log-text">{event.description}</div>
+                      
+                      <button 
+                        className="log-expand-toggle"
+                        onClick={() => toggleLogExpanded(event.id)}
+                        title={expandedLogs.has(event.id) ? "折叠日志" : "展开日志"}
+                      >
+                        <img 
+                          src={DownIconSvg} 
+                          alt="toggle log" 
+                          style={{
+                            transform: expandedLogs.has(event.id) ? 'rotate(0deg)' : 'rotate(-90deg)',
+                            transition: 'transform 0.2s'
+                          }}
+                        />
+                      </button>
                     </div>
-                  )}
-                  
-                  {/* 底部同步状态 - 已移除，合并至标题行 */}
+
+                    {/* Tags */}
+                    {event.tags && event.tags.length > 0 && (
+                      <div className="event-row event-tags-row">
+                        {event.tags.map((tagId, idx) => {
+                          // 查找标签详情以获取 emoji
+                          const tag = allTags.find(t => t.id === tagId || t.name === tagId);
+                          const emoji = tag?.emoji ? tag.emoji : '';
+                          const name = tag ? tag.name : tagId;
+                          
+                          return (
+                            <span key={idx} className="tag-item">
+                              #{emoji}{name}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Attendees */}
+                    <div className="event-row event-meta-row">
+                      <img src={AttendeeIconSvg} className="row-icon" alt="attendees" />
+                      <span className="meta-text">Zoey Gong; Jenny Wong; Cindy Cai</span>
+                    </div>
+
+                    {/* Location */}
+                    <div className="event-row event-meta-row">
+                      <img src={LocationIconSvg} className="row-icon" alt="location" />
+                      <span className="meta-text">静安嘉里中心2座F38, RM工作室, 5号会议室</span>
+                    </div>
+
+                    {/* Log Content - 使用 ModalSlate 编辑器 */}
+                    {expandedLogs.has(event.id) && (
+                      <div className="event-log-box">
+                        <ModalSlate
+                          content={event.eventlog?.slateJson || ''}
+                          parentEventId={event.id}
+                          onChange={(slateJson) => handleLogChange(event.id, slateJson)}
+                          enableTimestamp={true}
+                          placeholder="记录事件日志..."
+                          className="timelog-slate-editor"
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ))
@@ -322,32 +439,13 @@ const TimeLog: React.FC = () => {
         </div>
       </div>
 
-      {/* 右侧按钮区 */}
-      <div className="timelog-actions">
-        <button 
-          className="action-button" 
-          onClick={handleExport}
-          title="导出"
-        >
-          <img src={ExportIconSvg} alt="导出" />
-        </button>
-
-        <button 
-          className="action-button" 
-          onClick={handleCopyLink}
-          title="复制链接"
-        >
-          <img src={LinkIconSvg} alt="链接" />
-        </button>
-
-        <button 
-          className="action-button" 
-          onClick={handleMore}
-          title="更多选项"
-        >
-          <img src={MoreIconSvg} alt="更多" />
-        </button>
-      </div>
+      {/* 新固定玻璃图标栏（替换原右侧三个按钮） */}
+      <GlassIconBar onAction={(id) => {
+        console.log('[GlassIconBar action]', id);
+        if (id === 'export') handleExport();
+        if (id === 'bookmark') handleCopyLink();
+        if (id === 'record') console.log('记录此刻 - TODO 打开记录输入');
+      }} />
     </div>
   );
 };

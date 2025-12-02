@@ -100,6 +100,7 @@ import { useFloatingToolbar } from '../FloatingToolbar/useFloatingToolbar';
 import { insertTag, insertEmoji, insertDateMention, applyTextFormat } from '../PlanSlate/helpers';
 // import { parseExternalHtml, slateNodesToRichHtml } from '../PlanSlate/serialization';
 import { formatTimeForStorage } from '../../utils/timeUtils';
+import { EventRelationSummary } from '../EventTree/EventRelationSummary';
 import './EventEditModalV2.css';
 
 // Import SVG icons
@@ -447,69 +448,84 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
 
   // 🆕 加载子事件列表（用于显示和批量更新）
   // 🆕 父事件信息（如果当前是子事件）
-  const parentEvent = React.useMemo(() => {
-    if (!event?.parentEventId) {
-      return null;
-    }
-    const parent = EventService.getEventById(event.parentEventId);
-    console.log('🔍 [parentEvent] 读取父事件:', {
-      childEventId: event.id,
-      parentEventId: event.parentEventId,
-      found: !!parent,
-      parentChildrenCount: parent?.childEventIds?.length || 0,
-      refreshCounter  // 🔧 添加日志验证刷新
-    });
-    return parent;
+  const [parentEvent, setParentEvent] = React.useState<Event | null>(null);
+  
+  React.useEffect(() => {
+    const loadParent = async () => {
+      if (!event?.parentEventId) {
+        setParentEvent(null);
+        return;
+      }
+      const parent = await EventService.getEventById(event.parentEventId);
+      console.log('🔍 [parentEvent] 读取父事件:', {
+        childEventId: event.id,
+        parentEventId: event.parentEventId,
+        found: !!parent,
+        parentChildrenCount: parent?.childEventIds?.length || 0,
+        refreshCounter  // 🔧 添加日志验证刷新
+      });
+      setParentEvent(parent);
+    };
+    loadParent();
   }, [event?.id, event?.parentEventId, refreshCounter]);
 
   // 🔧 子事件列表：如果当前是子事件，显示父事件的所有子事件；否则显示自己的子事件
-  const childEvents = React.useMemo(() => {
-    // 🔧 关键修复：每次都从 EventService 重新读取最新数据，而不是依赖 prop
-    // 原因：EventService 的 eventsUpdated 会忽略同标签页的更新（防循环），
-    // 所以当 App.tsx 更新父事件时，Modal 不会收到事件通知，需要主动读取
-    
-    if (!event?.id) {
-      return [];
-    }
-    
-    // 🆕 从 EventService 重新读取当前事件的最新数据
-    const latestEvent = EventService.getEventById(event.id);
-    if (!latestEvent) {
-      return [];
-    }
-    
-    // 情况 1: 当前是子事件 → 显示父事件的所有子事件
-    if (latestEvent.parentEventId) {
-      console.log('🔍 [childEvents] 子事件模式 - 使用 EventService.getChildEvents:', {
-        parentId: latestEvent.parentEventId,
+  const [childEvents, setChildEvents] = React.useState<Event[]>([]);
+  
+  React.useEffect(() => {
+    const loadChildren = async () => {
+      // 🔧 关键修复：每次都从 EventService 重新读取最新数据，而不是依赖 prop
+      // 原因：EventService 的 eventsUpdated 会忽略同标签页的更新（防循环），
+      // 所以当 App.tsx 更新父事件时，Modal 不会收到事件通知，需要主动读取
+      
+      if (!event?.id) {
+        setChildEvents([]);
+        return;
+      }
+      
+      // 🆕 从 EventService 重新读取当前事件的最新数据
+      const latestEvent = await EventService.getEventById(event.id);
+      if (!latestEvent) {
+        setChildEvents([]);
+        return;
+      }
+      
+      // 情况 1: 当前是子事件 → 显示父事件的所有子事件
+      if (latestEvent.parentEventId) {
+        console.log('🔍 [childEvents] 子事件模式 - 使用 EventService.getChildEvents:', {
+          parentId: latestEvent.parentEventId,
+          refreshCounter
+        });
+        
+        const children = await EventService.getChildEvents(latestEvent.parentEventId);
+        
+        console.log('🔍 [childEvents] 成功加载子事件:', {
+          count: children.length,
+          ids: children.map(e => e.id)
+        });
+        
+        setChildEvents(children);
+        return;
+      }
+      
+      // 情况 2: 当前是父事件 → 显示自己的子事件
+      console.log('🔍 [childEvents] 父事件模式 - 使用 EventService.getChildEvents:', {
+        eventId: latestEvent.id,
         refreshCounter
       });
       
-      const children = EventService.getChildEvents(latestEvent.parentEventId);
+      const children = await EventService.getChildEvents(latestEvent.id);
       
       console.log('🔍 [childEvents] 成功加载子事件:', {
         count: children.length,
-        ids: children.map(e => e.id)
+        ids: children.map(e => e.id),
+        refreshCounter
       });
       
-      return children;
-    }
+      setChildEvents(children);
+    };
     
-    // 情况 2: 当前是父事件 → 显示自己的子事件
-    console.log('🔍 [childEvents] 父事件模式 - 使用 EventService.getChildEvents:', {
-      eventId: latestEvent.id,
-      refreshCounter
-    });
-    
-    const children = EventService.getChildEvents(latestEvent.id);
-    
-    console.log('🔍 [childEvents] 成功加载子事件:', {
-      count: children.length,
-      ids: children.map(e => e.id),
-      refreshCounter
-    });
-    
-    return children;
+    loadChildren();
   }, [event?.id, refreshCounter]);
 
   // 🆕 监听事件更新（包括同标签页和跨标签页）
@@ -801,13 +817,14 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         eventlogLength: currentEventlogJson.length,
       });
       
-      // 🔧 调试：对比保存前后的值
-      const currentEvent = EventService.getEventById(eventId);
-      console.log('🔍 [EventEditModalV2] 保存前后对比:', {
-        '当前calendarIds': currentEvent?.calendarIds,
-        '新calendarIds': formData.calendarIds,
-        '当前syncMode': currentEvent?.syncMode,
-        '新syncMode': formData.syncMode,
+      // 🔧 调试：对比保存前后的值（异步加载）
+      EventService.getEventById(eventId).then(currentEvent => {
+        console.log('🔍 [EventEditModalV2] 保存前后对比:', {
+          '当前calendarIds': currentEvent?.calendarIds,
+          '新calendarIds': formData.calendarIds,
+          '当前syncMode': currentEvent?.syncMode,
+          '新syncMode': formData.syncMode,
+        });
       });
 
       // 🔧 提前导入 EventHub
@@ -829,8 +846,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
       // 🔧 Step 9: 判断是创建还是更新
       // 检查 EventService（持久化层）而不是 EventHub 缓存
       // 原因：EventHub 可能缓存了 TimeCalendar 传入的临时对象
-      const allEvents = EventService.getAllEvents();
-      const existingEvent = allEvents.find(e => e.id === eventId);
+      const allEvents = await EventService.getAllEvents();
+      const existingEvent = allEvents.find((e: Event) => e.id === eventId);
       
       let result;
       
@@ -926,7 +943,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
       
       if (isParentMode) {
         // ==================== 父事件模式：批量更新所有子事件 ====================
-        const childrenToUpdate = EventService.getChildEvents(eventId);
+        const childrenToUpdate = await EventService.getChildEvents(eventId);
         
         if (childrenToUpdate.length > 0) {
           console.log('🔗 [EventEditModalV2] 父事件模式：批量更新子事件 calendarIds + syncMode:', {
@@ -954,8 +971,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         }
       } else {
         // ==================== 子事件模式：同步计划字段到父事件 ====================
-        const parentEvent = EventService.getEventById(formData.parentEventId!);
-        if (parentEvent) {
+        const parentEvent = await EventService.getEventById(formData.parentEventId!);
+        if (parentEvent && parentEvent !== null) {
           console.log('🔗 [EventEditModalV2] 子事件模式：同步计划字段到父事件:', {
             childId: eventId,
             parentId: formData.parentEventId
@@ -1081,14 +1098,14 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
    * 5. TimeCalendar 事件
    * 6. 其他本地事件
    */
-  const getEventSourceInfo = (evt: Event | null) => {
+  const getEventSourceInfo = async (evt: Event | null) => {
     if (!evt) {
       return { emoji: null, name: 'ReMarkable', icon: remarkableLogo, color: '#3b82f6' };
     }
 
     // 1. Timer 子事件 - 递归获取父事件的来源
     if (evt.isTimer && evt.parentEventId) {
-      const parentEvent = EventService.getEventById(evt.parentEventId);
+      const parentEvent = await EventService.getEventById(evt.parentEventId);
       if (parentEvent) {
         return getEventSourceInfo(parentEvent);
       }
@@ -2144,7 +2161,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                               await new Promise(resolve => setTimeout(resolve, 50));
                               
                               // 验证保存结果
-                              const savedEvent = EventService.getEventById(newEvent.id);
+                              const savedEvent = await EventService.getEventById(newEvent.id);
                               console.log('🔍 [Timer Start Button] 验证保存结果:', {
                                 eventId: savedEvent?.id,
                                 title: savedEvent?.title,
@@ -2515,7 +2532,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                         onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
                         onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                       >
-                        <span style={{ flexShrink: 0, pointerEvents: 'none' }}>{getSyncModeInfo(sourceSyncMode).emoji}</span>
+                        <span style={{ flexShrink: 0, pointerEvents: 'none' }}>{getSyncModeInfo(sourceSyncMode || 'disabled').emoji}</span>
                         <span style={{ 
                           flex: 1,
                           pointerEvents: 'none',
@@ -2523,7 +2540,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
                           minWidth: 0
-                        }}>{getSyncModeInfo(sourceSyncMode).name}</span>
+                        }}>{getSyncModeInfo(sourceSyncMode || 'disabled').name}</span>
                       </div>
                       
                       {showSourceSyncModePicker && createPortal(
@@ -2545,7 +2562,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                         >
                           <SyncModeDropdown
                             availableModes={syncModes}
-                            selectedModeId={sourceSyncMode}
+                            selectedModeId={sourceSyncMode || 'disabled'}
                             onSelectionChange={(modeId) => {
                               setSourceSyncMode(modeId);
                               setFormData(prev => ({
@@ -2785,18 +2802,16 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
                           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                         >
-                          <span style={{ flexShrink: 0, pointerEvents: 'none' }}>{getSyncModeInfo(syncSyncMode).emoji}</span>
+                          <span style={{ flexShrink: 0, pointerEvents: 'none' }}>{getSyncModeInfo(syncSyncMode || 'disabled').emoji}</span>
                           <span style={{ 
                             flex: 1,
                             pointerEvents: 'none',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
-                            minWidth: 0
-                          }}>{getSyncModeInfo(syncSyncMode).name}</span>
-                        </div>
-                        
-                        {showSyncSyncModePicker && createPortal(
+                              minWidth: 0
+                            }}>{getSyncModeInfo(syncSyncMode || 'disabled').name}</span>
+                          </div>                        {showSyncSyncModePicker && createPortal(
                           <div 
                             onClick={(e) => e.stopPropagation()}
                             onMouseDown={(e) => e.stopPropagation()}
@@ -2815,7 +2830,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                           >
                             <SyncModeDropdown
                               availableModes={syncModes}
-                              selectedModeId={syncSyncMode}
+                              selectedModeId={syncSyncMode || 'disabled'}
                               onSelectionChange={(modeId) => {
                                 setSyncSyncMode(modeId);
                                 
@@ -2916,11 +2931,136 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                       <span>创建于 12h前，ddl 还有 2h30min</span>
                     </div>
 
-                    {/* 关联区域 */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#6b7280', marginBottom: '16px', lineHeight: '26px' }}>
-                      <img src={linkColorIcon} style={{ width: '20px', height: '20px' }} alt="" />
-                      <span>上级任务：Project Ace (5/7)</span>
-                    </div>
+                    {/* 关联区域 - 智能摘要 */}
+                    {(() => {
+                      const hasParent = formData.parentEventId;
+                      const hasChildren = (formData as any).childEventIds?.length > 0;
+                      const hasLinked = (formData as any).linkedEventIds?.length > 0;
+                      const hasBacklinks = (formData as any).backlinks?.length > 0;
+                      const hasRelations = hasParent || hasChildren || hasLinked || hasBacklinks;
+                      
+                      // 调试日志
+                      console.log('🔗 关联信息检查:', {
+                        hasParent,
+                        hasChildren,
+                        hasLinked,
+                        hasBacklinks,
+                        hasRelations,
+                        parentEventId: formData.parentEventId,
+                        childEventIds: (formData as any).childEventIds,
+                        linkedEventIds: (formData as any).linkedEventIds,
+                        backlinks: (formData as any).backlinks,
+                      });
+                      
+                      return hasRelations;
+                    })() && (
+                      <div 
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '8px', 
+                          fontSize: '14px', 
+                          color: '#6b7280', 
+                          marginBottom: '16px', 
+                          lineHeight: '26px',
+                          cursor: 'pointer',
+                          transition: 'color 0.2s',
+                        }}
+                        onClick={() => {
+                          // TODO: 显示 EventTree 可视化
+                          console.log('点击查看关联事件');
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.color = '#3b82f6'}
+                        onMouseLeave={(e) => e.currentTarget.style.color = '#6b7280'}
+                        title="点击查看事件关联图"
+                      >
+                        <svg
+                          width="20"
+                          height="20"
+                          viewBox="0 0 20 20"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M8 10L12 6M5 13L7 11M15 7L13 9" />
+                          <circle cx="4" cy="14" r="2" />
+                          <circle cx="16" cy="6" r="2" />
+                        </svg>
+                        <span>
+                          {(() => {
+                            const parts: string[] = [];
+                            if (formData.parentEventId) {
+                              parts.push('上级：1个');
+                            }
+                            const childCount = (formData as any).childEventIds?.length || 0;
+                            if (childCount > 0) {
+                              // TODO: 统计任务完成情况
+                              parts.push(`下级：${childCount}个`);
+                            }
+                            const linkedCount = ((formData as any).linkedEventIds?.length || 0) + ((formData as any).backlinks?.length || 0);
+                            if (linkedCount > 0) {
+                              parts.push(`关联：${linkedCount}个事件`);
+                            }
+                            return parts.join('；');
+                          })()}
+                        </span>
+                        {/* 展开图标 */}
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          style={{ marginLeft: 'auto' }}
+                        >
+                          <polyline points="6,4 10,8 6,12" />
+                        </svg>
+                      </div>
+                    )}
+                    
+                    {/* 🔧 开发调试：始终显示关联区域（方便测试） */}
+                    {!(() => {
+                      const hasParent = formData.parentEventId;
+                      const hasChildren = (formData as any).childEventIds?.length > 0;
+                      const hasLinked = (formData as any).linkedEventIds?.length > 0;
+                      const hasBacklinks = (formData as any).backlinks?.length > 0;
+                      return hasParent || hasChildren || hasLinked || hasBacklinks;
+                    })() && (
+                      <div 
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '8px', 
+                          fontSize: '13px', 
+                          color: '#9ca3af', 
+                          marginBottom: '16px', 
+                          lineHeight: '26px',
+                          fontStyle: 'italic',
+                        }}
+                      >
+                        <svg
+                          width="20"
+                          height="20"
+                          viewBox="0 0 20 20"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          opacity="0.5"
+                        >
+                          <path d="M8 10L12 6M5 13L7 11M15 7L13 9" />
+                          <circle cx="4" cy="14" r="2" />
+                          <circle cx="16" cy="6" r="2" />
+                        </svg>
+                        <span>暂无关联（通过 @mention 创建双向链接）</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* 可滚动编辑区域 */}

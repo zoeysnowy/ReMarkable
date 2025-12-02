@@ -12,12 +12,15 @@
 import { Event, EventLog } from '../types';
 import { STORAGE_KEYS } from '../constants/storage';
 import { formatTimeForStorage } from '../utils/timeUtils';
+import { storageManager } from './storage/StorageManager';
+import type { StorageEvent } from './storage/types';
 import { logger } from '../utils/logger';
 import { validateEventTime } from '../utils/eventValidation';
 import { determineSyncTarget, shouldSync } from '../utils/syncRouter';
 import { ContactService } from './ContactService';
 import { EventHistoryService } from './EventHistoryService'; // 🆕 事件历史记录
 import { jsonToSlateNodes, slateNodesToHtml } from '../components/ModalSlate/serialization'; // 🆕 Slate 转换
+import { generateEventId, isValidId } from '../utils/idGenerator'; // 🆕 UUID ID 生成
 
 const eventLogger = logger.module('EventService');
 
@@ -81,12 +84,12 @@ export class EventService {
    */
   private static subscribeToContactEvents(): void {
     // 联系人更新时，同步到所有包含该联系人的事件
-    ContactService.addEventListener('contact.updated', (event) => {
+    ContactService.addEventListener('contact.updated', async (event) => {
       const { id, after } = event.data;
       eventLogger.log('📇 [EventService] Contact updated, syncing to related events:', id);
       
-      const events = this.getAllEvents();
-      const relatedEvents = events.filter(e => 
+      const events = await this.getAllEvents();
+      const relatedEvents = events.filter((e: Event) => 
         e.attendees?.some(a => a.id === id) || e.organizer?.id === id
       );
       
@@ -95,12 +98,12 @@ export class EventService {
         return;
       }
       
-      relatedEvents.forEach(event => {
+      relatedEvents.forEach((event: Event) => {
         const updates: Partial<Event> = {};
         
         // 更新参会人
-        if (event.attendees?.some(a => a.id === id)) {
-          updates.attendees = event.attendees.map(a => 
+        if (event.attendees?.some((a: any) => a.id === id)) {
+          updates.attendees = event.attendees.map((a: any) => 
             a.id === id ? after : a
           );
         }
@@ -117,13 +120,13 @@ export class EventService {
     });
 
     // 联系人删除时，从所有事件中移除该联系人
-    ContactService.addEventListener('contact.deleted', (event) => {
+    ContactService.addEventListener('contact.deleted', async (event) => {
       const { id } = event.data;
       eventLogger.log('🗑️ [EventService] Contact deleted, removing from events:', id);
       
-      const events = this.getAllEvents();
-      const relatedEvents = events.filter(e => 
-        e.attendees?.some(a => a.id === id) || e.organizer?.id === id
+      const events = await this.getAllEvents();
+      const relatedEvents = events.filter((e: Event) =>
+        e.attendees?.some((a: any) => a.id === id) || e.organizer?.id === id
       );
       
       if (relatedEvents.length === 0) {
@@ -131,12 +134,12 @@ export class EventService {
         return;
       }
       
-      relatedEvents.forEach(event => {
+      relatedEvents.forEach((event: Event) => {
         const updates: Partial<Event> = {};
         
         // 从参会人中移除
-        if (event.attendees?.some(a => a.id === id)) {
-          updates.attendees = event.attendees.filter(a => a.id !== id);
+        if (event.attendees?.some((a: any) => a.id === id)) {
+          updates.attendees = event.attendees.filter((a: any) => a.id !== id);
         }
         
         // 清除发起人（如果是被删除的联系人）
@@ -154,21 +157,19 @@ export class EventService {
   /**
    * 获取所有事�?
    * 🆕 v2.14.1: 自动规范化 title 字段，兼容旧数据
+   * 🔥 v3.0.0: 迁移到 StorageManager（异步查询）
    */
-  static getAllEvents(): Event[] {
+  static async getAllEvents(): Promise<Event[]> {
     try {
-      const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
-      if (!saved) return [];
+      const result = await storageManager.queryEvents({ limit: 10000 });
       
-      const events: Event[] = JSON.parse(saved);
+      // ✅ v3.0: 过滤已软删除的事件
+      const activeEvents = result.items.filter(event => !event.deletedAt);
       
       // 🔧 自动规范化所有事件的 title 字段（处理旧数据中的 undefined）
-      return events.map(event => ({
-        ...event,
-        title: this.normalizeTitle(event.title)
-      }));
+      return activeEvents.map(event => this.convertStorageEventToEvent(event));
     } catch (error) {
-      eventLogger.error('�?[EventService] Failed to load events:', error);
+      eventLogger.error('❌ [EventService] Failed to load events:', error);
       return [];
     }
   }
@@ -176,49 +177,44 @@ export class EventService {
   /**
    * 根据ID获取事件
    * 🔧 性能优化：只规范化目标事件的 title 和 eventlog，避免全量处理
-   * 🔧 自动修复：如果检测到空 eventlog，生成并更新回 localStorage
+   * 🔥 v3.0.0: 迁移到 StorageManager（异步查询，自动修复逻辑由 normalizeEvent 处理）
    */
-  static getEventById(eventId: string): Event | null {
+  static async getEventById(eventId: string): Promise<Event | null> {
     try {
-      const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
-      if (!saved) return null;
+      const result = await storageManager.queryEvents({
+        filters: { eventIds: [eventId] },
+        limit: 1
+      });
       
-      const events: Event[] = JSON.parse(saved);
-      const event = events.find(e => e.id === eventId);
+      if (result.items.length === 0) return null;
       
-      if (!event) return null;
+      const storageEvent = result.items[0];
       
       // 检查 eventlog 是否为空或空数组
-      const needsEventLogFix = !event.eventlog || 
-                               (typeof event.eventlog === 'object' && event.eventlog.slateJson === '[]');
+      const needsEventLogFix = !storageEvent.eventlog || 
+                               (typeof storageEvent.eventlog === 'object' && storageEvent.eventlog.slateJson === '[]');
       
       // 规范化 title 和 eventlog（传递 description 作为 fallback）
       const normalizedEvent = {
-        ...event,
-        title: this.normalizeTitle(event.title),
-        eventlog: this.normalizeEventLog(event.eventlog, event.description)
+        ...storageEvent,
+        title: this.normalizeTitle(storageEvent.title),
+        eventlog: this.normalizeEventLog(storageEvent.eventlog, storageEvent.description)
       };
       
-      // 🔧 如果 eventlog 被修复了（从空变成有内容），尝试更新回 localStorage
+      // 🔧 如果 eventlog 被修复了（从空变成有内容），尝试更新回 StorageManager
       if (needsEventLogFix && normalizedEvent.eventlog.slateJson !== '[]') {
-        eventLogger.log('🔧 [EventService] 自动修复空 eventlog，尝试更新到 localStorage:', eventId);
-        const eventIndex = events.findIndex(e => e.id === eventId);
-        if (eventIndex !== -1) {
-          try {
-            events[eventIndex] = { ...events[eventIndex], eventlog: normalizedEvent.eventlog };
-            localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
-            eventLogger.log('✅ [EventService] eventlog 修复已保存');
-          } catch (saveError: any) {
-            if (saveError.name === 'QuotaExceededError') {
-              eventLogger.warn('⚠️ [EventService] localStorage quota exceeded, eventlog fix not persisted (will regenerate on next load)');
-            } else {
-              throw saveError;
-            }
-          }
+        eventLogger.log('🔧 [EventService] 自动修复空 eventlog，尝试更新到 StorageManager:', eventId);
+        try {
+          await storageManager.updateEvent(eventId, {
+            eventlog: normalizedEvent.eventlog as any
+          });
+          eventLogger.log('✅ [EventService] eventlog 修复已保存');
+        } catch (saveError: any) {
+          eventLogger.warn('⚠️ [EventService] eventlog fix not persisted:', saveError);
         }
       }
       
-      return normalizedEvent;
+      return normalizedEvent as Event;
     } catch (error) {
       eventLogger.error('❌ [EventService] Failed to get event by ID:', error);
       return null;
@@ -231,61 +227,61 @@ export class EventService {
    * @param endDate - 范围结束日期（YYYY-MM-DD 或 Date 对象）
    * @returns 在指定范围内的事件数组
    * 
-   * 性能优势：
-   * - 月视图：~1151个事件 → ~50-200个事件（减少 85-95%）
-   * - 内存占用：减少 85-95%
-   * - JSON.parse 时间：减少 85-95%
+   * 🔥 v3.0.0: 使用 StorageManager 智能查询（SQLite 索引加速）
    */
-  static getEventsByRange(startDate: string | Date, endDate: string | Date): Event[] {
+  static async getEventsByRange(startDate: string | Date, endDate: string | Date): Promise<Event[]> {
     try {
       const t0 = performance.now();
       
       // 转换为时间戳（方便比较）
-      const rangeStart = new Date(startDate).getTime();
-      const rangeEnd = new Date(endDate).getTime();
+      const rangeStart = formatTimeForStorage(new Date(startDate));
+      const rangeEnd = formatTimeForStorage(new Date(endDate));
       
-      // 读取全部事件（这一步暂时无法优化，因为 localStorage 只能整体读取）
-      const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
-      if (!saved) return [];
+      // 使用 StorageManager 智能查询（在 SQLite 中会自动使用索引）
+      const result = await storageManager.queryEvents({
+        filters: {
+          // 注：这里的过滤逻辑需要在 StorageManager 中支持
+          // 暂时先查询所有，然后前端过滤
+        },
+        limit: 10000
+      });
       
-      const allEvents: Event[] = JSON.parse(saved);
+      // 前端过滤时间范围（后续可以将此逻辑下放到 SQLite 查询）
+      const rangeStartMs = new Date(startDate).getTime();
+      const rangeEndMs = new Date(endDate).getTime();
       
-      // 过滤出范围内的事件
-      const filteredEvents = allEvents.filter(event => {
+      const filteredEvents = result.items.filter(event => {
         // Task 类型（无时间）总是显示
         if (event.isTask && (!event.startTime || !event.endTime)) {
           return true;
         }
         
-        // 检查时间字段，使用 createdAt 作为 fallback（用于 Task-type 事件定位）
         const effectiveStartTime = event.startTime || event.createdAt;
         const effectiveEndTime = event.endTime || event.createdAt;
         
         if (!effectiveStartTime || !effectiveEndTime) {
-          return false;  // 连 createdAt 都没有，跳过
+          return false;
         }
         
-        // AllDay 事件：检查日期部分
+        // AllDay 事件
         if (event.isAllDay) {
           const eventDate = new Date(effectiveStartTime).setHours(0, 0, 0, 0);
-          return eventDate >= rangeStart && eventDate <= rangeEnd;
+          return eventDate >= rangeStartMs && eventDate <= rangeEndMs;
         }
         
-        // 普通事件：检查时间范围是否有重叠
+        // 普通事件
         const eventStart = new Date(effectiveStartTime).getTime();
         const eventEnd = new Date(effectiveEndTime).getTime();
-        
-        // 事件与视图范围有任何重叠
-        return (eventStart <= rangeEnd && eventEnd >= rangeStart);
+        return (eventStart <= rangeEndMs && eventEnd >= rangeStartMs);
       });
       
       const t1 = performance.now();
-      eventLogger.log(`🔍 [EventService] getEventsByRange: ${filteredEvents.length}/${allEvents.length} events in ${(t1 - t0).toFixed(2)}ms`, {
+      eventLogger.log(`🔍 [EventService] getEventsByRange: ${filteredEvents.length}/${result.items.length} events in ${(t1 - t0).toFixed(2)}ms`, {
         range: `${startDate} ~ ${endDate}`,
-        reduction: `${((1 - filteredEvents.length / allEvents.length) * 100).toFixed(1)}%`
+        reduction: `${((1 - filteredEvents.length / result.items.length) * 100).toFixed(1)}%`
       });
       
-      return filteredEvents;
+      return filteredEvents.map(e => this.convertStorageEventToEvent(e));
     } catch (error) {
       eventLogger.error('❌ [EventService] Failed to load events by range:', error);
       return [];
@@ -320,11 +316,19 @@ export class EventService {
         eventLogger.warn('⚠️ [EventService] Event warnings:', validation.warnings);
       }
 
-      // 验证基本必填字段
-      if (!event.id) {
-        const error = 'Event missing required field: id';
-        eventLogger.error('❌ [EventService]', error, event);
-        return { success: false, error };
+      // ✅ v3.0: 自动生成 UUID ID（如果未提供或格式无效）
+      if (!event.id || !isValidId(event.id, 'event')) {
+        const oldId = event.id;
+        event.id = generateEventId();
+        
+        if (oldId) {
+          eventLogger.warn('⚠️ [EventService] Invalid ID format, generated new UUID:', {
+            oldId,
+            newId: event.id
+          });
+        } else {
+          eventLogger.log('🆕 [EventService] Generated UUID for new event:', event.id);
+        }
       }
       
       // 标题可以为空（会在上层如 EventEditModal 或 TimeCalendar 中自动填充）
@@ -344,33 +348,35 @@ export class EventService {
         syncStatus: skipSync ? 'local-only' : (event.syncStatus || 'pending'),
       };
 
-      // 读取现有事件
-      const existingEvents = this.getAllEvents();
-
-      // 检查是否已存在
-      const existingIndex = existingEvents.findIndex(e => e.id === event.id);
-      if (existingIndex !== -1) {
+      // 检查是否已存在（从 StorageManager 查询）
+      const existing = await storageManager.queryEvents({
+        filters: { eventIds: [event.id] },
+        limit: 1
+      });
+      
+      if (existing.items.length > 0) {
         eventLogger.warn('⚠️ [EventService] Event already exists, will update instead:', event.id);
-        return this.updateEvent(event.id, finalEvent, skipSync);
+        return this.updateEvent(event.id, finalEvent, skipSync, options);
       }
 
-      // 添加新事件
-      existingEvents.push(finalEvent);
-
+      // 创建事件（双写到 IndexedDB + SQLite）
+      const storageEvent = this.convertEventToStorageEvent(finalEvent);
+      await storageManager.createEvent(storageEvent);
+      eventLogger.log('💾 [EventService] Event saved to StorageManager');
+      
       // 🆕 自动维护父子事件双向关联
       if (finalEvent.parentEventId) {
-        const parentIndex = existingEvents.findIndex(e => e.id === finalEvent.parentEventId);
-        if (parentIndex !== -1) {
-          const parentEvent = existingEvents[parentIndex];
-          
+        const parentEvent = await this.getEventById(finalEvent.parentEventId);
+        
+        if (parentEvent) {
           // 初始化 childEventIds 数组
-          if (!parentEvent.childEventIds) {
-            parentEvent.childEventIds = [];
-          }
+          const childIds = parentEvent.childEventIds || [];
           
           // 添加子事件 ID（避免重复）
-          if (!parentEvent.childEventIds.includes(finalEvent.id)) {
-            parentEvent.childEventIds.push(finalEvent.id);
+          if (!childIds.includes(finalEvent.id)) {
+            await this.updateEvent(parentEvent.id, {
+              childEventIds: [...childIds, finalEvent.id]
+            }, true); // skipSync=true 避免递归同步
             
             eventLogger.log('🔗 [EventService] 已关联子事件到父事件:', {
               parentId: parentEvent.id,
@@ -378,7 +384,7 @@ export class EventService {
               childId: finalEvent.id,
               childTitle: finalEvent.title?.simpleTitle,
               childType: this.getEventType(finalEvent),
-              totalChildren: parentEvent.childEventIds.length
+              totalChildren: childIds.length + 1
             });
           }
         } else {
@@ -388,10 +394,6 @@ export class EventService {
           });
         }
       }
-
-      // 保存到localStorage
-      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
-      eventLogger.log('💾 [EventService] Event saved to localStorage');
       
       // 🆕 记录到事件历史
       EventHistoryService.logCreate(finalEvent, options?.source || 'user-edit');
@@ -402,12 +404,16 @@ export class EventService {
         eventLogger.log('👥 [EventService] Auto-extracted contacts from event');
       }
       
+      // 获取统计信息用于日志
+      const stats = await storageManager.getStats();
+      const totalEvents = (stats.indexedDB?.eventsCount || 0);
+      
       eventLogger.log('✅ [EventService] 创建成功:', {
         eventId: finalEvent.id,
         title: finalEvent.title,
         startTime: finalEvent.startTime,
         endTime: finalEvent.endTime,
-        总事件数: existingEvents.length
+        总事件数: totalEvents
       });
 
       // 🆕 生成更新ID和跟踪本地更新
@@ -504,17 +510,14 @@ export class EventService {
     }
   ): Promise<{ success: boolean; event?: Event; error?: string }> {
     try {
+      // 获取原始事件（从 StorageManager 查询）
+      const originalEvent = await this.getEventById(eventId);
 
-      const existingEvents = this.getAllEvents();
-      const eventIndex = existingEvents.findIndex(e => e.id === eventId);
-
-      if (eventIndex === -1) {
+      if (!originalEvent) {
         const error = `Event not found: ${eventId}`;
-        eventLogger.error('�?[EventService]', error);
+        eventLogger.error('❌ [EventService]', error);
         return { success: false, error };
       }
-
-      const originalEvent = existingEvents[eventIndex];
       
       // 🆕 v2.8: 双向同步 simpleTitle ↔ fullTitle
       // 🆕 v1.8.1: 双向同步 description ↔ eventlog
@@ -688,9 +691,9 @@ export class EventService {
       // 场景3: 初始化场景 - eventlog 为空但 description 有内容
       if (!(originalEvent as any).eventlog && originalEvent.description && (updates as any).eventlog === undefined) {
         const initialEventLog: EventLog = {
-          content: JSON.stringify([{ type: 'paragraph', children: [{ text: originalEvent.description }] }]),
-          descriptionHtml: originalEvent.description,
-          descriptionPlainText: this.stripHtml(originalEvent.description),
+          slateJson: JSON.stringify([{ type: 'paragraph', children: [{ text: originalEvent.description }] }]),
+          html: originalEvent.description,
+          plainText: this.stripHtml(originalEvent.description),
           attachments: [],
           versions: [],
           syncState: {
@@ -756,36 +759,43 @@ export class EventService {
         
         // 从旧父事件移除
         if (originalEvent.parentEventId) {
-          const oldParentIndex = existingEvents.findIndex(e => e.id === originalEvent.parentEventId);
-          if (oldParentIndex !== -1 && existingEvents[oldParentIndex].childEventIds) {
-            existingEvents[oldParentIndex].childEventIds = 
-              existingEvents[oldParentIndex].childEventIds!.filter(cid => cid !== eventId);
+          const oldParent = await this.getEventById(originalEvent.parentEventId);
+          if (oldParent && oldParent.childEventIds) {
+            await this.updateEvent(
+              oldParent.id,
+              {
+                childEventIds: oldParent.childEventIds.filter(cid => cid !== eventId)
+              },
+              true // skipSync
+            );
             
             eventLogger.log('🔗 [EventService] 已从旧父事件移除子事件:', {
               oldParentId: originalEvent.parentEventId,
               childId: eventId,
-              remainingChildren: existingEvents[oldParentIndex].childEventIds!.length
+              remainingChildren: oldParent.childEventIds.length - 1
             });
           }
         }
         
         // 添加到新父事件
         if (filteredUpdates.parentEventId) {
-          const newParentIndex = existingEvents.findIndex(e => e.id === filteredUpdates.parentEventId);
-          if (newParentIndex !== -1) {
-            const newParent = existingEvents[newParentIndex];
+          const newParent = await this.getEventById(filteredUpdates.parentEventId);
+          if (newParent) {
+            const childIds = newParent.childEventIds || [];
             
-            if (!newParent.childEventIds) {
-              newParent.childEventIds = [];
-            }
-            
-            if (!newParent.childEventIds.includes(eventId)) {
-              newParent.childEventIds.push(eventId);
+            if (!childIds.includes(eventId)) {
+              await this.updateEvent(
+                newParent.id,
+                {
+                  childEventIds: [...childIds, eventId]
+                },
+                true // skipSync
+              );
               
               eventLogger.log('🔗 [EventService] 已添加子事件到新父事件:', {
                 newParentId: filteredUpdates.parentEventId,
                 childId: eventId,
-                totalChildren: newParent.childEventIds.length
+                totalChildren: childIds.length + 1
               });
             }
           } else {
@@ -794,12 +804,27 @@ export class EventService {
         }
       }
 
-      // 更新数组
-      existingEvents[eventIndex] = updatedEvent;
-
-      // 保存到localStorage
-      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
-      eventLogger.log('💾 [EventService] Event updated in localStorage');
+      // 更新到 StorageManager（双写到 IndexedDB + SQLite）
+      const storageEvent = this.convertEventToStorageEvent(updatedEvent);
+      await storageManager.updateEvent(eventId, storageEvent);
+      eventLogger.log('💾 [EventService] Event updated in StorageManager');
+      
+      // 🆕 保存 EventLog 版本历史（如果 eventlog 有变更）
+      if (filteredUpdates.eventlog && originalEvent.eventlog) {
+        const oldEventLog = this.normalizeEventLog(originalEvent.eventlog);
+        const newEventLog = this.normalizeEventLog(filteredUpdates.eventlog);
+        
+        // 异步保存版本（不阻塞主流程）
+        storageManager.saveEventLogVersion(
+          eventId,
+          newEventLog,
+          oldEventLog
+        ).catch((error: any) => {
+          eventLogger.warn('⚠️ [EventService] Failed to save EventLog version:', error);
+        });
+        
+        eventLogger.log('📚 [EventService] EventLog version saved');
+      }
       
       // 🐛 Bulletpoint 调试：检查保存的 eventlog
       if (updatedEvent.eventlog) {
@@ -931,72 +956,39 @@ export class EventService {
    */
   static async deleteEvent(eventId: string, skipSync: boolean = false): Promise<{ success: boolean; error?: string }> {
     try {
-      eventLogger.log('🗑�?[EventService] Deleting event:', eventId);
+      eventLogger.log('🗑️ [EventService] Soft-deleting event (setting deletedAt):', eventId);
 
-      const existingEvents = this.getAllEvents();
-      const eventIndex = existingEvents.findIndex(e => e.id === eventId);
+      // 获取待删除事件（从 StorageManager 查询）
+      const deletedEvent = await this.getEventById(eventId);
 
-      if (eventIndex === -1) {
+      if (!deletedEvent) {
         const error = `Event not found: ${eventId}`;
-        eventLogger.error('�?[EventService]', error);
+        eventLogger.error('❌ [EventService]', error);
         return { success: false, error };
       }
-
-      const deletedEvent = existingEvents[eventIndex];
-
-      // 🆕 从父事件移除子事件关联
-      if (deletedEvent.parentEventId) {
-        const parentIndex = existingEvents.findIndex(e => e.id === deletedEvent.parentEventId);
-        if (parentIndex !== -1 && existingEvents[parentIndex].childEventIds) {
-          existingEvents[parentIndex].childEventIds = 
-            existingEvents[parentIndex].childEventIds!.filter(cid => cid !== eventId);
-          
-          eventLogger.log('🔗 [EventService] 已从父事件移除子事件:', {
-            parentId: deletedEvent.parentEventId,
-            childId: eventId,
-            remainingChildren: existingEvents[parentIndex].childEventIds!.length
-          });
-        }
-      }
-
-      // 🆕 递归删除所有子事件（可选：可设置为只清理关联而不删除）
-      if (deletedEvent.childEventIds && deletedEvent.childEventIds.length > 0) {
-        eventLogger.log('🗑️ [EventService] 检测到子事件，递归删除:', {
-          parentId: eventId,
-          childCount: deletedEvent.childEventIds.length,
-          childIds: deletedEvent.childEventIds
-        });
-        
-        // 注意：这里直接操作 existingEvents 数组，递归删除会在后续的 filter 中生效
-        // 如果不想递归删除子事件，可以只清理 parentEventId
-        for (const childId of deletedEvent.childEventIds) {
-          const childIndex = existingEvents.findIndex(e => e.id === childId);
-          if (childIndex !== -1) {
-            // 清理子事件的 parentEventId（让它们变成独立事件）
-            delete existingEvents[childIndex].parentEventId;
-            eventLogger.log('🔗 [EventService] 已清理子事件的父关联:', childId);
-          }
-        }
-      }
-
-      // 从数组中移除
-      const updatedEvents = existingEvents.filter(e => e.id !== eventId);
-
-      // 保存到 localStorage
-      console.log(`🗑️ [EventService] About to write ${updatedEvents.length} events to localStorage...`);
-      const setItemStart = performance.now();
-      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(updatedEvents));
-      const setItemDuration = performance.now() - setItemStart;
-      console.log(`💾 [EventService] localStorage.setItem took ${setItemDuration.toFixed(2)}ms`);
-      eventLogger.log('💾 [EventService] Event deleted from localStorage');
       
-      // 记录事件历史
+      // ✅ v3.0: 软删除 - 设置 deletedAt 而非硬删除
+      // 优点：
+      // 1. 支持撤销删除
+      // 2. 多设备同步时不会丢失数据
+      // 3. 可定期清理旧数据（30天后）
+      const now = formatTimeForStorage(new Date());
+      await this.updateEvent(eventId, {
+        deletedAt: now,
+        updatedAt: now,
+      }, skipSync);
+      
+      eventLogger.log('✅ [EventService] Event soft-deleted:', {
+        eventId,
+        deletedAt: now,
+        canRestore: true,
+      });
+
+      // 记录事件历史（软删除仍记录为删除操作）
       EventHistoryService.logDelete(deletedEvent, 'user-edit');
 
-      // 触发全局更新事件
-      console.log(`🔔 [EventService] About to dispatch eventsUpdated...`);
-      this.dispatchEventUpdate(eventId, { deleted: true });
-      console.log(`✅ [EventService] dispatchEventUpdate completed`);
+      // 触发全局更新事件（标记为已删除）
+      this.dispatchEventUpdate(eventId, { deleted: true, softDeleted: true });
 
       // 同步�?Outlook
       if (!skipSync && syncManagerInstance && deletedEvent.syncStatus !== 'local-only') {
@@ -1016,58 +1008,193 @@ export class EventService {
 
       return { success: true };
     } catch (error) {
-      eventLogger.error('�?[EventService] Failed to delete event:', error);
+      eventLogger.error('❌ [EventService] Failed to delete event:', error);
       return { success: false, error: String(error) };
+    }
+  }
+
+  /**
+   * 恢复软删除的事件
+   * 
+   * @param eventId 事件 ID
+   * @returns 操作结果
+   */
+  static async restoreEvent(eventId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      eventLogger.log('♻️ [EventService] Restoring soft-deleted event:', eventId);
+
+      // 获取事件（包括已删除的）
+      const result = await storageManager.queryEvents({
+        filters: { eventIds: [eventId] },
+        limit: 1
+      });
+
+      if (result.items.length === 0) {
+        return { success: false, error: `Event not found: ${eventId}` };
+      }
+
+      const event = result.items[0];
+
+      if (!event.deletedAt) {
+        return { success: false, error: 'Event is not deleted' };
+      }
+
+      // 恢复事件（清除 deletedAt）
+      await this.updateEvent(eventId, {
+        deletedAt: null,
+        updatedAt: formatTimeForStorage(new Date()),
+      }, false); // 需要同步
+
+      eventLogger.log('✅ [EventService] Event restored:', eventId);
+      
+      // 触发全局更新事件
+      this.dispatchEventUpdate(eventId, { restored: true });
+
+      return { success: true };
+    } catch (error) {
+      eventLogger.error('❌ [EventService] Failed to restore event:', error);
+      return { success: false, error: String(error) };
+    }
+  }
+
+  /**
+   * 硬删除事件（真正从数据库删除）
+   * ⚠️ 危险操作：无法恢复！
+   * 
+   * @param eventId 事件 ID
+   * @param force 是否强制删除（即使未标记为删除）
+   * @returns 操作结果
+   */
+  static async hardDeleteEvent(eventId: string, force: boolean = false): Promise<{ success: boolean; error?: string }> {
+    try {
+      eventLogger.warn('⚠️ [EventService] Hard-deleting event (permanent):', eventId);
+
+      const event = await this.getEventById(eventId);
+
+      if (!event) {
+        return { success: false, error: `Event not found: ${eventId}` };
+      }
+
+      // 安全检查：只允许删除已标记为 deletedAt 的事件
+      if (!force && !event.deletedAt) {
+        return { 
+          success: false, 
+          error: 'Event must be soft-deleted first. Use force=true to override.' 
+        };
+      }
+
+      // 真正删除
+      await storageManager.deleteEvent(eventId);
+      
+      eventLogger.warn('🗑️ [EventService] Event permanently deleted:', eventId);
+      
+      // 触发全局更新事件
+      this.dispatchEventUpdate(eventId, { deleted: true, hardDeleted: true });
+
+      return { success: true };
+    } catch (error) {
+      eventLogger.error('❌ [EventService] Failed to hard-delete event:', error);
+      return { success: false, error: String(error) };
+    }
+  }
+
+  /**
+   * 清理旧的已删除事件（定期维护）
+   * 
+   * @param daysOld 删除多少天前的已删除事件（默认 30 天）
+   * @returns 清理统计
+   */
+  static async purgeOldDeletedEvents(daysOld: number = 30): Promise<{ 
+    purgedCount: number; 
+    errors: string[] 
+  }> {
+    try {
+      eventLogger.log(`🧹 [EventService] Purging events deleted ${daysOld} days ago...`);
+
+      // 获取所有事件（包括已删除的）
+      const allResult = await storageManager.queryEvents({ limit: 10000 });
+      
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+      const cutoffMs = cutoffDate.getTime();
+
+      // 过滤出需要清理的事件
+      const toPurge = allResult.items.filter(event => {
+        if (!event.deletedAt) return false;
+        const deletedMs = new Date(event.deletedAt).getTime();
+        return deletedMs < cutoffMs;
+      });
+
+      eventLogger.log(`🗑️ [EventService] Found ${toPurge.length} events to purge`);
+
+      let purgedCount = 0;
+      const errors: string[] = [];
+
+      // 逐个硬删除
+      for (const event of toPurge) {
+        try {
+          await storageManager.deleteEvent(event.id);
+          purgedCount++;
+        } catch (error) {
+          errors.push(`${event.id}: ${String(error)}`);
+        }
+      }
+
+      eventLogger.log(`✅ [EventService] Purge completed:`, {
+        purgedCount,
+        errorCount: errors.length,
+      });
+
+      return { purgedCount, errors };
+    } catch (error) {
+      eventLogger.error('❌ [EventService] Failed to purge old events:', error);
+      return { purgedCount: 0, errors: [String(error)] };
     }
   }
 
   /**
    * 事件签到 - 记录签到时间戳
    */
-  static checkIn(eventId: string): { success: boolean; error?: string } {
+  static async checkIn(eventId: string): Promise<{ success: boolean; error?: string }> {
     try {
       eventLogger.log('✅ [EventService] Checking in event:', eventId);
 
-      const existingEvents = this.getAllEvents();
-      const eventIndex = existingEvents.findIndex(e => e.id === eventId);
+      // 获取事件（从 StorageManager 查询）
+      const event = await this.getEventById(eventId);
 
-      if (eventIndex === -1) {
+      if (!event) {
         const error = `Event not found: ${eventId}`;
         eventLogger.error('❌ [EventService]', error);
         return { success: false, error };
       }
 
-      const event = existingEvents[eventIndex];
       const timestamp = formatTimeForStorage(new Date());
 
-      // 🐛 DEBUG: Log checkType before update (checkType is at root level, not in metadata)
+      // 🐛 DEBUG: Log checkType before update
       console.log('🔍 [EventService.checkIn] BEFORE update:', {
         eventId: eventId.slice(-10),
         checkType: event.checkType,
-        checkedCount: event.checked?.length || 0,
+        checkedCount: (event.checked || []).length,
         title: event.title?.simpleTitle?.substring(0, 20)
       });
 
-      // 初始化checked数组（如果不存在）
-      if (!event.checked) {
-        event.checked = [];
-      }
+      // 更新 checked 数组
+      const checked = event.checked || [];
+      checked.push(timestamp);
 
-      // 添加签到时间戳
-      event.checked.push(timestamp);
-
-      // 更新updatedAt
-      event.updatedAt = timestamp;
-
-      // 保存到localStorage
-      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
-      eventLogger.log('💾 [EventService] Event checked in, saved to localStorage');
+      // 更新到 StorageManager
+      await this.updateEvent(eventId, {
+        checked: checked,
+        updatedAt: timestamp
+      }, true); // skipSync=true
+      
+      eventLogger.log('💾 [EventService] Event checked in, saved to StorageManager');
 
       // 🐛 DEBUG: Log checkType after save
       console.log('🔍 [EventService.checkIn] AFTER save:', {
         eventId: eventId.slice(-10),
         checkType: event.checkType,
-        checkedCount: event.checked.length,
+        checkedCount: checked.length,
         willDispatchUpdate: true
       });
 
@@ -1080,7 +1207,7 @@ export class EventService {
       eventLogger.log('✅ [EventService] 签到成功:', {
         eventId,
         timestamp,
-        totalCheckins: event.checked.length
+        totalCheckins: checked.length
       });
 
       return { success: true };
@@ -1093,36 +1220,32 @@ export class EventService {
   /**
    * 取消事件签到 - 记录取消签到时间戳
    */
-  static uncheck(eventId: string): { success: boolean; error?: string } {
+  static async uncheck(eventId: string): Promise<{ success: boolean; error?: string }> {
     try {
       eventLogger.log('❌ [EventService] Unchecking event:', eventId);
 
-      const existingEvents = this.getAllEvents();
-      const eventIndex = existingEvents.findIndex(e => e.id === eventId);
+      // 获取事件（从 StorageManager 查询）
+      const event = await this.getEventById(eventId);
 
-      if (eventIndex === -1) {
+      if (!event) {
         const error = `Event not found: ${eventId}`;
         eventLogger.error('❌ [EventService]', error);
         return { success: false, error };
       }
 
-      const event = existingEvents[eventIndex];
       const timestamp = formatTimeForStorage(new Date());
 
-      // 初始化unchecked数组（如果不存在）
-      if (!event.unchecked) {
-        event.unchecked = [];
-      }
+      // 更新 unchecked 数组
+      const unchecked = event.unchecked || [];
+      unchecked.push(timestamp);
 
-      // 添加取消签到时间戳
-      event.unchecked.push(timestamp);
-
-      // 更新updatedAt
-      event.updatedAt = timestamp;
-
-      // 保存到localStorage
-      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
-      eventLogger.log('💾 [EventService] Event unchecked, saved to localStorage');
+      // 更新到 StorageManager
+      await this.updateEvent(eventId, {
+        unchecked: unchecked,
+        updatedAt: timestamp
+      }, true); // skipSync=true
+      
+      eventLogger.log('💾 [EventService] Event unchecked, saved to StorageManager');
 
       // 记录事件历史
       EventHistoryService.logCheckin(eventId, event.title?.simpleTitle || 'Untitled Event', { action: 'uncheck', timestamp });
@@ -1133,7 +1256,7 @@ export class EventService {
       eventLogger.log('❌ [EventService] 取消签到成功:', {
         eventId,
         timestamp,
-        totalUnchecks: event.unchecked.length
+        totalUnchecks: unchecked.length
       });
 
       return { success: true };
@@ -1146,7 +1269,7 @@ export class EventService {
   /**
    * 获取事件的签到状态
    */
-  static getCheckInStatus(eventId: string): { 
+  static async getCheckInStatus(eventId: string): Promise<{ 
     isChecked: boolean; 
     lastCheckIn?: string; 
     lastUncheck?: string;
@@ -1154,8 +1277,8 @@ export class EventService {
     uncheckCount: number;
     checkType: import('../types').CheckType;
     recurringConfig?: import('../types').RecurringConfig;
-  } {
-    const event = this.getEventById(eventId);
+  }> {
+    const event = await this.getEventById(eventId);
     if (!event) {
       return { 
         isChecked: false, 
@@ -1184,7 +1307,7 @@ export class EventService {
     }
     
     // 比较最后的签到和取消签到时间
-    const isChecked = lastCheckIn && (!lastUncheck || lastCheckIn > lastUncheck);
+    const isChecked = !!lastCheckIn && (!lastUncheck || lastCheckIn > lastUncheck);
 
     return {
       isChecked,
@@ -1198,7 +1321,8 @@ export class EventService {
   }
 
   /**
-   * 批量创建事件（用于导入或迁移场景�?
+   * 批量创建事件（用于导入或迁移场景）
+   * 🔥 v3.0.0: 使用 StorageManager 批量创建（高性能）
    */
   static async batchCreateEvents(events: Event[], skipSync: boolean = false): Promise<{ 
     success: boolean; 
@@ -1206,22 +1330,35 @@ export class EventService {
     failed: number;
     errors: string[];
   }> {
-    let created = 0;
-    let failed = 0;
-    const errors: string[] = [];
-
-    for (const event of events) {
-      const result = await this.createEvent(event, skipSync);
-      if (result.success) {
-        created++;
-      } else {
-        failed++;
-        errors.push(`${event.id}: ${result.error}`);
-      }
+    try {
+      // 规范化所有事件
+      const normalizedEvents = events.map(event => this.normalizeEvent({
+        ...event,
+        syncStatus: skipSync ? 'local-only' : (event.syncStatus || 'pending')
+      }));
+      
+      // 转换为 StorageEvent 并批量创建
+      const storageEvents = normalizedEvents.map(e => this.convertEventToStorageEvent(e));
+      const batchResult = await storageManager.batchCreateEvents(storageEvents);
+      
+      // 记录历史
+      batchResult.success.forEach(event => {
+        EventHistoryService.logCreate(event as any as Event, 'batch-import');
+      });
+      
+      const errors = batchResult.failed.map(f => `${f.item.id}: ${f.error.message}`);
+      
+      eventLogger.log(`📊 [EventService] Batch create: ${batchResult.success.length} created, ${batchResult.failed.length} failed`);
+      return { 
+        success: batchResult.failed.length === 0, 
+        created: batchResult.success.length, 
+        failed: batchResult.failed.length, 
+        errors 
+      };
+    } catch (error) {
+      eventLogger.error('❌ [EventService] Batch create failed:', error);
+      return { success: false, created: 0, failed: events.length, errors: [String(error)] };
     }
-
-    eventLogger.log(`📊 [EventService] Batch create: ${created} created, ${failed} failed`);
-    return { success: failed === 0, created, failed, errors };
   }
 
   /**
@@ -1811,7 +1948,7 @@ export class EventService {
     
     return {
       // 基础标识
-      id: event.id || generateEventId(),
+      id: event.id || `evt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       
       // 规范化字段
       title: normalizedTitle,
@@ -1826,7 +1963,6 @@ export class EventService {
       
       // 分类字段
       tags: event.tags || [],
-      calendarId: event.calendarId,
       priority: event.priority,
       
       // 协作字段
@@ -1836,7 +1972,6 @@ export class EventService {
       
       // 来源标识
       remarkableSource: event.remarkableSource,
-      microsoftEventId: event.microsoftEventId,
       isPlan: event.isPlan,
       isTimeCalendar: event.isTimeCalendar,
       isTimer: event.isTimer,
@@ -1845,9 +1980,6 @@ export class EventService {
       // 任务模式
       isTask: event.isTask,
       isCompleted: event.isCompleted,
-      parentTaskId: event.parentTaskId,
-      childTaskCount: event.childTaskCount,
-      childTaskCompletedCount: event.childTaskCompletedCount,
       
       // Timer 关联
       parentEventId: event.parentEventId,
@@ -1857,7 +1989,6 @@ export class EventService {
       calendarIds: event.calendarIds || [],
       syncMode: event.syncMode,
       subEventConfig: event.subEventConfig,
-      syncedEventId: event.syncedEventId,
       
       // 签到字段
       checked: event.checked || [],
@@ -2209,15 +2340,16 @@ export class EventService {
     
     // Tag 模式: (emoji)? @tagName
     // 支持: "@工作", "💼 @工作", "📅 @会议"
-    const tagPattern = /((?:[\p{Emoji}]\s*)?@[\w\u4e00-\u9fa5]+)/gu;
+    // 注：简化正则，不使用 \p{Emoji}（需要 ES2018+）
+    const tagPattern = /(@[\w\u4e00-\u9fa5]+)/g;
     
     let match;
     while ((match = tagPattern.exec(text)) !== null) {
       const fullMatch = match[0];
       const index = match.index;
       
-      // 提取 emoji 和标签名
-      const emojiMatch = fullMatch.match(/^([\p{Emoji}])\s*@(.+)$/u);
+      // 提取 emoji 和标签名（简化处理，emoji 需要在前面单独提取）
+      const emojiMatch = null; // 暂时禁用 emoji 匹配
       const tagEmoji = emojiMatch ? emojiMatch[1] : undefined;
       const tagName = emojiMatch ? emojiMatch[2] : fullMatch.replace('@', '');
       
@@ -2344,8 +2476,8 @@ export class EventService {
    * 搜索历史事件中的参会人
    * 从所有事件的 organizer 和 attendees 字段提取联系人
    */
-  static searchHistoricalParticipants(query: string): import('../types').Contact[] {
-    const allEvents = this.getAllEvents();
+  static async searchHistoricalParticipants(query: string): Promise<import('../types').Contact[]> {
+    const allEvents = await this.getAllEvents();
     const contactsMap = new Map<string, import('../types').Contact>();
     const lowerQuery = query.toLowerCase();
 
@@ -2391,8 +2523,8 @@ export class EventService {
    * @param identifier 联系人邮箱或姓名
    * @param limit 返回数量限制
    */
-  static getEventsByContact(identifier: string, limit: number = 5): Event[] {
-    const allEvents = this.getAllEvents();
+  static async getEventsByContact(identifier: string, limit: number = 5): Promise<Event[]> {
+    const allEvents = await this.getAllEvents();
     const lowerIdentifier = identifier.toLowerCase();
     
     const relatedEvents = allEvents.filter(event => {
@@ -2773,7 +2905,7 @@ export class EventService {
    * @param eventlog - 事件日志对象
    * @returns 补录的历史记录数量
    */
-  static backfillEventHistoryFromTimestamps(eventId: string, eventlog: any): number {
+  static async backfillEventHistoryFromTimestamps(eventId: string, eventlog: any): Promise<number> {
     try {
       // 检查是否已有创建记录
       const existingLogs = EventHistoryService.queryHistory({
@@ -2868,7 +3000,7 @@ export class EventService {
       
       // 第一个 timestamp 作为创建记录
       const createTime = timestamps[0];
-      const event = this.getEventById(eventId);
+      const event = await this.getEventById(eventId);
       if (event) {
         // 添加 try-catch 处理 QuotaExceededError
         try {
@@ -2927,7 +3059,7 @@ export class EventService {
    * @param event - 事件对象（已经过 convertRemoteEventToLocal 和 normalizeEvent 处理）
    * @returns 创建的事件对象
    */
-  static createEventFromRemoteSync(event: Event): Event {
+  static async createEventFromRemoteSync(event: Event): Promise<Event> {
     try {
       eventLogger.log('🌐 [EventService] Creating event from remote sync:', event.id);
 
@@ -2948,21 +3080,21 @@ export class EventService {
         syncStatus: event.syncStatus || 'synced',
       };
 
-      // 读取现有事件
-      const existingEvents = this.getAllEvents();
-
       // 检查是否已存在（理论上不应该存在，但做防御性检查）
-      const existingIndex = existingEvents.findIndex(e => e.id === event.id);
-      if (existingIndex !== -1) {
-        eventLogger.warn('⚠️ [EventService] Remote event already exists, replacing:', event.id);
-        existingEvents[existingIndex] = finalEvent;
+      const existing = await storageManager.queryEvents({
+        filters: { eventIds: [event.id] },
+        limit: 1
+      });
+      
+      if (existing.items.length > 0) {
+        eventLogger.warn('⚠️ [EventService] Remote event already exists, updating instead:', event.id);
+        const storageEvent = this.convertEventToStorageEvent(finalEvent);
+        await storageManager.updateEvent(event.id, storageEvent);
       } else {
-        // 添加新事件
-        existingEvents.push(finalEvent);
+        // 创建新事件（双写到 IndexedDB + SQLite）
+        const storageEvent = this.convertEventToStorageEvent(finalEvent);
+        await storageManager.createEvent(storageEvent);
       }
-
-      // 保存到 localStorage
-      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(existingEvents));
       
       // 🆕 记录到事件历史（使用 outlook-sync 作为来源）
       const historyLog = EventHistoryService.logCreate(finalEvent, 'outlook-sync');
@@ -2974,11 +3106,15 @@ export class EventService {
         limit: 1
       })[0];
       
+      // 获取统计信息
+      const stats = await storageManager.getStats();
+      const totalEvents = stats.indexedDB?.eventsCount || 0;
+      
       eventLogger.log('✅ [EventService] Remote event created:', {
         eventId: finalEvent.id,
         title: finalEvent.title,
         hasEventlog: typeof finalEvent.eventlog === 'object' && !!finalEvent.eventlog?.slateJson,
-        总事件数: existingEvents.length,
+        总事件数: totalEvents,
         historyLogSaved: !!historyLog,
         historyLogVerified: !!verifyLog,
         historyLogId: historyLog?.id,
@@ -2999,6 +3135,32 @@ export class EventService {
       eventLogger.error('❌ [EventService] Failed to create event from remote sync:', error);
       throw error; // 抛出错误让调用方处理
     }
+  }
+
+  // ========================================
+  // 🆕 Storage Layer 转换工具
+  // ========================================
+
+  /**
+   * 将 StorageEvent 转换为 Event（应用层模型）
+   */
+  private static convertStorageEventToEvent(storageEvent: StorageEvent): Event {
+    return {
+      ...storageEvent,
+      title: this.normalizeTitle(storageEvent.title),
+      eventlog: storageEvent.eventlog as any, // EventLog 类型兼容
+    } as Event;
+  }
+
+  /**
+   * 将 Event 转换为 StorageEvent（存储层模型）
+   */
+  private static convertEventToStorageEvent(event: Event): StorageEvent {
+    return {
+      ...event,
+      title: event.title,
+      eventlog: event.eventlog as any,
+    } as StorageEvent;
   }
 
   // ========================================
@@ -3033,33 +3195,36 @@ export class EventService {
   /**
    * 获取所有子事件（包括所有类型）
    */
-  static getChildEvents(parentId: string): Event[] {
-    const parent = this.getEventById(parentId);
+  static async getChildEvents(parentId: string): Promise<Event[]> {
+    const parent = await this.getEventById(parentId);
     if (!parent?.childEventIds) return [];
     
-    return parent.childEventIds
-      .map(id => this.getEventById(id))
-      .filter((e): e is Event => e !== null);
+    const children = await Promise.all(
+      parent.childEventIds.map((id: string) => this.getEventById(id))
+    );
+    return children.filter((e): e is Event => e !== null);
   }
 
   /**
    * 获取附属事件（Timer/TimeLog/OutsideApp）
    */
-  static getSubordinateEvents(parentId: string): Event[] {
-    return this.getChildEvents(parentId).filter(e => this.isSubordinateEvent(e));
+  static async getSubordinateEvents(parentId: string): Promise<Event[]> {
+    const children = await this.getChildEvents(parentId);
+    return children.filter(e => this.isSubordinateEvent(e));
   }
 
   /**
    * 获取用户子任务
    */
-  static getUserSubTasks(parentId: string): Event[] {
-    return this.getChildEvents(parentId).filter(e => this.isUserSubEvent(e));
+  static async getUserSubTasks(parentId: string): Promise<Event[]> {
+    const children = await this.getChildEvents(parentId);
+    return children.filter(e => this.isUserSubEvent(e));
   }
 
   /**
    * 递归获取整个事件树（广度优先遍历）
    */
-  static getEventTree(rootId: string): Event[] {
+  static async getEventTree(rootId: string): Promise<Event[]> {
     const result: Event[] = [];
     const visited = new Set<string>();
     const queue = [rootId];
@@ -3074,7 +3239,7 @@ export class EventService {
       }
       visited.add(currentId);
       
-      const event = this.getEventById(currentId);
+      const event = await this.getEventById(currentId);
       
       if (event) {
         result.push(event);
@@ -3092,8 +3257,8 @@ export class EventService {
   /**
    * 计算事件总时长（包括所有附属事件的实际时长）
    */
-  static getTotalDuration(parentId: string): number {
-    const children = this.getSubordinateEvents(parentId);
+  static async getTotalDuration(parentId: string): Promise<number> {
+    const children = await this.getSubordinateEvents(parentId);
     return children.reduce((sum, child) => {
       if (child.startTime && child.endTime) {
         const start = new Date(child.startTime).getTime();
@@ -3107,7 +3272,7 @@ export class EventService {
   /**
    * 获取事件的层级深度
    */
-  static getEventDepth(eventId: string): number {
+  static async getEventDepth(eventId: string): Promise<number> {
     let depth = 0;
     let currentId: string | undefined = eventId;
     const visited = new Set<string>();
@@ -3119,7 +3284,7 @@ export class EventService {
       }
       visited.add(currentId);
       
-      const event = this.getEventById(currentId);
+      const event = await this.getEventById(currentId);
       if (!event?.parentEventId) break;
       
       depth++;
@@ -3132,7 +3297,7 @@ export class EventService {
   /**
    * 获取根事件（最顶层的父事件）
    */
-  static getRootEvent(eventId: string): Event | null {
+  static async getRootEvent(eventId: string): Promise<Event | null> {
     let currentId = eventId;
     const visited = new Set<string>();
     
@@ -3143,7 +3308,7 @@ export class EventService {
       }
       visited.add(currentId);
       
-      const event = this.getEventById(currentId);
+      const event = await this.getEventById(currentId);
       if (!event) return null;
       if (!event.parentEventId) return event;
       
@@ -3151,6 +3316,209 @@ export class EventService {
     }
     
     return null;
+  }
+
+  // ========== 双向链接管理（Issue #13）==========
+
+  /**
+   * 添加双向链接
+   * 在事件 A 和事件 B 之间创建链接关系
+   * 
+   * @param fromEventId 源事件 ID
+   * @param toEventId 目标事件 ID
+   * @returns 是否成功
+   * 
+   * @example
+   * // 在事件 A 的 EventLog 中输入 "@Project Ace"
+   * await EventService.addLink(eventA.id, projectAce.id);
+   * // 结果：eventA.linkedEventIds = ['project-ace-id']
+   * //      projectAce.backlinks = ['event-a-id']
+   */
+  static async addLink(fromEventId: string, toEventId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      // 验证事件存在
+      const fromEvent = await this.getEventById(fromEventId);
+      const toEvent = await this.getEventById(toEventId);
+      
+      if (!fromEvent) {
+        return { success: false, error: `源事件不存在: ${fromEventId}` };
+      }
+      
+      if (!toEvent) {
+        return { success: false, error: `目标事件不存在: ${toEventId}` };
+      }
+      
+      // 防止自己链接自己
+      if (fromEventId === toEventId) {
+        return { success: false, error: '不能链接自己' };
+      }
+      
+      // 更新源事件的 linkedEventIds
+      const linkedEventIds = fromEvent.linkedEventIds || [];
+      if (!linkedEventIds.includes(toEventId)) {
+        linkedEventIds.push(toEventId);
+        await this.updateEvent(fromEventId, { linkedEventIds }, 'EventService.addLink');
+      }
+      
+      // 更新目标事件的 backlinks
+      await this.rebuildBacklinks(toEventId);
+      
+      eventLogger.log('🔗 [EventService] 添加链接:', { fromEventId, toEventId });
+      return { success: true };
+    } catch (error) {
+      eventLogger.error('❌ [EventService] 添加链接失败:', error);
+      return { success: false, error: String(error) };
+    }
+  }
+
+  /**
+   * 移除双向链接
+   * 
+   * @param fromEventId 源事件 ID
+   * @param toEventId 目标事件 ID
+   * @returns 是否成功
+   */
+  static async removeLink(fromEventId: string, toEventId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const fromEvent = await this.getEventById(fromEventId);
+      
+      if (!fromEvent) {
+        return { success: false, error: `源事件不存在: ${fromEventId}` };
+      }
+      
+      // 从 linkedEventIds 中移除
+      const linkedEventIds = (fromEvent.linkedEventIds || []).filter(id => id !== toEventId);
+      await this.updateEvent(fromEventId, { linkedEventIds }, 'EventService.removeLink');
+      
+      // 重新计算目标事件的 backlinks
+      await this.rebuildBacklinks(toEventId);
+      
+      eventLogger.log('🔓 [EventService] 移除链接:', { fromEventId, toEventId });
+      return { success: true };
+    } catch (error) {
+      eventLogger.error('❌ [EventService] 移除链接失败:', error);
+      return { success: false, error: String(error) };
+    }
+  }
+
+  /**
+   * 重建事件的反向链接（backlinks）
+   * 遍历所有事件，找出哪些事件链接了当前事件
+   * 
+   * @param eventId 需要重建 backlinks 的事件 ID
+   */
+  static async rebuildBacklinks(eventId: string): Promise<void> {
+    try {
+      const allEvents = await this.getAllEvents();
+      const backlinks: string[] = [];
+      
+      // 遍历所有事件，找出链接了当前事件的
+      allEvents.forEach((event: Event) => {
+        if (event.linkedEventIds?.includes(eventId)) {
+          backlinks.push(event.id);
+        }
+      });
+      
+      // 更新 backlinks（不触发同步）
+      await this.updateEvent(eventId, { backlinks }, 'EventService.rebuildBacklinks');
+      
+      eventLogger.log('🔄 [EventService] 重建反向链接:', { eventId, backlinksCount: backlinks.length });
+    } catch (error) {
+      eventLogger.error('❌ [EventService] 重建反向链接失败:', error);
+    }
+  }
+
+  /**
+   * 批量重建所有事件的反向链接
+   * 用于数据迁移或修复
+   */
+  static async rebuildAllBacklinks(): Promise<{ success: boolean; rebuiltCount: number; error?: string }> {
+    try {
+      const allEvents = await this.getAllEvents();
+      let rebuiltCount = 0;
+      
+      for (const event of allEvents) {
+        await this.rebuildBacklinks(event.id);
+        rebuiltCount++;
+      }
+      
+      eventLogger.log('✅ [EventService] 批量重建反向链接完成:', { rebuiltCount });
+      return { success: true, rebuiltCount };
+    } catch (error) {
+      eventLogger.error('❌ [EventService] 批量重建反向链接失败:', error);
+      return { success: false, rebuiltCount: 0, error: String(error) };
+    }
+  }
+
+  /**
+   * 获取事件的所有链接事件（正向链接 + 反向链接）
+   * 用于在 EventTree 中显示堆叠卡片
+   * 
+   * @param eventId 事件 ID
+   * @returns 链接事件列表
+   */
+  static async getLinkedEvents(eventId: string): Promise<{
+    outgoing: Event[];  // 正向链接（我链接的事件）
+    incoming: Event[];  // 反向链接（链接我的事件）
+  }> {
+    try {
+      const event = await this.getEventById(eventId);
+      
+      if (!event) {
+        return { outgoing: [], incoming: [] };
+      }
+      
+      // 获取正向链接的事件
+      const outgoingIds = event.linkedEventIds || [];
+      const outgoing = (await Promise.all(
+        outgoingIds.map(id => this.getEventById(id))
+      )).filter(e => e !== null) as Event[];
+      
+      // 获取反向链接的事件
+      const incomingIds = event.backlinks || [];
+      const incoming = (await Promise.all(
+        incomingIds.map(id => this.getEventById(id))
+      )).filter(e => e !== null) as Event[];
+      
+      return { outgoing, incoming };
+    } catch (error) {
+      eventLogger.error('❌ [EventService] 获取链接事件失败:', error);
+      return { outgoing: [], incoming: [] };
+    }
+  }
+
+  /**
+   * 检查两个事件之间是否存在链接
+   * 
+   * @param fromEventId 源事件 ID
+   * @param toEventId 目标事件 ID
+   * @returns 是否存在链接
+   */
+  static async hasLink(fromEventId: string, toEventId: string): Promise<boolean> {
+    try {
+      const fromEvent = await this.getEventById(fromEventId);
+      return fromEvent?.linkedEventIds?.includes(toEventId) || false;
+    } catch (error) {
+      eventLogger.error('❌ [EventService] 检查链接失败:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 判断事件是否应该显示在 EventTree 中
+   * 排除系统自动生成的事件类型
+   * 
+   * @param event 事件对象
+   * @returns 是否应该显示
+   */
+  static shouldShowInEventTree(event: Event): boolean {
+    // 排除系统事件
+    if (event.isTimer) return false;         // Timer 子事件
+    if (event.isOutsideApp) return false;    // 外部应用数据（听歌、录屏等）
+    if (event.isTimeLog) return false;       // 纯系统时间日志
+    
+    // 显示所有用户创建的事件
+    return true; // Task、文档、Plan 事件、TimeCalendar 事件等
   }
 }
 
