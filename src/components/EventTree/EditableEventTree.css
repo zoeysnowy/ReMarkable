@@ -1,0 +1,63 @@
+/**
+ * EditableEventTree Styles
+ */
+
+.editable-event-tree {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  min-height: 300px;
+}
+
+.event-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  min-height: 32px;
+  transition: background 0.2s;
+}
+
+.event-tree-item:hover {
+  background: #f9fafb;
+}
+
+.event-bullet {
+  font-size: 18px;
+  color: #9ca3af;
+  user-select: none;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.event-title-editable {
+  flex: 1;
+  font-size: 14px;
+  color: #1f2937;
+  outline: none;
+  min-width: 100px;
+}
+
+.event-title-editable:focus {
+  background: rgba(59, 130, 246, 0.05);
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+}
+
+.keyboard-hints {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.keyboard-hints span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
