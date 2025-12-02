@@ -78,7 +78,7 @@ const Header: React.FC<HeaderProps> = ({ globalTimer, onTimerClick, onSettingsCl
             <Logo />
           </div>
           <div className="logo-text">
-            <h1>ReMarkable</h1>
+            <h1>4DNote</h1>
           </div>
         </div>
 
