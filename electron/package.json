@@ -1,7 +1,7 @@
 {
-  "name": "remarkable-desktop",
+  "name": "4dnote-desktop",
   "version": "1.0.0",
-  "description": "ReMarkable Desktop Application - 智能日历和任务管理",
+  "description": "4DNote Desktop Application - 智能日历和任务管理",
   "main": "main.js",
   "author": "Zoey Gong",
   "license": "MIT",
@@ -31,8 +31,8 @@
     "fuse.js": "^7.1.0"
   },
   "build": {
-    "appId": "com.remarkable.desktop",
-    "productName": "ReMarkable",
+    "appId": "com.4dnote.desktop",
+    "productName": "4DNote",
     "directories": {
       "output": "dist",
       "buildResources": "build-resources"
@@ -71,7 +71,7 @@
         }
       ],
       "icon": "assets/icon.ico",
-      "publisherName": "ReMarkable Team",
+      "publisherName": "4DNote Team",
       "verifyUpdateCodeSignature": false
     },
     "mac": {
@@ -110,7 +110,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "ReMarkable"
+      "shortcutName": "4DNote"
     }
   }
 }

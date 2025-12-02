@@ -63,7 +63,7 @@ export async function resetAllData() {
       }
     } else {
       // 浏览器环境：尝试标准 API 删除
-      const dbName = 'ReMarkableDB';
+      const dbName = '4DNoteDB';
       
       try {
         const { indexedDBService } = await import('../services/storage/IndexedDBService');
@@ -120,11 +120,11 @@ export async function resetAllData() {
           console.log('   ✅ SQLite 数据库已清空');
         } else {
           console.warn('   ⚠️  SQLite 清空功能未实现（需要主进程支持）');
-          console.warn('   💡 手动删除: ./database/remarkable-dev.db');
+          console.warn('   💡 手动删除: ./database/4dnote-dev.db');
         }
       } catch (error) {
         console.warn('   ⚠️  SQLite 清空失败:', error);
-        console.warn('   💡 手动删除: ./database/remarkable-dev.db');
+        console.warn('   💡 手动删除: ./database/4dnote-dev.db');
       }
     } else {
       console.log('4️⃣  跳过 SQLite（非 Electron 环境）');
@@ -152,7 +152,7 @@ export async function resetAllData() {
     console.log('\n💡 建议手动操作：');
     console.log('1. 关闭所有标签页');
     console.log('2. 在 DevTools 中: Application → Clear storage → Clear site data');
-    console.log('3. 删除文件: ./database/remarkable-dev.db');
+    console.log('3. 删除文件: ./database/4dnote-dev.db');
   }
 }
 
@@ -167,7 +167,7 @@ export async function resetAllDataQuick() {
   sessionStorage.clear();
   
   // 删除 IndexedDB
-  const dbName = 'ReMarkableDB';
+  const dbName = '4DNoteDB';
   await new Promise<void>((resolve) => {
     const deleteRequest = indexedDB.deleteDatabase(dbName);
     deleteRequest.onsuccess = () => resolve();
@@ -200,7 +200,7 @@ export async function clearIndexedDB() {
   }
   
   // 浏览器环境或 Electron 失败时的回退方案
-  const dbName = 'ReMarkableDB';
+  const dbName = '4DNoteDB';
   
   try {
     const { indexedDBService } = await import('../services/storage/IndexedDBService');
@@ -303,7 +303,7 @@ export function nuclearReset() {
   console.log('');
   
   console.log('3️⃣  清理 Chrome 用户数据（如果使用）：');
-  console.log('   Remove-Item -Recurse -Force "$env:LOCALAPPDATA/remarkable-desktop"');
+  console.log('   Remove-Item -Recurse -Force "$env:LOCALAPPDATA/4dnote-desktop"');
   console.log('');
   
   console.log('4️⃣  重新启动应用：');

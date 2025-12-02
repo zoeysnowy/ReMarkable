@@ -128,7 +128,7 @@ export async function testIndexedDBFix() {
     console.log('\n💡 调试建议：');
     console.log('1. 检查 Console 是否有 IndexedDB 错误');
     console.log('2. 打开 DevTools → Application → IndexedDB');
-    console.log('3. 确认 "ReMarkableDB" 数据库是否存在');
+    console.log('3. 确认 "4DNoteDB" 数据库是否存在');
     console.log('4. 如果仍有问题，尝试手动清理:');
     console.log('   - Application → Clear storage → Clear site data');
     console.log('   - 完全关闭应用并重新启动\n');

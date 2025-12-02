@@ -34,7 +34,7 @@ import type {
   QueryResult
 } from './types';
 
-const DB_NAME = 'ReMarkableDB';
+const DB_NAME = '4DNoteDB';
 const DB_VERSION = 1;
 
 export class IndexedDBService {

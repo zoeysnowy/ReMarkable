@@ -23,7 +23,7 @@ import { formatTimeForStorage, parseLocalTimeString } from '../utils/timeUtils';
 const historyLogger = logger.module('EventHistory');
 
 // 历史记录存储键
-const HISTORY_STORAGE_KEY = 'remarkable_event_history';
+const HISTORY_STORAGE_KEY = '4dnote_event_history';
 
 // 默认保留历史记录的天数（90天）
 const DEFAULT_RETENTION_DAYS = 90;

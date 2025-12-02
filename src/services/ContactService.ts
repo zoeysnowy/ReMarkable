@@ -2,7 +2,7 @@
  * ContactService - 联系人管理服务
  * 
  * 功能：
- * - 统一管理 ReMarkable 本地联系人和各云平台联系人
+ * - 统一管理 4DNote 本地联系人和各云平台联系人
  * - 支持联系人的增删改查
  * - 提供联系人搜索和过滤功能
  * - 支持头像管理（Gravatar 集成）
@@ -14,7 +14,7 @@ import md5 from 'crypto-js/md5';
 import { logger } from '../utils/logger';
 import { formatTimeForStorage } from '../utils/timeUtils';
 
-const STORAGE_KEY = 'remarkable-contacts';
+const STORAGE_KEY = '4dnote-contacts';
 const contactLogger = logger.module('ContactService');
 
 // 事件类型定义
@@ -187,7 +187,7 @@ export class ContactService {
       if (source) {
         switch (source) {
           case 'remarkable':
-            return contact.isReMarkable === true;
+            return contact.is4DNote === true;
           case 'outlook':
             return contact.isOutlook === true;
           case 'google':
@@ -247,7 +247,7 @@ export class ContactService {
    */
   private static getSourcePriority(contact: Contact): number {
     if (contact.isOutlook || contact.isGoogle || contact.isiCloud) return 1;
-    if (contact.isReMarkable) return 2;
+    if (contact.is4DNote) return 2;
     return 3; // 历史参会人（无来源标识）
   }
 
@@ -264,7 +264,7 @@ export class ContactService {
       organization: contact1.organization || contact2.organization,
       position: contact1.position || contact2.position,
       notes: contact1.notes || contact2.notes,
-      isReMarkable: contact1.isReMarkable || contact2.isReMarkable,
+      is4DNote: contact1.is4DNote || contact2.is4DNote,
       isOutlook: contact1.isOutlook || contact2.isOutlook,
       isGoogle: contact1.isGoogle || contact2.isGoogle,
       isiCloud: contact1.isiCloud || contact2.isiCloud,
@@ -415,7 +415,7 @@ export class ContactService {
     if (organizer && organizer.email) {
       const existing = this.getContactByEmail(organizer.email);
       if (!existing) {
-        contactsToAdd.push({ ...organizer, isReMarkable: true });
+        contactsToAdd.push({ ...organizer, is4DNote: true });
       }
     }
 
@@ -425,7 +425,7 @@ export class ContactService {
         if (attendee.email) {
           const existing = this.getContactByEmail(attendee.email);
           if (!existing) {
-            contactsToAdd.push({ ...attendee, isReMarkable: true });
+            contactsToAdd.push({ ...attendee, is4DNote: true });
           }
         }
       });
@@ -545,7 +545,7 @@ export class ContactService {
    * 获取平台来源显示文本
    */
   static getSourceLabel(contact: Contact): string {
-    if (contact.isReMarkable) return 'ReMarkable';
+    if (contact.is4DNote) return 'ReMarkable';
     if (contact.isOutlook) return 'Outlook';
     if (contact.isGoogle) return 'Google';
     if (contact.isiCloud) return 'iCloud';
@@ -612,7 +612,7 @@ export class ContactService {
     
     const results = this.contacts.filter(contact => {
       // 必须是本地联系人
-      if (!contact.isReMarkable) {
+      if (!contact.is4DNote) {
         return false;
       }
       

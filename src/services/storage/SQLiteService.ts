@@ -49,7 +49,7 @@ export class SQLiteService {
   private get dbPath(): string {
     return process.env.NODE_ENV === 'production' 
       ? './database/remarkable.db' 
-      : './database/remarkable-dev.db';
+      : './database/4dnote-dev.db';
   }
 
   /**
@@ -438,7 +438,7 @@ export class SQLiteService {
         { name: 'todo_list_ids', type: 'TEXT', default: null },
         { name: 'source', type: 'TEXT', default: "'local'" },
         { name: 'external_id', type: 'TEXT', default: null },
-        { name: 'remarkable_source', type: 'BOOLEAN', default: '1' },
+        { name: '4dnote_source', type: 'BOOLEAN', default: '1' },
       ];
 
       for (const column of requiredColumns) {

@@ -49,7 +49,7 @@
  * 
  * Event（完整事件）:
  * - 继承 MockEvent 的所有字段
- * - 额外字段: createdAt, updatedAt, syncStatus, remarkableSource, calendarIds, todoListIds
+ * - 额外字段: createdAt, updatedAt, syncStatus, fourDNoteSource, calendarIds, todoListIds
  * 
  * eventlog 字段格式兼容：
  * - 旧格式: 字符串（HTML）
@@ -209,7 +209,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   // 🎬 调试：打印传入的 event 对象的关键字段
   console.log('🎬 [EventEditModalV2] 传入的 event 对象:', {
     id: event?.id,
-    remarkableSource: event?.remarkableSource,
+    fourDNoteSource: event?.fourDNoteSource,
     source: event?.source,
     syncMode: event?.syncMode,
     syncStatus: event?.syncStatus,
@@ -317,11 +317,11 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         calendarIds: event.calendarIds || [],
         // ✅ syncMode 根据事件来源设置默认值
         syncMode: event.syncMode || (() => {
-          const isLocalEvent = event.remarkableSource === true || event.source === 'local';
+          const isLocalEvent = event.fourDNoteSource === true || event.source === 'local';
           const defaultMode = isLocalEvent ? 'bidirectional-private' : 'receive-only';
           console.log('🎬 [formData 初始化] 事件来源检测:', {
             eventId: event.id,
-            remarkableSource: event.remarkableSource,
+            fourDNoteSource: event.fourDNoteSource,
             source: event.source,
             isLocalEvent,
             eventSyncMode: event.syncMode,
@@ -378,13 +378,13 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
     console.log('🔄 [EventEditModalV2] event prop 变化，同步更新 formData + UI 状态');
     console.log('📥 新 event.calendarIds:', event.calendarIds);
     console.log('📥 新 event.syncMode:', event.syncMode);
-    console.log('📥 新 event.remarkableSource:', event.remarkableSource);
+    console.log('📥 新 event.fourDNoteSource:', event.fourDNoteSource);
     console.log('📥 新 event.source:', event.source);
     
     // ✅ 根据事件来源设置正确的 syncMode 默认值
     const defaultSyncMode = (() => {
       if (event.syncMode) return event.syncMode; // 如果已有 syncMode，使用现有值
-      const isLocalEvent = event.remarkableSource === true || event.source === 'local';
+      const isLocalEvent = event.fourDNoteSource === true || event.source === 'local';
       return isLocalEvent ? 'bidirectional-private' : 'receive-only';
     })();
     
@@ -1145,12 +1145,12 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
 
     // 3. 独立 Timer 事件（没有父事件的 Timer）
     if (evt.isTimer && !evt.parentEventId) {
-      return { emoji: '⏱️', name: 'ReMarkable计时', icon: null, color: '#f59e0b' };
+      return { emoji: '⏱️', name: '4DNote计时', icon: null, color: '#f59e0b' };
     }
 
     // 4. Plan 事件
     if (evt.isPlan) {
-      return { emoji: '✅', name: 'ReMarkable计划', icon: null, color: '#10b981' };
+      return { emoji: '✅', name: '4DNote计划', icon: null, color: '#10b981' };
     }
 
     // 5. TimeCalendar 事件
@@ -1250,11 +1250,11 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
         calendarIds: event.calendarIds || [],
         // ✅ syncMode 根据事件来源设置正确的默认值
         syncMode: event.syncMode || (() => {
-          const isLocalEvent = event.remarkableSource === true || event.source === 'local';
+          const isLocalEvent = event.fourDNoteSource === true || event.source === 'local';
           const defaultMode = isLocalEvent ? 'bidirectional-private' : 'receive-only';
           console.log('🎬 [useEffect同步formData] 事件来源检测:', {
             eventId: event.id,
-            remarkableSource: event.remarkableSource,
+            fourDNoteSource: event.fourDNoteSource,
             source: event.source,
             isLocalEvent,
             eventSyncMode: event.syncMode,
@@ -2015,7 +2015,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                         selectedTagIds={formData.tags}
                         onSelectionChange={(selectedIds) => {
                           // 🆕 v2.0.5 标签变更时，自动处理日历映射（使用新架构：syncMode + subEventConfig）
-                          const isLocalEvent = event?.remarkableSource === true || event?.source === 'local';
+                          const isLocalEvent = event?.fourDNoteSource === true || event?.source === 'local';
                           
                           // 提取标签的日历映射
                           const mappedCalendars = selectedIds
@@ -2167,7 +2167,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                                 'title type': typeof newEvent.title,
                                 tags: newEvent.tags,
                                 source: newEvent.source,
-                                remarkableSource: newEvent.remarkableSource
+                                fourDNoteSource: newEvent.fourDNoteSource
                               });
                               
                               await EventService.createEvent(newEvent);

@@ -110,7 +110,7 @@ const WidgetSettings: React.FC = () => {
         }
 
         // 加载标签
-        const tagsData = localStorage.getItem('remarkable-hierarchical-tags');
+        const tagsData = localStorage.getItem('4dnote-hierarchical-tags');
         console.log('🏷️ [WidgetSettings] 标签数据:', tagsData ? `${tagsData.length} 字符` : '空');
         if (tagsData) {
           const tags = JSON.parse(tagsData);
@@ -133,7 +133,7 @@ const WidgetSettings: React.FC = () => {
         }
 
         // 加载日历 - 修复 key 名称
-        const calendarsData = localStorage.getItem('remarkable-calendars-cache');
+        const calendarsData = localStorage.getItem('4dnote-calendars-cache');
         console.log('📅 [WidgetSettings] 日历数据:', calendarsData ? `${calendarsData.length} 字符` : '空');
         if (calendarsData) {
           const calendars = JSON.parse(calendarsData);

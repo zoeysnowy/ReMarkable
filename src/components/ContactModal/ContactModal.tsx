@@ -44,7 +44,7 @@ export interface ContactModalProps {
  * 格式化联系人来源
  */
 const formatSource = (contact: Contact): string => {
-  if (contact.isReMarkable) return 'ReMarkable 联系人';
+  if (contact.is4DNote) return '4DNote 联系人';
   if (contact.isOutlook) return 'Outlook 联系人';
   if (contact.isGoogle) return 'Google 联系人';
   if (contact.isiCloud) return 'iCloud 联系人';
@@ -185,7 +185,7 @@ export const ContactModal: React.FC<ContactModalProps> = ({
           email: updates.email,
           phone: updates.phone,
           organization: updates.organization,
-          isReMarkable: true,
+          is4DNote: true,
         });
         onSave?.(newContact);
       } else if (contact?.id) {

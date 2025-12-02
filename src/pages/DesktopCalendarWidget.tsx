@@ -35,14 +35,14 @@ const DesktopCalendarWidget: React.FC = () => {
     }
     
     // 2. 尝试�?localStorage 读取
-    const savedId = localStorage.getItem('remarkable-widget-instance-id');
+    const savedId = localStorage.getItem('4dnote-widget-instance-id');
     if (savedId) {
       return savedId;
     }
     
     // 3. 生成新的 ID 并保�?
     const newId = `widget-${Date.now()}`;
-    localStorage.setItem('remarkable-widget-instance-id', newId);
+    localStorage.setItem('4dnote-widget-instance-id', newId);
     return newId;
   });
 
@@ -289,7 +289,7 @@ const DesktopCalendarWidget: React.FC = () => {
   useEffect(() => {
     const checkAuthAndInitSync = () => {
       // 🔧 只使�?localStorage 中的认证状态（主应用会更新这个标记�?
-      const storedAuthState = localStorage.getItem('remarkable-outlook-authenticated') === 'true';
+      const storedAuthState = localStorage.getItem('4dnote-outlook-authenticated') === 'true';
       
       widgetLogger.log('🔍 [Widget] 检查认证状�?', {
         storedAuthState,
@@ -312,7 +312,7 @@ const DesktopCalendarWidget: React.FC = () => {
     
     // 🔧 监听 localStorage 变化（实时响应主应用的认证状态更新）
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'remarkable-outlook-authenticated') {
+      if (e.key === '4dnote-outlook-authenticated') {
         widgetLogger.log('🔔 [Widget] 检测到认证状态变�?', e.newValue);
         checkAuthAndInitSync();
       }

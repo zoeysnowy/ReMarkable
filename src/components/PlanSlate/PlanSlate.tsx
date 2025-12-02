@@ -1,4 +1,4 @@
-﻿/**
+/**
  * PlanSlate - 统一的单实例 Slate 编辑器
  * 
  * 核心特性：
@@ -1016,7 +1016,7 @@ export const PlanSlate: React.FC<PlanSlateProps> = ({
             source: updatedEvent.source,
             syncStatus: updatedEvent.syncStatus,
             externalId: updatedEvent.externalId,
-            remarkableSource: updatedEvent.remarkableSource,
+            fourDNoteSource: updatedEvent.fourDNoteSource,
             createdAt: updatedEvent.createdAt,
             updatedAt: updatedEvent.updatedAt,
           };

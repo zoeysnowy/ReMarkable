@@ -18,7 +18,7 @@ describe('ContactModal', () => {
     email: 'zhangsan@example.com',
     phone: '13800138000',
     organization: '字节跳动',
-    isReMarkable: true,
+    is4DNote: true,
   };
 
   const mockOnClose = jest.fn();

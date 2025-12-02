@@ -1,7 +1,7 @@
 {
-  "name": "remarkable",
+  "name": "4dnote",
   "version": "1.3.0",
-  "description": "ReMarkable v1.3 - 智能时间管理与日历同步工具 (Timer Card & Widget Components Enhancement)",
+  "description": "4DNote v1.3 - 智能时间管理与日历同步工具 (Timer Card & Widget Components Enhancement)",
   "author": "Zoey Gong",
   "private": false,
   "dependencies": {

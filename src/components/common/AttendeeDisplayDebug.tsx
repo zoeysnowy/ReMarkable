@@ -41,7 +41,7 @@ export const AttendeeDisplayDebug: React.FC<AttendeeDisplayProps> = ({
         id: 'current-user',
         name: '我',
         email: currentUserEmail,
-        isReMarkable: true,
+        is4DNote: true,
       });
     }
     

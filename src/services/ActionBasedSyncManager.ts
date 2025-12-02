@@ -704,7 +704,7 @@ export class ActionBasedSyncManager {
   // 🆕 加载已删除事件ID
   private loadDeletedEventIds() {
     try {
-      const stored = localStorage.getItem('remarkable-dev-persistent-deletedEventIds');
+      const stored = localStorage.getItem('4dnote-dev-persistent-deletedEventIds');
       if (stored) {
         this.deletedEventIds = new Set(JSON.parse(stored));
       }
@@ -717,7 +717,7 @@ export class ActionBasedSyncManager {
   // 🆕 保存已删除事件ID
   private saveDeletedEventIds() {
     try {
-      localStorage.setItem('remarkable-dev-persistent-deletedEventIds', JSON.stringify(Array.from(this.deletedEventIds)));
+      localStorage.setItem('4dnote-dev-persistent-deletedEventIds', JSON.stringify(Array.from(this.deletedEventIds)));
     } catch (error) {
       console.error('Failed to save deleted event IDs:', error);
     }
@@ -1154,7 +1154,7 @@ export class ActionBasedSyncManager {
   private getCurrentCalendarDate(): Date {
     try {
       // 尝试从 localStorage 获取保存的当前日期
-      const savedDate = localStorage.getItem('remarkable-calendar-current-date');
+      const savedDate = localStorage.getItem('4dnote-calendar-current-date');
       if (savedDate) {
         const date = new Date(savedDate);
         if (!isNaN(date.getTime())) {
@@ -2175,7 +2175,7 @@ private getUserSettings(): any {
       switch (action.type) {
         case 'create':
           // 检查事件是否已经同步过（有externalId）或者是从Outlook同步回来的
-          if (action.data.externalId || action.data.remarkableSource === false) {
+          if (action.data.externalId || action.data.fourDNoteSource === false) {
             return true; // 标记为成功，避免重试
           }
 
@@ -3082,7 +3082,7 @@ private getUserSettings(): any {
         
         // 🎯 [STEP 2] 如果没找到，尝试通过 ReMarkable 创建签名匹配本地事件
         // 场景：本地事件刚同步到 Outlook，本地还没有 externalId，Outlook 返回时需要匹配本地事件
-        if (!existingEvent && newEvent.remarkableSource) {
+        if (!existingEvent && newEvent.fourDNoteSource) {
           const createTime = this.extractOriginalCreateTime(newEvent.description);
           
           if (createTime) {
@@ -3090,7 +3090,7 @@ private getUserSettings(): any {
             existingEvent = events.find((e: any) => 
               e.isTimer &&                    // ✅ 必须是 Timer 事件
               !e.externalId &&                 // ✅ 还没有同步过(没有 externalId)
-              e.remarkableSource === true &&   // ✅ ReMarkable 创建的
+              e.fourDNoteSource === true &&   // ✅ ReMarkable 创建的
               Math.abs(new Date(e.createdAt).getTime() - createTime.getTime()) < 1000 // ✅ 创建时间匹配(1秒容差)
             );
             
@@ -3103,7 +3103,7 @@ private getUserSettings(): any {
               existingEvent = events.find((e: any) => 
                 !e.isTimer &&                   // ✅ 非 Timer 事件
                 !e.externalId &&                // ✅ 还没有同步过(没有 externalId)
-                (e.remarkableSource === true || e.id.startsWith('local-')) && // ✅ ReMarkable 创建的或本地创建的
+                (e.fourDNoteSource === true || e.id.startsWith('local-')) && // ✅ ReMarkable 创建的或本地创建的
                 e.title?.simpleTitle === newEvent.title?.simpleTitle &&   // ✅ 标题匹配
                 Math.abs(new Date(e.createdAt).getTime() - createTime.getTime()) < 5000 // ✅ 创建时间匹配(5秒容差)
               );
@@ -3751,7 +3751,7 @@ private getUserSettings(): any {
     const cleanDescription = this.processEventDescription(htmlContent, 'outlook', 'sync', remoteEvent);
     
     // 检查是否是ReMarkable创建的事件（通过描述中的标记判断）
-    const isReMarkableCreated = this.hasCreateNote(cleanDescription) && 
+    const is4DNoteCreated = this.hasCreateNote(cleanDescription) && 
                                cleanDescription.includes('由 🔮 ReMarkable 创建');
     
     // 🔧 [FIX] remoteEvent.id 已经带有 'outlook-' 前缀（来自 MicrosoftCalendarService）
@@ -3775,7 +3775,7 @@ private getUserSettings(): any {
       calendarIds: remoteEvent.calendarIds || ['microsoft'], // 🔧 使用数组格式，与类型定义保持一致
       source: 'outlook', // 🔧 设置source字段
       syncStatus: 'synced',
-      remarkableSource: isReMarkableCreated // 根据描述内容判断来源
+      fourDNoteSource: is4DNoteCreated // 根据描述内容判断来源
     };
     
     // ✅ 通过 EventService 规范化，自动生成 title 和 eventlog 对象
@@ -4355,13 +4355,13 @@ private getUserSettings(): any {
       
       // 查找需要同步但未同步的事件：
       // 1. syncStatus 为 'pending'（统一的待同步状态，包含新建和更新）
-      // 2. remarkableSource = true（本地创建）
+      // 2. fourDNoteSource = true（本地创建）
       // 3. 没有 externalId（尚未同步到远程）
       // 4. syncStatus !== 'local-only'（排除本地专属事件，如运行中的 Timer）
       // 5. 有目标日历：calendarIds 不为空 或 有 tagId（可能有日历映射）
       const pendingEvents = events.filter((event: any) => {
         const needsSync = event.syncStatus === 'pending' && 
-                         event.remarkableSource === true &&
+                         event.fourDNoteSource === true &&
                          !event.externalId;
         
         if (!needsSync) return false;
@@ -4417,7 +4417,7 @@ private getUserSettings(): any {
   }
 
   private async migrateOutlookPrefixes() {
-    const MIGRATION_KEY = 'remarkable-outlook-prefix-migration-v1';
+    const MIGRATION_KEY = '4dnote-outlook-prefix-migration-v1';
     
     // 检查是否已经迁移过
     if (localStorage.getItem(MIGRATION_KEY) === 'completed') {

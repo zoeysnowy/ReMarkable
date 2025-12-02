@@ -2,7 +2,7 @@ import { EventService } from '../../services/EventService';
 import { TimeHub } from '../../services/TimeHub';
 import { formatTimeForStorage } from '../../utils/timeUtils';
 
-const EVENTS_KEY = 'remarkable-events';
+const EVENTS_KEY = '4dnote-events';
 
 describe('TimeHub basic set/get/subscribe', () => {
   beforeEach(() => {

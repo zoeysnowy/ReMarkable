@@ -5,8 +5,8 @@
 
 import { formatTimeForStorage } from './timeUtils';
 
-const DEVELOPMENT_STORAGE_PREFIX = 'remarkable-dev-persistent-';
-const PRODUCTION_STORAGE_PREFIX = 'remarkable-';
+const DEVELOPMENT_STORAGE_PREFIX = '4dnote-dev-persistent-';
+const PRODUCTION_STORAGE_PREFIX = '4dnote-';
 
 // 判断是否为开发环境
 const isDevelopment = process.env.NODE_ENV === 'development' || 

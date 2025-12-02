@@ -1,13 +1,13 @@
-# ReMarkable v1.1+ 🎯
+# 4DNote v1.3+ 🎯
 
 **智能时间管理与日历同步工具**
 
-[![Version](https://img.shields.io/badge/version-1.1+-blue.svg)](https://github.com/zoeysnowy/ReMarkable/releases/tag/v1.1)
+[![Version](https://img.shields.io/badge/version-1.3+-blue.svg)](https://github.com/zoeysnowy/4DNote/releases/tag/v1.3)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 [![React](https://img.shields.io/badge/React-19.2.0-61dafb.svg)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 
-ReMarkable 是一个现代化的时间管理应用，支持与 Microsoft Outlook 日历的双向同步功能，提供强大的事件管理和多标签分类系统。采用先进的Slate.js编辑器和优化的状态管理机制。
+4DNote 是一个现代化的时间管理应用，支持与 Microsoft Outlook 日历的双向同步功能，提供强大的事件管理和多标签分类系统。采用先进的Slate.js编辑器和优化的状态管理机制。
 
 > 📖 **最新发布**: [v1.1 Release Notes](./RELEASE_NOTES_v1.1.md) - Calendar Integration & Event Management Enhancements
 > 🔧 **最新优化**: Plan页面编辑器增强、循环更新防护、ID分配优化

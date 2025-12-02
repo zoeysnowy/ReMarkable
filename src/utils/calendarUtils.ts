@@ -1,7 +1,7 @@
 /**
  * Calendar Utils - 日历数据转换工具
  * 
- * 负责 ReMarkable Event 与 TUI Calendar EventObject 之间的数据转换
+ * 负责 4DNote Event 与 TUI Calendar EventObject 之间的数据转换
  * 
  * @charset UTF-8
  * @author Zoey Gong
@@ -82,7 +82,7 @@ export function getEventColor(event: Event, tags: any[]): string {
  */
 export function getCalendarGroupColor(calendarId: string): string | null {
   try {
-    const calendarsCache = localStorage.getItem('remarkable-calendars-cache');
+    const calendarsCache = localStorage.getItem('4dnote-calendars-cache');
     if (!calendarsCache) return null;
     
     const calendars = JSON.parse(calendarsCache);
@@ -113,7 +113,7 @@ export function getCalendarGroupColor(calendarId: string): string | null {
  */
 export function getAvailableCalendarsForSettings(): Array<{ id: string; name: string; color: string }> {
   try {
-    const savedCalendars = localStorage.getItem('remarkable-calendars-cache');
+    const savedCalendars = localStorage.getItem('4dnote-calendars-cache');
     const regularCalendars = savedCalendars
       ? JSON.parse(savedCalendars).map((cal: any) => ({
           id: cal.id,
@@ -392,7 +392,7 @@ export function convertToCalendarEvent(
 }
 
 /**
- * 将 TUI Calendar EventObject 转换为 ReMarkable Event
+ * 将 TUI Calendar EventObject 转换为 4DNote Event
  * @param calendarEvent TUI Calendar 事件对象
  * @param originalEvent 原始事件（用于保留某些字段）
  * @returns ReMarkable 事件对象
@@ -443,7 +443,7 @@ export function convertFromCalendarEvent(
     externalId: originalEvent?.externalId,
     syncStatus: originalEvent?.syncStatus,
     calendarIds: originalEvent?.calendarIds,
-    remarkableSource: true,
+    fourDNoteSource: true,
     // 时间戳
     createdAt: originalEvent?.createdAt || nowStr,
     updatedAt: nowStr,
@@ -453,7 +453,7 @@ export function convertFromCalendarEvent(
 }
 
 /**
- * 批量转换 ReMarkable Events 到 TUI Calendar Events
+ * 批量转换 4DNote Events 到 TUI Calendar Events
  * @param events ReMarkable 事件数组
  * @param tags 标签列表
  * @returns TUI Calendar 事件数组

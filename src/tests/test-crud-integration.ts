@@ -71,7 +71,7 @@ export async function testCRUDIntegration() {
             
             // 删除数据库
             await new Promise<void>((resolve, reject) => {
-              const deleteRequest = indexedDB.deleteDatabase('ReMarkableDB');
+              const deleteRequest = indexedDB.deleteDatabase('4DNoteDB');
               
               deleteRequest.onsuccess = () => {
                 console.log('   ✅ IndexedDB 数据库已删除');

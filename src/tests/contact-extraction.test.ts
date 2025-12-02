@@ -136,12 +136,12 @@ EventService.saveEvent(testEvent as Event).then(result => {
     console.log('='.repeat(60));
     console.log('最终联系人库状态:');
     console.log('  - 总联系人数:', ContactService.getAllContacts().length);
-    console.log('  - ReMarkable 联系人数:', ContactService.searchLocalContacts('').length);
+    console.log('  - 4DNote 联系人数:', ContactService.searchLocalContacts('').length);
     console.log('');
     console.log('✅ 所有测试完成！');
     console.log('');
     console.log('💡 提示: 可在浏览器控制台执行以下命令查看详细数据:');
-    console.log('  JSON.parse(localStorage.getItem("remarkable-contacts"))');
+    console.log('  JSON.parse(localStorage.getItem("4dnote-contacts"))');
   });
 });
 

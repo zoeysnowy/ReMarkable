@@ -223,8 +223,8 @@ export const FullContactModal: React.FC<FullContactModalProps> = ({
               {editedContact.isOutlook && <span className="source-tag outlook">Outlook</span>}
               {editedContact.isGoogle && <span className="source-tag google">Google</span>}
               {editedContact.isiCloud && <span className="source-tag icloud">iCloud</span>}
-              {editedContact.isReMarkable && <span className="source-tag remarkable">ReMarkable</span>}
-              {!editedContact.isOutlook && !editedContact.isGoogle && !editedContact.isiCloud && !editedContact.isReMarkable && (
+              {editedContact.is4DNote && <span className="source-tag remarkable">ReMarkable</span>}
+              {!editedContact.isOutlook && !editedContact.isGoogle && !editedContact.isiCloud && !editedContact.is4DNote && (
                 <span className="source-tag default">本地</span>
               )}
             </div>

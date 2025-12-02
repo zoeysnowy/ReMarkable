@@ -352,7 +352,7 @@ Event.eventlog = Event 内部的字段
 
 ### 2.0 UI 布局详细设计（基于 Figma 486-2661）
 
-**Figma 设计稿**: [日志页面完整设计](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=486-2661&m=dev)
+**Figma 设计稿**: [日志页面完整设计](https://www.figma.com/design/T0WLjzvZMqEnpX79ILhSNQ/ReMarkable-0.1?node-id=486-2661&m=dev，via：http://127.0.0.1:3845/mcp）
 
 #### 2.0.1 三栏布局结构
 

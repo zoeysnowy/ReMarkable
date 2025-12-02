@@ -61,7 +61,7 @@ export const ContactPicker: React.FC<ContactPickerProps> = ({
       const filtered = filterSource
         ? allContacts.filter(c => {
             switch (filterSource) {
-              case 'remarkable': return c.isReMarkable;
+              case 'remarkable': return c.is4DNote;
               case 'outlook': return c.isOutlook;
               case 'google': return c.isGoogle;
               case 'icloud': return c.isiCloud;
@@ -221,7 +221,7 @@ export const QuickAddContact: React.FC<QuickAddContactProps> = ({
 
     const newContact = ContactService.addContact({
       ...formData,
-      isReMarkable: true,
+      is4DNote: true,
     });
 
     onAdd(newContact);

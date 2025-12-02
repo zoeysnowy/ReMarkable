@@ -148,7 +148,7 @@ function App() {
             AppLogger.log('🧹 所有数据已清除，包括持久化存储');
           },
           info: CacheManager.getCacheInfo,
-          version: () => localStorage.getItem('remarkable-storage-version'),
+          version: () => localStorage.getItem('4dnote-storage-version'),
           // 新增持久化存储调试工具
           persistent: {
             info: () => PersistentStorage.getStorageInfo(PERSISTENT_OPTIONS.TAGS),
@@ -363,7 +363,7 @@ function App() {
   // 设置管理函数
   const loadAppSettings = () => {
     try {
-      const settings = localStorage.getItem('remarkable-settings');
+      const settings = localStorage.getItem('4dnote-settings');
       if (settings) {
         const parsed = JSON.parse(settings);
         setAppSettings(prev => ({ ...prev, ...parsed }));
@@ -377,7 +377,7 @@ function App() {
   const saveAppSettings = (newSettings: Partial<typeof appSettings>) => {
     const updated = { ...appSettings, ...newSettings, lastUpdated: formatTimeForStorage(new Date()) };
     setAppSettings(updated);
-    localStorage.setItem('remarkable-settings', JSON.stringify(updated));
+    localStorage.setItem('4dnote-settings', JSON.stringify(updated));
   };
 
   // 加载可编辑标签列✅
@@ -444,7 +444,7 @@ function App() {
           createdAt: existingEvent.createdAt,
           updatedAt: formatTimeForStorage(new Date()),
           syncStatus: 'pending' as const,
-          remarkableSource: true,
+          fourDNoteSource: true,
           // 继承其他元数据
           calendarIds: existingEvent.calendarIds,
           location: existingEvent.location,
@@ -540,7 +540,7 @@ function App() {
         createdAt: formatTimeForStorage(startDate),
         updatedAt: formatTimeForStorage(startDate),
         syncStatus: 'local-only', // ✅ 运行中不同步
-        remarkableSource: true,
+        fourDNoteSource: true,
         isTimer: true,
         parentEventId
       };
@@ -577,7 +577,7 @@ function App() {
       });
       setGlobalTimer(timerState);
       // 💾 持久化到 localStorage，供 Widget 读取
-      localStorage.setItem('remarkable-global-timer', JSON.stringify(timerState));
+      localStorage.setItem('4dnote-global-timer', JSON.stringify(timerState));
       AppLogger.log('✅ 开始计时', tag?.name || '未分类', parentEventId ? `(关联事件: ${parentEventId})` : '');
   };
 
@@ -594,7 +594,7 @@ function App() {
     };
     setGlobalTimer(timerState);
     // 💾 持久化暂停状✅
-    localStorage.setItem('remarkable-global-timer', JSON.stringify(timerState));
+    localStorage.setItem('4dnote-global-timer', JSON.stringify(timerState));
 
     AppLogger.log('⏸️ 暂停计时');
   };
@@ -610,7 +610,7 @@ function App() {
     };
     setGlobalTimer(timerState);
     // 💾 持久化恢复状✅
-    localStorage.setItem('remarkable-global-timer', JSON.stringify(timerState));
+    localStorage.setItem('4dnote-global-timer', JSON.stringify(timerState));
 
     AppLogger.log('▶️ 继续计时');
   };
@@ -642,7 +642,7 @@ function App() {
       
       setGlobalTimer(null);
       // 💾 清除 localStorage 中的 timer 状✅
-      localStorage.removeItem('remarkable-global-timer');
+      localStorage.removeItem('4dnote-global-timer');
     }
   };
 
@@ -824,7 +824,7 @@ function App() {
         organizer: currentParentEvent?.organizer,
         attendees: currentParentEvent?.attendees,
         isAllDay: false,
-        remarkableSource: true,
+        fourDNoteSource: true,
         syncStatus: 'pending' as const, // ✅ Timer 停止后改为 pending，触发同步
         isTimer: true,
         parentEventId: globalTimer.parentEventId,
@@ -923,7 +923,7 @@ function App() {
     // 清除计时器状态
     setGlobalTimer(null);
     // 💾 清除 localStorage 中的 timer 状态
-    localStorage.removeItem('remarkable-global-timer');
+    localStorage.removeItem('4dnote-global-timer');
   };
 
   // 打开计时器事件编辑框
@@ -943,7 +943,7 @@ function App() {
         tags: [],
         description: '',
         isAllDay: false,
-        remarkableSource: true,
+        fourDNoteSource: true,
         isTimer: true,
         createdAt: formatTimeForStorage(new Date()),
         updatedAt: formatTimeForStorage(new Date())
@@ -984,7 +984,7 @@ function App() {
       description: existingEvent?.description || '', // 🔧 保留用户输入的 description
       location: existingEvent?.location || '', // 🔧 保留 location
       isAllDay: false,
-      remarkableSource: true,
+      fourDNoteSource: true,
       isTimer: true,
       syncStatus: 'local-only', // 🔧 [BUG FIX] 运行中的 Timer 标记为 local-only
       createdAt: existingEvent?.createdAt || formatTimeForStorage(new Date()),
@@ -1061,7 +1061,7 @@ function App() {
         createdAt: formatTimeForStorage(finalStartTime),
         updatedAt: formatTimeForStorage(confirmTime),
         syncStatus: 'local-only', // 运行中不同步
-        remarkableSource: true,
+        fourDNoteSource: true,
         isTimer: true
       };
 
@@ -1205,7 +1205,7 @@ function App() {
           createdAt: existingEvent?.createdAt || formatTimeForStorage(startTime),
           updatedAt: formatTimeForStorage(new Date()),
           syncStatus: 'local-only', // ✅ 运行中保持 local-only，不触发同步
-          remarkableSource: true,
+          fourDNoteSource: true,
           isTimer: true
         };
 
@@ -1277,7 +1277,7 @@ function App() {
             createdAt: formatTimeForStorage(startTime),
             updatedAt: formatTimeForStorage(new Date()),
             syncStatus: 'local-only', // 🔧 [BUG FIX] 页面刷新时仍保持local-only，不同步运行中的Timer
-            remarkableSource: true
+            fourDNoteSource: true
           };
 
           // ⚠️ 使用 localStorage 直接保存（因为 beforeunload 不支持 async）
@@ -1445,7 +1445,7 @@ function App() {
     
     // 💾 同步认证状态到 localStorage（供 Widget 读取）
     try {
-      localStorage.setItem('remarkable-outlook-authenticated', currentAuthState.toString());
+      localStorage.setItem('4dnote-outlook-authenticated', currentAuthState.toString());
       AppLogger.log('💾 [AUTH] Saved auth status to localStorage:', currentAuthState);
     } catch (error) {
       AppLogger.error('❌ [AUTH] Failed to save auth status:', error);

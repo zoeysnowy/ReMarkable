@@ -250,7 +250,7 @@ export interface ActualSyncConfig {
 
 /**
  * 统一的联系人接口
- * 支持 ReMarkable 本地联系人和各云平台联系人
+ * 支持 4DNote 本地联系人和各云平台联系人
  */
 export interface Contact {
   /** 联系人 ID */
@@ -268,7 +268,7 @@ export interface Contact {
   /** 职位 */
   position?: string;
   /** 平台来源标识 */
-  isReMarkable?: boolean;
+  is4DNote?: boolean;
   isOutlook?: boolean;
   isGoogle?: boolean;
   isiCloud?: boolean;
@@ -334,7 +334,7 @@ export interface Event {
   timerSessionId?: string;
   tags?: string[];       // 🆕 多标签支持
   category?: string;
-  remarkableSource?: boolean;
+  fourDNoteSource?: boolean;
   localVersion?: number;
   lastLocalChange?: string; // 🔧 修改：使用字符串存储本地时间
   // 🎯 事件类型标记（用于控制显示样式）

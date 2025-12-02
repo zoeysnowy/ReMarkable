@@ -87,7 +87,7 @@ describe('ContactService Phase 1.5 - 多来源去重', () => {
   it('应该根据邮箱去重', () => {
     const contacts: Contact[] = [
       { name: '张三', email: 'zhangsan@example.com', isOutlook: true },
-      { name: '张三（本地）', email: 'zhangsan@example.com', isReMarkable: true },
+      { name: '张三（本地）', email: 'zhangsan@example.com', is4DNote: true },
       { name: '张三（Google）', email: 'zhangsan@example.com', isGoogle: true },
     ];
     
@@ -100,7 +100,7 @@ describe('ContactService Phase 1.5 - 多来源去重', () => {
 
   it('应该根据姓名去重（无邮箱时）', () => {
     const contacts: Contact[] = [
-      { name: '张三', isReMarkable: true },
+      { name: '张三', is4DNote: true },
       { name: '张三', organization: '字节跳动' },
       { name: '张三', phone: '13800138000' },
     ];
@@ -113,7 +113,7 @@ describe('ContactService Phase 1.5 - 多来源去重', () => {
   it('应该按优先级排序：平台 > 本地 > 历史', () => {
     const contacts: Contact[] = [
       { name: '张三', email: 'zhangsan@example.com' }, // 历史参会人（无来源标识）
-      { name: '张三', email: 'zhangsan@example.com', isReMarkable: true }, // 本地
+      { name: '张三', email: 'zhangsan@example.com', is4DNote: true }, // 本地
       { name: '张三', email: 'zhangsan@example.com', isOutlook: true }, // 平台
     ];
     
@@ -125,8 +125,8 @@ describe('ContactService Phase 1.5 - 多来源去重', () => {
 
   it('应该合并相同优先级的联系人数据', () => {
     const contacts: Contact[] = [
-      { name: '张三', email: 'zhangsan@example.com', isReMarkable: true },
-      { name: '张三', email: 'zhangsan@example.com', isReMarkable: true, phone: '13800138000' },
+      { name: '张三', email: 'zhangsan@example.com', is4DNote: true },
+      { name: '张三', email: 'zhangsan@example.com', is4DNote: true, phone: '13800138000' },
     ];
     
     const merged = ContactService.mergeContactSources(contacts);
@@ -234,7 +234,7 @@ describe('ContactService Phase 1.5 - 扩展字段解析', () => {
     ContactService.addContact({
       name: '张三',
       email: 'zhangsan@example.com',
-      isReMarkable: true,
+      is4DNote: true,
       notes: '职务：产品经理',
     });
     
@@ -262,7 +262,7 @@ describe('ContactService Phase 1.5 - 搜索优化', () => {
   it('searchLocalContacts 应该返回解析后的扩展字段', () => {
     ContactService.addContact({
       name: '李四',
-      isReMarkable: true,
+      is4DNote: true,
       notes: '标签：客户, 潜在合作',
     });
     

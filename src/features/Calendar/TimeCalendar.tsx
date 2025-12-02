@@ -86,7 +86,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   className = '',
   style = {},
   isWidgetMode = false,
-  storageKey = 'remarkable-calendar-settings', // 默认key
+  storageKey = '4dnote-calendar-settings', // 默认key
   calendarBackgroundColor = '#ffffff', // 默认白色
   calendarOpacity = 0.95, // 默认95%不透明度
   onWidgetOpacityChange,
@@ -171,7 +171,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   // 🎯 使用lazy initialization恢复上次查看的日期
   const [currentDate, setCurrentDate] = useState<Date>(() => {
     try {
-      const saved = localStorage.getItem('remarkable-calendar-current-date');
+      const saved = localStorage.getItem('4dnote-calendar-current-date');
       if (saved) {
         const savedDate = new Date(saved);
         if (!isNaN(savedDate.getTime())) {
@@ -189,7 +189,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   // 🎯 使用lazy initialization同步加载设置，避免初始渲染闪烁
   const [currentView, setCurrentView] = useState<'month' | 'week' | 'day'>(() => {
     try {
-      const saved = localStorage.getItem('remarkable-calendar-settings');
+      const saved = localStorage.getItem('4dnote-calendar-settings');
       if (saved) {
         const settings = JSON.parse(saved);
         return settings.view || 'month';
@@ -219,8 +219,8 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       console.log('🔄 [TIMER] Starting localStorage polling for Widget (focusing on events)');
       
       const checkTimer = () => {
-        const eventsData = localStorage.getItem('remarkable-events');
-        const timerState = localStorage.getItem('remarkable-global-timer');
+        const eventsData = localStorage.getItem('4dnote-events');
+        const timerState = localStorage.getItem('4dnote-global-timer');
         
         // 🎯 主要关注事件数据变化（这里有timer的实际更新）
         if (eventsData !== lastEventsStateRef.current) {
@@ -264,7 +264,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       //   oldValue: e.oldValue
       // });
       
-      if (e.key === 'remarkable-global-timer') {
+      if (e.key === '4dnote-global-timer') {
         console.log('🔄 [TIMER] Timer storage changed via event, triggering recalculation');
         lastTimerStateRef.current = e.newValue;
         setLocalStorageTimerTrigger(prev => prev + 1);
@@ -460,7 +460,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   // ⚙️ 验证并清理已加载的设置（只在标签加载完成后执行一次）
   const validateSettings = useCallback(() => {
     try {
-      const saved = localStorage.getItem('remarkable-calendar-settings');
+      const saved = localStorage.getItem('4dnote-calendar-settings');
       if (saved) {
         const settings = JSON.parse(saved);
         
@@ -720,7 +720,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
   // 📅 持久化当前查看的日期 + 触发优先同步
   useEffect(() => {
     try {
-      localStorage.setItem('remarkable-calendar-current-date', formatTimeForStorage(currentDate));
+      localStorage.setItem('4dnote-calendar-current-date', formatTimeForStorage(currentDate));
       console.log(`💾 [SAVE] Saved current date: ${currentDate.toLocaleDateString()}`);
       
       // 🚀 [NEW] 触发可见日期范围的优先同步
@@ -759,7 +759,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     calendarInitializedRef.current = false;
     
     // 立即恢复日期到 state，这样日历渲染时就是正确的位置
-    const savedDate = localStorage.getItem('remarkable-calendar-current-date');
+    const savedDate = localStorage.getItem('4dnote-calendar-current-date');
     if (savedDate) {
       try {
         const restoredDate = new Date(savedDate);
@@ -1128,7 +1128,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     const timer = setTimeout(() => {
       const instance = calendarRef.current?.getInstance();
       if (instance) {
-        const savedDate = localStorage.getItem('remarkable-calendar-current-date');
+        const savedDate = localStorage.getItem('4dnote-calendar-current-date');
         if (savedDate) {
           try {
             const restoredDate = new Date(savedDate);
@@ -1435,7 +1435,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
     } else {
       // 2. 如果没有 prop，从 localStorage 读取（Widget 场景）
       try {
-        const saved = localStorage.getItem('remarkable-global-timer');
+        const saved = localStorage.getItem('4dnote-global-timer');
         if (saved) {
           const timer = JSON.parse(saved);
           if (timer && timer.isRunning) {
@@ -1475,7 +1475,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       createdAt: formatTimeForStorage(timerStartTime),
       updatedAt: formatTimeForStorage(now),
       syncStatus: 'local-only',
-      remarkableSource: true
+      fourDNoteSource: true
     };
 
     console.log('🔄 [REALTIME TIMER] Generated realtime timer event:', {
@@ -1562,13 +1562,13 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       // 日历分组筛选 - 当启用筛选时，匹配属于任一所选日历的事件
       if (hasCalendarFilter) {
         // ✅ 新逻辑：支持特殊日历选项
-        // "local-created" - 显示本地创建的事件（source=local或remarkableSource=true）
+        // "local-created" - 显示本地创建的事件（source=local或fourDNoteSource=true）
         // "not-synced" - 显示未同步至日历的事件（没有calendarIds或没有externalId）
         const hasLocalCreatedOption = visibleCalendars.includes('local-created');
         const hasNotSyncedOption = visibleCalendars.includes('not-synced');
         
         // 判断事件是否为本地创建
-        const isLocalCreated = event.source === 'local' || event.remarkableSource === true;
+        const isLocalCreated = event.source === 'local' || event.fourDNoteSource === true;
         
         // 判断事件是否未同步至日历
         const isNotSynced = !event.calendarIds?.length || !event.externalId;
@@ -1750,7 +1750,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
       createdAt: formatTimeForStorage(new Date()),
       updatedAt: formatTimeForStorage(new Date()),
       syncStatus: 'pending',
-      remarkableSource: true // 🔧 标记为本地创建
+      fourDNoteSource: true // 🔧 标记为本地创建
     };
     
     // 打开编辑模态框
@@ -2343,7 +2343,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
                   createdAt: formatTimeForStorage(new Date()),
                   updatedAt: formatTimeForStorage(new Date()),
                   syncStatus: 'pending',
-                  remarkableSource: true // 🔧 标记为本地创建
+                  fourDNoteSource: true // 🔧 标记为本地创建
                 };
                 
                 setEditingEvent(newEvent);
@@ -2570,7 +2570,7 @@ export const TimeCalendar: React.FC<TimeCalendarProps> = ({
               
               // 返回待办样式的 HTML（勾选框 + 时间 + 标题 + 参会人数，文字使用标签颜色）
               const timeText = timeDisplay ? `<strong>${timeDisplay}</strong>&nbsp;` : '';
-              return `<span class="remarkable-task-checkbox">☐</span><span class="remarkable-task-content" style="color: ${textColor}">${timeText}${title}${attendeesDisplay}</span>`;
+              return `<span class="4dnote-task-checkbox">☐</span><span class="4dnote-task-content" style="color: ${textColor}">${timeText}${title}${attendeesDisplay}</span>`;
             },
             // 🎯 Time 事件自定义模板（保持一致的样式）
             time(event: any) {

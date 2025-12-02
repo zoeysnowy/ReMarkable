@@ -114,7 +114,7 @@ export interface StorageEvent extends Event {
   sourceCalendarId?: string;
   
   // 预留字段（Beta - 云端同步）
-  remarkableUserId?: string;
+  fourDnoteUserId?: string;
   syncMode?: 'local-only' | 'bidirectional' | 'push-only';
   cloudSyncStatus?: 'synced' | 'pending' | 'conflict';
   lastCloudSyncAt?: string;

@@ -1,45 +1,45 @@
 // ReMarkable 应用的 localStorage 键名常量
 export const STORAGE_KEYS = {
   // 应用设置
-  SETTINGS: 'remarkable-settings',
+  SETTINGS: '4dnote-settings',
   
   // 事件相关
-  EVENTS: 'remarkable-events',
-  EVENT_TAGS: 'remarkable-event-tags',
-  HIERARCHICAL_TAGS: 'remarkable-hierarchical-tags',
+  EVENTS: '4dnote-events',
+  EVENT_TAGS: '4dnote-event-tags',
+  HIERARCHICAL_TAGS: '4dnote-hierarchical-tags',
   
   // 计时相关
-  TIMER_SESSIONS: 'remarkable-timer-sessions',
+  TIMER_SESSIONS: '4dnote-timer-sessions',
   
   // 任务相关
-  TASKS: 'remarkable-tasks',
+  TASKS: '4dnote-tasks',
   
   // 🗑️ PLAN_ITEMS 已废弃：Plan 功能直接使用 Event（通过 isPlan 标记）
-  // PLAN_ITEMS: 'remarkable-plan-items', // 已删除，迁移到 Event
+  // PLAN_ITEMS: '4dnote-plan-items', // 已删除，迁移到 Event
   
   // 日历缓存相关
-  CALENDAR_GROUPS_CACHE: 'remarkable-calendar-groups-cache',
-  CALENDARS_CACHE: 'remarkable-calendars-cache',
-  CALENDAR_SYNC_META: 'remarkable-calendar-sync-meta',
+  CALENDAR_GROUPS_CACHE: '4dnote-calendar-groups-cache',
+  CALENDARS_CACHE: '4dnote-calendars-cache',
+  CALENDAR_SYNC_META: '4dnote-calendar-sync-meta',
   
   // To Do Lists 缓存相关
-  TODO_LISTS_CACHE: 'remarkable-todolists-cache',
+  TODO_LISTS_CACHE: '4dnote-todolists-cache',
   
   // 标签相关（TagManager）
-  TAGS: 'remarkable_tags',
-  CHECKIN_COUNTS: 'remarkable_checkin_counts',
+  TAGS: '4dnote_tags',
+  CHECKIN_COUNTS: '4dnote_checkin_counts',
   
   // 同步相关
-  SYNC_ACTIONS: 'remarkable-sync-actions',
-  SYNC_CONFLICTS: 'remarkable-sync-conflicts',
-  SYNC_CONFIG: 'remarkable-sync-config',
-  SYNC_CACHE: 'remarkable-sync-cache',
+  SYNC_ACTIONS: '4dnote-sync-actions',
+  SYNC_CONFLICTS: '4dnote-sync-conflicts',
+  SYNC_CONFIG: '4dnote-sync-config',
+  SYNC_CACHE: '4dnote-sync-cache',
 } as const;
 
 // 版本控制，用于检测缓存更新
 export const STORAGE_VERSION = {
   CURRENT: '1.0.0',
-  KEY: 'remarkable-storage-version'
+  KEY: '4dnote-storage-version'
 } as const;
 
 // 缓存管理工具

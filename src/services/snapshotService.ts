@@ -38,10 +38,10 @@ interface DailySnapshot {
 // ==================== 存储键名 ====================
 
 const STORAGE_KEYS = {
-  BASE_SNAPSHOTS: 'remarkable-plan-base-snapshots',
-  CHANGE_RECORDS: 'remarkable-plan-change-records',
-  CURRENT_STATE: 'remarkable-plan-items',
-  DATE_INDEX: 'remarkable-plan-date-index',
+  BASE_SNAPSHOTS: '4dnote-plan-base-snapshots',
+  CHANGE_RECORDS: '4dnote-plan-change-records',
+  CURRENT_STATE: '4dnote-plan-items',
+  DATE_INDEX: '4dnote-plan-date-index',
 } as const;
 
 // ==================== 快照服务 ====================

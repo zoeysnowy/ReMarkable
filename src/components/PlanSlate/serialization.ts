@@ -63,7 +63,7 @@ export function planItemsToSlateNodes(items: any[]): EventLineNode[] {
       source: item.source,
       syncStatus: item.syncStatus,
       externalId: item.externalId,
-      remarkableSource: item.remarkableSource,
+      fourDNoteSource: item.fourDNoteSource,
       
       // 时间戳
       createdAt: item.createdAt,
@@ -415,7 +415,7 @@ export function slateNodesToPlanItems(nodes: EventLineNode[]): any[] {
         source: metadata.source || 'local',
         syncStatus: metadata.syncStatus || 'local-only',
         externalId: metadata.externalId,
-        remarkableSource: metadata.remarkableSource ?? true,
+        fourDNoteSource: metadata.fourDNoteSource ?? true,
         
         createdAt: metadata.createdAt,
         updatedAt: metadata.updatedAt,

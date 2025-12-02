@@ -119,7 +119,7 @@ export const AttendeeDisplay: React.FC<AttendeeDisplayProps> = ({
         id: 'current-user',
         name: '我',
         email: currentUserEmail,
-        isReMarkable: true,
+        is4DNote: true,
       });
     }
     
@@ -261,7 +261,7 @@ export const AttendeeDisplay: React.FC<AttendeeDisplayProps> = ({
       return {
         id: `temp-${Date.now()}-${Math.random()}`,
         name,
-        isReMarkable: true,
+        is4DNote: true,
       };
     });
   };
@@ -294,7 +294,7 @@ export const AttendeeDisplay: React.FC<AttendeeDisplayProps> = ({
     if (contact.isOutlook) return 'Outlook 联系人';
     if (contact.isGoogle) return 'Google 联系人';
     if (contact.isiCloud) return 'iCloud 联系人';
-    if (contact.isReMarkable) return 'ReMarkable 联系人';
+    if (contact.is4DNote) return '4DNote 联系人';
     return '历史参会人';
   };
 
@@ -511,7 +511,7 @@ export const AttendeeDisplay: React.FC<AttendeeDisplayProps> = ({
       email: person.email,
       phone: person.phone,
       organization: person.organization,
-      source: person.isOutlook ? 'Outlook' : person.isGoogle ? 'Google' : person.isiCloud ? 'iCloud' : person.isReMarkable ? 'ReMarkable' : 'Unknown'
+      source: person.isOutlook ? 'Outlook' : person.isGoogle ? 'Google' : person.isiCloud ? 'iCloud' : person.is4DNote ? 'ReMarkable' : 'Unknown'
     });
     
     // 打开完整联系人 Modal（person 已通过事件订阅自动保持最新）
@@ -667,7 +667,7 @@ export const AttendeeDisplay: React.FC<AttendeeDisplayProps> = ({
                               phone: person.phone,
                               organization: person.organization,
                               position: person.position,
-                              source: person.isOutlook ? 'Outlook' : person.isGoogle ? 'Google' : person.isiCloud ? 'iCloud' : person.isReMarkable ? 'ReMarkable' : 'Unknown'
+                              source: person.isOutlook ? 'Outlook' : person.isGoogle ? 'Google' : person.isiCloud ? 'iCloud' : person.is4DNote ? 'ReMarkable' : 'Unknown'
                             });
                             
                             // 打开完整 Modal（person 已通过事件订阅自动保持最新）
@@ -1046,7 +1046,7 @@ export const AttendeeDisplay: React.FC<AttendeeDisplayProps> = ({
                           email: contact.email,
                           phone: contact.phone,
                           organization: contact.organization,
-                          source: contact.isOutlook ? 'Outlook' : contact.isGoogle ? 'Google' : contact.isiCloud ? 'iCloud' : contact.isReMarkable ? 'ReMarkable' : 'Unknown'
+                          source: contact.isOutlook ? 'Outlook' : contact.isGoogle ? 'Google' : contact.isiCloud ? 'iCloud' : contact.is4DNote ? 'ReMarkable' : 'Unknown'
                         });
                         
                         // 打开完整 Modal（如果联系人已在 participants 中，会通过事件自动同步）

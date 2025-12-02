@@ -66,7 +66,7 @@ export interface EventMetadata {
   source?: string;
   syncStatus?: string;
   externalId?: string;
-  remarkableSource?: boolean;
+  fourDNoteSource?: boolean;
   
   // 时间戳
   createdAt?: string;

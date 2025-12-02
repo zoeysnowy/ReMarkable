@@ -368,7 +368,7 @@ export const AIDemo: React.FC = () => {
         createdAt: formatTimeForStorage(new Date()),
         updatedAt: formatTimeForStorage(new Date()),
         tags: [], // 暂时为空，避免使用不存在的标签
-        remarkableSource: true,
+        fourDNoteSource: true,
         syncStatus: 'pending',
         attendees: extractedInfo.attendees
       };

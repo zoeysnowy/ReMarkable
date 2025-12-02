@@ -240,7 +240,7 @@ const StatusBar: React.FC = () => {
     const savedSyncTime = localStorage.getItem('lastSyncTime');
     const savedEventCount = localStorage.getItem('lastSyncEventCount');
     const savedSyncStats = localStorage.getItem('syncStats');
-    const isAuthenticated = localStorage.getItem('remarkable-outlook-authenticated') === 'true';
+    const isAuthenticated = localStorage.getItem('4dnote-outlook-authenticated') === 'true';
     
     // 📊 解析同步统计信息
     let syncStats = { syncFailed: 0, calendarCreated: 0, syncSuccess: 0 };

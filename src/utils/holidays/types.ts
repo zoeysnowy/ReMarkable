@@ -48,7 +48,7 @@ export type AttendeeStatus = 'accepted' | 'declined' | 'tentative' | 'none';
 
 /**
  * 统一的联系人接口
- * 支持 ReMarkable 本地联系人和各云平台联系人
+ * 支持 4DNote 本地联系人和各云平台联系人
  */
 export interface Contact {
   /** 联系人 ID */
@@ -64,7 +64,7 @@ export interface Contact {
   /** 所属组织/公司 */
   organization?: string;
   /** 平台来源标识 */
-  isReMarkable?: boolean;
+  is4DNote?: boolean;
   isOutlook?: boolean;
   isGoogle?: boolean;
   isiCloud?: boolean;
@@ -98,7 +98,7 @@ export interface Event {
   timerSessionId?: string;
   tags?: string[];       // 🆕 多标签支持（已统一使用数组）
   category?: string;
-  remarkableSource?: boolean;
+  fourDNoteSource?: boolean;
   localVersion?: number;
   lastLocalChange?: string; // 🔧 修改：使用字符串存储本地时间
   // 🎯 事件类型标记（用于控制显示样式）
@@ -126,7 +126,7 @@ export interface Event {
   type?: 'todo' | 'task' | 'event'; // 事件类型（向后兼容）
   
   // 🆕 v1.8: Rich-text description support
-  eventlog?: string;     // 富文本日志（HTML 格式，ReMarkable 内部展示用，支持标签、图片等）
+  eventlog?: string;     // 富文本日志（HTML 格式，4DNote 内部展示用，支持标签、图片等）
   
   // 🆕 Issue #12: Timer ↔ Plan 集成
   parentEventId?: string;   // 父事件 ID（用于 Timer 子事件关联）

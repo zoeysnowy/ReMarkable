@@ -87,7 +87,7 @@ export interface APIPreset {
  * ```
  */
 export class AIConfigManager {
-  private static readonly STORAGE_KEY = 'remarkable-ai-config';
+  private static readonly STORAGE_KEY = '4dnote-ai-config';
 
   /**
    * 获取默认配置
@@ -243,7 +243,7 @@ export class AIConfigManager {
   
   // ==================== API 预设管理 ====================
   
-  private static readonly PRESETS_KEY = 'remarkable-ai-presets';
+  private static readonly PRESETS_KEY = '4dnote-ai-presets';
   
   /**
    * 获取所有 API 预设

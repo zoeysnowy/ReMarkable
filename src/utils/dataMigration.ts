@@ -156,7 +156,7 @@ export async function migrateFromLocalStorage(): Promise<MigrationResult> {
 
     // 5. 可选：标记迁移完成（避免重复迁移）
     try {
-      localStorage.setItem('remarkable_migration_completed', Date.now().toString());
+      localStorage.setItem('4dnote_migration_completed', Date.now().toString());
     } catch (error) {
       console.warn('[Migration] Failed to set migration flag:', error);
     }
@@ -195,7 +195,7 @@ export function getMigrationStatus(): {
   completed: boolean;
   completedAt?: string;
 } {
-  const completedFlag = localStorage.getItem('remarkable_migration_completed');
+  const completedFlag = localStorage.getItem('4dnote_migration_completed');
   
   return {
     completed: !!completedFlag,

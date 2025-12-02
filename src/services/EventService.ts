@@ -48,7 +48,7 @@ export class EventService {
     
     // 初始化跨标签页广播通道
     try {
-      broadcastChannel = new BroadcastChannel('remarkable-events');
+      broadcastChannel = new BroadcastChannel('4dnote-events');
       
       // 🆕 监听其他标签页的消息，过滤自己发送的消息
       broadcastChannel.onmessage = (event) => {
@@ -344,7 +344,7 @@ export class EventService {
       // 🔧 [BUG FIX] skipSync=true时，强制设置syncStatus='local-only'，忽略event.syncStatus
       const finalEvent: Event = {
         ...normalizedEvent,
-        remarkableSource: true,
+        fourDNoteSource: true,
         syncStatus: skipSync ? 'local-only' : (event.syncStatus || 'pending'),
       };
 
@@ -1971,7 +1971,7 @@ export class EventService {
       location: event.location || '',
       
       // 来源标识
-      remarkableSource: event.remarkableSource,
+      fourDNoteSource: event.fourDNoteSource,
       isPlan: event.isPlan,
       isTimeCalendar: event.isTimeCalendar,
       isTimer: event.isTimer,

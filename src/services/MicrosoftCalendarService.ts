@@ -8,7 +8,7 @@ import { logger } from '../utils/logger';
 
 const MSCalendarLogger = logger.module('MSCalendar');
 
-// ReMarkable 联系人信息标记（类似签名机制）
+// 4DNote 联系人信息标记（类似签名机制）
 const REMARKABLE_CONTACTS_PREFIX = '【参会人】';
 const REMARKABLE_ORGANIZER_PREFIX = '【组织者】';
 const REMARKABLE_CONTACTS_MARKER = '<!-- ReMarkable Contacts -->';
@@ -56,7 +56,7 @@ function integrateContactsToDescription(
 }
 
 /**
- * 从描述中移除 ReMarkable 联系人信息
+ * 从描述中移除 4DNote 联系人信息
  * @param description 包含联系人信息的描述
  * @returns 清理后的描述
  */
@@ -73,7 +73,7 @@ function removeContactsFromDescription(description: string): string {
 }
 
 /**
- * 从描述中提取 ReMarkable 联系人信息
+ * 从描述中提取 4DNote 联系人信息
  * @param description 包含联系人信息的描述
  * @returns 提取出的组织者和参会人
  */
@@ -103,13 +103,13 @@ function extractContactsFromDescription(description: string): {
     for (const line of lines) {
       if (line.startsWith(REMARKABLE_ORGANIZER_PREFIX)) {
         const name = line.substring(REMARKABLE_ORGANIZER_PREFIX.length).trim();
-        organizer = { name, isReMarkable: true };
+        organizer = { name, is4DNote: true };
       } else if (line.startsWith(REMARKABLE_CONTACTS_PREFIX)) {
         const names = line.substring(REMARKABLE_CONTACTS_PREFIX.length).trim();
         const nameList = names.split('/').map(n => n.trim());
         nameList.forEach(name => {
           if (name) {
-            attendees.push({ name, isReMarkable: true });
+            attendees.push({ name, is4DNote: true });
           }
         });
       }
@@ -1336,7 +1336,7 @@ export class MicrosoftCalendarService {
           isOutlook: true
         })).filter((a: any) => a.email) : [];
         
-        // 🔍 从描述中提取 ReMarkable 联系人信息
+        // 🔍 从描述中提取 4DNote 联系人信息
         const extractedContacts = extractContactsFromDescription(rawDescription);
         if (extractedContacts.organizer) {
           organizer = extractedContacts.organizer;
@@ -1370,7 +1370,7 @@ export class MicrosoftCalendarService {
           externalId: outlookEvent.id,
           calendarIds: ['microsoft'], // 🔧 使用数组格式，与类型定义保持一致
           source: 'outlook',
-          remarkableSource: true,
+          fourDNoteSource: true,
           syncStatus: 'synced'
         };
       }).filter(Boolean);
@@ -1534,7 +1534,7 @@ export class MicrosoftCalendarService {
           isOutlook: true
         })).filter((a: any) => a.email) : [];
         
-        // 🔍 从描述中提取 ReMarkable 联系人信息
+        // 🔍 从描述中提取 4DNote 联系人信息
         const extractedContacts = extractContactsFromDescription(rawDescription);
         if (extractedContacts.organizer) {
           organizer = extractedContacts.organizer;
@@ -1574,7 +1574,7 @@ export class MicrosoftCalendarService {
           externalId: outlookEvent.id,
           calendarIds: [calendarId], // 🔧 使用数组格式，与类型定义保持一致
           source: 'outlook',
-          remarkableSource: true,
+          fourDNoteSource: true,
           syncStatus: 'synced'
         };
       }).filter(Boolean);
@@ -1913,7 +1913,7 @@ export class MicrosoftCalendarService {
     this.accessToken = null;
     
     // 清除 localStorage 中的认证标记
-    localStorage.setItem('remarkable-outlook-authenticated', 'false');
+    localStorage.setItem('4dnote-outlook-authenticated', 'false');
     
     // 触发自定义事件通知应用
     window.dispatchEvent(new CustomEvent('auth-expired', {
