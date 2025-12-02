@@ -16,7 +16,6 @@ import { STORAGE_KEYS, CacheManager } from './constants/storage';
 import { PersistentStorage, PERSISTENT_OPTIONS } from './utils/persistentStorage';
 import { TagService } from './services/TagService';
 import { EventService } from './services/EventService';
-import { EventEditModal } from './components/EventEditModal'; // v1 - 待迁移
 import { EventEditModalV2 } from './components/EventEditModal/EventEditModalV2'; // v2 - 新版本
 import SettingsModal from './components/SettingsModal';
 import { SyncNotification } from './components/SyncNotification';
