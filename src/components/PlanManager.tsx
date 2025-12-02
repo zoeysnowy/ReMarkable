@@ -1479,7 +1479,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
         }
         
         // 🎯 步骤 3: 系统事件过滤（使用 EventService 辅助方法）
-        if (EventService.isSubordinateEvent(log.before)) {
+        if (log.before && log.before.id && EventService.isSubordinateEvent(log.before as Event)) {
           console.log('[PlanManager] ⏭️ 跳过系统事件 ghost:', log.eventId.slice(-8));
           return;
         }
@@ -1995,8 +1995,8 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       actualSyncConfig: item.actualSyncConfig,
       // 🆕 保留父子事件关系
       parentEventId: item.parentEventId,
-      timerLogs: item.timerLogs,
-    };
+      // timerLogs: item.timerLogs, // TODO: timerLogs 不在 Event 类型中
+    } as Event;
   };
 
   // 将 HTML 内容清洗为纯文本（移除标签/日期等内联元素的HTML）
@@ -2352,7 +2352,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             
             // 🔄 从 EventService 读取最新数据（EventEditModal 已经保存过了）
             // 避免使用旧的 editingItem 覆盖最新数据
-            const latestEvent = EventService.getEventById(editingItem.id);
+            const latestEvent = await EventService.getEventById(editingItem.id);
             if (!latestEvent) {
               console.error('[PlanManager] 无法找到事件:', editingItem.id);
               setSelectedItemId(null);
