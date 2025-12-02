@@ -15,7 +15,6 @@ import UnifiedDateTimePicker from './FloatingToolbar/pickers/UnifiedDateTimePick
 import dayjs from 'dayjs';
 import 'dayjs/locale/zh-cn';
 import { formatDateDisplay } from '../utils/dateParser';
-import { EventEditModal } from './EventEditModal'; // v1 - 待迁移
 import { EventEditModalV2 } from './EventEditModal/EventEditModalV2'; // v2 - 新版本
 import { EventHub } from '../services/EventHub'; // 🎯 使用 EventHub 而不是 EventService
 import { EventService } from '../services/EventService'; // 🔧 仅用于查询（getEventById）
@@ -395,7 +394,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
             status = 'done';
           } else if (latestAction.metadata?.action === 'uncheck') {
             // 取消签到后，需要进一步判断事件状态
-            const event = EventService.getEventById(eventId);
+            const event = await EventService.getEventById(eventId);
             if (event && event.startTime != null && event.startTime !== '') {
               const eventTime = new Date(event.startTime);
               const now = new Date();
@@ -413,9 +412,9 @@ const PlanManager: React.FC<PlanManagerProps> = ({
           break;
         default:
           // 检查事件的当前签到状态
-          const event = EventService.getEventById(eventId);
+          const event = await EventService.getEventById(eventId);
           if (event) {
-            const checkInStatus = EventService.getCheckInStatus(eventId);
+            const checkInStatus = await EventService.getCheckInStatus(eventId);
             if (checkInStatus.isChecked) {
               status = 'done';
               break;
@@ -624,7 +623,7 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       }
       
       // 🎯 提前过滤：使用完整的 PlanManager 显示规则（并集逻辑）
-      const event = EventService.getEventById(eventId);
+      const event = await EventService.getEventById(eventId);
       if (!event) {
         return;
       }
@@ -1682,11 +1681,11 @@ const PlanManager: React.FC<PlanManagerProps> = ({
       const endTime = formatTimeForStorage(dateRange.end);
       
       // 获取事件基本信息
-      const event = EventService.getEventById(eventId);
+      const event = await EventService.getEventById(eventId);
       const eventTitle = event?.title?.simpleTitle?.substring(0, 15) || 'Unknown';
       
       // 🔍 检查事件的实际打勾状态
-      const checkInStatus = EventService.getCheckInStatus(eventId);
+      const checkInStatus = await EventService.getCheckInStatus(eventId);
       console.log(`[getEventStatuses] 🔍 ${eventTitle} 完整事件信息:`, {
         事件ID: eventId,
         标题: event?.title,

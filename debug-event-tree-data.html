@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>调试 EventTree 数据</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 { color: #333; }
+    pre {
+      background: #f8f8f8;
+      padding: 12px;
+      border-radius: 4px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .event-card {
+      border: 1px solid #ddd;
+      padding: 12px;
+      margin: 8px 0;
+      border-radius: 4px;
+    }
+    .event-card.has-children {
+      border-left: 4px solid #4caf50;
+    }
+    .event-card.has-parent {
+      border-left: 4px solid #2196f3;
+    }
+    .child-events {
+      margin-left: 24px;
+      padding-left: 12px;
+      border-left: 2px solid #e0e0e0;
+    }
+    button {
+      padding: 8px 16px;
+      margin: 4px;
+      border: none;
+      border-radius: 4px;
+      background: #2196f3;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #1976d2;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 EventTree 数据调试</h1>
+    
+    <div>
+      <button onclick="loadAllEvents()">加载所有事件</button>
+      <button onclick="findEventsWithChildren()">查找有子事件的事件</button>
+      <button onclick="findTargetEvent()">查找"古德"相关事件</button>
+      <button onclick="createTestTree()">创建测试树结构</button>
+    </div>
+
+    <div id="output"></div>
+  </div>
+
+  <script>
+    const output = document.getElementById('output');
+
+    function log(html) {
+      output.innerHTML += html + '<br>';
+    }
+
+    function clear() {
+      output.innerHTML = '';
+    }
+
+    function loadAllEvents() {
+      clear();
+      const eventsStr = localStorage.getItem('events');
+      if (!eventsStr) {
+        log('<p style="color: red;">❌ localStorage 中没有 events 数据</p>');
+        return;
+      }
+
+      try {
+        const events = JSON.parse(eventsStr);
+        log(`<h2>总共 ${events.length} 个事件</h2>`);
+        
+        events.forEach(event => {
+          const title = typeof event.title === 'string' 
+            ? event.title 
+            : (event.title?.simpleTitle || event.title?.colorTitle || '无标题');
+          
+          const hasChildren = event.childEventIds && event.childEventIds.length > 0;
+          const hasParent = !!event.parentEventId;
+          const cssClass = hasChildren ? 'has-children' : (hasParent ? 'has-parent' : '');
+          
+          log(`
+            <div class="event-card ${cssClass}">
+              <strong>${title}</strong> (${event.id})<br>
+              ${hasParent ? `父事件: ${event.parentEventId}<br>` : ''}
+              ${hasChildren ? `子事件 (${event.childEventIds.length}): ${event.childEventIds.join(', ')}<br>` : ''}
+              ${event.linkedEventIds?.length ? `关联事件: ${event.linkedEventIds.length} 个<br>` : ''}
+            </div>
+          `);
+        });
+      } catch (error) {
+        log(`<p style="color: red;">❌ 解析失败: ${error.message}</p>`);
+      }
+    }
+
+    function findEventsWithChildren() {
+      clear();
+      const eventsStr = localStorage.getItem('events');
+      if (!eventsStr) {
+        log('<p style="color: red;">❌ localStorage 中没有 events 数据</p>');
+        return;
+      }
+
+      try {
+        const events = JSON.parse(eventsStr);
+        const withChildren = events.filter(e => e.childEventIds && e.childEventIds.length > 0);
+        
+        log(`<h2>找到 ${withChildren.length} 个有子事件的事件</h2>`);
+        
+        withChildren.forEach(event => {
+          const title = typeof event.title === 'string' 
+            ? event.title 
+            : (event.title?.simpleTitle || event.title?.colorTitle || '无标题');
+          
+          log(`
+            <div class="event-card has-children">
+              <strong>${title}</strong> (${event.id})<br>
+              子事件数量: ${event.childEventIds.length}<br>
+              子事件 IDs: ${event.childEventIds.join(', ')}
+            </div>
+          `);
+
+          // 显示子事件
+          log('<div class="child-events">');
+          event.childEventIds.forEach(childId => {
+            const child = events.find(e => e.id === childId);
+            if (child) {
+              const childTitle = typeof child.title === 'string' 
+                ? child.title 
+                : (child.title?.simpleTitle || child.title?.colorTitle || '无标题');
+              log(`<div class="event-card">↳ ${childTitle} (${child.id})</div>`);
+            }
+          });
+          log('</div>');
+        });
+      } catch (error) {
+        log(`<p style="color: red;">❌ 解析失败: ${error.message}</p>`);
+      }
+    }
+
+    function findTargetEvent() {
+      clear();
+      const eventsStr = localStorage.getItem('events');
+      if (!eventsStr) {
+        log('<p style="color: red;">❌ localStorage 中没有 events 数据</p>');
+        return;
+      }
+
+      try {
+        const events = JSON.parse(eventsStr);
+        const target = events.find(e => {
+          const title = typeof e.title === 'string' 
+            ? e.title 
+            : (e.title?.simpleTitle || e.title?.colorTitle || '');
+          return title.includes('古德') || title.includes('11-25');
+        });
+
+        if (!target) {
+          log('<p style="color: orange;">⚠️ 未找到"古德"相关事件</p>');
+          return;
+        }
+
+        const title = typeof target.title === 'string' 
+          ? target.title 
+          : (target.title?.simpleTitle || target.title?.colorTitle || '无标题');
+
+        log(`<h2>找到目标事件</h2>`);
+        log(`<pre>${JSON.stringify(target, null, 2)}</pre>`);
+
+        // 显示子事件
+        if (target.childEventIds && target.childEventIds.length > 0) {
+          log(`<h3>子事件 (${target.childEventIds.length} 个):</h3>`);
+          target.childEventIds.forEach(childId => {
+            const child = events.find(e => e.id === childId);
+            if (child) {
+              const childTitle = typeof child.title === 'string' 
+                ? child.title 
+                : (child.title?.simpleTitle || child.title?.colorTitle || '无标题');
+              log(`<div class="event-card has-parent">
+                <strong>${childTitle}</strong> (${child.id})<br>
+                parentEventId: ${child.parentEventId}<br>
+                ${child.childEventIds?.length ? `子事件: ${child.childEventIds.length} 个` : ''}
+              </div>`);
+
+              // 递归显示三级子事件
+              if (child.childEventIds && child.childEventIds.length > 0) {
+                log('<div class="child-events">');
+                child.childEventIds.forEach(grandChildId => {
+                  const grandChild = events.find(e => e.id === grandChildId);
+                  if (grandChild) {
+                    const gcTitle = typeof grandChild.title === 'string' 
+                      ? grandChild.title 
+                      : (grandChild.title?.simpleTitle || grandChild.title?.colorTitle || '无标题');
+                    log(`<div class="event-card">↳ ${gcTitle} (${grandChild.id})</div>`);
+                  }
+                });
+                log('</div>');
+              }
+            }
+          });
+        } else {
+          log('<p style="color: orange;">⚠️ 该事件没有 childEventIds 数据</p>');
+          log('<p>这意味着虽然视觉上有缩进，但数据库中没有父子关系。需要在 Plan 页面修复。</p>');
+        }
+      } catch (error) {
+        log(`<p style="color: red;">❌ 解析失败: ${error.message}</p>`);
+      }
+    }
+
+    async function createTestTree() {
+      clear();
+      log('<h2>创建测试树结构...</h2>');
+
+      // 这里需要在实际应用中运行，因为需要 EventService
+      log('<p style="color: orange;">⚠️ 此功能需要在实际应用中运行</p>');
+      log('<p>在浏览器 DevTools Console 中运行以下代码：</p>');
+      log(`<pre>
+// 创建测试树
+(async () => {
+  const EventService = window.EventService;
+  
+  // 创建父事件
+  const parent = await EventService.createEvent({
+    title: { simpleTitle: '测试父事件' },
+    isTask: false
+  });
+  
+  if (!parent.success) {
+    console.error('创建失败:', parent.error);
+    return;
+  }
+  
+  const parentId = parent.event.id;
+  console.log('✅ 创建父事件:', parentId);
+  
+  // 创建子事件
+  const child1 = await EventService.createEvent({
+    title: { simpleTitle: '测试子事件 1' },
+    parentEventId: parentId,
+    isTask: false
+  });
+  
+  const child2 = await EventService.createEvent({
+    title: { simpleTitle: '测试子事件 2' },
+    parentEventId: parentId,
+    isTask: false
+  });
+  
+  // 更新父事件的 childEventIds
+  await EventService.updateEvent(parentId, {
+    childEventIds: [child1.event.id, child2.event.id]
+  });
+  
+  console.log('✅ 测试树创建完成!');
+  console.log('父事件 ID:', parentId);
+  console.log('子事件 IDs:', [child1.event.id, child2.event.id]);
+})();
+      </pre>`);
+    }
+
+    // 自动加载
+    window.addEventListener('load', () => {
+      loadAllEvents();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>EventTree v2.0 使用指南</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      padding: 20px;
+      background: #f5f5f5;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .demo-section {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 { color: #333; }
+    h2 { color: #666; margin-top: 0; }
+    code {
+      background: #f0f0f0;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 13px;
+    }
+    pre {
+      background: #f8f8f8;
+      padding: 12px;
+      border-radius: 4px;
+      overflow-x: auto;
+      line-height: 1.5;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+    .badge-new { background: #e3f2fd; color: #1976d2; }
+    .badge-updated { background: #fff3e0; color: #f57c00; }
+    .badge-fixed { background: #e8f5e9; color: #388e3c; }
+    ul { line-height: 1.8; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 12px;
+      text-align: left;
+    }
+    th {
+      background: #f5f5f5;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <h1>🌲 EventTree v2.0 使用指南</h1>
+  
+  <div class="demo-section">
+    <h2>🎯 核心功能</h2>
+    <table>
+      <tr>
+        <th>功能</th>
+        <th>描述</th>
+        <th>状态</th>
+      </tr>
+      <tr>
+        <td>可视化模式</td>
+        <td>React Flow + 堆叠卡片动画</td>
+        <td><span class="badge badge-fixed">✅ 完成</span></td>
+      </tr>
+      <tr>
+        <td>编辑模式</td>
+        <td>Slate 编辑器 + bullet list + 实际数据绑定</td>
+        <td><span class="badge badge-new">✅ 新增</span></td>
+      </tr>
+      <tr>
+        <td>双模式切换</td>
+        <td>顶部按钮实时切换</td>
+        <td><span class="badge badge-new">✅ 新增</span></td>
+      </tr>
+      <tr>
+        <td>关联摘要</td>
+        <td>智能显示父子关系</td>
+        <td><span class="badge badge-fixed">✅ 完成</span></td>
+      </tr>
+      <tr>
+        <td>EventEditModal 集成</td>
+        <td>点击摘要展开树编辑器</td>
+        <td><span class="badge badge-updated">✅ 更新</span></td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="demo-section">
+    <h2>1️⃣ 双模式 EventTreeViewer <span class="badge badge-new">NEW</span></h2>
+    <p>统一组件，支持可视化和编辑两种模式：</p>
+    <pre>&lt;EventTreeViewer
+  rootEventId="event-1"
+  events={allEvents}
+  onEventClick={(event) => console.log(event)}
+  defaultMode="edit"  // 'visual' | 'edit'
+/&gt;</pre>
+    
+    <h3>📊 可视化模式（Visual）</h3>
+    <ul>
+      <li>React Flow 画布 + 自定义节点</li>
+      <li>刚性骨架（parentEventId/childEventIds）垂直布局</li>
+      <li>柔性血管（linkedEventIds/backlinks）堆叠卡片</li>
+      <li>Hover 时卡片扇形展开（Framer Motion 动画）</li>
+    </ul>
+
+    <h3>✏️ 编辑模式（Edit）</h3>
+    <ul>
+      <li>Slate 富文本编辑器</li>
+      <li>Bullet list 缩进视觉</li>
+      <li><strong>实际创建 parentEventId/childEventIds 数据关系</strong></li>
+      <li>支持键盘快捷键（Tab, Enter, Alt+Shift+↑/↓）</li>
+    </ul>
+  </div>
+
+  <div class="demo-section">
+    <h2>2️⃣ EditableEventTree 键盘操作 <span class="badge badge-new">NEW</span></h2>
+    
+    <h3>⌨️ 快捷键列表：</h3>
+    <table>
+      <tr>
+        <th>快捷键</th>
+        <th>功能</th>
+        <th>数据操作</th>
+      </tr>
+      <tr>
+        <td><code>Tab</code></td>
+        <td>增加缩进（成为子事件）</td>
+        <td>更新 parentEventId 和父的 childEventIds</td>
+      </tr>
+      <tr>
+        <td><code>Shift+Tab</code></td>
+        <td>减少缩进（提升层级）</td>
+        <td>从旧父移除，寻找新父或变为顶级</td>
+      </tr>
+      <tr>
+        <td><code>Enter</code></td>
+        <td>创建同级新事件</td>
+        <td>调用 EventService.createEvent() 创建新事件</td>
+      </tr>
+      <tr>
+        <td><code>Alt+Shift+↑</code></td>
+        <td>向上移动节点</td>
+        <td>调整 childEventIds 顺序</td>
+      </tr>
+      <tr>
+        <td><code>Alt+Shift+↓</code></td>
+        <td>向下移动节点</td>
+        <td>调整 childEventIds 顺序</td>
+      </tr>
+    </table>
+
+    <h3>🔧 核心实现：updateParentRelation()</h3>
+    <pre>// Tab 按下时的数据流：
+1. 检测当前节点层级
+2. 向上查找最近的父节点（level = currentLevel - 1）
+3. 更新当前事件的 parentEventId
+4. 更新父事件的 childEventIds 数组
+5. 调用 EventService.updateEvent() 持久化到 localStorage
+6. 触发 BroadcastChannel 同步到其他标签页</pre>
+
+    <h3>🆕 Enter 键创建事件：</h3>
+    <pre>// Enter 按下时的数据流：
+1. 检测当前节点层级
+2. 根据层级确定新事件的 parentEventId
+3. 调用 EventService.createEvent() 创建新事件
+4. 更新父事件的 childEventIds
+5. 在 Slate 编辑器中插入新节点
+6. 自动聚焦到新节点</pre>
+  </div>
+
+  <div class="demo-section">
+    <h2>3️⃣ EventEditModal 集成 <span class="badge badge-updated">UPDATED</span></h2>
+    
+    <h3>📦 自动加载所有事件：</h3>
+    <pre>// EventEditModalV2.tsx 新增代码
+const [allEvents, setAllEvents] = useState&lt;any[]&gt;([]);
+
+React.useEffect(() => {
+  const loadEvents = async () => {
+    const events = await EventService.getAllEvents();
+    setAllEvents(events);
+  };
+  
+  if (isOpen) {
+    loadEvents();
+  }
+}, [isOpen]);</pre>
+
+    <h3>🎨 展开树编辑器：</h3>
+    <pre>// 点击关联摘要展开
+{showEventTree && (
+  &lt;EventTreeViewer
+    rootEventId={formData.id}
+    events={allEvents}  // ✅ 不再是空数组
+    onEventClick={(clickedEvent) => {
+      setFormData(clickedEvent as any);
+      setShowEventTree(false);
+    }}
+    defaultMode="edit"  // 默认编辑模式
+  /&gt;
+)}</pre>
+
+    <h3>✨ 用户体验流程：</h3>
+    <ol>
+      <li>打开 EventEditModal 编辑事件</li>
+      <li>如果有关联关系，自动显示摘要（"父事件：xxx，2个子事件"）</li>
+      <li>点击摘要，展开 EventTree（编辑模式）</li>
+      <li>使用 Tab/Enter 创建和编辑树结构</li>
+      <li>点击顶部按钮切换到可视化模式查看效果</li>
+      <li>点击任意事件切换到该事件的编辑视图</li>
+    </ol>
+  </div>
+
+  <div class="demo-section">
+    <h2>4️⃣ 架构设计：刚性骨架 + 柔性血管</h2>
+    <p>EventTree v2.17.0 的核心架构理念：</p>
+    
+    <h3>🦴 刚性骨架（Rigid Bone）</h3>
+    <ul>
+      <li><strong>字段</strong>: <code>parentEventId</code>, <code>childEventIds</code></li>
+      <li><strong>特性</strong>: 占据画布空间，垂直布局，层级清晰</li>
+      <li><strong>视觉</strong>: React Flow 节点 + 连线</li>
+      <li><strong>用途</strong>: 表达父子关系、任务分解、Timer 主从</li>
+    </ul>
+
+    <h3>🩸 柔性血管（Flexible Vessels）</h3>
+    <ul>
+      <li><strong>字段</strong>: <code>linkedEventIds</code>, <code>backlinks</code></li>
+      <li><strong>特性</strong>: 堆叠在节点背后，不占画布空间</li>
+      <li><strong>视觉</strong>: 堆叠卡片 + Hover 扇形展开</li>
+      <li><strong>用途</strong>: 表达相关事件、引用关系、联想网络</li>
+    </ul>
+
+    <h3>📐 数据结构示例：</h3>
+    <pre>const event = {
+  id: "event-1",
+  title: { simpleTitle: "项目启动" },
+  
+  // 🦴 刚性骨架
+  parentEventId: "parent-event",        // 父事件
+  childEventIds: ["child-1", "child-2"], // 子事件列表
+  
+  // 🩸 柔性血管
+  linkedEventIds: ["link-1", "link-2"],  // 关联事件（主动引用）
+  backlinks: ["back-1"],                 // 反向引用（被动引用）
+};</pre>
+  </div>
+
+  <div class="demo-section">
+    <h2>5️⃣ 堆叠卡片动画（Gemini 设计）</h2>
+    <p>使用 Framer Motion 实现"血管堆叠"效果：</p>
+    
+    <h3>🃏 收纳态（Stacked）</h3>
+    <ul>
+      <li>4px 水平/垂直偏移</li>
+      <li>2度旋转</li>
+      <li>最多显示 3 张卡片</li>
+      <li>超过 3 张显示 "+N" 提示</li>
+    </ul>
+
+    <h3>🌸 展开态（Fanned Out）</h3>
+    <ul>
+      <li>Hover 触发</li>
+      <li>180px 水平间距</li>
+      <li>0度旋转（平行）</li>
+      <li>Spring 动画（stiffness: 200, damping: 20）</li>
+    </ul>
+
+    <h3>💻 核心代码：</h3>
+    <pre>// LinkedCard.tsx
+const xOffset = isHovered ? (index + 1) * 180 : (index + 1) * 4;
+const yOffset = isHovered ? 0 : (index + 1) * 4;
+const rotate = isHovered ? 0 : (index + 1) * 2;
+
+&lt;motion.div
+  animate={{
+    x: xOffset,
+    y: yOffset,
+    rotate: rotate,
+    zIndex: index,
+  }}
+  transition={{
+    type: 'spring',
+    stiffness: 200,
+    damping: 20,
+  }}
+/&gt;</pre>
+  </div>
+
+  <div class="demo-section">
+    <h2>6️⃣ TypeScript 错误修复 <span class="badge badge-fixed">FIXED</span></h2>
+    
+    <h3>❌ 遇到的问题：</h3>
+    <ol>
+      <li><strong>Slate 类型冲突</strong>: <code>'event-item'</code> 不在 Element 类型联合中</li>
+      <li><strong>EventService 返回值</strong>: <code>createEvent()</code> 返回 <code>{success, event?, error?}</code> 而非 <code>Event</code></li>
+    </ol>
+
+    <h3>✅ 解决方案：</h3>
+    <pre>// 1. 使用 @ts-ignore 标记自定义 Slate 类型
+// @ts-ignore - 自定义 event-item 类型
+if (!SlateElement.isElement(node) || node.type !== 'event-item') return;
+
+// 2. 正确处理 EventService 返回值
+const result = await EventService.createEvent({...});
+if (!result.success || !result.event) {
+  console.error('创建事件失败:', result.error);
+  return;
+}
+const newEvent = result.event;  // ✅ 现在是 Event 类型
+const eventId = newEvent.id;</pre>
+  </div>
+
+  <div class="demo-section">
+    <h2>7️⃣ 文件清单 <span class="badge badge-updated">COMPLETE</span></h2>
+    
+    <h3>📁 可视化组件（Phase 2a）</h3>
+    <ul>
+      <li><code>src/components/EventTree/LinkedCard.tsx</code> - 堆叠卡片组件</li>
+      <li><code>src/components/EventTree/CustomEventNode.tsx</code> - React Flow 自定义节点</li>
+      <li><code>src/components/EventTree/EventTreeCanvas.tsx</code> - React Flow 画布容器</li>
+      <li><code>src/components/EventTree/EventTree.css</code> - 可视化样式</li>
+      <li><code>src/components/EventTree/EventRelationSummary.tsx</code> - 关联摘要组件</li>
+    </ul>
+
+    <h3>✏️ 编辑组件（Phase 2b）</h3>
+    <ul>
+      <li><code>src/components/EventTree/EditableEventTree.tsx</code> - Slate 编辑树</li>
+      <li><code>src/components/EventTree/EditableEventTree.css</code> - 编辑器样式</li>
+      <li><code>src/components/EventTree/EventTreeViewer.tsx</code> - 双模式切换器</li>
+      <li><code>src/components/EventTree/EventTreeViewer.css</code> - 切换器样式</li>
+    </ul>
+
+    <h3>🔗 集成点</h3>
+    <ul>
+      <li><code>src/components/EventEditModal/EventEditModalV2.tsx</code> - 主对话框集成</li>
+    </ul>
+  </div>
+
+  <div class="demo-section">
+    <h2>8️⃣ 依赖安装</h2>
+    <pre>npm install reactflow framer-motion slate slate-react --legacy-peer-deps</pre>
+    
+    <h3>📦 包版本：</h3>
+    <ul>
+      <li><strong>reactflow</strong>: ^11.x</li>
+      <li><strong>framer-motion</strong>: ^10.x</li>
+      <li><strong>slate</strong>: ^0.118.x</li>
+      <li><strong>slate-react</strong>: ^0.118.x</li>
+    </ul>
+  </div>
+
+  <div class="demo-section">
+    <h2>9️⃣ 已知问题与待办</h2>
+    
+    <h3>✅ 已完成：</h3>
+    <ul>
+      <li>✅ TypeScript 错误修复（使用 @ts-ignore 标记）</li>
+      <li>✅ EventService.createEvent() 返回值处理</li>
+      <li>✅ EventEditModal 自动加载所有事件</li>
+      <li>✅ 双模式切换器实现</li>
+      <li>✅ Tab/Shift+Tab 数据绑定</li>
+      <li>✅ Enter 键创建新事件</li>
+    </ul>
+
+    <h3>⏳ 待完成：</h3>
+    <ul>
+      <li>⏳ <strong>Plan 页面修复</strong>: 当前 Tab/Shift+Tab 只有视觉效果，不创建实际 parentEventId/childEventIds 关系</li>
+      <li>⏳ <strong>实时标题保存</strong>: EditableEventTree 修改标题后需要手动保存</li>
+      <li>⏳ <strong>Alt+Shift+↑/↓ 移动</strong>: 需要完善节点移动后的 childEventIds 顺序调整</li>
+      <li>⏳ <strong>删除功能</strong>: Backspace 删除事件节点</li>
+      <li>⏳ <strong>拖拽排序</strong>: 可视化模式下拖拽节点调整层级</li>
+    </ul>
+  </div>
+
+  <div class="demo-section">
+    <h2>🔟 测试步骤</h2>
+    
+    <h3>🧪 完整测试流程：</h3>
+    <ol>
+      <li><strong>打开 EventEditModal</strong>
+        <ul>
+          <li>点击日历中的任意事件</li>
+          <li>或创建新事件</li>
+        </ul>
+      </li>
+      
+      <li><strong>查看关联摘要</strong>
+        <ul>
+          <li>如果事件有 parentEventId 或 childEventIds，会自动显示摘要</li>
+          <li>例如："父事件：项目规划，2个子事件，1个关联事件"</li>
+        </ul>
+      </li>
+      
+      <li><strong>展开 EventTree（编辑模式）</strong>
+        <ul>
+          <li>点击关联摘要</li>
+          <li>默认进入编辑模式（Slate 编辑器）</li>
+        </ul>
+      </li>
+      
+      <li><strong>测试键盘操作</strong>
+        <ul>
+          <li>按 <code>Enter</code> 创建新事件（观察 console 输出）</li>
+          <li>按 <code>Tab</code> 增加缩进（观察 parentEventId 更新）</li>
+          <li>按 <code>Shift+Tab</code> 减少缩进</li>
+          <li>输入标题文本</li>
+        </ul>
+      </li>
+      
+      <li><strong>切换到可视化模式</strong>
+        <ul>
+          <li>点击顶部"可视化"按钮</li>
+          <li>查看 React Flow 树状图</li>
+          <li>Hover 节点查看堆叠卡片动画</li>
+        </ul>
+      </li>
+      
+      <li><strong>导航到其他事件</strong>
+        <ul>
+          <li>在可视化或编辑模式中点击任意事件节点</li>
+          <li>自动切换到该事件的编辑视图</li>
+          <li>EventTree 自动收起</li>
+        </ul>
+      </li>
+      
+      <li><strong>验证数据持久化</strong>
+        <ul>
+          <li>打开浏览器 DevTools → Application → Local Storage</li>
+          <li>查看 <code>events</code> 键</li>
+          <li>验证 parentEventId 和 childEventIds 是否正确更新</li>
+        </ul>
+      </li>
+    </ol>
+  </div>
+
+  <div class="demo-section">
+    <h2>📚 相关文档</h2>
+    <ul>
+      <li><code>FEATURE_EXACT_DATE_TIME_v2.10.2.md</code> - EventTree v2.17.0 架构说明</li>
+      <li><code>EVENTHUB_TIMEHUB_ARCHITECTURE.md</code> - EventHub 数据流文档</li>
+      <li><code>README.md</code> - 项目总览</li>
+    </ul>
+  </div>
+
+  <div class="demo-section">
+    <h2>🎓 开发者提示</h2>
+    
+    <h3>🚀 扩展 EditableEventTree：</h3>
+    <pre>// 添加实时保存：
+const handleTitleChange = useMemo(() => 
+  debounce(async (eventId: string, newTitle: string) => {
+    await EventService.updateEvent(eventId, {
+      title: { simpleTitle: newTitle }
+    });
+  }, 500),
+  []
+);
+
+// 在 renderElement 中：
+&lt;input
+  value={element.title}
+  onChange={(e) => {
+    // 更新 Slate 状态
+    Transforms.setNodes(...);
+    // 触发保存
+    handleTitleChange(element.eventId, e.target.value);
+  }}
+/&gt;</pre>
+
+    <h3>🎨 自定义样式：</h3>
+    <ul>
+      <li><code>EventTree.css</code> - 可视化模式样式</li>
+      <li><code>EditableEventTree.css</code> - 编辑模式样式</li>
+      <li><code>EventTreeViewer.css</code> - 切换器样式</li>
+    </ul>
+  </div>
+
+  <footer style="text-align: center; margin-top: 40px; padding: 20px; color: #999;">
+    <p>EventTree v2.0 - ReMarkable Project</p>
+    <p>Last Updated: 2024</p>
+  </footer>
+</body>
+</html>

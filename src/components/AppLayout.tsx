@@ -23,8 +23,6 @@ interface AppLayoutProps {
     eventTitle?: string; // ✅ 事件标题（优先级高于 tagName）
   } | null;
   onTimerClick?: () => void;
-  clickTrackerEnabled?: boolean;
-  onClickTrackerToggle?: () => void;
   onSettingsClick?: () => void;
 }
 
@@ -147,11 +145,9 @@ const Header: React.FC<HeaderProps> = ({ globalTimer, onTimerClick, onSettingsCl
 interface SidebarProps {
   currentPage: PageType;
   onPageChange: (page: PageType) => void;
-  clickTrackerEnabled?: boolean;
-  onClickTrackerToggle?: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentPage, onPageChange, clickTrackerEnabled, onClickTrackerToggle }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentPage, onPageChange }) => {
   const menuItems = [
     { id: 'home' as PageType, label: '首页', icon: 'home' },
     { id: 'time' as PageType, label: '时光', icon: 'time' },
@@ -217,23 +213,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, onPageChange, clickTrack
             <span className="nav-label" style={{ pointerEvents: 'none' }}>{item.label}</span>
           </button>
         ))}
-        
-        {/* Click Tracker 调试开关 */}
-        {onClickTrackerToggle && (
-          <div className="sidebar-divider"></div>
-        )}
-        {onClickTrackerToggle && (
-          <button
-            className={`nav-item debug-item ${clickTrackerEnabled ? 'active' : ''}`}
-            onClick={onClickTrackerToggle}
-            title="点击追踪调试工具"
-          >
-            <div className="nav-icon">
-              <span style={{ fontSize: '16px' }}>🎯</span>
-            </div>
-            <span className="nav-label">调试</span>
-          </button>
-        )}
       </nav>
     </aside>
   );
@@ -487,8 +466,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({
   children, 
   globalTimer, 
   onTimerClick,
-  clickTrackerEnabled,
-  onClickTrackerToggle,
   onSettingsClick
 }) => {
   return (
@@ -504,8 +481,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({
       <Sidebar 
         currentPage={currentPage} 
         onPageChange={onPageChange}
-        clickTrackerEnabled={clickTrackerEnabled}
-        onClickTrackerToggle={onClickTrackerToggle}
       />
       
       {/* 主内容区 */}

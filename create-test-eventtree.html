@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>创建测试 EventTree</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      padding: 20px;
+      background: #f5f5f5;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .container {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    button {
+      padding: 12px 24px;
+      margin: 8px;
+      border: none;
+      border-radius: 6px;
+      background: #2196f3;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:hover {
+      background: #1976d2;
+    }
+    button.success {
+      background: #4caf50;
+    }
+    button.danger {
+      background: #f44336;
+    }
+    pre {
+      background: #f8f8f8;
+      padding: 12px;
+      border-radius: 4px;
+      overflow-x: auto;
+      max-height: 400px;
+    }
+    .result {
+      margin-top: 20px;
+      padding: 16px;
+      border-radius: 6px;
+      border: 2px solid #e0e0e0;
+    }
+    .result.success {
+      background: #e8f5e9;
+      border-color: #4caf50;
+    }
+    .result.error {
+      background: #ffebee;
+      border-color: #f44336;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🌲 创建测试 EventTree</h1>
+    <p>在浏览器 Console 中运行此脚本，创建包含父子关系的测试事件树。</p>
+    
+    <button onclick="createTestTree()">创建测试树</button>
+    <button onclick="checkExistingData()" class="success">检查现有数据</button>
+    <button onclick="clearTestData()" class="danger">清除测试数据</button>
+    
+    <div id="result"></div>
+  </div>
+
+  <script>
+    const resultDiv = document.getElementById('result');
+
+    function showResult(message, type = 'success') {
+      resultDiv.className = `result ${type}`;
+      resultDiv.innerHTML = message;
+    }
+
+    async function createTestTree() {
+      showResult('创建中...', '');
+      
+      try {
+        // 检查是否在正确的环境中
+        if (!window.EventService) {
+          throw new Error('未找到 EventService，请在 ReMarkable 应用中打开此页面');
+        }
+
+        const EventService = window.EventService;
+        
+        // 1. 创建父事件
+        console.log('📝 创建父事件...');
+        const parentResult = await EventService.createEvent({
+          title: { simpleTitle: '测试父事件 - 项目规划' },
+          isTask: false,
+          tags: ['工作'],
+        });
+
+        if (!parentResult.success) {
+          throw new Error(`创建父事件失败: ${parentResult.error}`);
+        }
+
+        const parentId = parentResult.event.id;
+        console.log('✅ 父事件创建成功:', parentId);
+
+        // 2. 创建子事件 1
+        console.log('📝 创建子事件 1...');
+        const child1Result = await EventService.createEvent({
+          title: { simpleTitle: '测试子事件 1 - 需求分析' },
+          parentEventId: parentId,
+          isTask: false,
+          tags: ['工作'],
+        });
+
+        if (!child1Result.success) {
+          throw new Error(`创建子事件 1 失败: ${child1Result.error}`);
+        }
+
+        const child1Id = child1Result.event.id;
+        console.log('✅ 子事件 1 创建成功:', child1Id);
+
+        // 3. 创建子事件 2
+        console.log('📝 创建子事件 2...');
+        const child2Result = await EventService.createEvent({
+          title: { simpleTitle: '测试子事件 2 - 技术方案' },
+          parentEventId: parentId,
+          isTask: false,
+          tags: ['工作'],
+        });
+
+        if (!child2Result.success) {
+          throw new Error(`创建子事件 2 失败: ${child2Result.error}`);
+        }
+
+        const child2Id = child2Result.event.id;
+        console.log('✅ 子事件 2 创建成功:', child2Id);
+
+        // 4. 创建三级子事件（child1 的子事件）
+        console.log('📝 创建三级子事件...');
+        const grandChildResult = await EventService.createEvent({
+          title: { simpleTitle: '测试三级事件 - 用户调研' },
+          parentEventId: child1Id,
+          isTask: false,
+          tags: ['工作'],
+        });
+
+        if (!grandChildResult.success) {
+          throw new Error(`创建三级子事件失败: ${grandChildResult.error}`);
+        }
+
+        const grandChildId = grandChildResult.event.id;
+        console.log('✅ 三级子事件创建成功:', grandChildId);
+
+        // 5. 更新父事件的 childEventIds
+        console.log('📝 更新父事件的 childEventIds...');
+        const updateParentResult = await EventService.updateEvent(parentId, {
+          childEventIds: [child1Id, child2Id]
+        });
+
+        if (!updateParentResult.success) {
+          throw new Error(`更新父事件失败: ${updateParentResult.error}`);
+        }
+
+        // 6. 更新 child1 的 childEventIds
+        console.log('📝 更新 child1 的 childEventIds...');
+        const updateChild1Result = await EventService.updateEvent(child1Id, {
+          childEventIds: [grandChildId]
+        });
+
+        if (!updateChild1Result.success) {
+          throw new Error(`更新 child1 失败: ${updateChild1Result.error}`);
+        }
+
+        // 7. 验证数据
+        const verifyParent = await EventService.getEventById(parentId);
+        const verifyChild1 = await EventService.getEventById(child1Id);
+
+        showResult(`
+          <h3>✅ 测试树创建成功！</h3>
+          <h4>树结构:</h4>
+          <pre>
+📁 ${verifyParent.title.simpleTitle} (${parentId})
+  ├─ ${verifyChild1.title.simpleTitle} (${child1Id})
+  │  └─ 测试三级事件 - 用户调研 (${grandChildId})
+  └─ 测试子事件 2 - 技术方案 (${child2Id})
+          </pre>
+          <h4>数据验证:</h4>
+          <pre>
+父事件 childEventIds: ${JSON.stringify(verifyParent.childEventIds, null, 2)}
+子事件 1 childEventIds: ${JSON.stringify(verifyChild1.childEventIds, null, 2)}
+三级子事件 parentEventId: ${grandChildId}
+          </pre>
+          <p><strong>现在打开 EventEditModal 编辑父事件，点击关联摘要即可看到完整树结构！</strong></p>
+          <p>父事件 ID: <code>${parentId}</code></p>
+        `, 'success');
+
+        console.log('🎉 测试树创建完成！');
+        console.log('父事件 ID:', parentId);
+        console.log('父事件 childEventIds:', verifyParent.childEventIds);
+
+      } catch (error) {
+        console.error('❌ 创建测试树失败:', error);
+        showResult(`
+          <h3>❌ 创建失败</h3>
+          <pre>${error.message}\n\n${error.stack}</pre>
+        `, 'error');
+      }
+    }
+
+    async function checkExistingData() {
+      showResult('检查中...', '');
+      
+      try {
+        if (!window.EventService) {
+          throw new Error('未找到 EventService');
+        }
+
+        const EventService = window.EventService;
+        const allEvents = await EventService.getAllEvents();
+        
+        // 查找有子事件的事件
+        const withChildren = allEvents.filter(e => 
+          e.childEventIds && e.childEventIds.length > 0
+        );
+
+        // 查找有父事件的事件
+        const withParent = allEvents.filter(e => e.parentEventId);
+
+        showResult(`
+          <h3>📊 数据统计</h3>
+          <ul>
+            <li>总事件数: ${allEvents.length}</li>
+            <li>有子事件的事件: ${withChildren.length}</li>
+            <li>有父事件的事件: ${withParent.length}</li>
+          </ul>
+
+          ${withChildren.length > 0 ? `
+            <h4>有子事件的事件:</h4>
+            <ul>
+              ${withChildren.map(e => {
+                const title = typeof e.title === 'string' 
+                  ? e.title 
+                  : (e.title?.simpleTitle || e.title?.colorTitle || '无标题');
+                return `<li>${title} (${e.id})<br>子事件: ${e.childEventIds.length} 个</li>`;
+              }).join('')}
+            </ul>
+          ` : '<p>⚠️ 没有找到包含子事件的事件</p>'}
+
+          ${withParent.length > 0 ? `
+            <h4>有父事件的事件:</h4>
+            <ul>
+              ${withParent.map(e => {
+                const title = typeof e.title === 'string' 
+                  ? e.title 
+                  : (e.title?.simpleTitle || e.title?.colorTitle || '无标题');
+                return `<li>${title} (${e.id})<br>父事件: ${e.parentEventId}</li>`;
+              }).join('')}
+            </ul>
+          ` : ''}
+        `, 'success');
+
+      } catch (error) {
+        showResult(`
+          <h3>❌ 检查失败</h3>
+          <pre>${error.message}</pre>
+        `, 'error');
+      }
+    }
+
+    async function clearTestData() {
+      if (!confirm('确定要删除所有测试事件吗？此操作不可恢复！')) {
+        return;
+      }
+
+      showResult('删除中...', '');
+      
+      try {
+        if (!window.EventService) {
+          throw new Error('未找到 EventService');
+        }
+
+        const EventService = window.EventService;
+        const allEvents = await EventService.getAllEvents();
+        
+        // 查找测试事件
+        const testEvents = allEvents.filter(e => {
+          const title = typeof e.title === 'string' 
+            ? e.title 
+            : (e.title?.simpleTitle || e.title?.colorTitle || '');
+          return title.includes('测试');
+        });
+
+        console.log(`找到 ${testEvents.length} 个测试事件`);
+
+        // 删除测试事件
+        for (const event of testEvents) {
+          await EventService.deleteEvent(event.id);
+          console.log(`✅ 已删除: ${event.id}`);
+        }
+
+        showResult(`
+          <h3>✅ 清除完成</h3>
+          <p>已删除 ${testEvents.length} 个测试事件</p>
+        `, 'success');
+
+      } catch (error) {
+        showResult(`
+          <h3>❌ 清除失败</h3>
+          <pre>${error.message}</pre>
+        `, 'error');
+      }
+    }
+  </script>
+</body>
+</html>

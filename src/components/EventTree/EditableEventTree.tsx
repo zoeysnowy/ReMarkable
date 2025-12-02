@@ -53,17 +53,27 @@ export const EditableEventTree: React.FC<EditableEventTreeProps> = ({
   // 从 EventService 加载事件树
   const loadEventTree = useCallback(async () => {
     try {
+      console.log('🔍 [EditableEventTree] 开始加载事件树...', { rootEventId });
+      
       const rootEvent = await EventService.getEventById(rootEventId);
       if (!rootEvent) {
-        console.error('根事件不存在:', rootEventId);
+        console.error('❌ [EditableEventTree] 根事件不存在:', rootEventId);
+        setIsLoading(false);
         return;
       }
+
+      console.log('✅ [EditableEventTree] 根事件加载成功:', {
+        id: rootEvent.id,
+        title: rootEvent.title,
+        childEventIds: rootEvent.childEventIds,
+        hasChildren: !!(rootEvent.childEventIds && rootEvent.childEventIds.length > 0)
+      });
 
       // 递归构建树形结构
       const buildTree = async (event: Event, level: number): Promise<EventTreeNode[]> => {
         const title = typeof event.title === 'string' 
           ? event.title 
-          : (event.title?.simpleTitle || event.title?.colorTitle || '无标题');
+          : (event.title?.simpleTitle || event.title?.colorTitle || event.title?.fullTitle || '无标题');
 
         const node: EventTreeNode = {
           type: 'event-item',
@@ -74,14 +84,31 @@ export const EditableEventTree: React.FC<EditableEventTreeProps> = ({
 
         const nodes: EventTreeNode[] = [node];
 
+        console.log(`📝 [EditableEventTree] 构建节点 level=${level}:`, {
+          id: event.id,
+          title,
+          childEventIds: event.childEventIds
+        });
+
         // 递归加载子事件
         if (event.childEventIds && event.childEventIds.length > 0) {
+          console.log(`🌲 [EditableEventTree] 加载 ${event.childEventIds.length} 个子事件...`);
+          
           for (const childId of event.childEventIds) {
             const child = await EventService.getEventById(childId);
-            if (child && EventService.shouldShowInEventTree(child)) {
-              const childNodes = await buildTree(child, level + 1);
-              nodes.push(...childNodes);
+            
+            if (!child) {
+              console.warn(`⚠️ [EditableEventTree] 子事件不存在: ${childId}`);
+              continue;
             }
+            
+            if (!EventService.shouldShowInEventTree(child)) {
+              console.log(`⏭️ [EditableEventTree] 跳过系统事件: ${childId}`);
+              continue;
+            }
+            
+            const childNodes = await buildTree(child, level + 1);
+            nodes.push(...childNodes);
           }
         }
 
@@ -89,95 +116,105 @@ export const EditableEventTree: React.FC<EditableEventTreeProps> = ({
       };
 
       const treeNodes = await buildTree(rootEvent, 0);
+      
+      console.log('✅ [EditableEventTree] 树构建完成:', {
+        totalNodes: treeNodes.length,
+        structure: treeNodes.map(n => ({
+          id: n.eventId,
+          level: n.level,
+          title: n.children[0].text
+        }))
+      });
+      
+      // 更新 Slate 编辑器内容
+      if (treeNodes.length > 0) {
+        editor.children = treeNodes as any;
+        editor.onChange();
+      }
+      
       setInitialValue(treeNodes as any);
       setIsLoading(false);
     } catch (error) {
-      console.error('加载事件树失败:', error);
+      console.error('❌ [EditableEventTree] 加载事件树失败:', error);
       setIsLoading(false);
     }
-  }, [rootEventId]);
+  }, [rootEventId, editor]);
 
   useEffect(() => {
     loadEventTree();
   }, [loadEventTree]);
 
-  // 处理键盘事件
-  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
-    if (event.key === 'Tab') {
-      event.preventDefault();
-      
-      const { selection } = editor;
-      if (!selection) return;
-
-      const [node, path] = Editor.node(editor, selection);
-      if (!SlateElement.isElement(node) || node.type !== 'event-item') return;
-
-      const currentLevel = (node as any).level || 0;
-
-      if (event.shiftKey) {
-        // Shift+Tab: 减少缩进（提升层级）
-        if (currentLevel > 0) {
-          Transforms.setNodes(
-            editor,
-            { level: currentLevel - 1 } as any,
-            { at: path }
-          );
-          updateParentRelation(editor, path, currentLevel - 1);
+  // 创建新事件
+  const createNewEvent = useCallback(async (editor: Editor, currentPath: Path, level: number) => {
+    try {
+      // 查找父事件 ID
+      let parentEventId: string | null = null;
+      if (level > 0) {
+        for (let i = currentPath[0] - 1; i >= 0; i--) {
+          const [prevNode] = Editor.node(editor, [i]);
+          // @ts-ignore - 自定义 event-item 类型
+          if (SlateElement.isElement(prevNode) && prevNode.type === 'event-item') {
+            const prevLevel = (prevNode as any).level || 0;
+            if (prevLevel === level - 1) {
+              parentEventId = (prevNode as any).eventId;
+              break;
+            }
+          }
         }
-      } else {
-        // Tab: 增加缩进（降低层级）
-        Transforms.setNodes(
-          editor,
-          { level: currentLevel + 1 } as any,
-          { at: path }
-        );
-        updateParentRelation(editor, path, currentLevel + 1);
       }
-    } else if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      
-      // Enter: 创建同级新事件
-      const { selection } = editor;
-      if (!selection) return;
 
-      const [node, path] = Editor.node(editor, selection);
-      if (!SlateElement.isElement(node) || node.type !== 'event-item') return;
-
-      const currentLevel = (node as any).level || 0;
-      
       // 创建新事件
-      createNewEvent(editor, path, currentLevel);
-    } else if (event.altKey && event.shiftKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
-      event.preventDefault();
-      
-      // Alt+Shift+↑/↓: 移动节点
-      const { selection } = editor;
-      if (!selection) return;
+      const result = await EventService.createEvent({
+        title: { simpleTitle: '' },
+        parentEventId: parentEventId || undefined,
+        isTask: false,
+      } as any);
 
-      const [, path] = Editor.node(editor, selection);
-      
-      if (event.key === 'ArrowUp' && path[0] > 0) {
-        // 向上移动
-        Transforms.moveNodes(editor, {
-          at: path,
-          to: [path[0] - 1],
-        });
-      } else if (event.key === 'ArrowDown') {
-        // 向下移动
-        const nextPath = [path[0] + 1];
-        if (Editor.hasPath(editor, nextPath)) {
-          Transforms.moveNodes(editor, {
-            at: path,
-            to: [path[0] + 2],
+      if (!result.success || !result.event) {
+        console.error('创建事件失败:', result.error);
+        return;
+      }
+
+      const newEvent = result.event;
+
+      // 更新父事件的 childEventIds
+      if (parentEventId) {
+        const parent = await EventService.getEventById(parentEventId);
+        if (parent) {
+          await EventService.updateEvent(parentEventId, {
+            childEventIds: [...(parent.childEventIds || []), newEvent.id],
           });
         }
       }
+
+      // 插入新节点到编辑器
+      const newNode: EventTreeNode = {
+        type: 'event-item',
+        eventId: newEvent.id,
+        level,
+        children: [{ text: '' }],
+      };
+
+      Transforms.insertNodes(editor, newNode as any, {
+        at: [currentPath[0] + 1],
+      });
+
+      // 聚焦到新节点
+      Transforms.select(editor, {
+        anchor: { path: [currentPath[0] + 1, 0], offset: 0 },
+        focus: { path: [currentPath[0] + 1, 0], offset: 0 },
+      });
+
+      console.log('✅ 创建新事件:', newEvent.id);
+    } catch (error) {
+      console.error('❌ 创建新事件失败:', error);
     }
   }, [editor]);
 
   // 更新父子关系
-  const updateParentRelation = async (editor: Editor, path: Path, newLevel: number) => {
+  const updateParentRelation = useCallback(async (editor: Editor, path: Path, newLevel: number) => {
     const [node] = Editor.node(editor, path);
+    // @ts-ignore - 自定义 event-item 类型
     if (!SlateElement.isElement(node) || node.type !== 'event-item') return;
 
     const eventId = (node as any).eventId;
@@ -187,16 +224,16 @@ export const EditableEventTree: React.FC<EditableEventTreeProps> = ({
     let parentEventId: string | null = null;
     
     if (newLevel > 0) {
-      // 向上遍历，找到第一个 level = newLevel - 1 的节点
       for (let i = path[0] - 1; i >= 0; i--) {
         const [prevNode] = Editor.node(editor, [i]);
+        // @ts-ignore - 自定义 event-item 类型
         if (SlateElement.isElement(prevNode) && prevNode.type === 'event-item') {
           const prevLevel = (prevNode as any).level || 0;
           if (prevLevel === newLevel - 1) {
             parentEventId = (prevNode as any).eventId;
             break;
           } else if (prevLevel < newLevel - 1) {
-            break; // 跨层级，停止查找
+            break;
           }
         }
       }
@@ -244,66 +281,83 @@ export const EditableEventTree: React.FC<EditableEventTreeProps> = ({
     } catch (error) {
       console.error('❌ 更新父子关系失败:', error);
     }
-  };
+  }, [editor]);
 
-  // 创建新事件
-  const createNewEvent = async (editor: Editor, currentPath: Path, level: number) => {
-    try {
-      // 查找父事件 ID
-      let parentEventId: string | null = null;
-      if (level > 0) {
-        for (let i = currentPath[0] - 1; i >= 0; i--) {
-          const [prevNode] = Editor.node(editor, [i]);
-          if (SlateElement.isElement(prevNode) && prevNode.type === 'event-item') {
-            const prevLevel = (prevNode as any).level || 0;
-            if (prevLevel === level - 1) {
-              parentEventId = (prevNode as any).eventId;
-              break;
-            }
-          }
+  // 处理键盘事件
+  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (event.key === 'Tab') {
+      event.preventDefault();
+
+      const { selection } = editor;
+      if (!selection) return;
+
+      const [node, path] = Editor.node(editor, selection);
+      // @ts-ignore - 自定义 event-item 类型
+      if (!SlateElement.isElement(node) || node.type !== 'event-item') return;
+      
+      const currentLevel = (node as any).level || 0;
+
+      if (event.shiftKey) {
+        // Shift+Tab: 减少缩进（提升层级）
+        if (currentLevel > 0) {
+          Transforms.setNodes(
+            editor,
+            { level: currentLevel - 1 } as any,
+            { at: path }
+          );
+          updateParentRelation(editor, path, currentLevel - 1);
         }
+      } else {
+        // Tab: 增加缩进（降低层级）
+        Transforms.setNodes(
+          editor,
+          { level: currentLevel + 1 } as any,
+          { at: path }
+        );
+        updateParentRelation(editor, path, currentLevel + 1);
       }
+    } else if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      
+      // Enter: 创建同级新事件
+      const { selection } = editor;
+      if (!selection) return;
 
+      const [node, path] = Editor.node(editor, selection);
+      // @ts-ignore - 自定义 event-item 类型
+      if (!SlateElement.isElement(node) || node.type !== 'event-item') return;
+
+      const currentLevel = (node as any).level || 0;
+      
       // 创建新事件
-      const newEvent = await EventService.createEvent({
-        title: { simpleTitle: '' },
-        parentEventId: parentEventId || undefined,
-        isTask: false,
-      } as any);
+      createNewEvent(editor, path, currentLevel);
+    } else if (event.altKey && event.shiftKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+      event.preventDefault();
+      
+      // Alt+Shift+↑/↓: 移动节点
+      const { selection } = editor;
+      if (!selection) return;
 
-      // 更新父事件的 childEventIds
-      if (parentEventId) {
-        const parent = await EventService.getEventById(parentEventId);
-        if (parent) {
-          await EventService.updateEvent(parentEventId, {
-            childEventIds: [...(parent.childEventIds || []), newEvent.id],
+      const [, path] = Editor.node(editor, selection);
+      
+      if (event.key === 'ArrowUp' && path[0] > 0) {
+        // 向上移动
+        Transforms.moveNodes(editor, {
+          at: path,
+          to: [path[0] - 1],
+        });
+      } else if (event.key === 'ArrowDown') {
+        // 向下移动
+        const nextPath = [path[0] + 1];
+        if (Editor.hasPath(editor, nextPath)) {
+          Transforms.moveNodes(editor, {
+            at: path,
+            to: [path[0] + 2],
           });
         }
       }
-
-      // 插入新节点到编辑器
-      const newNode: EventTreeNode = {
-        type: 'event-item',
-        eventId: newEvent.id,
-        level,
-        children: [{ text: '' }],
-      };
-
-      Transforms.insertNodes(editor, newNode as any, {
-        at: [currentPath[0] + 1],
-      });
-
-      // 聚焦到新节点
-      Transforms.select(editor, {
-        anchor: { path: [currentPath[0] + 1, 0], offset: 0 },
-        focus: { path: [currentPath[0] + 1, 0], offset: 0 },
-      });
-
-      console.log('✅ 创建新事件:', newEvent.id);
-    } catch (error) {
-      console.error('❌ 创建新事件失败:', error);
     }
-  };
+  }, [editor, createNewEvent, updateParentRelation]);
 
   // 渲染事件节点
   const renderElement = useCallback((props: any) => {
@@ -334,17 +388,31 @@ export const EditableEventTree: React.FC<EditableEventTreeProps> = ({
   }, []);
 
   if (isLoading) {
-    return <div style={{ padding: '20px', textAlign: 'center', color: '#9ca3af' }}>加载中...</div>;
+    return <div style={{ padding: '20px', textAlign: 'center', color: '#9ca3af' }}>加载事件树中...</div>;
   }
 
   return (
     <div className="editable-event-tree">
+      {/* 调试信息 */}
+      <div style={{ 
+        padding: '8px 12px', 
+        background: '#f0f9ff', 
+        borderRadius: '4px', 
+        marginBottom: '12px',
+        fontSize: '13px',
+        color: '#0369a1'
+      }}>
+        <strong>📊 当前树结构:</strong> {initialValue.length} 个节点
+        {initialValue.length > 0 && ` | 根节点: ${(initialValue[0] as any).eventId}`}
+      </div>
+
       <Slate
         editor={editor}
         initialValue={initialValue}
         onChange={(value) => {
           // 实时保存标题变更
           // TODO: 防抖优化
+          console.log('📝 Slate onChange:', value);
         }}
       >
         <Editable

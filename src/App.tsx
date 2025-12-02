@@ -16,7 +16,6 @@ import { STORAGE_KEYS, CacheManager } from './constants/storage';
 import { PersistentStorage, PERSISTENT_OPTIONS } from './utils/persistentStorage';
 import { TagService } from './services/TagService';
 import { EventService } from './services/EventService';
-import ClickTracker from './components/ClickTracker';
 import { EventEditModal } from './components/EventEditModal'; // v1 - 待迁移
 import { EventEditModalV2 } from './components/EventEditModal/EventEditModalV2'; // v2 - 新版本
 import SettingsModal from './components/SettingsModal';
@@ -27,7 +26,6 @@ import './App.css';
 import TagManager from './components/TagManager';
 import TimeCalendar from './features/Calendar/TimeCalendar';
 import PlanManager from './components/PlanManager';
-import { AIDemo } from './components/AIDemo';
 import TimeLog from './pages/TimeLog';
 
 import { logger } from './utils/logger';
@@ -324,14 +322,6 @@ function App() {
     lastUpdated: '',
     theme: 'light'
   });
-
-  // Click Tracker 调试状✅
-  const [clickTrackerEnabled, setClickTrackerEnabled] = useState(false);
-
-  // Click Tracker 切换函数
-  const toggleClickTracker = () => {
-    setClickTrackerEnabled(prev => !prev);
-  };
 
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
@@ -1847,10 +1837,12 @@ function App() {
         break;
 
       case 'ai-demo':
+        // 懒加载 AIDemo 组件
+        const AIDemo = React.lazy(() => import('./components/AIDemo').then(m => ({ default: m.AIDemo })));
         content = (
-          <PageContainer title="AI Demo" subtitle="测试 AI 事件提取功能">
+          <React.Suspense fallback={<PageContainer title="AI Demo"><div>加载中...</div></PageContainer>}>
             <AIDemo />
-          </PageContainer>
+          </React.Suspense>
         );
         break;
 
@@ -1889,12 +1881,9 @@ function App() {
   ]); // 🔧 关键依赖项
 
   return (
-    <ClickTracker enabled={clickTrackerEnabled}>
       <AppLayout 
         currentPage={currentPage} 
         onPageChange={handlePageChange}
-        clickTrackerEnabled={clickTrackerEnabled}
-        onClickTrackerToggle={toggleClickTracker}
         onSettingsClick={() => setShowSettingsModal(true)}
         globalTimer={globalTimer}
         onTimerClick={() => setCurrentPage('home')}
@@ -2012,7 +2001,6 @@ function App() {
         </div>
       )}
     </AppLayout>
-    </ClickTracker>
   );
 }
 

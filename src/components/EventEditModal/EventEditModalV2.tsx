@@ -101,6 +101,7 @@ import { insertTag, insertEmoji, insertDateMention, applyTextFormat } from '../P
 // import { parseExternalHtml, slateNodesToRichHtml } from '../PlanSlate/serialization';
 import { formatTimeForStorage } from '../../utils/timeUtils';
 import { EventRelationSummary } from '../EventTree/EventRelationSummary';
+import { EventTreeViewer } from '../EventTree/EventTreeViewer';
 import './EventEditModalV2.css';
 
 // Import SVG icons
@@ -238,6 +239,20 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
    * - EventService：持久化层，负责 localStorage 存储
    * - TimeHub：时间管理层，负责 TimeSpec 和时间意图（本组件不直接调用）
    */
+  // 🌲 EventTree: 加载所有事件用于树状图
+  const [allEvents, setAllEvents] = useState<any[]>([]);
+  
+  React.useEffect(() => {
+    const loadEvents = async () => {
+      const events = await EventService.getAllEvents();
+      setAllEvents(events);
+    };
+    
+    if (isOpen) {
+      loadEvents();
+    }
+  }, [isOpen]);
+
   const [formData, setFormData] = useState<MockEvent>(() => {
     if (event) {
       // 保留 colorTitle HTML 格式以支持富文本显示
@@ -347,6 +362,7 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
   const [showTagPicker, setShowTagPicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [isEditingLocation, setIsEditingLocation] = useState(false);
+  const [showEventTree, setShowEventTree] = useState(false);
   const [showSourceCalendarPicker, setShowSourceCalendarPicker] = useState(false);
   const [showSyncCalendarPicker, setShowSyncCalendarPicker] = useState(false);
   const [showSourceSyncModePicker, setShowSourceSyncModePicker] = useState(false);
@@ -2967,8 +2983,8 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                           transition: 'color 0.2s',
                         }}
                         onClick={() => {
-                          // TODO: 显示 EventTree 可视化
-                          console.log('点击查看关联事件');
+                          setShowEventTree(!showEventTree);
+                          console.log('切换 EventTree 显示:', !showEventTree);
                         }}
                         onMouseEnter={(e) => e.currentTarget.style.color = '#3b82f6'}
                         onMouseLeave={(e) => e.currentTarget.style.color = '#6b7280'}
@@ -3016,10 +3032,37 @@ export const EventEditModalV2: React.FC<EventEditModalV2Props> = ({
                           strokeWidth="2"
                           strokeLinecap="round"
                           strokeLinejoin="round"
-                          style={{ marginLeft: 'auto' }}
+                          style={{ 
+                            marginLeft: 'auto',
+                            transform: showEventTree ? 'rotate(90deg)' : 'rotate(0deg)',
+                            transition: 'transform 0.2s',
+                          }}
                         >
                           <polyline points="6,4 10,8 6,12" />
                         </svg>
+                      </div>
+                    )}
+                    
+                    {/* EventTree 展开区域 */}
+                    {showEventTree && (() => {
+                      const hasParent = formData.parentEventId;
+                      const hasChildren = (formData as any).childEventIds?.length > 0;
+                      const hasLinked = (formData as any).linkedEventIds?.length > 0;
+                      const hasBacklinks = (formData as any).backlinks?.length > 0;
+                      const hasRelations = hasParent || hasChildren || hasLinked || hasBacklinks;
+                      
+                      return hasRelations;
+                    })() && (
+                      <div style={{ marginBottom: '16px', marginTop: '12px' }}>
+                        <EventTreeViewer
+                          rootEventId={formData.id}
+                          events={allEvents}
+                          onEventClick={(clickedEvent) => {
+                            setFormData(clickedEvent as any);
+                            setShowEventTree(false);
+                          }}
+                          defaultMode="edit"
+                        />
                       </div>
                     )}
                     
