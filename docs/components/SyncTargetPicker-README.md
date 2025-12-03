@@ -299,6 +299,6 @@ const isTask = useMemo(() => {
 
 ---
 
-**作者**: ReMarkable Team  
+**作者**: 4DNote Team  
 **版本**: 1.0.0  
 **更新时间**: 2025-11-12

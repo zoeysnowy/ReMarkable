@@ -158,7 +158,7 @@ npm run build
 
 ---
 
-**Made with ❤️ by the ReMarkable Team**
+**Made with ❤️ by the 4DNote Team**
 
 The build is minified and the filenames include the hashes.\
 Your app is ready to be deployed!

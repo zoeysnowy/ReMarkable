@@ -4383,4 +4383,4 @@ const unifiedEditorRef = useRef<Editor>(null);
 - [Sync-Architecture.md](./architecture/Sync-Architecture.md)
 
 ---**最后更新**: 2025-11-06  
-**维护者**: ReMarkable Team
+**维护者**: 4DNote Team

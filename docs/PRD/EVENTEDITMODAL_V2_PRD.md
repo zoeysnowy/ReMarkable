@@ -10295,5 +10295,5 @@ sequenceDiagram
 ---
 
 **最后更新**: 2025-11-26  
-**维护者**: ReMarkable Team
+**维护者**: 4DNote Team
 

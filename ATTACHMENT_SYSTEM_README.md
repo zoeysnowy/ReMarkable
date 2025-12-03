@@ -323,4 +323,4 @@ npx http-server . -p 8080
 
 ## 📄 许可证
 
-MIT License © 2025 ReMarkable Team
+MIT License © 2025 4DNote Team

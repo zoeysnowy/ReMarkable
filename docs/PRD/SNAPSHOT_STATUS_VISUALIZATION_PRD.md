@@ -1010,5 +1010,5 @@ segments.forEach(segment => {
 
 **文档版本**: v2.2.1  
 **最后更新**: 2025-11-30  
-**维护者**: ReMarkable Team
+**维护者**: 4DNote Team
 

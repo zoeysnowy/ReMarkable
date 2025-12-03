@@ -470,7 +470,7 @@ const initialMode = attachments.some(a => a.type === 'image')
 
 ## 📄 许可证
 
-MIT License © 2025 ReMarkable Team
+MIT License © 2025 4DNote Team
 
 ---
 
